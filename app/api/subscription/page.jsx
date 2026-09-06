@@ -7,9 +7,7 @@ export default function SubscribePage() {
   const [loading, setLoading] = useState(false)
   const [scriptLoaded, setScriptLoaded] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
-  // Load Razorpay checkout script dynamically
   useEffect(() => {
     const script = document.createElement('script')
     script.src = 'https://checkout.razorpay.com/v1/checkout.js'
@@ -18,7 +16,9 @@ export default function SubscribePage() {
     document.body.appendChild(script)
 
     return () => {
-      document.body.removeChild(script)
+      if (script.parentNode) {
+        script.parentNode.removeChild(script)
+      }
     }
   }, [])
 
@@ -30,8 +30,11 @@ export default function SubscribePage() {
 
     setLoading(true)
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      if (userError || !user) throw new Error('Please log in first.')
+      const { data: authData, error: userError } = await supabase.auth.getUser()
+      if (userError || !authData?.user) {
+        throw new Error('Please log in first before subscribing.')
+      }
+      const user = authData.user
 
       // Call backend API to create the subscription order
       const res = await fetch('/api/create-subscription-order', {
@@ -39,8 +42,18 @@ export default function SubscribePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planAmount: 999, restaurantId: user.id }),
       })
-      const data = await res.json()
-      if (!data.success) throw new Error(data.error)
+
+      const responseText = await res.text()
+      let data
+      try {
+        data = JSON.parse(responseText)
+      } catch (e) {
+        throw new Error(`Server returned an invalid response: ${responseText || 'Empty response'}`)
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to initialize payment order.')
+      }
 
       // Razorpay Checkout Options
       const options = {
@@ -52,13 +65,13 @@ export default function SubscribePage() {
         order_id: data.orderId,
         handler: async function (response) {
           // Update restaurant subscription status in Supabase after successful payment
-          const { error } = await supabase
+          const { error: updateError } = await supabase
             .from('restaurants')
             .update({ subscription_status: 'active' })
             .eq('id', user.id)
 
-          if (error) {
-            alert('Payment successful, but failed to update status. Please contact support.')
+          if (updateError) {
+            alert('Payment successful, but failed to update status in database. Please contact support.')
           } else {
             alert('Subscription activated successfully!')
             router.push('/dashboard')
@@ -73,7 +86,7 @@ export default function SubscribePage() {
       const rzp = new window.Razorpay(options)
       rzp.open()
     } catch (err) {
-      alert(err.message)
+      alert(err.message || 'An error occurred during payment setup.')
     } finally {
       setLoading(false)
     }
