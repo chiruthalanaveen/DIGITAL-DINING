@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 
 export async function POST(req) {
   try {
+    // Safely parse incoming JSON body
     const body = await req.json().catch(() => ({}))
     const amount = body.amount || body.planAmount || 499
 
@@ -13,7 +14,7 @@ export async function POST(req) {
       return NextResponse.json(
         { 
           success: false, 
-          message: 'Razorpay keys are missing in .env.local (RAZORPAY_KEY_ID or RAZORPAY_SECRET).' 
+          message: 'Missing Razorpay keys! Please check RAZORPAY_KEY_ID and RAZORPAY_SECRET in your .env.local file.' 
         },
         { status: 500 }
       )
@@ -27,7 +28,6 @@ export async function POST(req) {
       receipt: `sub_${Date.now()}`,
     })
 
-    // Returns both wrapped 'order' and top-level fields so it never breaks
     return NextResponse.json({
       success: true,
       order: order,
@@ -37,9 +37,10 @@ export async function POST(req) {
       keyId: key_id,
     })
   } catch (err) {
-    console.error('Razorpay Error:', err)
+    console.error('Razorpay API Route Crash:', err)
+    // Always return JSON even if an unhandled exception occurs
     return NextResponse.json(
-      { success: false, message: err.message || 'Failed to create Razorpay order.' },
+      { success: false, message: err.message || 'Internal Server Error during order creation.' },
       { status: 500 }
     )
   }

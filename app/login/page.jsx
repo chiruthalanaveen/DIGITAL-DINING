@@ -30,7 +30,7 @@ export default function RestaurantLogin() {
       const userId = authData.user?.id
 
       // 2. Fetch restaurant profile and match Date of Birth for secondary validation
-      const { data: restaurant, dbError } = await supabase
+      const { data: restaurant, error: dbError } = await supabase
         .from('restaurants')
         .select('id, dob')
         .eq('id', userId)

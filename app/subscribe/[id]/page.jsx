@@ -69,29 +69,33 @@ export default function SubscriptionPage({ params }) {
 
       const responseText = await res.text()
 
+      if (!responseText || responseText.trim() === '') {
+        throw new Error('Server returned an empty response.')
+      }
+
       if (responseText.trim().startsWith('<')) {
-        throw new Error('API Route returned HTML (500 or 404). Check terminal for server error.')
+        throw new Error('API Route returned an HTML page (500/404 error). Check your server terminal logs.')
       }
 
       let data
       try {
         data = JSON.parse(responseText)
       } catch (e) {
-        throw new Error('Invalid JSON received from server.')
+        throw new Error(`Failed to parse server response: ${responseText}`)
       }
 
       if (!data || !data.success) {
         throw new Error(data?.message || data?.error || 'Order creation failed on server.')
       }
 
-      // Safe extraction: supports data.order, data.orderId, and data.amount
+      // Safe extraction supporting multiple response formats
       const orderData = data.order || data
       const orderAmount = orderData.amount || data.amount
       const orderId = orderData.id || data.orderId
       const razorpayKey = data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
 
       if (!orderAmount || !orderId) {
-        throw new Error('Server returned invalid order details.')
+        throw new Error('Server returned invalid order details structure.')
       }
 
       // 2. Configure Razorpay modal options

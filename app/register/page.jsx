@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
 
 export default function RestaurantRegistration() {
   const router = useRouter()
@@ -15,43 +15,35 @@ export default function RestaurantRegistration() {
 
   const handleRegister = async (e) => {
     e.preventDefault()
-    if (!name.trim() || !email.trim() || !phone.trim() || !dob.trim() || !password.trim()) {
-      alert('Please fill out all required fields, including your Date of Birth.')
+    if (!name.trim() || !email.trim() || !password.trim()) {
+      alert('Please fill out all required fields.')
       return
     }
 
     setLoading(true)
     try {
-      // 1. Create Supabase Auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password.trim(),
-      })
-
-      if (authError) throw new Error(authError.message)
-
-      const userId = authData.user?.id
-
-      // 2. Save base restaurant profile in Supabase
-      const { data, error: dbError } = await supabase.from('restaurants').insert([
-        {
-          id: userId,
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: name.trim(),
           email: email.trim(),
-          phone: phone.trim().replace(/\D/g, ''),
+          phone: phone.trim(),
           dob: dob.trim(),
-          subscription_status: 'pending', // Pending until they choose a plan
-          enable_counter_payment: true
-        }
-      ]).select().single()
+          password: password.trim()
+        }),
+      })
 
-      if (dbError) throw new Error(dbError.message)
+      const text = await res.text()
+      const data = text ? JSON.parse(text) : {}
 
-      alert('Account Created! Please select your subscription plan.')
-      // Route to subscription payment gateway page
-      router.push(`/subscribe/${data.id}`)
+      if (!data.success) throw new Error(data.message || 'Registration failed.')
+
+      alert('Account Registered Successfully! Proceeding to subscription. 🚀')
+      router.push(`/subscribe/${data.restaurantId}`)
     } catch (err) {
-      alert('Registration Error: ' + err.message)
+      alert('Error: ' + err.message)
+    } finally {
       setLoading(false)
     }
   }
@@ -62,10 +54,10 @@ export default function RestaurantRegistration() {
         
         <div className="text-center space-y-2">
           <span className="text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
-            Step 1 of 2
+            Partner Onboarding
           </span>
           <h1 className="text-2xl font-black text-white">Create Partner Account</h1>
-          <p className="text-xs text-neutral-400">Set up your digital dining credentials and owner profile.</p>
+          <p className="text-xs text-neutral-400">Set up your digital dining credentials instantly.</p>
         </div>
 
         <form onSubmit={handleRegister} className="space-y-4">
@@ -101,7 +93,6 @@ export default function RestaurantRegistration() {
                 placeholder="9876543210" 
                 value={phone} 
                 onChange={(e) => setPhone(e.target.value)} 
-                required 
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono" 
               />
             </div>
@@ -114,7 +105,6 @@ export default function RestaurantRegistration() {
                 type="date" 
                 value={dob} 
                 onChange={(e) => setDob(e.target.value)} 
-                required 
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono text-neutral-300" 
               />
             </div>
@@ -134,11 +124,18 @@ export default function RestaurantRegistration() {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/20"
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/20 disabled:opacity-50"
           >
-            {loading ? 'Creating Account...' : 'Continue to Subscription 💳'}
+            {loading ? 'Creating Account...' : 'Register & Proceed to Subscription 💳'}
           </button>
         </form>
+
+        <div className="text-center text-xs text-neutral-400">
+          Already have an account?{' '}
+          <Link href="/login" className="text-orange-400 hover:underline font-bold">
+            Log in here
+          </Link>
+        </div>
 
       </div>
     </div>
