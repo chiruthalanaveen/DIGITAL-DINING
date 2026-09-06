@@ -1,5 +1,5 @@
 'use client'
-import { useState, use } from 'react'
+import { useState, use, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -13,6 +13,20 @@ export default function SubscriptionPage({ params }) {
   const [trialPasscode, setTrialPasscode] = useState('')
   const [isTrialUnlocked, setIsTrialUnlocked] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [scriptLoaded, setScriptLoaded] = useState(false)
+
+  // Automatically load Razorpay Checkout SDK
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.onload = () => setScriptLoaded(true)
+    document.body.appendChild(script)
+
+    return () => {
+      if (script.parentNode) script.parentNode.removeChild(script)
+    }
+  }, [])
 
   const pricingTable = {
     Standard: { '1month': 499, '3months': 1499, '1year': 5499 },
@@ -36,46 +50,67 @@ export default function SubscriptionPage({ params }) {
     try {
       const amountToPay = isTrialUnlocked ? 0 : pricingTable[selectedPlan][billingCycle]
 
-      // If free trial coupon is applied or amount is zero, bypass gateway and activate directly
+      // If free trial coupon is applied, bypass payment gateway directly
       if (isTrialUnlocked || amountToPay === 0) {
         await finalizeSubscription('Standard (Free Trial)')
         return
+      }
+
+      if (!scriptLoaded && typeof window.Razorpay === 'undefined') {
+        throw new Error('Razorpay SDK is loading. Please try again in 3 seconds.')
       }
 
       // 1. Create order on backend API route
       const res = await fetch('/api/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amountToPay }),
+        body: JSON.stringify({ amount: amountToPay, restaurantId }),
       })
 
-      const data = await res.json()
-      if (!data.success) throw new Error(data.message)
+      const responseText = await res.text()
 
-      const order = data.order
+      if (responseText.trim().startsWith('<')) {
+        throw new Error('API Route returned HTML (500 or 404). Check terminal for server error.')
+      }
+
+      let data
+      try {
+        data = JSON.parse(responseText)
+      } catch (e) {
+        throw new Error('Invalid JSON received from server.')
+      }
+
+      if (!data || !data.success) {
+        throw new Error(data?.message || data?.error || 'Order creation failed on server.')
+      }
+
+      // Safe extraction: supports data.order, data.orderId, and data.amount
+      const orderData = data.order || data
+      const orderAmount = orderData.amount || data.amount
+      const orderId = orderData.id || data.orderId
+      const razorpayKey = data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
+
+      if (!orderAmount || !orderId) {
+        throw new Error('Server returned invalid order details.')
+      }
 
       // 2. Configure Razorpay modal options
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: order.amount,
-        currency: order.currency,
+        key: razorpayKey,
+        amount: orderAmount,
+        currency: orderData.currency || 'INR',
         name: 'Digital Dining',
         description: `${selectedPlan} Plan (${billingCycle}) Subscription`,
-        order_id: order.id,
+        order_id: orderId,
         handler: async function (response) {
-          // Triggered when payment is successful
           await finalizeSubscription(`${selectedPlan} (${billingCycle})`)
         },
         prefill: {
           name: 'Restaurant Partner',
         },
         theme: {
-          color: '#f97316', // Orange branding theme
+          color: '#f97316',
         },
-      }
-
-      if (typeof window.Razorpay === 'undefined') {
-        throw new Error('Razorpay SDK failed to load. Please check your internet connection or script blocker.')
       }
 
       const paymentObject = new window.Razorpay(options)
@@ -141,7 +176,7 @@ export default function SubscriptionPage({ params }) {
               className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500 font-mono"
             />
             <button 
-              type="button"
+              type="button" 
               onClick={handleApplyPasscode}
               className="bg-amber-500 hover:bg-amber-600 text-neutral-950 font-black px-4 py-2 rounded-xl text-xs transition"
             >
@@ -197,7 +232,7 @@ export default function SubscriptionPage({ params }) {
           <button 
             onClick={handlePaymentCheckout}
             disabled={loading}
-            className="bg-orange-500 hover:bg-orange-600 text-white font-black px-6 py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/25"
+            className="bg-orange-500 hover:bg-orange-600 text-white font-black px-6 py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/25 disabled:opacity-50"
           >
             {loading ? 'Opening Gateway...' : 'Pay with Razorpay 💳'}
           </button>
