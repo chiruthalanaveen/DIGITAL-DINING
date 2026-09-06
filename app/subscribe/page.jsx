@@ -36,17 +36,18 @@ export default function SubscribePage() {
       }
       const user = authData.user
 
-      // Call backend API to create the subscription order
-     const res = await fetch('/api/create-subscription-order', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ planAmount: 999, restaurantId: user.id }),
-})
+      // 1. Fetch from the correct subscription API route path
+      const res = await fetch('/api/create-subscription-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planAmount: 499, restaurantId: user.id }),
+      })
+
       const responseText = await res.text()
 
-      // If the response starts with '<' (like an HTML error page), throw a clear message
+      // 2. Safely catch HTML error pages (404/500)
       if (responseText.trim().startsWith('<')) {
-        throw new Error(`API Route not found or crashed (HTML returned instead of JSON). Check if /app/api/create-subscription-order/route.js exists.`)
+        throw new Error('API Route not found (404). Ensure your backend folder is named /app/api/create-subscription-order/route.js')
       }
 
       let data
@@ -60,7 +61,7 @@ export default function SubscribePage() {
         throw new Error(data.error || 'Failed to initialize payment order.')
       }
 
-      // Razorpay Checkout Options
+      // 3. Open Razorpay Checkout Window
       const options = {
         key: data.keyId,
         amount: data.amount,
@@ -101,14 +102,14 @@ export default function SubscribePage() {
       <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-md text-center space-y-6">
         <h1 className="text-2xl font-bold text-gray-900">Activate Your SaaS Subscription</h1>
         <p className="text-gray-600">
-          Get full access to your digital restaurant menu, order management, and custom domain hosting for just <span className="font-bold text-orange-600">₹999/month</span>.
+          Get full access to your digital restaurant menu and hosting for just <span className="font-bold text-orange-600">₹499/month</span>.
         </p>
         <button
           onClick={handleSubscribe}
           disabled={loading || !scriptLoaded}
           className="w-full bg-orange-600 text-white py-3 rounded-lg font-semibold hover:bg-orange-700 transition disabled:opacity-50"
         >
-          {loading ? 'Processing...' : 'Pay ₹999 & Activate Now'}
+          {loading ? 'Processing...' : 'Pay ₹499 & Activate Now'}
         </button>
       </div>
     </div>
