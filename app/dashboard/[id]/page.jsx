@@ -3,6 +3,135 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+// Real-Time Restaurant Chat Widget Component
+function RestaurantChatWidget({ restaurantId }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [messages, setMessages] = useState([])
+  const [newMessage, setNewMessage] = useState('')
+  const chatEndRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen || !restaurantId) return
+
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('created_at', { ascending: true })
+
+      if (!error && data) setMessages(data)
+    }
+
+    fetchMessages()
+
+    // Real-time subscription for this specific restaurant chat room
+    const channel = supabase
+      .channel(`restaurant-live-chat-${restaurantId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `restaurant_id=eq.${restaurantId}` },
+        (payload) => {
+          setMessages((prev) => [...prev, payload.new])
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [isOpen, restaurantId])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault()
+    if (!newMessage.trim() || !restaurantId) return
+
+    const messageText = newMessage.trim()
+    setNewMessage('')
+
+    await supabase.from('messages').insert([
+      {
+        restaurant_id: restaurantId,
+        sender: 'restaurant',
+        message: messageText
+      }
+    ])
+  }
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 font-sans">
+      {!isOpen ? (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="bg-orange-500 hover:bg-orange-600 text-white font-black p-4 rounded-full shadow-2xl flex items-center space-x-2 transition transform hover:scale-105"
+        >
+          <span>💬</span>
+          <span className="text-xs uppercase tracking-wider pr-1">Support Chat</span>
+        </button>
+      ) : (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-80 sm:w-96 h-[450px] shadow-2xl flex flex-col overflow-hidden">
+          <div className="bg-neutral-950 p-4 border-b border-neutral-800 flex justify-between items-center">
+            <div className="flex items-center space-x-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <h3 className="text-xs font-black text-white uppercase tracking-wider">Restaurant Support</h3>
+            </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="text-neutral-400 hover:text-white font-bold text-sm px-2 py-1"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-neutral-950/50">
+            {messages.length === 0 ? (
+              <p className="text-center text-xs text-neutral-500 mt-12">No messages yet. Send a message to start chatting!</p>
+            ) : (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.sender === 'restaurant' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-xs ${
+                      msg.sender === 'restaurant'
+                        ? 'bg-orange-500 text-white rounded-br-none'
+                        : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
+                    }`}
+                  >
+                    {msg.message}
+                  </div>
+                </div>
+              ))
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          <form onSubmit={handleSendMessage} className="p-3 bg-neutral-950 border-t border-neutral-800 flex space-x-2">
+            <input
+              type="text"
+              placeholder="Type your message..."
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500"
+            />
+            <button
+              type="submit"
+              className="bg-orange-500 hover:bg-orange-600 text-white font-black px-4 py-2.5 rounded-xl text-xs transition"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function RestaurantDashboard() {
   const params = useParams()
   const restaurantId = params.id || params.restaurantId
@@ -19,7 +148,7 @@ export default function RestaurantDashboard() {
   const [price, setPrice] = useState('')
   const [category, setCategory] = useState('')
   const [imageUrl, setImageUrl] = useState('')
-  const [isVeg, setIsVeg] = useState('veg') // 'veg' or 'non-veg'
+  const [isVeg, setIsVeg] = useState('veg') 
   const [addons, setAddons] = useState([''])
   const [loading, setLoading] = useState(false)
 
@@ -53,14 +182,14 @@ export default function RestaurantDashboard() {
   const [swiggyDataInput, setSwiggyDataInput] = useState('')
   const [syncingSwiggy, setSyncingSwiggy] = useState(false)
 
-  // Reports Timeframe State ('daily', 'weekly', 'monthly', 'yearly')
+  // Reports Timeframe State
   const [reportTimeframe, setReportTimeframe] = useState('daily')
 
   // Audio Alarm Reference for Pro+ real-time order sound
   const audioRef = useRef(null)
   const prevOrdersLengthRef = useRef(0)
 
-  // Plan limit mapping (Standard: 20, Pro: 50, Pro+: Unlimited)
+  // Plan limit mapping
   const planLimits = {
     Standard: 20,
     Pro: 50,
@@ -87,7 +216,6 @@ export default function RestaurantDashboard() {
 
       setRestaurant(restData)
       
-      // Initialize keys and tax configurations only once or when not saving
       if (!hasInitializedKeys && !savingPayment) {
         const keyId = restData.razorpay_key_id || ''
         const keySec = restData.razorpay_secret || ''
@@ -146,7 +274,6 @@ export default function RestaurantDashboard() {
     await supabase.from('orders').update({ status: newStatus }).eq('id', orderId)
   }
 
-  // Toggle Menu Item Availability (Pro+ Only)
   const toggleItemAvailability = async (itemId, currentAvailability) => {
     if (currentPlan !== 'Pro+') {
       alert('🔒 Item availability toggle is restricted to Pro+ plan members.')
@@ -166,7 +293,6 @@ export default function RestaurantDashboard() {
     }
   }
 
-  // Edit Menu Item Price (Pro+ Only)
   const handleSaveItemPrice = async (itemId) => {
     if (currentPlan !== 'Pro+') {
       alert('🔒 Price modification is exclusive to the Pro+ tier.')
@@ -235,7 +361,6 @@ export default function RestaurantDashboard() {
     setLoading(false)
   }
 
-  // Handle Staff Account Creation
   const handleCreateStaff = async (e) => {
     e.preventDefault()
     if (!staffName.trim() || !staffUserId.trim() || !staffPassword.trim()) {
@@ -283,7 +408,6 @@ export default function RestaurantDashboard() {
     }
   }
 
-  // Save Tax & Packing Charge Settings and refresh immediately
   const handleSaveTaxSettings = async (e) => {
     e.preventDefault()
     setSavingTaxes(true)
@@ -308,7 +432,6 @@ export default function RestaurantDashboard() {
     setSavingTaxes(false)
   }
 
-  // Handle Swiggy Menu Direct Sync Import (Pro & Pro+ only)
   const handleSwiggySync = async (e) => {
     e.preventDefault()
     if (currentPlan === 'Standard') {
@@ -348,7 +471,6 @@ export default function RestaurantDashboard() {
     setSyncingSwiggy(false)
   }
 
-  // Save Payment Gateway & Lock/Hide Form View Immediately
   const handleSavePaymentSettings = async (e) => {
     e.preventDefault()
     setSavingPayment(true)
@@ -430,7 +552,6 @@ export default function RestaurantDashboard() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans pb-16">
       
-      {/* Hidden Audio Element for Pro+ Real-Time Sound Alarm */}
       <audio ref={audioRef} src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
 
       {/* Top Partner Header */}
@@ -626,7 +747,6 @@ export default function RestaurantDashboard() {
                 <span className="text-[10px] text-neutral-400 font-bold">{menuItems.length} / {maxMenuAllowed} used</span>
               </div>
               <form onSubmit={handleAddDish} className="space-y-4">
-                {/* VEG / NON-VEG TOGGLE SWITCH */}
                 <div>
                   <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Food Preference</label>
                   <div className="flex bg-neutral-950 p-1 rounded-xl border border-neutral-800">
@@ -670,7 +790,6 @@ export default function RestaurantDashboard() {
                   <input type="url" placeholder="https://..." value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm" />
                 </div>
 
-                {/* UNLIMITED ADD-ONS SECTION */}
                 <div>
                   <div className="flex justify-between items-center mb-1">
                     <label className="text-[10px] uppercase font-bold text-neutral-400">Custom Add-ons (Unlimited)</label>
@@ -1002,7 +1121,7 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* TAB 6: PAYMENT GATEWAYS (WITH HIDING/MASKING & EDIT TOGGLE) */}
+        {/* TAB 6: PAYMENT GATEWAYS */}
         {activeTab === 'gateway' && (
           <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-xl mx-auto space-y-6 shadow-xl">
             <div className="space-y-2 text-center">
@@ -1014,7 +1133,6 @@ export default function RestaurantDashboard() {
             </div>
 
             {!isGatewayEditable ? (
-              /* SAVED / MASKED VIEW (LOCKED) */
               <div className="space-y-4 bg-neutral-950 p-6 rounded-2xl border border-neutral-800 text-center">
                 <div className="flex items-center justify-center space-x-2 text-emerald-400 font-bold text-xs bg-emerald-500/10 border border-emerald-500/20 py-2 rounded-xl">
                   <span>🔒 Gateway Credentials Securely Saved</span>
@@ -1051,7 +1169,6 @@ export default function RestaurantDashboard() {
                 </button>
               </div>
             ) : (
-              /* EDITABLE FORM VIEW */
               <form onSubmit={handleSavePaymentSettings} className="space-y-4">
                 <div>
                   <label className="text-xs font-bold text-neutral-300 block mb-1">Razorpay Key ID</label>
@@ -1144,6 +1261,9 @@ export default function RestaurantDashboard() {
         )}
 
       </main>
+
+      {/* Embedded Real-Time Restaurant Chat Widget */}
+      <RestaurantChatWidget restaurantId={restaurantId} />
     </div>
   )
 }

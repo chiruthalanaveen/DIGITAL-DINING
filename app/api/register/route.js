@@ -10,16 +10,13 @@ export async function POST(req) {
       return NextResponse.json({ success: false, message: 'Name, email, and password are required.' }, { status: 400 })
     }
 
-    // Safely retrieve and sanitize environment variables
-    const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-    const supabaseUrl = rawSupabaseUrl.trim().replace(/\/+$/, '')
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
 
     if (!supabaseUrl || !serviceRoleKey) {
-      console.error('Environment Error: Missing Supabase URL or Service Role Key.')
       return NextResponse.json({ 
         success: false, 
-        message: 'Server Configuration Error: Missing Supabase environment variables in .env.local' 
+        message: 'CRITICAL CONFIG ERROR: Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local' 
       }, { status: 500 })
     }
 
@@ -30,7 +27,7 @@ export async function POST(req) {
     
     const formattedPhone = phone ? phone.trim().replace(/\D/g, '').slice(-10) : ''
 
-    // 1. Create user in Supabase Auth
+    // 1. Create user in Supabase Auth via Admin API
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: email.trim(),
       password: password.trim(),
@@ -38,7 +35,12 @@ export async function POST(req) {
     })
 
     if (authError) {
-      return NextResponse.json({ success: false, message: authError.message }, { status: 400 })
+      console.error('Supabase Auth Admin Error:', authError)
+      return NextResponse.json({ success: false, message: `Auth Error: ${authError.message}` }, { status: 400 })
+    }
+
+    if (!authData || !authData.user) {
+      return NextResponse.json({ success: false, message: 'Auth Error: User object was not returned by Supabase.' }, { status: 400 })
     }
 
     const userId = authData.user.id
@@ -64,8 +66,8 @@ export async function POST(req) {
       console.error('Supabase Restaurants Table Insert Error:', dbError)
       return NextResponse.json({ 
         success: false, 
-        message: `Database Error: ${dbError.message}. Ensure the 'restaurants' table exists in Supabase.` 
-      }, { status: 500 })
+        message: `Database Error: ${dbError.message}. Make sure the 'restaurants' table exists.` 
+      }, { status: 400 })
     }
 
     return NextResponse.json({ 
@@ -75,6 +77,6 @@ export async function POST(req) {
     })
   } catch (err) {
     console.error('API /register Exception:', err)
-    return NextResponse.json({ success: false, message: err.message || 'Internal Server Error' }, { status: 500 })
+    return NextResponse.json({ success: false, message: `Server Exception: ${err.message}` }, { status: 500 })
   }
 }

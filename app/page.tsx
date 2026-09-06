@@ -54,12 +54,7 @@ export default function LandingPage() {
           >
             Get Started Free
           </Link>
-          <Link 
-            href="/login" 
-            className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-bold px-6 py-3.5 rounded-2xl text-xs uppercase tracking-wider transition"
-          >
-            Partner Login ⎋
-          </Link>
+          {/* Partner login button has been safely removed here */}
         </div>
       </main>
 

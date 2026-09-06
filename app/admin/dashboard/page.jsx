@@ -1,10 +1,11 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function DeveloperAdminDashboard() {
   const router = useRouter()
+  const [authorized, setAuthorized] = useState(false)
   const [restaurants, setRestaurants] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -17,9 +18,117 @@ export default function DeveloperAdminDashboard() {
   const [restaurantOrders, setRestaurantOrders] = useState([])
   const [inspectTab, setInspectTab] = useState('menu')
 
+  // Live Chat States
+  const [chatMessages, setChatMessages] = useState([])
+  const [adminReply, setAdminReply] = useState('')
+  const chatEndRef = useRef(null)
+  const targetRestaurantId = 'global-admin-chat'
+
+  // Website Status Control State (Working / Not Working)
+  const [siteStatus, setSiteStatus] = useState('Working')
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+
+  // Strict Security Check: Bounces direct URL entries straight to the landing page
   useEffect(() => {
+    const isAuth = sessionStorage.getItem('isSuperAdminAuthenticated')
+    if (!isAuth) {
+      router.replace('/')
+      return
+    }
+    setAuthorized(true)
+
     fetchRestaurants()
-  }, [])
+    fetchChatMessages()
+    fetchWebsiteStatus()
+
+    // Realtime subscription for customer messages
+    const channel = supabase
+      .channel('admin-master-live-chat')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `restaurant_id=eq.${targetRestaurantId}` },
+        (payload) => {
+          setChatMessages((prev) => [...prev, payload.new])
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [router])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
+
+  const fetchWebsiteStatus = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('platform_settings')
+        .select('status')
+        .eq('key', 'website_status')
+        .single()
+
+      if (data && data.status) {
+        setSiteStatus(data.status)
+      }
+    } catch (err) {
+      setSiteStatus('Working')
+    }
+  }
+
+  const handleUpdateWebsiteStatus = async (newStatus) => {
+    setUpdatingStatus(true)
+    try {
+      const { error } = await supabase
+        .from('platform_settings')
+        .upsert([{ key: 'website_status', status: newStatus }], { onConflict: 'key' })
+
+      if (error) throw error
+
+      setSiteStatus(newStatus)
+      alert(`Website Status successfully updated to: ${newStatus} ⚡`)
+    } catch (err) {
+      alert('Failed to update status: ' + err.message)
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
+  const fetchChatMessages = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('restaurant_id', targetRestaurantId)
+        .order('created_at', { ascending: true })
+
+      if (!error && data) setChatMessages(data)
+    } catch (err) {
+      console.error('Error fetching chat messages:', err)
+    }
+  }
+
+  const sendAdminChatReply = async (e) => {
+    e.preventDefault()
+    if (!adminReply.trim()) return
+
+    const msgText = adminReply.trim()
+    setAdminReply('')
+
+    try {
+      await supabase.from('messages').insert([
+        {
+          restaurant_id: targetRestaurantId,
+          sender: 'admin',
+          message: msgText
+        }
+      ])
+    } catch (err) {
+      alert('Failed to send reply: ' + err.message)
+    }
+  }
 
   const fetchRestaurants = async () => {
     setLoading(true)
@@ -148,6 +257,15 @@ export default function DeveloperAdminDashboard() {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
   }
 
+  const handleSignOut = () => {
+    sessionStorage.removeItem('isSuperAdminAuthenticated')
+    router.replace('/') // Cleanly destroys session and returns to landing page
+  }
+
+  if (!authorized) {
+    return null // Renders nothing while validating security session
+  }
+
   const filteredRestaurants = restaurants.filter(r => 
     r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     r.email.toLowerCase().includes(searchQuery.toLowerCase())
@@ -185,7 +303,7 @@ export default function DeveloperAdminDashboard() {
               🔄 Refresh Master DB
             </button>
             <button 
-              onClick={() => router.push('/admin/login')}
+              onClick={handleSignOut}
               className="bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/20 px-4 py-2 rounded-xl text-xs font-bold transition"
             >
               Sign Out 🚪
@@ -214,6 +332,57 @@ export default function DeveloperAdminDashboard() {
               className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-red-500"
             />
           </div>
+        </div>
+
+        {/* LIVE CHAT SUPPORT CONSOLE */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 md:p-8 space-y-4 shadow-2xl">
+          <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
+            <div className="flex items-center space-x-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <h2 className="text-lg font-black text-white uppercase tracking-wider">Live Customer Support Chat</h2>
+            </div>
+            <span className="text-[10px] bg-neutral-800 text-neutral-400 px-3 py-1 rounded-full font-mono">Realtime Connected</span>
+          </div>
+
+          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl h-64 overflow-y-auto p-4 space-y-3">
+            {chatMessages.length === 0 ? (
+              <p className="text-center text-xs text-neutral-500 mt-20">No active support chat messages.</p>
+            ) : (
+              chatMessages.map((msg) => (
+                <div key={msg.id} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                  <div className="space-y-0.5 max-w-[70%]">
+                    <p className="text-[9px] font-bold text-neutral-500 px-1">
+                      {msg.sender === 'admin' ? 'You (Admin)' : 'Customer'}
+                    </p>
+                    <div className={`px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
+                      msg.sender === 'admin'
+                        ? 'bg-red-600 text-white rounded-br-none shadow-md'
+                        : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
+                    }`}>
+                      {msg.message}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          <form onSubmit={sendAdminChatReply} className="flex space-x-2">
+            <input 
+              type="text" 
+              placeholder="Type reply to customer..." 
+              value={adminReply}
+              onChange={(e) => setAdminReply(e.target.value)}
+              className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-red-500"
+            />
+            <button 
+              type="submit"
+              className="bg-red-600 hover:bg-red-700 text-white font-black px-6 py-3 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-red-600/20"
+            >
+              Reply 🚀
+            </button>
+          </form>
         </div>
 
         {/* DEEP INSPECTOR MODAL / DRAWER (IF ACTIVE RESTAURANT SELECTED) */}
@@ -398,6 +567,44 @@ export default function DeveloperAdminDashboard() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* WEBSITE STATUS TOGGLE SECTION (WORKING / NOT WORKING) */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
+          <div className="space-y-1 text-center md:text-left">
+            <span className="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
+              Platform Maintenance Switch
+            </span>
+            <h2 className="text-lg font-black text-white mt-1">Website Operational Status</h2>
+            <p className="text-xs text-neutral-400">
+              Control whether the website is live (Working) or suspended/offline (Not Working) for public visitors.
+            </p>
+          </div>
+
+          <div className="flex items-center space-x-3 bg-neutral-950 p-2 rounded-2xl border border-neutral-800">
+            <button
+              onClick={() => handleUpdateWebsiteStatus('Working')}
+              disabled={updatingStatus}
+              className={`px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition ${
+                siteStatus === 'Working'
+                  ? 'bg-emerald-500 text-neutral-950 shadow-lg shadow-emerald-500/20'
+                  : 'bg-neutral-900 text-neutral-400 hover:text-white'
+              }`}
+            >
+              🟢 Working
+            </button>
+            <button
+              onClick={() => handleUpdateWebsiteStatus('Not Working')}
+              disabled={updatingStatus}
+              className={`px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition ${
+                siteStatus === 'Not Working'
+                  ? 'bg-red-600 text-white shadow-lg shadow-red-600/20'
+                  : 'bg-neutral-900 text-neutral-400 hover:text-white'
+              }`}
+            >
+              🔴 Not Working
+            </button>
           </div>
         </div>
 

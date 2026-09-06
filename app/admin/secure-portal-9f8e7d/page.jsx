@@ -17,6 +17,9 @@ export default function AdminLogin() {
         throw new Error('Invalid Admin Credentials. Please check your email and password.')
       }
 
+      // Grant access by setting the required session storage flag
+      sessionStorage.setItem('isSuperAdminAuthenticated', 'true')
+
       alert('Admin Login Successful! ⚡')
       router.push('/admin/dashboard')
     } catch (err) {
