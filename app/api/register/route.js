@@ -16,7 +16,7 @@ export async function POST(req) {
     if (!supabaseUrl || !serviceRoleKey) {
       return NextResponse.json({ 
         success: false, 
-        message: 'CRITICAL CONFIG ERROR: Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local' 
+        message: 'CRITICAL CONFIG ERROR: Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment variables.' 
       }, { status: 500 })
     }
 
@@ -25,13 +25,17 @@ export async function POST(req) {
       auth: { persistSession: false }
     })
     
-    const formattedPhone = phone ? phone.trim().replace(/\D/g, '').slice(-10) : ''
+    // Safely format phone (handle empty strings properly)
+    const formattedPhone = phone && phone.trim() !== '' ? phone.trim().replace(/\D/g, '').slice(-10) : null
+
+    // Safely format date of birth (prevent empty string crash on postgres date columns)
+    const formattedDob = dob && dob.trim() !== '' ? dob.trim() : null
 
     // 1. Create user in Supabase Auth via Admin API
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: email.trim(),
       password: password.trim(),
-      email_confirm: true
+      email_confirm: true // Automatically confirms email so login works instantly
     })
 
     if (authError) {
@@ -54,7 +58,7 @@ export async function POST(req) {
           name: name.trim(),
           email: email.trim(),
           phone: formattedPhone,
-          dob: dob ? dob.trim() : null,
+          dob: formattedDob,
           subscription_status: 'pending',
           enable_counter_payment: true
         }
@@ -64,9 +68,13 @@ export async function POST(req) {
 
     if (dbError) {
       console.error('Supabase Restaurants Table Insert Error:', dbError)
+      
+      // Rollback: delete the auth user if profile creation fails, preventing orphan auth accounts
+      await supabaseAdmin.auth.admin.deleteUser(userId)
+
       return NextResponse.json({ 
         success: false, 
-        message: `Database Error: ${dbError.message}. Make sure the 'restaurants' table exists.` 
+        message: `Database Error: ${dbError.message}. Make sure the 'restaurants' table and all columns exist.` 
       }, { status: 400 })
     }
 
