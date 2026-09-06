@@ -37,12 +37,11 @@ export default function SubscribePage() {
       const user = authData.user
 
       // Call backend API to create the subscription order
-      const res = await fetch('/api/create-subscription-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planAmount: 999, restaurantId: user.id }),
-      })
-
+     const res = await fetch('/api/create-subscription-order', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ planAmount: 999, restaurantId: user.id }),
+})
       const responseText = await res.text()
 
       // If the response starts with '<' (like an HTML error page), throw a clear message
