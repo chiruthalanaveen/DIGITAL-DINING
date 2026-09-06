@@ -138,6 +138,7 @@ export default function RestaurantDashboard() {
   const router = useRouter()
 
   const [restaurant, setRestaurant] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
   const [menuItems, setMenuItems] = useState([])
   const [orders, setOrders] = useState([])
   const [activeTab, setActiveTab] = useState('orders')
@@ -199,9 +200,58 @@ export default function RestaurantDashboard() {
   const currentPlan = restaurant?.plan || 'Standard'
   const maxMenuAllowed = planLimits[currentPlan] || 20
 
+  // SECURITY: The restaurant ID in the URL is not authentication.
+  // The authenticated Supabase user must own the dashboard being opened.
+  useEffect(() => {
+    let cancelled = false
+
+    const verifyDashboardAccess = async () => {
+      if (!restaurantId) {
+        router.replace('/login')
+        return
+      }
+
+      const { data: { user }, error } = await supabase.auth.getUser()
+
+      if (error || !user) {
+        if (!cancelled) router.replace('/login')
+        return
+      }
+
+      if (String(user.id) !== String(restaurantId)) {
+        await supabase.auth.signOut()
+        if (!cancelled) router.replace('/login')
+        return
+      }
+
+      if (!cancelled) setAuthChecked(true)
+    }
+
+    verifyDashboardAccess()
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        router.replace('/login')
+      }
+    })
+
+    return () => {
+      cancelled = true
+      authListener?.subscription?.unsubscribe()
+    }
+  }, [restaurantId, router])
+
   useEffect(() => {
     async function fetchDashboard() {
-      if (!restaurantId) return
+      if (!authChecked || !restaurantId) return
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+      if (authError || !user || String(user.id) !== String(restaurantId)) {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
 
       const { data: restData, error } = await supabase
         .from('restaurants')
@@ -210,7 +260,7 @@ export default function RestaurantDashboard() {
         .maybeSingle()
 
       if (error || !restData) {
-        router.push('/login')
+        router.replace('/login')
         return
       }
 
@@ -267,7 +317,7 @@ export default function RestaurantDashboard() {
     fetchDashboard()
     const interval = setInterval(fetchDashboard, 2000)
     return () => clearInterval(interval)
-  }, [restaurantId, router, currentPlan, hasInitializedKeys, savingPayment])
+  }, [authChecked, restaurantId, router, currentPlan, hasInitializedKeys, savingPayment])
 
   const updateOrderStatus = async (orderId, newStatus) => {
     setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o))
@@ -529,9 +579,13 @@ export default function RestaurantDashboard() {
     setActiveTab(tabId)
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('digital_dining_restaurant_id')
-    router.push('/login')
+  const handleLogout = async () => {
+    try {
+      localStorage.removeItem('digital_dining_restaurant_id')
+      await supabase.auth.signOut()
+    } finally {
+      router.replace('/login')
+    }
   }
 
   const totalRevenue = orders.reduce((sum, o) => sum + (o.status !== 'cancelled' ? Number(o.total_amount || 0) : 0), 0)
@@ -540,7 +594,7 @@ export default function RestaurantDashboard() {
   const todayString = new Date().toISOString().split('T')[0]
   const todaysOrders = orders.filter(o => o.created_at && o.created_at.split('T')[0] === todayString)
 
-  if (!restaurant) {
+  if (!authChecked || !restaurant) {
     return (
       <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center text-white space-y-3">
         <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
