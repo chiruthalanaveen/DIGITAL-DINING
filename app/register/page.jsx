@@ -1,4 +1,3 @@
-```jsx
 'use client'
 
 import { useState } from 'react'
@@ -33,7 +32,7 @@ export default function RestaurantRegistration() {
       return
     }
 
-    // WebAuthn is required for biometric/passkey setup.
+    // Check browser WebAuthn/passkey support
     if (
       typeof window !== 'undefined' &&
       !window.PublicKeyCredential
@@ -48,7 +47,7 @@ export default function RestaurantRegistration() {
 
     try {
       // ============================================================
-      // STEP 1 — CREATE RESTAURANT ACCOUNT
+      // STEP 1: CREATE RESTAURANT ACCOUNT
       // ============================================================
 
       const res = await fetch('/api/register', {
@@ -72,7 +71,10 @@ export default function RestaurantRegistration() {
       try {
         data = text ? JSON.parse(text) : {}
       } catch (jsonError) {
-        console.error('REGISTER API INVALID RESPONSE:', text)
+        console.error(
+          'REGISTER API INVALID RESPONSE:',
+          text
+        )
 
         throw new Error(
           'The registration server returned an invalid response.'
@@ -92,7 +94,7 @@ export default function RestaurantRegistration() {
       }
 
       // ============================================================
-      // STEP 2 — SIGN INTO THE NEW ACCOUNT
+      // STEP 2: SIGN INTO NEW ACCOUNT
       // ============================================================
 
       const {
@@ -104,7 +106,10 @@ export default function RestaurantRegistration() {
       })
 
       if (signInError) {
-        console.error('INITIAL SIGN-IN ERROR:', signInError)
+        console.error(
+          'INITIAL SIGN-IN ERROR:',
+          signInError
+        )
 
         throw new Error(
           'Your account was created, but we could not start secure biometric setup. Please try signing in normally.'
@@ -118,7 +123,7 @@ export default function RestaurantRegistration() {
       }
 
       // ============================================================
-      // STEP 3 — VERIFY PASSKEY SUPPORT
+      // STEP 3: VERIFY PASSKEY SUPPORT
       // ============================================================
 
       if (
@@ -144,24 +149,21 @@ export default function RestaurantRegistration() {
       }
 
       // ============================================================
-      // STEP 4 — REGISTER OWNER BIOMETRIC / PASSKEY
+      // STEP 4: REGISTER OWNER PASSKEY / BIOMETRIC
       // ============================================================
 
       setBiometricLoading(true)
 
-      console.log('Starting Digital Dining passkey registration...')
+      console.log(
+        'Starting Digital Dining passkey registration...'
+      )
 
       /*
-       * IMPORTANT:
+       * Supabase current JavaScript API:
        *
-       * Supabase's current JavaScript API uses:
+       * supabase.auth.registerPasskey()
        *
-       *     supabase.auth.registerPasskey()
-       *
-       * Do NOT pass friendlyName here.
-       *
-       * Supabase automatically creates the passkey metadata and
-       * derives the authenticator name.
+       * We intentionally do not pass friendlyName here.
        */
 
       const {
@@ -178,47 +180,72 @@ export default function RestaurantRegistration() {
         await supabase.auth.signOut()
 
         const errorCode =
-          passkeyError.code || passkeyError.name || ''
+          passkeyError.code ||
+          passkeyError.name ||
+          ''
 
         const errorMessage =
-          passkeyError.message || 'Unknown passkey error'
+          passkeyError.message ||
+          'Unknown passkey error'
 
-        if (errorCode === 'passkey_disabled') {
+        // Passkeys disabled
+        if (
+          errorCode === 'passkey_disabled' ||
+          errorMessage.toLowerCase().includes('passkeys are disabled')
+        ) {
           throw new Error(
             'Passkeys are disabled in your Supabase project. Please enable Authentication → Passkeys in Supabase.'
           )
         }
 
-        if (errorCode === 'webauthn_verification_failed') {
+        // WebAuthn verification failed
+        if (
+          errorCode === 'webauthn_verification_failed' ||
+          errorMessage.toLowerCase().includes('credential verification failed')
+        ) {
           throw new Error(
-            'Credential verification failed. Please check your Supabase Passkey domain/origin settings and make sure you are using https://digitaldine-in.online.'
+            'Credential verification failed. Please check your Supabase Passkey RP ID and Origin settings. For production they should use digitaldine-in.online and https://digitaldine-in.online.'
           )
         }
 
-        if (errorCode === 'webauthn_credential_exists') {
+        // Credential already exists
+        if (
+          errorCode === 'webauthn_credential_exists' ||
+          errorMessage.toLowerCase().includes('credential already exists')
+        ) {
           throw new Error(
             'This biometric/passkey is already registered. Please use another device or remove the existing passkey from your account.'
           )
         }
 
-        if (errorCode === 'webauthn_challenge_expired') {
+        // Challenge expired
+        if (
+          errorCode === 'webauthn_challenge_expired' ||
+          errorMessage.toLowerCase().includes('challenge expired')
+        ) {
           throw new Error(
             'The biometric setup request expired. Please start registration again.'
           )
         }
 
-        if (errorCode === 'webauthn_challenge_not_found') {
+        // Challenge not found
+        if (
+          errorCode === 'webauthn_challenge_not_found' ||
+          errorMessage.toLowerCase().includes('challenge not found')
+        ) {
           throw new Error(
             'The biometric security challenge was not found. Please start registration again.'
           )
         }
 
+        // User cancelled biometric prompt
         if (
           errorMessage.toLowerCase().includes('cancel') ||
-          errorMessage.toLowerCase().includes('abort')
+          errorMessage.toLowerCase().includes('abort') ||
+          errorMessage.toLowerCase().includes('notallowed')
         ) {
           throw new Error(
-            'Biometric setup was cancelled. Please try again and complete the Face ID, fingerprint, Windows Hello, or device PIN prompt.'
+            'Biometric setup was cancelled. Please try again and complete the Face ID, fingerprint, Windows Hello, Touch ID, or device PIN prompt.'
           )
         }
 
@@ -241,20 +268,26 @@ export default function RestaurantRegistration() {
       )
 
       // ============================================================
-      // STEP 5 — SUCCESS
+      // STEP 5: SUCCESS
       // ============================================================
 
       alert(
         'Account Created and Biometric Login Enabled! 🔐'
       )
 
-      router.push(`/subscribe/${data.restaurantId}`)
+      router.push(
+        `/subscribe/${data.restaurantId}`
+      )
     } catch (err) {
-      console.error('REGISTRATION ERROR:', err)
+      console.error(
+        'REGISTRATION ERROR:',
+        err
+      )
 
       alert(
         'Registration Error: ' +
-          (err?.message || 'Something went wrong.')
+          (err?.message ||
+            'Something went wrong.')
       )
     } finally {
       setBiometricLoading(false)
@@ -262,14 +295,17 @@ export default function RestaurantRegistration() {
     }
   }
 
-  const isBusy = loading || biometricLoading
+  const isBusy =
+    loading || biometricLoading
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 font-sans py-12">
+
       <div className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-lg w-full p-8 shadow-2xl space-y-6">
 
         {/* HEADER */}
         <div className="text-center space-y-2">
+
           <span className="text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
             Step 1 of 2
           </span>
@@ -281,10 +317,12 @@ export default function RestaurantRegistration() {
           <p className="text-xs text-neutral-400">
             Set up your digital dining credentials and owner profile.
           </p>
+
         </div>
 
         {/* BIOMETRIC INFORMATION */}
         <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4">
+
           <div className="flex items-start gap-3">
 
             <div className="text-2xl">
@@ -292,6 +330,7 @@ export default function RestaurantRegistration() {
             </div>
 
             <div>
+
               <p className="text-sm font-black text-orange-300">
                 Secure biometric login
               </p>
@@ -308,9 +347,11 @@ export default function RestaurantRegistration() {
                 or fingerprint image. Your device handles the
                 biometric verification.
               </p>
+
             </div>
 
           </div>
+
         </div>
 
         {/* REGISTRATION FORM */}
@@ -321,6 +362,7 @@ export default function RestaurantRegistration() {
 
           {/* RESTAURANT NAME */}
           <div>
+
             <label className="text-xs font-bold text-neutral-300 block mb-1">
               Restaurant Name
             </label>
@@ -329,18 +371,22 @@ export default function RestaurantRegistration() {
               type="text"
               placeholder="Spice Junction"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) =>
+                setName(e.target.value)
+              }
               required
               disabled={isBusy}
               autoComplete="organization"
               className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
             />
+
           </div>
 
           {/* EMAIL + PHONE */}
           <div className="grid grid-cols-2 gap-3">
 
             <div>
+
               <label className="text-xs font-bold text-neutral-300 block mb-1">
                 Email Address
               </label>
@@ -349,15 +395,19 @@ export default function RestaurantRegistration() {
                 type="email"
                 placeholder="owner@restaurant.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) =>
+                  setEmail(e.target.value)
+                }
                 required
                 disabled={isBusy}
                 autoComplete="email"
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
               />
+
             </div>
 
             <div>
+
               <label className="text-xs font-bold text-neutral-300 block mb-1">
                 Phone Number
               </label>
@@ -369,7 +419,10 @@ export default function RestaurantRegistration() {
                 value={phone}
                 onChange={(e) =>
                   setPhone(
-                    e.target.value.replace(/\D/g, '')
+                    e.target.value.replace(
+                      /\D/g,
+                      ''
+                    )
                   )
                 }
                 required
@@ -377,6 +430,7 @@ export default function RestaurantRegistration() {
                 autoComplete="tel"
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono disabled:opacity-50"
               />
+
             </div>
 
           </div>
@@ -385,6 +439,7 @@ export default function RestaurantRegistration() {
           <div className="grid grid-cols-2 gap-3">
 
             <div>
+
               <label className="text-xs font-bold text-neutral-300 block mb-1">
                 Date of Birth (Security)
               </label>
@@ -392,15 +447,19 @@ export default function RestaurantRegistration() {
               <input
                 type="date"
                 value={dob}
-                onChange={(e) => setDob(e.target.value)}
+                onChange={(e) =>
+                  setDob(e.target.value)
+                }
                 required
                 disabled={isBusy}
                 autoComplete="bday"
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono text-neutral-300 disabled:opacity-50"
               />
+
             </div>
 
             <div>
+
               <label className="text-xs font-bold text-neutral-300 block mb-1">
                 Password
               </label>
@@ -418,6 +477,7 @@ export default function RestaurantRegistration() {
                 minLength={6}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono disabled:opacity-50"
               />
+
             </div>
 
           </div>
@@ -428,26 +488,30 @@ export default function RestaurantRegistration() {
             disabled={isBusy}
             className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+
             {biometricLoading
               ? 'Set Up Face / Fingerprint...'
               : loading
               ? 'Creating Account...'
               : 'Create Account + Set Up Biometric 🔐'}
+
           </button>
 
         </form>
 
         {/* SECURITY NOTE */}
         <div className="border-t border-neutral-800 pt-4">
+
           <p className="text-[11px] text-neutral-500 text-center leading-relaxed">
             Your biometric information stays on your device.
             Digital Dining receives a cryptographic passkey
             credential rather than your face or fingerprint.
           </p>
+
         </div>
 
       </div>
+
     </div>
   )
 }
-```
