@@ -16,7 +16,7 @@ export async function POST(req) {
     if (!supabaseUrl || !serviceRoleKey) {
       return NextResponse.json({ 
         success: false, 
-        message: 'CRITICAL CONFIG ERROR: Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment variables.' 
+        message: 'CRITICAL CONFIG ERROR: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment variables.'
       }, { status: 500 })
     }
 
