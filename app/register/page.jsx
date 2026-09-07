@@ -13,6 +13,9 @@ export default function RestaurantRegistration() {
   const [dob, setDob] = useState('')
   const [password, setPassword] = useState('')
 
+  // Biometric ON/OFF
+  const [biometricEnabled, setBiometricEnabled] = useState(true)
+
   const [loading, setLoading] = useState(false)
   const [biometricLoading, setBiometricLoading] = useState(false)
 
@@ -32,14 +35,8 @@ export default function RestaurantRegistration() {
       return
     }
 
-    // Check browser WebAuthn/passkey support
-    if (
-      typeof window !== 'undefined' &&
-      !window.PublicKeyCredential
-    ) {
-      alert(
-        'This browser does not support biometric/passkey authentication. Please use a recent version of Chrome, Edge, Safari, or another supported browser.'
-      )
+    if (password.trim().length < 6) {
+      alert('Password must be at least 6 characters.')
       return
     }
 
@@ -111,45 +108,86 @@ export default function RestaurantRegistration() {
           signInError
         )
 
-        throw new Error(
-          'Your account was created, but we could not start secure biometric setup. Please try signing in normally.'
+        /*
+         * The restaurant account was already created.
+         * Do not report registration as completely failed.
+         */
+        alert(
+          'Your restaurant account was created successfully. Please login normally to continue.'
         )
+
+        router.push('/login')
+        return
       }
 
       if (!authData?.user) {
-        throw new Error(
-          'Your account was created, but no authenticated user session was returned.'
+        alert(
+          'Your restaurant account was created successfully. Please login normally to continue.'
         )
+
+        router.push('/login')
+        return
       }
 
       // ============================================================
-      // STEP 3: VERIFY PASSKEY SUPPORT
+      // STEP 3: BIOMETRIC OFF
       // ============================================================
+
+      if (!biometricEnabled) {
+        console.log(
+          'Biometric login disabled by restaurant owner.'
+        )
+
+        /*
+         * No passkey registration at all.
+         */
+        router.push(
+          `/subscribe/${data.restaurantId}`
+        )
+
+        return
+      }
+
+      // ============================================================
+      // STEP 4: CHECK PASSKEY SUPPORT
+      // ============================================================
+
+      if (
+        typeof window === 'undefined' ||
+        !window.PublicKeyCredential
+      ) {
+        alert(
+          'Your account was created successfully. This browser does not support biometric/passkey login. You can enable it later on a supported device.'
+        )
+
+        router.push(
+          `/subscribe/${data.restaurantId}`
+        )
+
+        return
+      }
 
       if (
         !supabase.auth.registerPasskey ||
         typeof supabase.auth.registerPasskey !== 'function'
       ) {
-        await supabase.auth.signOut()
-
-        throw new Error(
-          'Passkey support is not available in this Supabase client. Please check your Supabase client configuration.'
+        console.error(
+          'Supabase registerPasskey() is not available.'
         )
-      }
 
-      if (
-        typeof window !== 'undefined' &&
-        !window.PublicKeyCredential
-      ) {
-        await supabase.auth.signOut()
-
-        throw new Error(
-          'This browser does not support passkeys/biometric authentication.'
+        alert(
+          'Your account was created successfully. Biometric login is currently unavailable. You can continue without it.'
         )
+
+        router.push(
+          `/subscribe/${data.restaurantId}`
+        )
+
+        return
       }
 
       // ============================================================
-      // STEP 4: REGISTER OWNER PASSKEY / BIOMETRIC
+      // STEP 5: REGISTER OWNER PASSKEY / BIOMETRIC
       // ============================================================
 
       setBiometricLoading(true)
@@ -158,126 +196,175 @@ export default function RestaurantRegistration() {
         'Starting Digital Dining passkey registration...'
       )
 
-      /*
-       * Supabase current JavaScript API:
-       *
-       * supabase.auth.registerPasskey()
-       *
-       * We intentionally do not pass friendlyName here.
-       */
+      try {
+        /*
+         * Current Supabase API:
+         *
+         * supabase.auth.registerPasskey()
+         *
+         * Do not pass friendlyName/options here.
+         */
+        const {
+          data: passkeyData,
+          error: passkeyError,
+        } = await supabase.auth.registerPasskey()
 
-      const {
-        data: passkeyData,
-        error: passkeyError,
-      } = await supabase.auth.registerPasskey()
+        if (passkeyError) {
+          console.error(
+            'SUPABASE PASSKEY REGISTRATION ERROR:',
+            passkeyError
+          )
 
-      if (passkeyError) {
+          /*
+           * IMPORTANT:
+           *
+           * The restaurant account already exists.
+           *
+           * Therefore a passkey error should NOT
+           * destroy the registration.
+           */
+
+          const errorCode =
+            passkeyError.code ||
+            passkeyError.name ||
+            ''
+
+          const errorMessage =
+            passkeyError.message ||
+            'Unknown passkey error'
+
+          console.error(
+            'PASSKEY ERROR CODE:',
+            errorCode
+          )
+
+          console.error(
+            'PASSKEY ERROR MESSAGE:',
+            errorMessage
+          )
+
+          if (
+            errorCode === 'webauthn_verification_failed' ||
+            errorMessage
+              .toLowerCase()
+              .includes('credential verification failed')
+          ) {
+            alert(
+              'Your restaurant account was created successfully, but biometric verification could not be completed. You can continue without biometric login and try again later.'
+            )
+          } else if (
+            errorCode === 'webauthn_credential_exists' ||
+            errorMessage
+              .toLowerCase()
+              .includes('credential already exists')
+          ) {
+            alert(
+              'Your restaurant account was created successfully. This biometric/passkey is already registered. You can continue without setting it up again.'
+            )
+          } else if (
+            errorCode === 'passkey_disabled' ||
+            errorMessage
+              .toLowerCase()
+              .includes('passkeys are disabled')
+          ) {
+            alert(
+              'Your restaurant account was created successfully, but biometric login is currently disabled in the system.'
+            )
+          } else if (
+            errorCode === 'webauthn_challenge_expired' ||
+            errorMessage
+              .toLowerCase()
+              .includes('challenge expired')
+          ) {
+            alert(
+              'Your restaurant account was created successfully, but the biometric request expired. You can continue and try biometric setup later.'
+            )
+          } else if (
+            errorMessage
+              .toLowerCase()
+              .includes('cancel') ||
+            errorMessage
+              .toLowerCase()
+              .includes('abort') ||
+            errorMessage
+              .toLowerCase()
+              .includes('notallowed')
+          ) {
+            alert(
+              'Your restaurant account was created successfully. Biometric setup was cancelled. You can continue without biometric login.'
+            )
+          } else {
+            alert(
+              'Your restaurant account was created successfully, but biometric setup could not be completed. You can continue without biometric login.'
+            )
+          }
+
+          /*
+           * Continue to subscription.
+           */
+          router.push(
+            `/subscribe/${data.restaurantId}`
+          )
+
+          return
+        }
+
+        if (!passkeyData) {
+          console.warn(
+            'Passkey registration completed without returned data.'
+          )
+
+          alert(
+            'Your restaurant account was created successfully. Biometric setup could not be confirmed, but you can continue without it.'
+          )
+
+          router.push(
+            `/subscribe/${data.restaurantId}`
+          )
+
+          return
+        }
+
+        // ============================================================
+        // STEP 6: PASSKEY SUCCESS
+        // ============================================================
+
+        console.log(
+          'Digital Dining passkey successfully registered.'
+        )
+
+        alert(
+          'Account Created and Biometric Login Enabled! 🔐'
+        )
+
+        router.push(
+          `/subscribe/${data.restaurantId}`
+        )
+
+        return
+      } catch (passkeyException) {
+        /*
+         * IMPORTANT:
+         *
+         * Any unexpected passkey error also does NOT
+         * make restaurant registration fail.
+         */
+
         console.error(
-          'SUPABASE PASSKEY REGISTRATION ERROR:',
-          passkeyError
+          'UNEXPECTED PASSKEY ERROR:',
+          passkeyException
         )
 
-        await supabase.auth.signOut()
-
-        const errorCode =
-          passkeyError.code ||
-          passkeyError.name ||
-          ''
-
-        const errorMessage =
-          passkeyError.message ||
-          'Unknown passkey error'
-
-        // Passkeys disabled
-        if (
-          errorCode === 'passkey_disabled' ||
-          errorMessage.toLowerCase().includes('passkeys are disabled')
-        ) {
-          throw new Error(
-            'Passkeys are disabled in your Supabase project. Please enable Authentication → Passkeys in Supabase.'
-          )
-        }
-
-        // WebAuthn verification failed
-        if (
-          errorCode === 'webauthn_verification_failed' ||
-          errorMessage.toLowerCase().includes('credential verification failed')
-        ) {
-          throw new Error(
-            'Credential verification failed. Please check your Supabase Passkey RP ID and Origin settings. For production they should use digitaldine-in.online and https://digitaldine-in.online.'
-          )
-        }
-
-        // Credential already exists
-        if (
-          errorCode === 'webauthn_credential_exists' ||
-          errorMessage.toLowerCase().includes('credential already exists')
-        ) {
-          throw new Error(
-            'This biometric/passkey is already registered. Please use another device or remove the existing passkey from your account.'
-          )
-        }
-
-        // Challenge expired
-        if (
-          errorCode === 'webauthn_challenge_expired' ||
-          errorMessage.toLowerCase().includes('challenge expired')
-        ) {
-          throw new Error(
-            'The biometric setup request expired. Please start registration again.'
-          )
-        }
-
-        // Challenge not found
-        if (
-          errorCode === 'webauthn_challenge_not_found' ||
-          errorMessage.toLowerCase().includes('challenge not found')
-        ) {
-          throw new Error(
-            'The biometric security challenge was not found. Please start registration again.'
-          )
-        }
-
-        // User cancelled biometric prompt
-        if (
-          errorMessage.toLowerCase().includes('cancel') ||
-          errorMessage.toLowerCase().includes('abort') ||
-          errorMessage.toLowerCase().includes('notallowed')
-        ) {
-          throw new Error(
-            'Biometric setup was cancelled. Please try again and complete the Face ID, fingerprint, Windows Hello, Touch ID, or device PIN prompt.'
-          )
-        }
-
-        throw new Error(
-          `Biometric setup was not completed: ${errorMessage}`
+        alert(
+          'Your restaurant account was created successfully, but biometric setup could not be completed. You can continue without biometric login.'
         )
+
+        router.push(
+          `/subscribe/${data.restaurantId}`
+        )
+
+        return
       }
-
-      if (!passkeyData) {
-        await supabase.auth.signOut()
-
-        throw new Error(
-          'Biometric setup completed without returning a valid passkey.'
-        )
-      }
-
-      console.log(
-        'Digital Dining passkey successfully registered:',
-        passkeyData
-      )
-
-      // ============================================================
-      // STEP 5: SUCCESS
-      // ============================================================
-
-      alert(
-        'Account Created and Biometric Login Enabled! 🔐'
-      )
-
-      router.push(
-        `/subscribe/${data.restaurantId}`
-      )
     } catch (err) {
       console.error(
         'REGISTRATION ERROR:',
@@ -336,10 +423,10 @@ export default function RestaurantRegistration() {
               </p>
 
               <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
-                After creating your account, your device will ask you
-                to verify using Face ID, fingerprint, Windows Hello,
-                Touch ID, device PIN, or another supported passkey
-                method.
+                You can choose whether to enable biometric login.
+                Your device can use Face ID, fingerprint,
+                Windows Hello, Touch ID, device PIN, or another
+                supported passkey method.
               </p>
 
               <p className="text-xs text-neutral-500 mt-2 leading-relaxed">
@@ -482,6 +569,87 @@ export default function RestaurantRegistration() {
 
           </div>
 
+          {/* ====================================================== */}
+          {/* BIOMETRIC ON / OFF */}
+          {/* ====================================================== */}
+
+          <div className="border border-neutral-800 bg-neutral-950 rounded-2xl p-4">
+
+            <div className="flex items-center justify-between gap-4">
+
+              <div className="flex items-start gap-3">
+
+                <div className="text-2xl">
+                  🔐
+                </div>
+
+                <div>
+
+                  <p className="text-sm font-black text-white">
+                    Biometric Login
+                  </p>
+
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Enable fingerprint, Face ID, Windows Hello
+                    or passkey login.
+                  </p>
+
+                </div>
+
+              </div>
+
+              {/* TOGGLE */}
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() =>
+                  setBiometricEnabled(
+                    !biometricEnabled
+                  )
+                }
+                aria-label="Toggle biometric login"
+                aria-pressed={biometricEnabled}
+                className={
+                  'relative flex-shrink-0 w-14 h-8 rounded-full transition ' +
+                  (
+                    biometricEnabled
+                      ? 'bg-orange-500'
+                      : 'bg-neutral-700'
+                  )
+                }
+              >
+
+                <span
+                  className={
+                    'absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-all ' +
+                    (
+                      biometricEnabled
+                        ? 'left-7'
+                        : 'left-1'
+                    )
+                  }
+                />
+
+              </button>
+
+            </div>
+
+            <div className="mt-3">
+
+              {biometricEnabled ? (
+                <p className="text-[11px] text-green-400 font-bold">
+                  ● ON — Biometric setup will be offered after account creation.
+                </p>
+              ) : (
+                <p className="text-[11px] text-neutral-500 font-bold">
+                  ● OFF — You can use email, password and DOB to login.
+                </p>
+              )}
+
+            </div>
+
+          </div>
+
           {/* SUBMIT BUTTON */}
           <button
             type="submit"
@@ -493,7 +661,9 @@ export default function RestaurantRegistration() {
               ? 'Set Up Face / Fingerprint...'
               : loading
               ? 'Creating Account...'
-              : 'Create Account + Set Up Biometric 🔐'}
+              : biometricEnabled
+              ? 'Create Account + Set Up Biometric 🔐'
+              : 'Create Account'}
 
           </button>
 
@@ -503,9 +673,11 @@ export default function RestaurantRegistration() {
         <div className="border-t border-neutral-800 pt-4">
 
           <p className="text-[11px] text-neutral-500 text-center leading-relaxed">
+
             Your biometric information stays on your device.
             Digital Dining receives a cryptographic passkey
             credential rather than your face or fingerprint.
+
           </p>
 
         </div>
