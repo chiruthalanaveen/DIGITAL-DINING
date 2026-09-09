@@ -219,7 +219,7 @@ export default function LandingPage() {
 
       {/* Launch banner */}
       <div className="border-b border-orange-400/20 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500 px-4 py-2.5 text-center text-[10px] font-black uppercase tracking-[0.18em] text-black sm:text-xs">
-        <span>🎁 First-time restaurant partners get 1 month free</span>
+        <span>🎁 First-time restaurant partners get 14 Days free</span>
       </div>
 
       {/* Navigation */}
