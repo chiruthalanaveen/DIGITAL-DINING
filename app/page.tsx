@@ -177,7 +177,7 @@ type Accent =
 
 type AccentIconProps = {
   children: ReactNode
-  accent?: Accent
+  accent?: Accent | string
 }
 
 function AccentIcon({
@@ -194,11 +194,14 @@ function AccentIcon({
     rose: 'bg-rose-500/10 border-rose-500/20 text-rose-400',
   }
 
+  const accentStyle =
+    accent in styles
+      ? styles[accent as Accent]
+      : styles.orange
+
   return (
     <div
-      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-sm font-black ${
-        styles[accent]
-      }`}
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-sm font-black ${accentStyle}`}
     >
       {children}
     </div>
