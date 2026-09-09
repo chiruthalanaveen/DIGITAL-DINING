@@ -7,9 +7,9 @@ export default function SubscriptionBilling({ restaurantId, currentPlan }) {
 
   // Plan pricing structure in INR
   const plans = {
-    Starter: { name: 'Starter Plan', price: 500 },
-    Pro: { name: 'Pro Plan', price: 799 },
-    Enterprise: { name: 'Enterprise Plan', price: 999 }
+    Starter: { name: 'Starter Plan', price: 799 },
+    Pro: { name: 'Pro Plan', price: 1299 },
+    Enterprise: { name: 'Enterprise Plan', price: 1999 }
   }
 
   const loadRazorpayScript = () => {
