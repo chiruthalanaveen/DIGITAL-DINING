@@ -211,6 +211,9 @@ export default function RestaurantDashboard() {
   const [savingPayment, setSavingPayment] = useState(false)
   const [hasInitializedKeys, setHasInitializedKeys] = useState(false)
   const [isGatewayEditable, setIsGatewayEditable] = useState(false)
+  const [showGatewayPasswordModal, setShowGatewayPasswordModal] = useState(false)
+  const [gatewayPassword, setGatewayPassword] = useState('')
+  const [verifyingGatewayPassword, setVerifyingGatewayPassword] = useState(false)
 
   // Swiggy Sync States (Pro & Pro+ Only)
   const [swiggyDataInput, setSwiggyDataInput] = useState('')
@@ -1071,6 +1074,53 @@ export default function RestaurantDashboard() {
     setSyncingSwiggy(false)
   }
 
+  const handleRequestGatewayEdit = () => {
+    setGatewayPassword('')
+    setShowGatewayPasswordModal(true)
+  }
+
+  const handleVerifyGatewayEditPassword = async (e) => {
+    e.preventDefault()
+
+    if (!gatewayPassword.trim()) {
+      alert('Please enter your login password.')
+      return
+    }
+
+    setVerifyingGatewayPassword(true)
+
+    try {
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser()
+
+      if (userError || !user?.email) {
+        throw new Error('Your login session has expired. Please log in again.')
+      }
+
+      // Re-authenticate with the same email + password used for restaurant login.
+      // This protects Razorpay credentials from being edited by someone who only
+      // has access to an already-open dashboard tab.
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: gatewayPassword.trim()
+      })
+
+      if (authError) {
+        throw new Error('Incorrect login password. Gateway credentials remain locked.')
+      }
+
+      setGatewayPassword('')
+      setShowGatewayPasswordModal(false)
+      setIsGatewayEditable(true)
+    } catch (err) {
+      alert(err?.message || 'Password verification failed.')
+    } finally {
+      setVerifyingGatewayPassword(false)
+    }
+  }
+
   const handleSavePaymentSettings =
     async (e) => {
       e.preventDefault()
@@ -1134,42 +1184,27 @@ export default function RestaurantDashboard() {
     }
 
   const handleUpgradePlan =
-    async (targetPlan) => {
+    (targetPlan) => {
+      if (!restaurantId) {
+        alert(
+          'Restaurant ID is missing. Please log in again.'
+        )
+        return
+      }
+
       const confirmation =
         window.confirm(
-          `Upgrade your subscription to ${targetPlan}?`
+          `Upgrade your subscription to ${targetPlan}? You will be taken to the secure payment page to complete the upgrade.`
         )
 
       if (!confirmation) return
 
-      const { error } =
-        await supabase
-          .from('restaurants')
-          .update({
-            plan: targetPlan
-          })
-          .eq(
-            'id',
-            restaurantId
-          )
-
-      if (error) {
-        alert(
-          'Upgrade failed: ' +
-            error.message
-        )
-      } else {
-        alert(
-          `Congratulations! Your restaurant has been upgraded to the ${targetPlan} plan successfully! 🎉`
-        )
-
-        setRestaurant(
-          (prev) => ({
-            ...prev,
-            plan: targetPlan
-          })
-        )
-      }
+      // Do not update the restaurant plan directly here.
+      // The existing subscription page handles Razorpay payment first.
+      // The selected plan is passed without changing the existing URL path.
+      router.push(
+        `/subscribe/${restaurantId}?plan=${encodeURIComponent(targetPlan)}`
+      )
     }
 
   const handleTabSwitch = (
@@ -2958,9 +2993,17 @@ export default function RestaurantDashboard() {
             {!isGatewayEditable ? (
               <div className="space-y-4 bg-neutral-950 p-6 rounded-2xl border border-neutral-800 text-center">
 
-                <div className="flex items-center justify-center space-x-2 text-emerald-400 font-bold text-xs bg-emerald-500/10 border border-emerald-500/20 py-2 rounded-xl">
+                <div
+                  className={`flex items-center justify-center space-x-2 font-bold text-xs py-2 rounded-xl border ${
+                    razorpayKeyId.trim() && razorpaySecret.trim()
+                      ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                      : 'text-red-400 bg-red-500/10 border-red-500/20'
+                  }`}
+                >
                   <span>
-                    🔒 Gateway Credentials Securely Saved
+                    {razorpayKeyId.trim() && razorpaySecret.trim()
+                      ? '🟢 Razorpay Connected'
+                      : '🔴 Razorpay Not Connected'}
                   </span>
                 </div>
 
@@ -3010,14 +3053,11 @@ export default function RestaurantDashboard() {
                 </div>
 
                 <button
-                  onClick={() =>
-                    setIsGatewayEditable(
-                      true
-                    )
-                  }
+                  type="button"
+                  onClick={handleRequestGatewayEdit}
                   className="w-full bg-neutral-800 hover:bg-neutral-700 text-orange-400 font-black py-3 rounded-xl text-xs uppercase tracking-wider transition border border-neutral-700 mt-2"
                 >
-                  ✏️ Edit Gateway Credentials
+                  🔐 Edit Gateway Credentials
                 </button>
               </div>
             ) : (
@@ -3121,6 +3161,60 @@ export default function RestaurantDashboard() {
                 </div>
               </form>
             )}
+          </div>
+        )}
+
+        {showGatewayPasswordModal && (
+          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl">
+              <div className="text-center space-y-2 mb-6">
+                <div className="text-4xl">🔐</div>
+                <h3 className="text-lg font-black text-white">Verify Your Password</h3>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  Enter the same password you use to sign in to your restaurant dashboard before editing Razorpay credentials.
+                </p>
+              </div>
+
+              <form onSubmit={handleVerifyGatewayEditPassword} className="space-y-4">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-2">
+                    Login Password
+                  </label>
+                  <input
+                    type="password"
+                    autoFocus
+                    autoComplete="current-password"
+                    value={gatewayPassword}
+                    onChange={(e) => setGatewayPassword(e.target.value)}
+                    placeholder="Enter your login password"
+                    disabled={verifyingGatewayPassword}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={verifyingGatewayPassword}
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-black py-3 rounded-xl text-xs uppercase tracking-wider transition disabled:opacity-50"
+                  >
+                    {verifyingGatewayPassword ? 'Verifying...' : 'Verify & Continue 🔓'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={verifyingGatewayPassword}
+                    onClick={() => {
+                      setGatewayPassword('')
+                      setShowGatewayPasswordModal(false)
+                    }}
+                    className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-4 py-3 rounded-xl text-xs font-bold transition disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 

@@ -3,30 +3,62 @@ import { NextResponse } from 'next/server'
 
 export async function POST(req) {
   try {
-    // Safely parse incoming JSON body
+    // Safely read request body
     const body = await req.json().catch(() => ({}))
-    const amount = body.amount || body.planAmount || 499
 
-    const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
-    const key_secret = process.env.RAZORPAY_SECRET
+    const rawAmount = body.amount ?? body.planAmount
 
-    if (!key_id || !key_secret) {
+    // Validate amount
+    const amount = Number(rawAmount)
+
+    if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Missing Razorpay keys! Please check RAZORPAY_KEY_ID and RAZORPAY_SECRET in your .env.local file.' 
+        {
+          success: false,
+          message: `Invalid payment amount: ${rawAmount}`,
+        },
+        { status: 400 }
+      )
+    }
+
+    // Razorpay credentials must remain server-side
+    const keyId = process.env.RAZORPAY_KEY_ID
+    const keySecret = process.env.RAZORPAY_SECRET
+
+    if (!keyId || !keySecret) {
+      console.error('Razorpay credentials are missing.')
+
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'Missing Razorpay keys. Please check RAZORPAY_KEY_ID and RAZORPAY_SECRET in .env.local.',
         },
         { status: 500 }
       )
     }
 
-    const razorpay = new Razorpay({ key_id, key_secret })
+    // Create Razorpay client
+    const razorpay = new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret,
+    })
+
+    // Razorpay expects amount in paise
+    const amountInPaise = Math.round(amount * 100)
+
+    console.log('Creating Razorpay order:', {
+      amountInRupees: amount,
+      amountInPaise,
+    })
 
     const order = await razorpay.orders.create({
-      amount: Math.round(Number(amount) * 100), // convert rupees to paise
+      amount: amountInPaise,
       currency: 'INR',
       receipt: `sub_${Date.now()}`,
     })
+
+    console.log('Razorpay order created:', order.id)
 
     return NextResponse.json({
       success: true,
@@ -34,13 +66,19 @@ export async function POST(req) {
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,
-      keyId: key_id,
+      keyId: keyId,
     })
   } catch (err) {
-    console.error('Razorpay API Route Crash:', err)
-    // Always return JSON even if an unhandled exception occurs
+    console.error('Razorpay ORDER CREATION FAILED:', err)
+
     return NextResponse.json(
-      { success: false, message: err.message || 'Internal Server Error during order creation.' },
+      {
+        success: false,
+        message:
+          err?.error?.description ||
+          err?.message ||
+          'Internal Server Error during order creation.',
+      },
       { status: 500 }
     )
   }
