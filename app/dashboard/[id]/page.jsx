@@ -222,6 +222,15 @@ export default function RestaurantDashboard() {
   // Reports Timeframe State
   const [reportTimeframe, setReportTimeframe] = useState('daily')
 
+  // Billing & Bill Settings States
+  const [selectedBillOrder, setSelectedBillOrder] = useState(null)
+  const [billSearch, setBillSearch] = useState('')
+  const [billDateFilter, setBillDateFilter] = useState('')
+  const [billingRestaurantName, setBillingRestaurantName] = useState('')
+  const [managerSignature, setManagerSignature] = useState('')
+  const [editingBillSettings, setEditingBillSettings] = useState(false)
+  const [savingBillSettings, setSavingBillSettings] = useState(false)
+
   // Audio Alarm Reference for Pro+ real-time order sound
   const audioRef = useRef(null)
   const prevOrdersLengthRef = useRef(0)
@@ -313,6 +322,13 @@ export default function RestaurantDashboard() {
       }
 
       setRestaurant(restData)
+
+      setBillingRestaurantName((prev) =>
+        prev || restData.billing_restaurant_name || restData.name || ''
+      )
+      setManagerSignature((prev) =>
+        prev || restData.manager_signature || ''
+      )
 
       if (!hasInitializedKeys && !savingPayment) {
         const keyId = restData.razorpay_key_id || ''
@@ -1236,6 +1252,155 @@ export default function RestaurantDashboard() {
     }
   }
 
+  const formatBillDate = (dateValue) => {
+    if (!dateValue) return '—'
+    const date = new Date(dateValue)
+    if (Number.isNaN(date.getTime())) return '—'
+
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
+  }
+
+  const formatBillTime = (dateValue) => {
+    if (!dateValue) return '—'
+    const date = new Date(dateValue)
+    if (Number.isNaN(date.getTime())) return '—'
+
+    return date.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
+  }
+
+  const getBillNumber = (order) => {
+    if (!order?.id) return 'BILL-000000'
+
+    const compactId = String(order.id)
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(-8)
+      .toUpperCase()
+
+    return `BILL-${compactId.padStart(8, '0')}`
+  }
+
+  const getOrderItemQuantity = (item) =>
+    Number(item?.qty ?? item?.quantity ?? 1) || 1
+
+  const getOrderSubtotal = (order) => {
+    if (!Array.isArray(order?.items)) return 0
+
+    return order.items.reduce(
+      (sum, item) =>
+        sum +
+        Number(item?.price || 0) * getOrderItemQuantity(item),
+      0
+    )
+  }
+
+  const handleSaveBillSettings = async (e) => {
+    e.preventDefault()
+
+    const restaurantName = billingRestaurantName.trim()
+
+    if (!restaurantName) {
+      alert('Please enter a restaurant name.')
+      return
+    }
+
+    setSavingBillSettings(true)
+
+    const updatedData = {
+      name: restaurantName,
+      billing_restaurant_name: restaurantName,
+      manager_signature: managerSignature.trim()
+    }
+
+    const { error } = await supabase
+      .from('restaurants')
+      .update(updatedData)
+      .eq('id', restaurantId)
+
+    if (error) {
+      alert(
+        'Failed to save bill settings: ' +
+          error.message +
+          '\n\nIf the error mentions a missing column, add the billing columns shown below the updated code.'
+      )
+    } else {
+      setRestaurant((prev) => ({
+        ...prev,
+        ...updatedData
+      }))
+      setEditingBillSettings(false)
+      alert('Bill settings saved successfully! ✅')
+    }
+
+    setSavingBillSettings(false)
+  }
+
+  const handleSignatureFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file for the manager signature.')
+      return
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Please use a signature image smaller than 2 MB.')
+      return
+    }
+
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setManagerSignature(reader.result)
+        setEditingBillSettings(true)
+      }
+    }
+
+    reader.readAsDataURL(file)
+  }
+
+  const clearManagerSignature = () => {
+    setManagerSignature('')
+  }
+
+  const handlePrintBill = (order) => {
+    if (!order) return
+
+    setSelectedBillOrder(order)
+
+    setTimeout(() => {
+      window.print()
+    }, 100)
+  }
+
+  const filteredBillingOrders = orders.filter((order) => {
+    const search = billSearch.trim().toLowerCase()
+
+    const matchesSearch =
+      !search ||
+      String(order.id || '').toLowerCase().includes(search) ||
+      String(order.table_number || '').toLowerCase().includes(search) ||
+      String(order.waiter_name || '').toLowerCase().includes(search)
+
+    const matchesDate =
+      !billDateFilter ||
+      (order.created_at &&
+        new Date(order.created_at)
+          .toISOString()
+          .slice(0, 10) === billDateFilter)
+
+    return matchesSearch && matchesDate
+  })
+
   const totalRevenue =
     orders.reduce(
       (sum, o) =>
@@ -1293,6 +1458,41 @@ export default function RestaurantDashboard() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans pb-16">
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+
+          .print-bill,
+          .print-bill * {
+            visibility: visible !important;
+          }
+
+          .print-bill {
+            position: absolute !important;
+            inset: 0 !important;
+            display: block !important;
+            background: white !important;
+            padding: 0 !important;
+          }
+
+          .print-bill-sheet {
+            width: 100% !important;
+            max-width: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
+
+          .no-print {
+            display: none !important;
+          }
+
+          @page {
+            margin: 10mm;
+          }
+        }
+      `}</style>
 
       <audio
         ref={audioRef}
@@ -1464,6 +1664,10 @@ export default function RestaurantDashboard() {
             {
               id: 'taxes',
               label: `🧾 Taxes & Packing`
+            },
+            {
+              id: 'billing',
+              label: `🧾 Billing`
             },
             {
               id: 'swiggy-sync',
@@ -1652,7 +1856,15 @@ export default function RestaurantDashboard() {
                           </p>
                         </div>
 
-                        <div className="flex space-x-2">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePrintBill(order)}
+                            className="bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white border border-orange-500/20 text-xs font-bold px-4 py-2 rounded-xl transition"
+                          >
+                            🧾 Generate Bill
+                          </button>
+
                           {order.status !==
                             'completed' && (
                             <button
@@ -2904,6 +3116,299 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
+        {/* TAB 5: BILLING */}
+        {activeTab === 'billing' && (
+          <div className="space-y-6">
+            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div>
+                  <span className="text-[10px] font-extrabold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
+                    Billing Center
+                  </span>
+                  <h2 className="text-xl font-black text-white mt-3">
+                    Orders & Bills
+                  </h2>
+                  <p className="text-xs text-neutral-400 mt-1">
+                    Generate a printable bill using the order's original date and time.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    type="text"
+                    value={billSearch}
+                    onChange={(e) => setBillSearch(e.target.value)}
+                    placeholder="Search order / table / waiter"
+                    className="bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500"
+                  />
+
+                  <input
+                    type="date"
+                    value={billDateFilter}
+                    onChange={(e) => setBillDateFilter(e.target.value)}
+                    className="bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500"
+                  />
+
+                  {(billSearch || billDateFilter) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBillSearch('')
+                        setBillDateFilter('')
+                      }}
+                      className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-4 py-2.5 rounded-xl text-xs font-bold transition"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                <div>
+                  <h3 className="text-md font-black text-white">
+                    Bill Header Settings
+                  </h3>
+                  <p className="text-[10px] text-neutral-500 mt-1">
+                    This information appears on every generated bill.
+                  </p>
+                </div>
+
+                {!editingBillSettings && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingBillSettings(true)}
+                    className="bg-neutral-800 hover:bg-neutral-700 text-orange-400 border border-neutral-700 px-4 py-2.5 rounded-xl text-xs font-black transition"
+                  >
+                    ✏️ Edit Bill Details
+                  </button>
+                )}
+              </div>
+
+              {editingBillSettings ? (
+                <form onSubmit={handleSaveBillSettings} className="space-y-4">
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
+                      Restaurant Name on Bill
+                    </label>
+                    <input
+                      type="text"
+                      value={billingRestaurantName}
+                      onChange={(e) =>
+                        setBillingRestaurantName(e.target.value)
+                      }
+                      placeholder="Enter restaurant name"
+                      required
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-2">
+                      Manager Signature
+                    </label>
+
+                    <div className="bg-neutral-950 border border-dashed border-neutral-700 rounded-2xl p-4">
+                      {managerSignature ? (
+                        <div className="space-y-3">
+                          <div className="bg-white rounded-xl p-4 flex items-center justify-center min-h-32">
+                            <img
+                              src={managerSignature}
+                              alt="Manager signature preview"
+                              className="max-h-24 max-w-full object-contain"
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">
+                              🔄 Replace Signature
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleSignatureFile}
+                                className="hidden"
+                              />
+                            </label>
+
+                            <button
+                              type="button"
+                              onClick={clearManagerSignature}
+                              className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 px-4 py-2.5 rounded-xl text-xs font-bold transition"
+                            >
+                              🗑️ Remove Signature
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer block text-center py-8">
+                          <div className="text-3xl mb-2">✍️</div>
+                          <p className="text-xs font-bold text-white">
+                            Upload Manager Signature
+                          </p>
+                          <p className="text-[10px] text-neutral-500 mt-1">
+                            PNG/JPG image, maximum 2 MB
+                          </p>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleSignatureFile}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={savingBillSettings}
+                      className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3 rounded-xl text-xs transition disabled:opacity-50"
+                    >
+                      {savingBillSettings
+                        ? 'Saving...'
+                        : 'Save Bill Settings 💾'}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={savingBillSettings}
+                      onClick={() => {
+                        setBillingRestaurantName(
+                          restaurant?.billing_restaurant_name ||
+                            restaurant?.name ||
+                            ''
+                        )
+                        setManagerSignature(
+                          restaurant?.manager_signature || ''
+                        )
+                        setEditingBillSettings(false)
+                      }}
+                      className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-5 py-3 rounded-xl text-xs font-bold transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
+                    <p className="text-[10px] uppercase font-bold text-neutral-500">
+                      Restaurant Name
+                    </p>
+                    <p className="text-white font-black text-base mt-1">
+                      {billingRestaurantName || restaurant.name}
+                    </p>
+                  </div>
+
+                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
+                    <p className="text-[10px] uppercase font-bold text-neutral-500 mb-2">
+                      Manager Signature
+                    </p>
+                    {managerSignature ? (
+                      <div className="bg-white rounded-xl p-2 inline-flex min-h-16 min-w-40 items-center justify-center">
+                        <img
+                          src={managerSignature}
+                          alt="Manager signature"
+                          className="max-h-14 max-w-48 object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-neutral-500">
+                        No signature configured
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-xl">
+              <div className="p-6 border-b border-neutral-800 flex items-center justify-between">
+                <div>
+                  <h3 className="text-md font-black text-white">
+                    Orders Available for Billing
+                  </h3>
+                  <p className="text-[10px] text-neutral-500 mt-1">
+                    {filteredBillingOrders.length} order
+                    {filteredBillingOrders.length === 1 ? '' : 's'} found
+                  </p>
+                </div>
+              </div>
+
+              {filteredBillingOrders.length === 0 ? (
+                <div className="p-12 text-center">
+                  <div className="text-4xl mb-3">🧾</div>
+                  <p className="text-sm font-bold text-white">
+                    No matching orders
+                  </p>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Try another date or search term.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-neutral-800">
+                  {filteredBillingOrders.map((order) => (
+                    <div
+                      key={order.id}
+                      className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 hover:bg-neutral-800/20 transition"
+                    >
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-lg text-[10px] font-black">
+                            {getBillNumber(order)}
+                          </span>
+
+                          <span className="bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-lg text-[10px] font-bold">
+                            Table {order.table_number || '1'}
+                          </span>
+
+                          <span className="text-[10px] text-neutral-500 uppercase font-bold">
+                            {order.status || 'pending'}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-4 mt-2 text-[11px] text-neutral-400">
+                          <span>
+                            📅 {formatBillDate(order.created_at)}
+                          </span>
+                          <span>
+                            🕒 {formatBillTime(order.created_at)}
+                          </span>
+                          <span>
+                            💳 {order.payment_mode || 'Online'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="text-[10px] uppercase font-bold text-neutral-500">
+                            Total
+                          </p>
+                          <p className="text-lg font-black text-emerald-400">
+                            ₹{Number(order.total_amount || 0).toFixed(2)}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handlePrintBill(order)}
+                          className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black transition shadow-lg shadow-orange-500/20"
+                        >
+                          🧾 Generate Bill
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* TAB 5: SWIGGY SYNC */}
         {activeTab ===
           'swiggy-sync' && (
@@ -3349,6 +3854,146 @@ export default function RestaurantDashboard() {
         )}
 
       </main>
+
+      {/* Printable Bill */}
+      {selectedBillOrder && (
+        <div className="print-bill fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
+          <div className="print-bill-sheet bg-white text-black w-full max-w-md rounded-xl shadow-2xl overflow-hidden">
+            <div className="p-6">
+              <div className="text-center border-b border-neutral-300 pb-4">
+                <h2 className="text-2xl font-black uppercase tracking-wide">
+                  {billingRestaurantName || restaurant.name}
+                </h2>
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  DIGITAL DINING
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[11px] mt-4 pb-4 border-b border-neutral-300">
+                <div>
+                  <strong>Bill No:</strong> {getBillNumber(selectedBillOrder)}
+                </div>
+                <div className="text-right">
+                  <strong>Order No:</strong>{' '}
+                  {String(selectedBillOrder.id).slice(-8).toUpperCase()}
+                </div>
+                <div>
+                  <strong>Date:</strong>{' '}
+                  {formatBillDate(selectedBillOrder.created_at)}
+                </div>
+                <div className="text-right">
+                  <strong>Time:</strong>{' '}
+                  {formatBillTime(selectedBillOrder.created_at)}
+                </div>
+                <div>
+                  <strong>Table:</strong>{' '}
+                  {selectedBillOrder.table_number || '1'}
+                </div>
+                <div className="text-right">
+                  <strong>Payment:</strong>{' '}
+                  {selectedBillOrder.payment_mode || 'Online'}
+                </div>
+                {selectedBillOrder.waiter_name && (
+                  <div className="col-span-2">
+                    <strong>Waiter:</strong>{' '}
+                    {selectedBillOrder.waiter_name}
+                  </div>
+                )}
+              </div>
+
+              <table className="w-full text-[11px] mt-4">
+                <thead>
+                  <tr className="border-b border-neutral-300">
+                    <th className="text-left py-2">Item</th>
+                    <th className="text-center py-2">Qty</th>
+                    <th className="text-right py-2">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.isArray(selectedBillOrder.items) &&
+                    selectedBillOrder.items.map((item, index) => {
+                      const quantity = getOrderItemQuantity(item)
+                      const amount =
+                        Number(item?.price || 0) * quantity
+
+                      return (
+                        <tr key={index} className="border-b border-neutral-200">
+                          <td className="py-2 pr-2">
+                            {item?.name || 'Item'}
+                          </td>
+                          <td className="py-2 text-center">
+                            {quantity}
+                          </td>
+                          <td className="py-2 text-right">
+                            ₹{amount.toFixed(2)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+
+              <div className="mt-4 space-y-1 text-[11px]">
+                <div className="flex justify-between">
+                  <span>Items Subtotal</span>
+                  <span>
+                    ₹{getOrderSubtotal(selectedBillOrder).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between font-black text-base border-t border-neutral-300 pt-2 mt-2">
+                  <span>Grand Total</span>
+                  <span>
+                    ₹{Number(selectedBillOrder.total_amount || 0).toFixed(2)}
+                  </span>
+                </div>
+
+                <p className="text-[9px] text-neutral-500 mt-1">
+                  Grand total uses the final amount stored on the order, including applicable taxes and packing charges.
+                </p>
+              </div>
+
+              <div className="mt-8 text-center">
+                {managerSignature ? (
+                  <img
+                    src={managerSignature}
+                    alt="Manager signature"
+                    className="max-h-16 max-w-40 object-contain mx-auto mb-1"
+                  />
+                ) : (
+                  <div className="h-12"></div>
+                )}
+
+                <div className="border-t border-neutral-400 w-40 mx-auto pt-1 text-[10px] font-bold">
+                  Manager Signature
+                </div>
+              </div>
+
+              <div className="text-center mt-6 text-[10px] text-neutral-500">
+                Thank you! Visit again.
+              </div>
+            </div>
+
+            <div className="no-print bg-neutral-100 p-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-lg text-xs"
+              >
+                🖨️ Print Bill
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedBillOrder(null)}
+                className="bg-neutral-800 hover:bg-neutral-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Embedded Real-Time Restaurant Chat Widget */}
       <RestaurantChatWidget
