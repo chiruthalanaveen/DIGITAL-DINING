@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 
 const features = [
   {
@@ -165,8 +166,25 @@ const plans = [
   },
 ]
 
-function AccentIcon({ children, accent = 'orange' }) {
-  const styles = {
+type Accent =
+  | 'orange'
+  | 'emerald'
+  | 'blue'
+  | 'violet'
+  | 'amber'
+  | 'cyan'
+  | 'rose'
+
+type AccentIconProps = {
+  children: ReactNode
+  accent?: Accent
+}
+
+function AccentIcon({
+  children,
+  accent = 'orange',
+}: AccentIconProps) {
+  const styles: Record<Accent, string> = {
     orange: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
     emerald: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
     blue: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
@@ -178,13 +196,14 @@ function AccentIcon({ children, accent = 'orange' }) {
 
   return (
     <div
-      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-sm font-black ${styles[accent] || styles.orange}`}
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-sm font-black ${
+        styles[accent]
+      }`}
     >
       {children}
     </div>
   )
 }
-
 export default function LandingPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#070707] font-sans text-white selection:bg-orange-500 selection:text-white">
