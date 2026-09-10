@@ -159,6 +159,7 @@ export default function RestaurantDashboard() {
   const [restaurant, setRestaurant] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
   const [menuItems, setMenuItems] = useState([])
+  const [dailyOffers, setDailyOffers] = useState([])
   const [orders, setOrders] = useState([])
   const [activeTab, setActiveTab] = useState('orders')
   const [isStoreOpen, setIsStoreOpen] = useState(true)
@@ -178,6 +179,8 @@ export default function RestaurantDashboard() {
   const [editingMenuItemId, setEditingMenuItemId] = useState(null)
   const [editItemName, setEditItemName] = useState('')
   const [editItemPrice, setEditItemPrice] = useState('')
+  const [editItemOriginalPrice, setEditItemOriginalPrice] = useState('')
+  const [editItemOfferPrice, setEditItemOfferPrice] = useState('')
   const [editItemCategory, setEditItemCategory] = useState('')
   const [editItemDescription, setEditItemDescription] = useState('')
   const [editItemImageUrl, setEditItemImageUrl] = useState('')
@@ -228,8 +231,20 @@ export default function RestaurantDashboard() {
   const [billDateFilter, setBillDateFilter] = useState('')
   const [billingRestaurantName, setBillingRestaurantName] = useState('')
   const [managerSignature, setManagerSignature] = useState('')
+  const [restaurantLogo, setRestaurantLogo] = useState('')
   const [editingBillSettings, setEditingBillSettings] = useState(false)
   const [savingBillSettings, setSavingBillSettings] = useState(false)
+
+  // Offers of the Day — restaurant dashboard only
+  const [offerTitle, setOfferTitle] = useState('')
+  const [offerDescription, setOfferDescription] = useState('')
+  const [offerDiscountText, setOfferDiscountText] = useState('')
+  const [offerOriginalPrice, setOfferOriginalPrice] = useState('')
+  const [offerPrice, setOfferPrice] = useState('')
+  const [offerDate, setOfferDate] = useState(new Date().toLocaleDateString('en-CA'))
+  const [offerImageUrl, setOfferImageUrl] = useState('')
+  const [savingOffer, setSavingOffer] = useState(false)
+  const [editingOfferId, setEditingOfferId] = useState(null)
 
   // Audio Alarm Reference for Pro+ real-time order sound
   const audioRef = useRef(null)
@@ -328,6 +343,9 @@ export default function RestaurantDashboard() {
       )
       setManagerSignature((prev) =>
         prev || restData.manager_signature || ''
+      )
+      setRestaurantLogo((prev) =>
+        prev || restData.logo_url || ''
       )
 
       if (!hasInitializedKeys && !savingPayment) {
@@ -626,6 +644,8 @@ export default function RestaurantDashboard() {
 
     setEditItemName(item.name || '')
     setEditItemPrice(item.price ?? '')
+    setEditItemOriginalPrice(item.original_price ?? '')
+    setEditItemOfferPrice(item.offer_price ?? '')
     setEditItemCategory(item.category || '')
     setEditItemDescription(item.description || '')
     setEditItemImageUrl(item.image_url || '')
@@ -651,6 +671,8 @@ export default function RestaurantDashboard() {
     setEditingMenuItemId(null)
     setEditItemName('')
     setEditItemPrice('')
+    setEditItemOriginalPrice('')
+    setEditItemOfferPrice('')
     setEditItemCategory('')
     setEditItemDescription('')
     setEditItemImageUrl('')
@@ -668,6 +690,14 @@ export default function RestaurantDashboard() {
     }
 
     const parsedPrice = parseFloat(editItemPrice)
+    const parsedOriginalPrice =
+      editItemOriginalPrice === ''
+        ? null
+        : parseFloat(editItemOriginalPrice)
+    const parsedOfferPrice =
+      editItemOfferPrice === ''
+        ? null
+        : parseFloat(editItemOfferPrice)
 
     if (
       isNaN(parsedPrice) ||
@@ -677,21 +707,68 @@ export default function RestaurantDashboard() {
       return
     }
 
+    if (
+      parsedOriginalPrice !== null &&
+      (isNaN(parsedOriginalPrice) || parsedOriginalPrice <= 0)
+    ) {
+      alert('Please enter a valid original price.')
+      return
+    }
+
+    if (
+      parsedOfferPrice !== null &&
+      (isNaN(parsedOfferPrice) || parsedOfferPrice <= 0)
+    ) {
+      alert('Please enter a valid offer price.')
+      return
+    }
+
+    if (
+      parsedOriginalPrice !== null &&
+      parsedOfferPrice !== null &&
+      parsedOfferPrice >= parsedOriginalPrice
+    ) {
+      alert('Offer price must be lower than the original price.')
+      return
+    }
+
+    // The existing Pro+ price protection remains in place.
+    // An offer also changes the effective customer price, so offer pricing
+    // follows the same protection and does not bypass the existing plan rule.
     if (currentPlan !== 'Pro+') {
       const currentItem = menuItems.find(
         (item) => item.id === itemId
       )
 
-      if (
+      const currentOriginal =
+        currentItem?.original_price == null
+          ? null
+          : Number(currentItem.original_price)
+      const currentOffer =
+        currentItem?.offer_price == null
+          ? null
+          : Number(currentItem.offer_price)
+
+      const pricingChanged =
         currentItem &&
-        Number(currentItem.price) !== parsedPrice
-      ) {
+        (Number(currentItem.price) !== parsedPrice ||
+          currentOriginal !== parsedOriginalPrice ||
+          currentOffer !== parsedOfferPrice)
+
+      if (pricingChanged) {
         alert(
-          '🔒 Price modification is exclusive to the Pro+ tier. Keep the existing price or upgrade to Pro+ to change it.'
+          '🔒 Price and offer modification is exclusive to the Pro+ tier. Keep the existing pricing or upgrade to Pro+.'
         )
         return
       }
     }
+
+    // When an offer price is entered, that becomes the live menu price.
+    // Otherwise the existing Price field remains the live customer price.
+    const livePrice =
+      parsedOfferPrice !== null
+        ? parsedOfferPrice
+        : parsedPrice
 
     setSavingMenuItem(true)
 
@@ -702,7 +779,9 @@ export default function RestaurantDashboard() {
 
     const updatedData = {
       name: editItemName.trim(),
-      price: parsedPrice,
+      price: livePrice,
+      original_price: parsedOriginalPrice,
+      offer_price: parsedOfferPrice,
       category: editItemCategory.trim(),
       description:
         editItemDescription.trim(),
@@ -1184,6 +1263,112 @@ export default function RestaurantDashboard() {
       setSavingPayment(false)
     }
 
+  const resetOfferForm = () => {
+    setOfferTitle('')
+    setOfferDescription('')
+    setOfferDiscountText('')
+    setOfferOriginalPrice('')
+    setOfferPrice('')
+    setOfferDate(new Date().toLocaleDateString('en-CA'))
+    setOfferImageUrl('')
+    setEditingOfferId(null)
+  }
+
+  const handleOfferImageFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file for the offer.')
+      e.target.value = ''
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Please use an offer image smaller than 2 MB.')
+      e.target.value = ''
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setOfferImageUrl(reader.result)
+    }
+    reader.onerror = () => alert('Could not read the offer image. Please try another image.')
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  const startEditingOffer = (offer) => {
+    setEditingOfferId(offer.id)
+    setOfferTitle(offer.title || '')
+    setOfferDescription(offer.description || '')
+    setOfferDiscountText(offer.discount_text || '')
+    setOfferOriginalPrice(offer.original_price ?? '')
+    setOfferPrice(offer.offer_price ?? '')
+    setOfferDate(offer.offer_date || new Date().toLocaleDateString('en-CA'))
+    setOfferImageUrl(offer.image_url || '')
+    setActiveTab('offers')
+  }
+
+  const handleSaveOffer = async (e) => {
+    e.preventDefault()
+    if (savingOffer) return
+    if (!offerTitle.trim()) { alert('Please enter an offer title.'); return }
+    if (!offerDate) { alert('Please select the offer date.'); return }
+    const parsedOfferPrice = parseFloat(offerPrice)
+    if (isNaN(parsedOfferPrice) || parsedOfferPrice < 0) { alert('Please enter a valid offer price.'); return }
+    const parsedOriginal = offerOriginalPrice === '' ? null : parseFloat(offerOriginalPrice)
+    if (parsedOriginal !== null && (isNaN(parsedOriginal) || parsedOriginal < 0)) { alert('Please enter a valid original price.'); return }
+    setSavingOffer(true)
+    const payload = {
+      restaurant_id: restaurantId,
+      title: offerTitle.trim(),
+      description: offerDescription.trim(),
+      discount_text: offerDiscountText.trim(),
+      original_price: parsedOriginal,
+      offer_price: parsedOfferPrice,
+      offer_date: offerDate,
+      image_url: offerImageUrl.trim(),
+      is_active: true
+    }
+    try {
+      let error
+      let saved
+      if (editingOfferId) {
+        const result = await supabase.from('daily_offers').update(payload).eq('id', editingOfferId).eq('restaurant_id', restaurantId).select().maybeSingle()
+        error = result.error
+        saved = result.data
+      } else {
+        const result = await supabase.from('daily_offers').insert([payload]).select().single()
+        error = result.error
+        saved = result.data
+      }
+      if (error) throw error
+      if (saved) setDailyOffers((prev) => editingOfferId ? prev.map((item) => item.id === editingOfferId ? saved : item) : [saved, ...prev])
+      const wasEditing = Boolean(editingOfferId)
+      resetOfferForm()
+      alert(wasEditing ? 'Offer updated successfully! ✅' : 'Offer added successfully! ✅')
+    } catch (error) {
+      console.error('Offer save error:', error)
+      alert('Failed to save offer: ' + error.message + '\n\nMake sure the daily_offers table has been created in Supabase.')
+    } finally {
+      setSavingOffer(false)
+    }
+  }
+
+  const toggleOffer = async (offer) => {
+    const nextActive = !offer.is_active
+    const { data, error } = await supabase.from('daily_offers').update({ is_active: nextActive }).eq('id', offer.id).eq('restaurant_id', restaurantId).select().maybeSingle()
+    if (error) { alert('Failed to update offer: ' + error.message); return }
+    if (data) setDailyOffers((prev) => prev.map((item) => item.id === offer.id ? data : item))
+  }
+
+  const deleteOffer = async (offer) => {
+    if (!window.confirm(`Delete the offer "${offer.title}"?`)) return
+    const { error } = await supabase.from('daily_offers').delete().eq('id', offer.id).eq('restaurant_id', restaurantId)
+    if (error) { alert('Failed to delete offer: ' + error.message); return }
+    setDailyOffers((prev) => prev.filter((item) => item.id !== offer.id))
+    if (editingOfferId === offer.id) resetOfferForm()
+  }
+
   const handleReportTimeframeChange =
     (frame) => {
       if (
@@ -1316,7 +1501,8 @@ export default function RestaurantDashboard() {
     const updatedData = {
       name: restaurantName,
       billing_restaurant_name: restaurantName,
-      manager_signature: managerSignature.trim()
+      manager_signature: managerSignature.trim(),
+      logo_url: restaurantLogo.trim()
     }
 
     const { error } = await supabase
@@ -1328,7 +1514,7 @@ export default function RestaurantDashboard() {
       alert(
         'Failed to save bill settings: ' +
           error.message +
-          '\n\nIf the error mentions a missing column, add the billing columns shown below the updated code.'
+          '\n\nIf the error mentions a missing column, make sure the restaurants table has billing_restaurant_name, manager_signature, and logo_url columns.'
       )
     } else {
       setRestaurant((prev) => ({
@@ -1366,6 +1552,43 @@ export default function RestaurantDashboard() {
     }
 
     reader.readAsDataURL(file)
+  }
+
+  const handleRestaurantLogoFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file for the restaurant logo.')
+      e.target.value = ''
+      return
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Please use a restaurant logo image smaller than 2 MB.')
+      e.target.value = ''
+      return
+    }
+
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setRestaurantLogo(reader.result)
+        setEditingBillSettings(true)
+      }
+    }
+
+    reader.onerror = () => {
+      alert('Could not read the logo image. Please try another image.')
+    }
+
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  const clearRestaurantLogo = () => {
+    setRestaurantLogo('')
   }
 
   const clearManagerSignature = () => {
@@ -1505,10 +1728,16 @@ export default function RestaurantDashboard() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
 
           <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center font-black text-white text-xl shadow-lg shadow-orange-500/20">
-              {restaurant.name
-                .charAt(0)
-                .toUpperCase()}
+            <div className="w-12 h-12 rounded-2xl bg-white border border-neutral-700 overflow-hidden flex items-center justify-center font-black text-orange-500 text-xl shadow-lg shadow-orange-500/20">
+              {restaurant.logo_url ? (
+                <img
+                  src={restaurant.logo_url}
+                  alt={`${restaurant.name} logo`}
+                  className="w-full h-full object-contain p-1 opacity-100"
+                />
+              ) : (
+                restaurant.name.charAt(0).toUpperCase()
+              )}
             </div>
 
             <div>
@@ -1668,6 +1897,10 @@ export default function RestaurantDashboard() {
             {
               id: 'billing',
               label: `🧾 Billing`
+            },
+            {
+              id: 'offers',
+              label: `🔥 Offers of the Day (${dailyOffers.filter((offer) => offer.is_active).length})`
             },
             {
               id: 'swiggy-sync',
@@ -2325,43 +2558,130 @@ export default function RestaurantDashboard() {
                                   />
                                 </div>
 
-                                {/* EDIT PRICE */}
+                                {/* EDIT PRICING */}
+                                <div className="sm:col-span-2 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4 space-y-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <label className="text-[10px] uppercase font-black text-orange-400 block">
+                                        Pricing & Offer
+                                      </label>
+                                      <p className="text-[10px] text-neutral-500 mt-1">
+                                        Set the original price and a special offer price. The offer price becomes the live menu price.
+                                      </p>
+                                    </div>
+                                    <span className="shrink-0 bg-orange-500/10 border border-orange-500/20 text-orange-400 px-2 py-1 rounded-lg text-[9px] font-black">
+                                      {currentPlan === 'Pro+' ? 'PRO+ PRICING' : 'PRO+ REQUIRED'}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div>
+                                      <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
+                                        Original Price (₹)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={editItemOriginalPrice}
+                                        onChange={(e) => {
+                                          const value = e.target.value
+                                          setEditItemOriginalPrice(value)
+
+                                          // Keep the existing Price field in sync with an offer price.
+                                          if (editItemOfferPrice === '' && value !== '') {
+                                            setEditItemPrice(value)
+                                          }
+                                        }}
+                                        disabled={currentPlan !== 'Pro+'}
+                                        placeholder="299"
+                                        className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm ${
+                                          currentPlan !== 'Pro+' ? 'opacity-50 cursor-not-allowed' : ''
+                                        }`}
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
+                                        Offer Price (₹)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={editItemOfferPrice}
+                                        onChange={(e) => {
+                                          const value = e.target.value
+                                          setEditItemOfferPrice(value)
+                                          if (value !== '') {
+                                            setEditItemPrice(value)
+                                          }
+                                        }}
+                                        disabled={currentPlan !== 'Pro+'}
+                                        placeholder="199"
+                                        className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm ${
+                                          currentPlan !== 'Pro+' ? 'opacity-50 cursor-not-allowed' : ''
+                                        }`}
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
+                                        Discount
+                                      </label>
+                                      <div className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 min-h-[42px] flex items-center justify-between gap-2">
+                                        <span className="text-white text-sm font-black">
+                                          {(() => {
+                                            const original = parseFloat(editItemOriginalPrice)
+                                            const offer = parseFloat(editItemOfferPrice)
+                                            if (original > 0 && offer >= 0 && offer < original) {
+                                              return `${Math.round(((original - offer) / original) * 100)}% OFF`
+                                            }
+                                            return '—'
+                                          })()}
+                                        </span>
+                                        <span className="text-[9px] text-neutral-500 font-bold">AUTO</span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                                    <span className="text-neutral-500">Live customer price:</span>
+                                    <span className="font-black text-emerald-400">
+                                      ₹{Number(editItemOfferPrice || editItemPrice || 0).toFixed(2)}
+                                    </span>
+                                    {editItemOriginalPrice && editItemOfferPrice && Number(editItemOfferPrice) < Number(editItemOriginalPrice) && (
+                                      <span className="line-through text-neutral-600">
+                                        ₹{Number(editItemOriginalPrice).toFixed(2)}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {currentPlan !== 'Pro+' && (
+                                    <p className="text-[9px] text-amber-400">
+                                      🔒 Price, original price and offer price editing require Pro+. Your existing pricing restriction is unchanged.
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* EXISTING PRICE — KEPT FOR BACKWARD COMPATIBILITY */}
                                 <div>
                                   <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                    Price (₹)
+                                    Base Price (₹)
                                   </label>
-
                                   <input
                                     type="number"
                                     step="0.01"
-                                    value={
-                                      editItemPrice
-                                    }
-                                    onChange={(
-                                      e
-                                    ) =>
-                                      setEditItemPrice(
-                                        e.target.value
-                                      )
-                                    }
-                                    disabled={
-                                      currentPlan !==
-                                      'Pro+'
-                                    }
+                                    value={editItemPrice}
+                                    onChange={(e) => setEditItemPrice(e.target.value)}
+                                    disabled={currentPlan !== 'Pro+'}
                                     className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm ${
-                                      currentPlan !==
-                                      'Pro+'
-                                        ? 'opacity-50 cursor-not-allowed'
-                                        : ''
+                                      currentPlan !== 'Pro+' ? 'opacity-50 cursor-not-allowed' : ''
                                     }`}
                                   />
-
-                                  {currentPlan !==
-                                    'Pro+' && (
-                                    <p className="text-[9px] text-amber-400 mt-1">
-                                      🔒 Price editing requires Pro+.
-                                    </p>
-                                  )}
+                                  <p className="text-[9px] text-neutral-500 mt-1">
+                                    Used when no offer price is set.
+                                  </p>
                                 </div>
 
                                 {/* EDIT CATEGORY */}
@@ -2665,12 +2985,25 @@ export default function RestaurantDashboard() {
 
                                   <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
 
-                                    <span className="font-black text-emerald-400 text-sm">
-                                      ₹
-                                      {
-                                        item.price
-                                      }
-                                    </span>
+                                    {item.original_price != null &&
+                                    item.offer_price != null &&
+                                    Number(item.offer_price) < Number(item.original_price) ? (
+                                      <>
+                                        <span className="font-black text-emerald-400 text-sm">
+                                          ₹{Number(item.offer_price).toFixed(2)}
+                                        </span>
+                                        <span className="text-neutral-600 line-through text-xs">
+                                          ₹{Number(item.original_price).toFixed(2)}
+                                        </span>
+                                        <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full text-[9px] font-black">
+                                          {Math.round(((Number(item.original_price) - Number(item.offer_price)) / Number(item.original_price)) * 100)}% OFF
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span className="font-black text-emerald-400 text-sm">
+                                        ₹{Number(item.price).toFixed(2)}
+                                      </span>
+                                    )}
 
                                     <span className="text-neutral-600">
                                       •
@@ -3207,6 +3540,62 @@ export default function RestaurantDashboard() {
 
                   <div>
                     <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-2">
+                      Restaurant Logo
+                    </label>
+
+                    <div className="bg-neutral-950 border border-dashed border-neutral-700 rounded-2xl p-4">
+                      {restaurantLogo ? (
+                        <div className="space-y-3">
+                          <div className="bg-white rounded-xl p-4 flex items-center justify-center min-h-32">
+                            <img
+                              src={restaurantLogo}
+                              alt={`${restaurant?.name || 'Restaurant'} logo preview`}
+                              className="max-h-28 max-w-full object-contain opacity-100"
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">
+                              🔄 Replace Logo
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                onChange={handleRestaurantLogoFile}
+                                className="hidden"
+                              />
+                            </label>
+
+                            <button
+                              type="button"
+                              onClick={clearRestaurantLogo}
+                              className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 px-4 py-2.5 rounded-xl text-xs font-bold transition"
+                            >
+                              🗑️ Remove Logo
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer block text-center py-8">
+                          <div className="text-3xl mb-2">🖼️</div>
+                          <p className="text-xs font-bold text-white">
+                            Upload Restaurant Logo
+                          </p>
+                          <p className="text-[10px] text-neutral-500 mt-1">
+                            PNG, JPG, WEBP or SVG image, maximum 2 MB
+                          </p>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                            onChange={handleRestaurantLogoFile}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-2">
                       Manager Signature
                     </label>
 
@@ -3284,6 +3673,9 @@ export default function RestaurantDashboard() {
                         setManagerSignature(
                           restaurant?.manager_signature || ''
                         )
+                        setRestaurantLogo(
+                          restaurant?.logo_url || ''
+                        )
                         setEditingBillSettings(false)
                       }}
                       className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-5 py-3 rounded-xl text-xs font-bold transition"
@@ -3293,7 +3685,26 @@ export default function RestaurantDashboard() {
                   </div>
                 </form>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
+                    <p className="text-[10px] uppercase font-bold text-neutral-500 mb-2">
+                      Restaurant Logo
+                    </p>
+                    {restaurantLogo ? (
+                      <div className="bg-white rounded-xl p-2 h-20 flex items-center justify-center">
+                        <img
+                          src={restaurantLogo}
+                          alt={`${restaurant.name} logo`}
+                          className="max-h-16 max-w-full object-contain opacity-100"
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-neutral-500">
+                        No logo configured
+                      </p>
+                    )}
+                  </div>
+
                   <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
                     <p className="text-[10px] uppercase font-bold text-neutral-500">
                       Restaurant Name
@@ -3473,6 +3884,37 @@ export default function RestaurantDashboard() {
                   : 'Sync Swiggy Menu Now 🔄'}
               </button>
             </form>
+          </div>
+        )}
+
+        {/* TAB: OFFERS OF THE DAY */}
+        {activeTab === 'offers' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl h-fit">
+              <div className="flex items-center justify-between mb-5">
+                <div><span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Restaurant Advertising</span><h2 className="text-xl font-black text-white mt-2">{editingOfferId ? 'Edit Offer' : 'Add Offer of the Day'} 🔥</h2></div><span className="text-2xl">🎁</span>
+              </div>
+              <form onSubmit={handleSaveOffer} className="space-y-4">
+                <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Offer Title</label><input value={offerTitle} onChange={(e) => setOfferTitle(e.target.value)} placeholder="Weekend Biryani Special" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" /></div>
+                <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Description</label><textarea value={offerDescription} onChange={(e) => setOfferDescription(e.target.value)} rows={3} placeholder="Chicken biryani + soft drink at a special price" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500 resize-none" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Original Price</label><input type="number" min="0" step="0.01" value={offerOriginalPrice} onChange={(e) => setOfferOriginalPrice(e.target.value)} placeholder="299" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" /></div>
+                  <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Offer Price *</label><input type="number" min="0" step="0.01" value={offerPrice} onChange={(e) => setOfferPrice(e.target.value)} placeholder="199" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" required /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Discount Badge</label><input value={offerDiscountText} onChange={(e) => setOfferDiscountText(e.target.value)} placeholder="33% OFF" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" /></div>
+                  <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Offer Date *</label><input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" required /></div>
+                </div>
+                <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Offer Image</label><div className="bg-neutral-950 border border-dashed border-neutral-700 rounded-2xl p-3">{offerImageUrl ? <div className="space-y-3"><img src={offerImageUrl} alt="Offer preview" className="w-full h-32 object-cover rounded-xl" /><div className="flex gap-2"><label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white px-3 py-2 rounded-xl text-[10px] font-bold">Replace Image<input type="file" accept="image/*" onChange={handleOfferImageFile} className="hidden" /></label><button type="button" onClick={() => setOfferImageUrl('')} className="bg-red-500/10 text-red-400 px-3 py-2 rounded-xl text-[10px] font-bold">Remove</button></div></div> : <label className="cursor-pointer block text-center py-5"><div className="text-3xl mb-2">🖼️</div><p className="text-xs font-bold text-white">Upload Offer Image</p><p className="text-[10px] text-neutral-500 mt-1">PNG, JPG, WEBP or SVG, maximum 2 MB</p><input type="file" accept="image/*" onChange={handleOfferImageFile} className="hidden" /></label>}</div></div>
+                <div className="flex gap-2"><button type="submit" disabled={savingOffer} className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-3 rounded-xl text-xs shadow-lg shadow-orange-500/20">{savingOffer ? 'Saving...' : editingOfferId ? 'Update Offer 💾' : 'Publish Offer 🚀'}</button>{editingOfferId && <button type="button" onClick={resetOfferForm} className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-4 py-3 rounded-xl text-xs font-bold">Cancel</button>}</div>
+              </form>
+            </div>
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-gradient-to-r from-red-600 via-orange-500 to-amber-400 p-6 rounded-3xl shadow-xl"><p className="text-[10px] uppercase tracking-widest font-black text-white/80">Customer Preview</p><h3 className="text-2xl font-black text-white mt-1">🔥 Offers of the Day</h3><p className="text-xs text-white/80 mt-1">Only active offers with today's date are advertised on the QR menu.</p></div>
+              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden"><div className="p-5 border-b border-neutral-800 flex items-center justify-between"><div><h3 className="font-black text-white">Your Offers</h3><p className="text-[10px] text-neutral-500 mt-1">Manage everything shown in the QR menu advertising area.</p></div><span className="text-xs font-black text-orange-400">{dailyOffers.length} total</span></div>
+                {dailyOffers.length === 0 ? <div className="p-12 text-center"><div className="text-5xl">🎁</div><p className="text-white font-bold mt-3">No offers yet</p><p className="text-xs text-neutral-500 mt-1">Create an offer from the form to advertise it to QR customers.</p></div> : <div className="p-4 space-y-3">{dailyOffers.map((offer) => <div key={offer.id} className="bg-neutral-950 border border-neutral-800 rounded-2xl p-3 flex gap-3 items-center"><div className="w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 shrink-0">{offer.image_url ? <img src={offer.image_url} alt={offer.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl">🎁</div>}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2 flex-wrap"><h4 className="font-black text-white text-sm">{offer.title}</h4><span className={`text-[9px] font-black px-2 py-1 rounded-full ${offer.is_active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-neutral-800 text-neutral-500'}`}>{offer.is_active ? 'ACTIVE' : 'HIDDEN'}</span></div><p className="text-[10px] text-neutral-500 mt-1">{offer.offer_date}{offer.discount_text ? ` • ${offer.discount_text}` : ''}</p><div className="flex items-center gap-2 mt-1">{offer.original_price != null && <span className="text-[10px] text-neutral-600 line-through">₹{Number(offer.original_price).toFixed(2)}</span>}<span className="text-sm font-black text-orange-400">₹{Number(offer.offer_price).toFixed(2)}</span></div></div><div className="flex flex-col gap-2"><button type="button" onClick={() => startEditingOffer(offer)} className="bg-blue-500/10 text-blue-400 px-3 py-2 rounded-lg text-[10px] font-bold">Edit</button><button type="button" onClick={() => toggleOffer(offer)} className="bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-[10px] font-bold">{offer.is_active ? 'Hide' : 'Show'}</button><button type="button" onClick={() => deleteOffer(offer)} className="bg-red-500/10 text-red-400 px-3 py-2 rounded-lg text-[10px] font-bold">Delete</button></div></div>)}</div>}
+              </div>
+            </div>
           </div>
         )}
 
@@ -3861,6 +4303,13 @@ export default function RestaurantDashboard() {
           <div className="print-bill-sheet bg-white text-black w-full max-w-md rounded-xl shadow-2xl overflow-hidden">
             <div className="p-6">
               <div className="text-center border-b border-neutral-300 pb-4">
+                {restaurantLogo && (
+                  <img
+                    src={restaurantLogo}
+                    alt={`${restaurant.name} logo`}
+                    className="h-16 max-w-48 object-contain mx-auto mb-2 opacity-100"
+                  />
+                )}
                 <h2 className="text-2xl font-black uppercase tracking-wide">
                   {billingRestaurantName || restaurant.name}
                 </h2>
