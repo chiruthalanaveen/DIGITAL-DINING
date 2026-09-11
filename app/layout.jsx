@@ -2,8 +2,14 @@ import Script from 'next/script'
 import './globals.css'
 
 export const metadata = {
-  title: 'Digital Dining',
-  description: 'Secure SaaS Platform for Restaurants',
+  title: 'Digital Dining | Smart QR Contactless Ordering',
+  description: 'Scan, explore dishes in 3D, order directly from your table, and pay seamlessly.',
+  openGraph: {
+    title: 'Digital Dining | Interactive 3D QR Menu',
+    description: 'Experience contactless digital dining right from your table.',
+    url: 'https://www.digitaldine-in.online',
+    siteName: 'Digital Dining',
+  },
 }
 
 export default function RootLayout({ children }) {
