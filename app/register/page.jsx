@@ -17,7 +17,96 @@ export default function RestaurantRegistration() {
   const [biometricEnabled, setBiometricEnabled] = useState(true)
 
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
   const [biometricLoading, setBiometricLoading] = useState(false)
+
+  // ============================================================
+  // GOOGLE SIGN-UP
+  // ============================================================
+
+  const handleGoogleSignup = async () => {
+    if (googleLoading || loading || biometricLoading) {
+      return
+    }
+
+    /*
+     * Google provides name and email automatically.
+     *
+     * Phone number and DOB are still collected from this form
+     * because your restaurants table and login system use them.
+     */
+    if (!phone.trim() || !dob.trim()) {
+      alert(
+        'Please enter your Phone Number and Date of Birth before continuing with Google sign-up.'
+      )
+      return
+    }
+
+    if (phone.trim().replace(/\D/g, '').length !== 10) {
+      alert('Please enter a valid 10-digit phone number.')
+      return
+    }
+
+    setGoogleLoading(true)
+
+    try {
+      /*
+       * Save the additional registration details temporarily.
+       *
+       * These values are needed after Google redirects back
+       * to the website.
+       */
+      localStorage.setItem(
+        'digitaldining_google_registration',
+        JSON.stringify({
+          name: name.trim(),
+          phone: phone.trim(),
+          dob: dob.trim(),
+          biometricEnabled,
+        })
+      )
+
+      const redirectTo =
+        `${window.location.origin}/auth/google-complete`
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account',
+          },
+        },
+      })
+
+      if (error) {
+        console.error('GOOGLE SIGN-UP ERROR:', error)
+
+        localStorage.removeItem(
+          'digitaldining_google_registration'
+        )
+
+        throw new Error(
+          error.message || 'Google sign-up could not be started.'
+        )
+      }
+    } catch (error) {
+      console.error('GOOGLE SIGN-UP EXCEPTION:', error)
+
+      alert(
+        'Google Sign-up Error: ' +
+          (error?.message ||
+            'Something went wrong while starting Google sign-up.')
+      )
+
+      setGoogleLoading(false)
+    }
+  }
+
+  // ============================================================
+  // NORMAL PASSWORD REGISTRATION
+  // ============================================================
 
   const handleRegister = async (e) => {
     e.preventDefault()
@@ -32,6 +121,11 @@ export default function RestaurantRegistration() {
       alert(
         'Please fill out all required fields, including your Date of Birth.'
       )
+      return
+    }
+
+    if (phone.trim().replace(/\D/g, '').length !== 10) {
+      alert('Please enter a valid 10-digit phone number.')
       return
     }
 
@@ -215,15 +309,6 @@ export default function RestaurantRegistration() {
             passkeyError
           )
 
-          /*
-           * IMPORTANT:
-           *
-           * The restaurant account already exists.
-           *
-           * Therefore a passkey error should NOT
-           * destroy the registration.
-           */
-
           const errorCode =
             passkeyError.code ||
             passkeyError.name ||
@@ -344,9 +429,7 @@ export default function RestaurantRegistration() {
         return
       } catch (passkeyException) {
         /*
-         * IMPORTANT:
-         *
-         * Any unexpected passkey error also does NOT
+         * Any unexpected passkey error does not
          * make restaurant registration fail.
          */
 
@@ -383,7 +466,9 @@ export default function RestaurantRegistration() {
   }
 
   const isBusy =
-    loading || biometricLoading
+    loading ||
+    googleLoading ||
+    biometricLoading
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 font-sans py-12">
@@ -509,13 +594,13 @@ export default function RestaurantRegistration() {
                     e.target.value.replace(
                       /\D/g,
                       ''
-                    )
+                    ).slice(0, 10)
                   )
                 }
                 required
                 disabled={isBusy}
                 autoComplete="tel"
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono disabled:opacity-50"
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
               />
 
             </div>
@@ -650,7 +735,7 @@ export default function RestaurantRegistration() {
 
           </div>
 
-          {/* SUBMIT BUTTON */}
+          {/* NORMAL SUBMIT BUTTON */}
           <button
             type="submit"
             disabled={isBusy}
@@ -666,6 +751,70 @@ export default function RestaurantRegistration() {
               : 'Create Account'}
 
           </button>
+
+          {/* DIVIDER */}
+          <div className="flex items-center gap-3">
+
+            <div className="h-px bg-neutral-800 flex-1" />
+
+            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">
+              Or
+            </span>
+
+            <div className="h-px bg-neutral-800 flex-1" />
+
+          </div>
+
+          {/* GOOGLE SIGN-UP BUTTON */}
+          <button
+            type="button"
+            onClick={handleGoogleSignup}
+            disabled={isBusy}
+            className="w-full bg-white hover:bg-neutral-200 text-neutral-900 font-black py-4 rounded-xl text-xs uppercase tracking-wider transition flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+
+            {googleLoading ? (
+              <>
+                <span className="animate-spin h-4 w-4 border-2 border-neutral-400 border-t-neutral-900 rounded-full" />
+                Connecting to Google...
+              </>
+            ) : (
+              <>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill="#4285F4"
+                    d="M21.35 12.27c0-.78-.07-1.53-.22-2.27H12v4.3h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.69 2.91-4.18 2.91-7.42Z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 21.75c2.63 0 4.84-.87 6.45-2.36l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.54 0-4.69-1.72-5.46-4.03H3.3v2.53A9.75 9.75 0 0 0 12 21.75Z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M6.54 13.83A5.86 5.86 0 0 1 6.23 12c0-.64.11-1.26.31-1.83V7.64H3.3A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.05 1.05 4.36l3.24-2.53Z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 6.14c1.43 0 2.71.49 3.72 1.45l2.79-2.79C16.84 3.21 14.63 2.25 12 2.25a9.75 9.75 0 0 0-8.7 5.39l3.24 2.53C7.31 7.86 9.46 6.14 12 6.14Z"
+                  />
+                </svg>
+
+                Continue with Google
+              </>
+            )}
+
+          </button>
+
+          <p className="text-[10px] text-neutral-500 text-center leading-relaxed">
+            Google sign-up still requires your phone number and
+            date of birth because they are used for your restaurant
+            profile and account security.
+          </p>
 
         </form>
 
