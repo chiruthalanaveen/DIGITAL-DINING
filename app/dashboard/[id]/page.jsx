@@ -281,8 +281,15 @@ export default function RestaurantDashboard() {
         return
       }
 
-      if (String(user.id) !== String(restaurantId)) {
-        await supabase.auth.signOut()
+      const { data: ownedRestaurant, error: ownershipError } = await supabase
+        .from('restaurants')
+        .select('id, owner_id')
+        .eq('id', restaurantId)
+        .eq('owner_id', user.id)
+        .maybeSingle()
+
+      if (ownershipError || !ownedRestaurant) {
+        console.error('Dashboard ownership verification failed:', ownershipError)
         if (!cancelled) router.replace('/login')
         return
       }
@@ -315,12 +322,20 @@ export default function RestaurantDashboard() {
         error: authError
       } = await supabase.auth.getUser()
 
-      if (
-        authError ||
-        !user ||
-        String(user.id) !== String(restaurantId)
-      ) {
-        await supabase.auth.signOut()
+      if (authError || !user) {
+        router.replace('/login')
+        return
+      }
+
+      const { data: ownedRestaurant, error: ownershipError } = await supabase
+        .from('restaurants')
+        .select('id, owner_id')
+        .eq('id', restaurantId)
+        .eq('owner_id', user.id)
+        .maybeSingle()
+
+      if (ownershipError || !ownedRestaurant) {
+        console.error('Dashboard ownership check failed:', ownershipError)
         router.replace('/login')
         return
       }

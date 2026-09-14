@@ -400,6 +400,48 @@ export default function CustomerMenuPage() {
     })
   }
 
+  // Add a daily offer to the existing cart using the linked menu item.
+  // The daily_offers row should contain menu_item_id or item_id.
+  const addOfferToCart = offer => {
+    if (!offer) return
+
+    const linkedMenuItem = menuItems.find(
+      item =>
+        String(item.id) === String(offer.menu_item_id) ||
+        String(item.id) === String(offer.item_id)
+    )
+
+    const matchedMenuItem =
+      linkedMenuItem ||
+      menuItems.find(
+        item =>
+          String(item.name || '').trim().toLowerCase() ===
+          String(offer.title || '').trim().toLowerCase()
+      )
+
+    if (!matchedMenuItem) {
+      alert('This offer is not linked to an available menu item.')
+      return
+    }
+
+    const offerPrice =
+      offer.offer_price !== null &&
+      offer.offer_price !== undefined &&
+      !Number.isNaN(Number(offer.offer_price))
+        ? Number(offer.offer_price)
+        : Number(matchedMenuItem.price || 0)
+
+    updateCart(
+      {
+        ...matchedMenuItem,
+        price: offerPrice,
+        offer_title: offer.title || matchedMenuItem.name,
+        is_daily_offer: true
+      },
+      1
+    )
+  }
+
   const cartItemsArray = Object.values(cart)
 
   const subtotalAmount = cartItemsArray.reduce(
@@ -1416,9 +1458,12 @@ export default function CustomerMenuPage() {
               </div>
               <div className="px-3 pb-3 space-y-3">
                 {dailyOffers.map(offer => (
-                  <div
+                  <button
                     key={offer.id}
-                    className="bg-white rounded-[22px] p-3 flex gap-3 items-center shadow-lg"
+                    type="button"
+                    onClick={() => addOfferToCart(offer)}
+                    className="w-full bg-white rounded-[22px] p-3 flex gap-3 items-center shadow-lg text-left cursor-pointer transition active:scale-[0.98] hover:shadow-xl"
+                    aria-label={`Add ${offer.title || 'offer'} to cart`}
                   >
                     <div className="w-24 h-24 rounded-2xl overflow-hidden shrink-0 bg-neutral-100">
                       {offer.image_url ? (
@@ -1463,7 +1508,7 @@ export default function CustomerMenuPage() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>

@@ -1,181 +1,189 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
 
-export async function POST(req) {
+export const runtime = 'nodejs'
+
+const registerSchema = z.object({
+  name: z.string().trim().min(2, 'Restaurant name is required'),
+  email: z.string().trim().email('Enter a valid email address'),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number'),
+  dob: z.string().min(1, 'Date of birth is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+})
+
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error(
+      'Supabase environment variables are missing. Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.'
+    )
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  })
+}
+
+export async function POST(request) {
+  console.log('REGISTER API: Request received')
+
+  let body
+
   try {
-    const body = await req.json().catch(() => ({}))
+    body = await request.json()
+  } catch (error) {
+    console.error('REGISTER API: Invalid JSON body', error)
 
-    const {
-      name,
-      email,
-      phone,
-      dob,
-      password,
-    } = body
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'Invalid request data.',
+      },
+      { status: 400 }
+    )
+  }
 
-    // Validate required fields
-    if (!name || !email || !password) {
+  try {
+    const parsed = registerSchema.safeParse(body)
+
+    if (!parsed.success) {
+      const message =
+        parsed.error.issues?.[0]?.message || 'Please check the entered details.'
+
+      console.error('REGISTER API: Validation failed:', parsed.error.issues)
+
       return NextResponse.json(
         {
           success: false,
-          message: 'Name, email, and password are required.',
+          message,
         },
         { status: 400 }
       )
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL?.trim()
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+    const { name, email, phone, dob, password } = parsed.data
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      console.error(
-        'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.'
+    const dateOfBirth = new Date(`${dob}T00:00:00`)
+    const today = new Date()
+
+    if (Number.isNaN(dateOfBirth.getTime())) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Please enter a valid date of birth.',
+        },
+        { status: 400 }
       )
+    }
+
+    if (dateOfBirth > today) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Date of birth cannot be in the future.',
+        },
+        { status: 400 }
+      )
+    }
+
+    const minimumDate = new Date()
+    minimumDate.setFullYear(minimumDate.getFullYear() - 120)
+
+    if (dateOfBirth < minimumDate) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Please enter a valid date of birth.',
+        },
+        { status: 400 }
+      )
+    }
+
+    const supabaseAdmin = getAdminClient()
+
+    console.log('REGISTER API: Creating authentication user')
+
+    const {
+      data: authData,
+      error: authError,
+    } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: name,
+        phone,
+        dob,
+        account_type: 'restaurant_owner',
+      },
+    })
+
+    if (authError) {
+      console.error('REGISTER API: Auth user creation failed:', authError)
 
       return NextResponse.json(
         {
           success: false,
-          message:
-            'CRITICAL CONFIG ERROR: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment variables.',
+          message: authError.message || 'Unable to create account.',
+        },
+        { status: 400 }
+      )
+    }
+
+    if (!authData?.user?.id) {
+      console.error('REGISTER API: Auth user ID was not returned')
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Account creation failed. Please try again.',
         },
         { status: 500 }
       )
     }
 
-    // Initialize Supabase Admin Client
-    const supabaseAdmin = createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-      }
-    )
-
-    // Clean and safely format input values
-    const cleanName = String(name).trim()
-    const cleanEmail = String(email).trim().toLowerCase()
-    const cleanPassword = String(password).trim()
-
-    const formattedPhone =
-      phone &&
-      typeof phone === 'string' &&
-      phone.trim() !== ''
-        ? phone.trim().replace(/\D/g, '').slice(-10)
-        : null
-
-    const formattedDob =
-      dob &&
-      typeof dob === 'string' &&
-      dob.trim() !== ''
-        ? dob.trim()
-        : null
-
-    // Additional validation
-    if (!cleanName || !cleanEmail || !cleanPassword) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Please provide valid name, email, and password.',
-        },
-        { status: 400 }
-      )
-    }
-
-    if (cleanPassword.length < 6) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Password must be at least 6 characters long.',
-        },
-        { status: 400 }
-      )
-    }
-
-    // 1. Create user in Supabase Auth through Admin API
-    const { data: authData, error: authError } =
-      await supabaseAdmin.auth.admin.createUser({
-        email: cleanEmail,
-        password: cleanPassword,
-        email_confirm: true,
-        user_metadata: {
-          name: cleanName,
-          phone: formattedPhone,
-          dob: formattedDob,
-          registration_method: 'password',
-        },
-      })
-
-    if (authError) {
-      console.error('Supabase Auth Admin Error:', authError)
-
-      let errorMessage = authError.message
-
-      if (
-        authError.message?.toLowerCase().includes('already registered') ||
-        authError.message?.toLowerCase().includes('already exists') ||
-        authError.message?.toLowerCase().includes('duplicate')
-      ) {
-        errorMessage =
-          'An account with this email already exists. Please log in instead.'
-      }
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Auth Error: ${errorMessage}`,
-        },
-        { status: 400 }
-      )
-    }
-
-    if (!authData?.user) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            'Auth Error: User object was not returned by Supabase.',
-        },
-        { status: 400 }
-      )
-    }
-
     const userId = authData.user.id
 
-    // 2. Insert restaurant profile into restaurants table
-    const { data: restaurantData, error: dbError } =
-      await supabaseAdmin
-        .from('restaurants')
-        .insert([
-          {
-            id: userId,
-            name: cleanName,
-            email: cleanEmail,
-            phone: formattedPhone,
-            dob: formattedDob,
-            subscription_status: 'pending',
-            enable_counter_payment: true,
-          },
-        ])
-        .select()
-        .single()
+    console.log('REGISTER API: Creating restaurant record')
 
-    if (dbError) {
+    const {
+      data: restaurant,
+      error: restaurantError,
+    } = await supabaseAdmin
+      .from('restaurants')
+      .insert({
+        name,
+        email,
+        phone,
+        dob,
+        owner_id: userId,
+      })
+      .select('id')
+      .single()
+
+    if (restaurantError) {
       console.error(
-        'Supabase Restaurants Table Insert Error:',
-        dbError
+        'REGISTER API: Restaurant creation failed:',
+        restaurantError
       )
 
-      // Rollback Auth user if restaurant profile creation fails
-      const { error: rollbackError } =
+      // Roll back the authentication user if restaurant creation fails.
+      const { error: deleteUserError } =
         await supabaseAdmin.auth.admin.deleteUser(userId)
 
-      if (rollbackError) {
+      if (deleteUserError) {
         console.error(
-          'Auth User Rollback Error:',
-          rollbackError
+          'REGISTER API: Rollback user deletion failed:',
+          deleteUserError
         )
       }
 
@@ -183,30 +191,33 @@ export async function POST(req) {
         {
           success: false,
           message:
-            `Database Error: ${dbError.message}. ` +
-            'Make sure the restaurants table and required columns exist.',
+            restaurantError.message ||
+            'Unable to create restaurant profile.',
         },
         { status: 400 }
       )
     }
 
+    console.log('REGISTER API: Registration completed successfully')
+
     return NextResponse.json(
       {
         success: true,
-        restaurantId: restaurantData.id,
-        message: 'Account registered successfully!',
+        message: 'Registration successful.',
+        restaurantId: restaurant.id,
       },
-      { status: 200 }
+      { status: 201 }
     )
-  } catch (err) {
-    console.error('API /api/register Exception:', err)
+  } catch (error) {
+    console.error('REGISTER API: Unexpected error:', error)
 
     return NextResponse.json(
       {
         success: false,
         message:
-          err?.message ||
-          'An unexpected server error occurred during registration.',
+          error instanceof Error
+            ? error.message
+            : 'An unexpected registration error occurred.',
       },
       { status: 500 }
     )

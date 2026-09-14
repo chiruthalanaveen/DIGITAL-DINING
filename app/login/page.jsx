@@ -15,32 +15,26 @@ export default function RestaurantLogin() {
   const [biometricLoading, setBiometricLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
-  // Biometric ON / OFF
-  const [biometricEnabled, setBiometricEnabled] = useState(true)
+  const [biometricEnabled, setBiometricEnabled] = useState(false)
 
-  // Load saved biometric preference
   useEffect(() => {
     try {
       const savedPreference = localStorage.getItem(
         'digitaldining_biometric_enabled'
       )
 
-      if (savedPreference === 'false') {
-        setBiometricEnabled(false)
-      }
-
-      if (savedPreference === 'true') {
-        setBiometricEnabled(true)
-      }
+      setBiometricEnabled(savedPreference === 'true')
     } catch (error) {
-      console.error(
-        'Could not read biometric preference:',
-        error
-      )
+      console.error('Could not read biometric preference:', error)
+      setBiometricEnabled(false)
     }
   }, [])
 
   const toggleBiometric = () => {
+    if (loading || biometricLoading || googleLoading) {
+      return
+    }
+
     const newValue = !biometricEnabled
 
     setBiometricEnabled(newValue)
@@ -51,10 +45,7 @@ export default function RestaurantLogin() {
         String(newValue)
       )
     } catch (error) {
-      console.error(
-        'Could not save biometric preference:',
-        error
-      )
+      console.error('Could not save biometric preference:', error)
     }
   }
 
@@ -66,103 +57,61 @@ export default function RestaurantLogin() {
   }
 
   const getPasskeyErrorMessage = (error) => {
-    const code =
-      error?.code ||
-      error?.name ||
-      ''
+    const code = error?.code || error?.name || ''
+    const message = error?.message || ''
+    const lowerMessage = message.toLowerCase()
 
-    const message =
-      error?.message ||
-      ''
-
-    const lowerMessage =
-      message.toLowerCase()
-
-    // Passkey not found
-    if (
-      code === 'webauthn_credential_not_found'
-    ) {
+    if (code === 'webauthn_credential_not_found') {
       return (
         'No biometric/passkey was found on this device. ' +
-        'Please use the device that was registered during setup, ' +
-        'or turn biometric login OFF and use your password.'
+        'Please use password login or register a passkey first.'
       )
     }
 
-    // Verification failed
     if (
       code === 'webauthn_verification_failed' ||
-      lowerMessage.includes(
-        'credential verification failed'
-      )
+      lowerMessage.includes('credential verification failed')
     ) {
       return (
-        'Biometric verification failed. ' +
-        'Please try again or turn biometric login OFF ' +
-        'and use email, password and Date of Birth.'
+        'Biometric verification failed. Please try again or turn biometric login OFF.'
       )
     }
 
-    // Challenge expired
     if (
       code === 'webauthn_challenge_expired' ||
       lowerMessage.includes('challenge expired')
     ) {
-      return (
-        'The biometric security request expired. ' +
-        'Please try again.'
-      )
+      return 'The biometric security request expired. Please try again.'
     }
 
-    // Challenge not found
     if (
       code === 'webauthn_challenge_not_found' ||
       lowerMessage.includes('challenge not found')
     ) {
       return (
-        'The biometric security request could not be found. ' +
-        'Please try again.'
+        'The biometric security request could not be found. Please try again.'
       )
     }
 
-    // Passkeys disabled
     if (
       code === 'passkey_disabled' ||
-      lowerMessage.includes(
-        'passkeys are disabled'
-      )
+      lowerMessage.includes('passkeys are disabled')
     ) {
-      return (
-        'Biometric login is currently disabled in the system.'
-      )
+      return 'Biometric login is currently disabled in the system.'
     }
 
-    // User cancelled
     if (
       lowerMessage.includes('cancel') ||
       lowerMessage.includes('abort') ||
       lowerMessage.includes('notallowed')
     ) {
       return (
-        'Biometric verification was cancelled. ' +
-        'Please try again or use password login.'
+        'Biometric verification was cancelled. Please try again or use password login.'
       )
     }
 
-    if (message) {
-      return message
-    }
-
-    return (
-      'Biometric verification could not be completed.'
-    )
+    return message || 'Biometric verification could not be completed.'
   }
-
-  /*
-   * ============================================================
-   * GOOGLE LOGIN
-   * ============================================================
-   */
 
   const handleGoogleLogin = async () => {
     if (loading || biometricLoading || googleLoading) {
@@ -172,54 +121,44 @@ export default function RestaurantLogin() {
     setGoogleLoading(true)
 
     try {
-      const { error } =
-        await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo:
-              `${window.location.origin}/auth/google-login`,
-            queryParams: {
-              access_type: 'offline',
-              prompt: 'select_account',
-            },
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/google-login`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account',
           },
-        })
+        },
+      })
 
       if (error) {
         throw error
       }
     } catch (error) {
-      console.error(
-        'Google login error:',
-        error
-      )
+      console.error('Google login error:', error)
 
       alert(
         'Google Login Failed: ' +
-          (
-            error?.message ||
-            'Something went wrong.'
-          )
+          (error?.message || 'Something went wrong.')
       )
 
       setGoogleLoading(false)
     }
   }
 
-  /*
-   * ============================================================
-   * PASSWORD + DOB LOGIN
-   * ============================================================
-   */
-
   const handleLogin = async (e) => {
     e.preventDefault()
 
-    if (
-      !email.trim() ||
-      !password.trim() ||
-      !dob.trim()
-    ) {
+    if (loading || biometricLoading || googleLoading) {
+      return
+    }
+
+    const cleanEmail = email.trim().toLowerCase()
+    const cleanPassword = password
+    const cleanDob = dob.trim()
+
+    if (!cleanEmail || !cleanPassword || !cleanDob) {
       alert(
         'Please fill out your Email, Password, and Date of Birth.'
       )
@@ -231,165 +170,138 @@ export default function RestaurantLogin() {
     let passwordSessionCreated = false
 
     try {
-      // ==========================================================
-      // STEP 1: VERIFY EMAIL + PASSWORD
-      // ==========================================================
+      console.log('LOGIN: Sending credentials to /api/login')
 
-      const {
-        data: authData,
-        error: authError,
-      } =
-        await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password.trim(),
-        })
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+          password: cleanPassword,
+          dob: cleanDob,
+        }),
+      })
+
+      let result = null
+
+      try {
+        result = await response.json()
+      } catch (jsonError) {
+        console.error('LOGIN: Invalid API response:', jsonError)
+        throw new Error('The login server returned an invalid response.')
+      }
+
+      console.log('LOGIN: API response status:', response.status)
+
+      if (!response.ok || !result?.success) {
+        throw new Error(
+          result?.message ||
+            'Invalid email, password, or Date of Birth.'
+        )
+      }
 
       if (
-        authError ||
-        !authData?.user
+        !result?.session?.access_token ||
+        !result?.session?.refresh_token
       ) {
         throw new Error(
-          'Invalid email or password.'
+          'Login succeeded, but a secure session was not returned.'
         )
+      }
+
+      const { error: sessionError } =
+        await supabase.auth.setSession({
+          access_token: result.session.access_token,
+          refresh_token: result.session.refresh_token,
+        })
+
+      if (sessionError) {
+        console.error('LOGIN: Session restoration failed:', sessionError)
+        throw sessionError
       }
 
       passwordSessionCreated = true
 
-      const userId =
-        authData.user.id
+      const restaurant = result.restaurant
 
-      // ==========================================================
-      // STEP 2: VERIFY RESTAURANT PROFILE
-      // ==========================================================
-
-      const {
-        data: restaurant,
-        error: dbError,
-      } = await supabase
-        .from('restaurants')
-        .select('id, dob')
-        .eq('id', userId)
-        .single()
-
-      if (
-        dbError ||
-        !restaurant
-      ) {
+      if (!restaurant?.id) {
         throw new Error(
-          'Restaurant profile not found.'
+          'Restaurant profile not found for this account.'
         )
       }
 
-      // ==========================================================
-      // STEP 3: VERIFY DATE OF BIRTH
-      // ==========================================================
+      console.log('LOGIN: Password authentication successful')
+      console.log('LOGIN: Restaurant ID:', restaurant.id)
 
-      if (
-        restaurant.dob !==
-        dob.trim()
-      ) {
-        throw new Error(
-          'Security Error: Date of Birth does not match account records.'
-        )
-      }
-
-      // ==========================================================
-      // STEP 4: BIOMETRIC OFF
-      // ==========================================================
-
+      /*
+       * If biometric login is disabled, continue directly
+       * to the restaurant dashboard.
+       */
       if (!biometricEnabled) {
-        console.log(
-          'Biometric login is OFF. Password + DOB authentication accepted.'
-        )
+        alert('Login Successful! Welcome to Digital Dining.')
 
-        alert(
-          'Login Successful! Welcome to Digital Dining.'
-        )
-
-        router.replace(
-          `/dashboard/${restaurant.id}`
-        )
+        router.replace(`/dashboard/${restaurant.id}`)
+        router.refresh()
 
         return
       }
 
-      // ==========================================================
-      // STEP 5: BIOMETRIC ON
-      // ==========================================================
-
-      if (
-        !isPasskeySupported()
-      ) {
-        /*
-         * Password + DOB were correct.
-         *
-         * But biometric is ON and this browser does
-         * not support passkeys.
-         */
+      /*
+       * Biometric login is enabled.
+       */
+      if (!isPasskeySupported()) {
         throw new Error(
-          'Biometric login is enabled, but this browser/device does not support passkeys. Please use a supported device or turn biometric login OFF.'
+          'Biometric login is enabled, but this browser or device does not support passkeys. Turn biometric login OFF and use password login.'
         )
       }
 
       if (
-        !supabase.auth.signInWithPasskey ||
-        typeof supabase.auth.signInWithPasskey !==
-          'function'
+        typeof supabase.auth.signInWithPasskey !== 'function'
       ) {
         throw new Error(
-          'Biometric login is not available in the current application configuration.'
+          'Biometric login is not available in the current Supabase configuration. Turn biometric login OFF and use password login.'
         )
       }
 
-      // ==========================================================
-      // STEP 6: END PASSWORD SESSION BEFORE PASSKEY
-      // ==========================================================
-
+      /*
+       * End the password session before starting passkey login.
+       */
       await supabase.auth.signOut()
-
       passwordSessionCreated = false
-
-      // ==========================================================
-      // STEP 7: PASSKEY / BIOMETRIC VERIFICATION
-      // ==========================================================
 
       setBiometricLoading(true)
 
-      console.log(
-        'Starting Digital Dining biometric login...'
-      )
+      console.log('LOGIN: Starting biometric verification')
 
       const {
         data: passkeyAuthData,
         error: passkeyError,
-      } =
-        await supabase.auth.signInWithPasskey()
+      } = await supabase.auth.signInWithPasskey()
 
-      if (
-        passkeyError ||
-        !passkeyAuthData?.user
-      ) {
+      if (passkeyError || !passkeyAuthData?.user) {
         console.error(
           'SUPABASE PASSKEY LOGIN ERROR:',
           passkeyError
         )
 
         throw new Error(
-          getPasskeyErrorMessage(
-            passkeyError
-          )
+          getPasskeyErrorMessage(passkeyError)
         )
       }
 
-      // ==========================================================
-      // STEP 8: VERIFY PASSKEY ACCOUNT MATCHES RESTAURANT
-      // ==========================================================
+      /*
+       * The Auth user ID must match restaurants.owner_id.
+       *
+       * Do not compare the Auth user ID with restaurants.id.
+       */
+      const authUserId = passkeyAuthData.user.id
+      const restaurantOwnerId = restaurant.owner_id
 
       if (
-        String(
-          passkeyAuthData.user.id
-        ) !==
-        String(restaurant.id)
+        restaurantOwnerId &&
+        String(authUserId) !== String(restaurantOwnerId)
       ) {
         await supabase.auth.signOut()
 
@@ -398,41 +310,29 @@ export default function RestaurantLogin() {
         )
       }
 
-      // ==========================================================
-      // STEP 9: SUCCESS
-      // ==========================================================
+      console.log('LOGIN: Biometric authentication successful')
 
-      console.log(
-        'Digital Dining biometric login successful.'
-      )
+      alert('Secure Login Successful! 🔐')
 
-      alert(
-        'Secure Login Successful! 🔐'
-      )
-
-      router.replace(
-        `/dashboard/${restaurant.id}`
-      )
+      router.replace(`/dashboard/${restaurant.id}`)
+      router.refresh()
     } catch (err) {
-      console.error(
-        'AUTHENTICATION ERROR:',
-        err
-      )
+      console.error('AUTHENTICATION ERROR:', err)
 
-      /*
-       * If password session is still active,
-       * destroy it after a failed login.
-       */
       if (passwordSessionCreated) {
-        await supabase.auth.signOut()
+        try {
+          await supabase.auth.signOut()
+        } catch (signOutError) {
+          console.error(
+            'LOGIN: Could not clear failed session:',
+            signOutError
+          )
+        }
       }
 
       alert(
         'Authentication Failed: ' +
-          (
-            err?.message ||
-            'Something went wrong.'
-          )
+          (err?.message || 'Something went wrong.')
       )
     } finally {
       setBiometricLoading(false)
@@ -447,15 +347,8 @@ export default function RestaurantLogin() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 font-sans">
-
       <div className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
-
-        {/* ====================================================== */}
-        {/* HEADER */}
-        {/* ====================================================== */}
-
         <div className="text-center space-y-2">
-
           <span className="text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
             Restaurant Login
           </span>
@@ -467,25 +360,14 @@ export default function RestaurantLogin() {
           <p className="text-xs text-neutral-400">
             Sign in securely to your Digital Dining dashboard.
           </p>
-
         </div>
 
-        {/* ====================================================== */}
-        {/* BIOMETRIC ON / OFF */}
-        {/* ====================================================== */}
-
         <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
-
           <div className="flex items-center justify-between gap-4">
-
             <div className="flex items-start gap-3">
-
-              <div className="text-2xl">
-                🔐
-              </div>
+              <div className="text-2xl">🔐</div>
 
               <div>
-
                 <p className="text-sm font-black text-white">
                   Biometric Login
                 </p>
@@ -494,84 +376,50 @@ export default function RestaurantLogin() {
                   Use Face ID, fingerprint, Windows Hello,
                   Touch ID, device PIN, or passkey.
                 </p>
-
               </div>
-
             </div>
 
-            {/* TOGGLE */}
             <button
               type="button"
               disabled={isBusy}
-              onClick={
-                toggleBiometric
-              }
+              onClick={toggleBiometric}
               aria-label="Toggle biometric login"
-              aria-pressed={
-                biometricEnabled
-              }
+              aria-pressed={biometricEnabled}
               className={
                 'relative flex-shrink-0 w-14 h-8 rounded-full transition ' +
-                (
-                  biometricEnabled
-                    ? 'bg-orange-500'
-                    : 'bg-neutral-700'
-                )
+                (biometricEnabled
+                  ? 'bg-orange-500'
+                  : 'bg-neutral-700')
               }
             >
-
               <span
                 className={
                   'absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-all ' +
-                  (
-                    biometricEnabled
-                      ? 'left-7'
-                      : 'left-1'
-                  )
+                  (biometricEnabled ? 'left-7' : 'left-1')
                 }
               />
-
             </button>
-
           </div>
 
-          {/* STATUS */}
           <div className="mt-3">
-
             {biometricEnabled ? (
-
               <p className="text-[11px] text-green-400 font-bold">
                 ● ON — Biometric verification is required.
               </p>
-
             ) : (
-
               <p className="text-[11px] text-neutral-500 font-bold">
                 ● OFF — Password + DOB login only.
               </p>
-
             )}
-
           </div>
-
         </div>
 
-        {/* ====================================================== */}
-        {/* SECURITY INFORMATION */}
-        {/* ====================================================== */}
-
         {biometricEnabled && (
-
           <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4">
-
             <div className="flex items-start gap-3">
-
-              <div className="text-2xl">
-                🛡️
-              </div>
+              <div className="text-2xl">🛡️</div>
 
               <div>
-
                 <p className="text-sm font-black text-orange-300">
                   Biometric verification enabled
                 </p>
@@ -579,30 +427,15 @@ export default function RestaurantLogin() {
                 <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
                   After your email, password and DOB are
                   verified, your device will request your
-                  registered Face ID, fingerprint, Windows
-                  Hello, Touch ID, PIN, or passkey.
+                  registered biometric or passkey.
                 </p>
-
               </div>
-
             </div>
-
           </div>
-
         )}
 
-        {/* ====================================================== */}
-        {/* LOGIN FORM */}
-        {/* ====================================================== */}
-
-        <form
-          onSubmit={handleLogin}
-          className="space-y-4"
-        >
-
-          {/* EMAIL */}
+        <form onSubmit={handleLogin} className="space-y-4">
           <div>
-
             <label className="text-xs font-bold text-neutral-300 block mb-1">
               Email Address
             </label>
@@ -611,22 +444,15 @@ export default function RestaurantLogin() {
               type="email"
               placeholder="owner@restaurant.com"
               value={email}
-              onChange={(e) =>
-                setEmail(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isBusy}
               autoComplete="email"
               className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
             />
-
           </div>
 
-          {/* PASSWORD */}
           <div>
-
             <label className="text-xs font-bold text-neutral-300 block mb-1">
               Password
             </label>
@@ -635,22 +461,15 @@ export default function RestaurantLogin() {
               type="password"
               placeholder="••••••••"
               value={password}
-              onChange={(e) =>
-                setPassword(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setPassword(e.target.value)}
               required
               disabled={isBusy}
               autoComplete="current-password"
               className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
             />
-
           </div>
 
-          {/* DOB */}
           <div>
-
             <label className="text-xs font-bold text-neutral-300 block mb-1">
               Date of Birth (Security Verification)
             </label>
@@ -658,91 +477,41 @@ export default function RestaurantLogin() {
             <input
               type="date"
               value={dob}
-              onChange={(e) =>
-                setDob(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setDob(e.target.value)}
               required
               disabled={isBusy}
               autoComplete="bday"
               className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono text-neutral-300 disabled:opacity-50"
             />
-
           </div>
-
-          {/* ==================================================== */}
-          {/* LOGIN INFORMATION */}
-          {/* ==================================================== */}
 
           <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="text-3xl">
+                {biometricEnabled ? '🔐' : '🔑'}
+              </div>
 
-            {biometricEnabled ? (
+              <div>
+                <p className="text-sm font-black text-white">
+                  {biometricEnabled
+                    ? 'Secure multi-factor login'
+                    : 'Standard login'}
+                </p>
 
-              <>
-
-                <div className="flex items-center gap-3">
-
-                  <div className="text-3xl">
-                    🔐
-                  </div>
-
-                  <div>
-
-                    <p className="text-sm font-black text-white">
-                      Secure multi-factor login
-                    </p>
-
-                    <p className="text-[11px] text-neutral-500 mt-1">
-                      Email + Password + DOB + Biometric
-                    </p>
-
-                  </div>
-
-                </div>
-
-              </>
-
-            ) : (
-
-              <>
-
-                <div className="flex items-center gap-3">
-
-                  <div className="text-3xl">
-                    🔑
-                  </div>
-
-                  <div>
-
-                    <p className="text-sm font-black text-white">
-                      Standard login
-                    </p>
-
-                    <p className="text-[11px] text-neutral-500 mt-1">
-                      Email + Password + DOB
-                    </p>
-
-                  </div>
-
-                </div>
-
-              </>
-
-            )}
-
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  {biometricEnabled
+                    ? 'Email + Password + DOB + Biometric'
+                    : 'Email + Password + DOB'}
+                </p>
+              </div>
+            </div>
           </div>
-
-          {/* ==================================================== */}
-          {/* SUBMIT BUTTON */}
-          {/* ==================================================== */}
 
           <button
             type="submit"
             disabled={isBusy}
             className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-
             {biometricLoading
               ? 'Verifying Biometric...'
               : loading
@@ -752,17 +521,10 @@ export default function RestaurantLogin() {
               : biometricEnabled
               ? 'Sign In Securely 🔐'
               : 'Sign In'}
-
           </button>
-
         </form>
 
-        {/* ====================================================== */}
-        {/* GOOGLE LOGIN DIVIDER */}
-        {/* ====================================================== */}
-
         <div className="flex items-center gap-4">
-
           <div className="h-px flex-1 bg-neutral-800" />
 
           <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
@@ -770,12 +532,7 @@ export default function RestaurantLogin() {
           </span>
 
           <div className="h-px flex-1 bg-neutral-800" />
-
         </div>
-
-        {/* ====================================================== */}
-        {/* GOOGLE LOGIN BUTTON */}
-        {/* ====================================================== */}
 
         <button
           type="button"
@@ -783,9 +540,7 @@ export default function RestaurantLogin() {
           disabled={isBusy}
           className="w-full flex items-center justify-center gap-3 bg-white hover:bg-neutral-100 text-neutral-900 font-black py-4 rounded-xl text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
-
           {googleLoading ? (
-
             <>
               <svg
                 className="h-5 w-5 animate-spin"
@@ -810,13 +565,9 @@ export default function RestaurantLogin() {
               </svg>
 
               Connecting to Google...
-
             </>
-
           ) : (
-
             <>
-
               <svg
                 width="20"
                 height="20"
@@ -845,19 +596,11 @@ export default function RestaurantLogin() {
               </svg>
 
               Continue with Google
-
             </>
-
           )}
-
         </button>
 
-        {/* ====================================================== */}
-        {/* FOOTER */}
-        {/* ====================================================== */}
-
         <div className="text-center pt-2 space-y-3">
-
           <a
             href="/register"
             className="text-xs text-orange-400 hover:text-orange-300 underline"
@@ -866,20 +609,15 @@ export default function RestaurantLogin() {
           </a>
 
           <div>
-
             <a
               href="/"
               className="text-xs text-neutral-400 hover:text-white underline"
             >
               ← Back to Home
             </a>
-
           </div>
-
         </div>
-
       </div>
-
     </div>
   )
 }
