@@ -4,6 +4,48 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+function isPasskeySupportedOnCurrentDomain() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  const hostname = window.location.hostname
+
+  const isLocalhost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]'
+
+  const isProductionDomain =
+    hostname === 'digitaldine-in.online' ||
+    hostname === 'www.digitaldine-in.online'
+
+  const hasPublicKeyCredential =
+    typeof window.PublicKeyCredential !== 'undefined'
+
+  /*
+   * Passkeys require a secure context.
+   *
+   * HTTPS production domains are supported.
+   * Localhost is allowed by browsers for development,
+   * but a production RP ID cannot be used from localhost.
+   */
+  return (
+    hasPublicKeyCredential &&
+    window.isSecureContext &&
+    (isLocalhost || isProductionDomain)
+  )
+}
+
+function getPasskeyErrorMessage(error) {
+  const message =
+    error?.message ||
+    error?.name ||
+    ''
+
+  return String(message).toLowerCase()
+}
+
 export default function RestaurantRegistration() {
   const router = useRouter()
 
@@ -29,12 +71,6 @@ export default function RestaurantRegistration() {
       return
     }
 
-    /*
-     * Google provides name and email automatically.
-     *
-     * Phone number and DOB are still collected from this form
-     * because your restaurants table and login system use them.
-     */
     if (!phone.trim() || !dob.trim()) {
       alert(
         'Please enter your Phone Number and Date of Birth before continuing with Google sign-up.'
@@ -50,12 +86,6 @@ export default function RestaurantRegistration() {
     setGoogleLoading(true)
 
     try {
-      /*
-       * Save the additional registration details temporarily.
-       *
-       * These values are needed after Google redirects back
-       * to the website.
-       */
       localStorage.setItem(
         'digitaldining_google_registration',
         JSON.stringify({
@@ -88,7 +118,8 @@ export default function RestaurantRegistration() {
         )
 
         throw new Error(
-          error.message || 'Google sign-up could not be started.'
+          error.message ||
+            'Google sign-up could not be started.'
         )
       }
     } catch (error) {
@@ -96,11 +127,112 @@ export default function RestaurantRegistration() {
 
       alert(
         'Google Sign-up Error: ' +
-          (error?.message ||
-            'Something went wrong while starting Google sign-up.')
+          (
+            error?.message ||
+            'Something went wrong while starting Google sign-up.'
+          )
       )
 
       setGoogleLoading(false)
+    }
+  }
+
+  // ============================================================
+  // SAFE BIOMETRIC SETUP
+  // ============================================================
+
+  const tryRegisterBiometric = async () => {
+    /*
+     * The restaurant account has already been created and the
+     * user has already signed in before this function is called.
+     *
+     * Do not allow a biometric error to make registration fail.
+     */
+
+    if (!isPasskeySupportedOnCurrentDomain()) {
+      console.warn(
+        'Passkey setup skipped: unsupported browser, insecure context, or unsupported domain.'
+      )
+
+      return {
+        success: false,
+        skipped: true,
+        reason: 'unsupported_domain_or_browser',
+      }
+    }
+
+    /*
+     * Do not call a method unless it really exists.
+     *
+     * registerPasskey() is not available in every version of
+     * @supabase/supabase-js.
+     */
+    const registerPasskey =
+      supabase?.auth?.registerPasskey
+
+    if (typeof registerPasskey !== 'function') {
+      console.warn(
+        'Passkey setup skipped: supabase.auth.registerPasskey() is not available in the installed Supabase client.'
+      )
+
+      return {
+        success: false,
+        skipped: true,
+        reason: 'supabase_passkey_api_unavailable',
+      }
+    }
+
+    setBiometricLoading(true)
+
+    try {
+      console.log(
+        'Starting Digital Dining passkey registration...'
+      )
+
+      const result = await registerPasskey()
+
+      const passkeyError = result?.error
+      const passkeyData = result?.data
+
+      if (passkeyError) {
+        console.error(
+          'SUPABASE PASSKEY REGISTRATION ERROR:',
+          passkeyError
+        )
+
+        return {
+          success: false,
+          skipped: false,
+          reason: getPasskeyErrorMessage(passkeyError),
+        }
+      }
+
+      /*
+       * Some APIs may not return a data object even after the
+       * browser has completed the passkey operation.
+       */
+      console.log(
+        'Passkey registration response received:',
+        passkeyData
+      )
+
+      return {
+        success: true,
+        skipped: false,
+      }
+    } catch (error) {
+      console.error(
+        'UNEXPECTED PASSKEY REGISTRATION ERROR:',
+        error
+      )
+
+      return {
+        success: false,
+        skipped: false,
+        reason: getPasskeyErrorMessage(error),
+      }
+    } finally {
+      setBiometricLoading(false)
     }
   }
 
@@ -137,9 +269,9 @@ export default function RestaurantRegistration() {
     setLoading(true)
 
     try {
-      // ============================================================
+      // ========================================================
       // STEP 1: CREATE RESTAURANT ACCOUNT
-      // ============================================================
+      // ========================================================
 
       const res = await fetch('/api/register', {
         method: 'POST',
@@ -174,7 +306,8 @@ export default function RestaurantRegistration() {
 
       if (!res.ok || !data.success) {
         throw new Error(
-          data.message || 'Restaurant registration failed.'
+          data.message ||
+            'Restaurant registration failed.'
         )
       }
 
@@ -184,9 +317,9 @@ export default function RestaurantRegistration() {
         )
       }
 
-      // ============================================================
+      // ========================================================
       // STEP 2: SIGN INTO NEW ACCOUNT
-      // ============================================================
+      // ========================================================
 
       const {
         data: authData,
@@ -202,10 +335,6 @@ export default function RestaurantRegistration() {
           signInError
         )
 
-        /*
-         * The restaurant account was already created.
-         * Do not report registration as completely failed.
-         */
         alert(
           'Your restaurant account was created successfully. Please login normally to continue.'
         )
@@ -223,18 +352,15 @@ export default function RestaurantRegistration() {
         return
       }
 
-      // ============================================================
+      // ========================================================
       // STEP 3: BIOMETRIC OFF
-      // ============================================================
+      // ========================================================
 
       if (!biometricEnabled) {
         console.log(
           'Biometric login disabled by restaurant owner.'
         )
 
-        /*
-         * No passkey registration at all.
-         */
         router.push(
           `/subscribe/${data.restaurantId}`
         )
@@ -242,212 +368,46 @@ export default function RestaurantRegistration() {
         return
       }
 
-      // ============================================================
-      // STEP 4: CHECK PASSKEY SUPPORT
-      // ============================================================
+      // ========================================================
+      // STEP 4: BIOMETRIC SETUP
+      // ========================================================
 
-      if (
-        typeof window === 'undefined' ||
-        !window.PublicKeyCredential
-      ) {
-        alert(
-          'Your account was created successfully. This browser does not support biometric/passkey login. You can enable it later on a supported device.'
-        )
+      const biometricResult =
+        await tryRegisterBiometric()
 
-        router.push(
-          `/subscribe/${data.restaurantId}`
-        )
-
-        return
-      }
-
-      if (
-        !supabase.auth.registerPasskey ||
-        typeof supabase.auth.registerPasskey !== 'function'
-      ) {
-        console.error(
-          'Supabase registerPasskey() is not available.'
-        )
-
-        alert(
-          'Your account was created successfully. Biometric login is currently unavailable. You can continue without it.'
-        )
-
-        router.push(
-          `/subscribe/${data.restaurantId}`
-        )
-
-        return
-      }
-
-      // ============================================================
-      // STEP 5: REGISTER OWNER PASSKEY / BIOMETRIC
-      // ============================================================
-
-      setBiometricLoading(true)
-
-      console.log(
-        'Starting Digital Dining passkey registration...'
-      )
-
-      try {
-        /*
-         * Current Supabase API:
-         *
-         * supabase.auth.registerPasskey()
-         *
-         * Do not pass friendlyName/options here.
-         */
-        const {
-          data: passkeyData,
-          error: passkeyError,
-        } = await supabase.auth.registerPasskey()
-
-        if (passkeyError) {
-          console.error(
-            'SUPABASE PASSKEY REGISTRATION ERROR:',
-            passkeyError
-          )
-
-          const errorCode =
-            passkeyError.code ||
-            passkeyError.name ||
-            ''
-
-          const errorMessage =
-            passkeyError.message ||
-            'Unknown passkey error'
-
-          console.error(
-            'PASSKEY ERROR CODE:',
-            errorCode
-          )
-
-          console.error(
-            'PASSKEY ERROR MESSAGE:',
-            errorMessage
-          )
-
-          if (
-            errorCode === 'webauthn_verification_failed' ||
-            errorMessage
-              .toLowerCase()
-              .includes('credential verification failed')
-          ) {
-            alert(
-              'Your restaurant account was created successfully, but biometric verification could not be completed. You can continue without biometric login and try again later.'
-            )
-          } else if (
-            errorCode === 'webauthn_credential_exists' ||
-            errorMessage
-              .toLowerCase()
-              .includes('credential already exists')
-          ) {
-            alert(
-              'Your restaurant account was created successfully. This biometric/passkey is already registered. You can continue without setting it up again.'
-            )
-          } else if (
-            errorCode === 'passkey_disabled' ||
-            errorMessage
-              .toLowerCase()
-              .includes('passkeys are disabled')
-          ) {
-            alert(
-              'Your restaurant account was created successfully, but biometric login is currently disabled in the system.'
-            )
-          } else if (
-            errorCode === 'webauthn_challenge_expired' ||
-            errorMessage
-              .toLowerCase()
-              .includes('challenge expired')
-          ) {
-            alert(
-              'Your restaurant account was created successfully, but the biometric request expired. You can continue and try biometric setup later.'
-            )
-          } else if (
-            errorMessage
-              .toLowerCase()
-              .includes('cancel') ||
-            errorMessage
-              .toLowerCase()
-              .includes('abort') ||
-            errorMessage
-              .toLowerCase()
-              .includes('notallowed')
-          ) {
-            alert(
-              'Your restaurant account was created successfully. Biometric setup was cancelled. You can continue without biometric login.'
-            )
-          } else {
-            alert(
-              'Your restaurant account was created successfully, but biometric setup could not be completed. You can continue without biometric login.'
-            )
-          }
-
-          /*
-           * Continue to subscription.
-           */
-          router.push(
-            `/subscribe/${data.restaurantId}`
-          )
-
-          return
-        }
-
-        if (!passkeyData) {
-          console.warn(
-            'Passkey registration completed without returned data.'
-          )
-
-          alert(
-            'Your restaurant account was created successfully. Biometric setup could not be confirmed, but you can continue without it.'
-          )
-
-          router.push(
-            `/subscribe/${data.restaurantId}`
-          )
-
-          return
-        }
-
-        // ============================================================
-        // STEP 6: PASSKEY SUCCESS
-        // ============================================================
-
-        console.log(
-          'Digital Dining passkey successfully registered.'
-        )
-
+      if (biometricResult.success) {
         alert(
           'Account Created and Biometric Login Enabled! 🔐'
         )
-
-        router.push(
-          `/subscribe/${data.restaurantId}`
-        )
-
-        return
-      } catch (passkeyException) {
-        /*
-         * Any unexpected passkey error does not
-         * make restaurant registration fail.
-         */
-
-        console.error(
-          'UNEXPECTED PASSKEY ERROR:',
-          passkeyException
-        )
-
+      } else if (
+        biometricResult.reason ===
+        'unsupported_domain_or_browser'
+      ) {
         alert(
-          'Your restaurant account was created successfully, but biometric setup could not be completed. You can continue without biometric login.'
+          'Your restaurant account was created successfully. Biometric setup is available after opening the website on the supported HTTPS domain. You can continue without it.'
         )
-
-        router.push(
-          `/subscribe/${data.restaurantId}`
+      } else if (
+        biometricResult.reason ===
+        'supabase_passkey_api_unavailable'
+      ) {
+        alert(
+          'Your restaurant account was created successfully. Biometric setup is not available in the current authentication configuration. You can continue without it.'
         )
-
-        return
+      } else {
+        alert(
+          'Your restaurant account was created successfully, but biometric setup could not be completed. You can continue without biometric login and try again later.'
+        )
       }
+
+      // ========================================================
+      // STEP 5: CONTINUE TO SUBSCRIPTION
+      // ========================================================
+
+      router.push(
+        `/subscribe/${data.restaurantId}`
+      )
+
+      return
     } catch (err) {
       console.error(
         'REGISTRATION ERROR:',
@@ -456,8 +416,10 @@ export default function RestaurantRegistration() {
 
       alert(
         'Registration Error: ' +
-          (err?.message ||
-            'Something went wrong.')
+          (
+            err?.message ||
+            'Something went wrong.'
+          )
       )
     } finally {
       setBiometricLoading(false)
@@ -472,12 +434,10 @@ export default function RestaurantRegistration() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 font-sans py-12">
-
       <div className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-lg w-full p-8 shadow-2xl space-y-6">
 
         {/* HEADER */}
         <div className="text-center space-y-2">
-
           <span className="text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
             Step 1 of 2
           </span>
@@ -489,20 +449,16 @@ export default function RestaurantRegistration() {
           <p className="text-xs text-neutral-400">
             Set up your digital dining credentials and owner profile.
           </p>
-
         </div>
 
         {/* BIOMETRIC INFORMATION */}
         <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4">
-
           <div className="flex items-start gap-3">
-
             <div className="text-2xl">
               🔐
             </div>
 
             <div>
-
               <p className="text-sm font-black text-orange-300">
                 Secure biometric login
               </p>
@@ -519,11 +475,8 @@ export default function RestaurantRegistration() {
                 or fingerprint image. Your device handles the
                 biometric verification.
               </p>
-
             </div>
-
           </div>
-
         </div>
 
         {/* REGISTRATION FORM */}
@@ -531,10 +484,8 @@ export default function RestaurantRegistration() {
           onSubmit={handleRegister}
           className="space-y-4"
         >
-
           {/* RESTAURANT NAME */}
           <div>
-
             <label className="text-xs font-bold text-neutral-300 block mb-1">
               Restaurant Name
             </label>
@@ -551,14 +502,11 @@ export default function RestaurantRegistration() {
               autoComplete="organization"
               className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
             />
-
           </div>
 
           {/* EMAIL + PHONE */}
           <div className="grid grid-cols-2 gap-3">
-
             <div>
-
               <label className="text-xs font-bold text-neutral-300 block mb-1">
                 Email Address
               </label>
@@ -575,11 +523,9 @@ export default function RestaurantRegistration() {
                 autoComplete="email"
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
               />
-
             </div>
 
             <div>
-
               <label className="text-xs font-bold text-neutral-300 block mb-1">
                 Phone Number
               </label>
@@ -591,10 +537,9 @@ export default function RestaurantRegistration() {
                 value={phone}
                 onChange={(e) =>
                   setPhone(
-                    e.target.value.replace(
-                      /\D/g,
-                      ''
-                    ).slice(0, 10)
+                    e.target.value
+                      .replace(/\D/g, '')
+                      .slice(0, 10)
                   )
                 }
                 required
@@ -602,16 +547,12 @@ export default function RestaurantRegistration() {
                 autoComplete="tel"
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
               />
-
             </div>
-
           </div>
 
           {/* DOB + PASSWORD */}
           <div className="grid grid-cols-2 gap-3">
-
             <div>
-
               <label className="text-xs font-bold text-neutral-300 block mb-1">
                 Date of Birth (Security)
               </label>
@@ -627,11 +568,9 @@ export default function RestaurantRegistration() {
                 autoComplete="bday"
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono text-neutral-300 disabled:opacity-50"
               />
-
             </div>
 
             <div>
-
               <label className="text-xs font-bold text-neutral-300 block mb-1">
                 Password
               </label>
@@ -649,27 +588,18 @@ export default function RestaurantRegistration() {
                 minLength={6}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono disabled:opacity-50"
               />
-
             </div>
-
           </div>
 
-          {/* ====================================================== */}
           {/* BIOMETRIC ON / OFF */}
-          {/* ====================================================== */}
-
           <div className="border border-neutral-800 bg-neutral-950 rounded-2xl p-4">
-
             <div className="flex items-center justify-between gap-4">
-
               <div className="flex items-start gap-3">
-
                 <div className="text-2xl">
                   🔐
                 </div>
 
                 <div>
-
                   <p className="text-sm font-black text-white">
                     Biometric Login
                   </p>
@@ -678,12 +608,9 @@ export default function RestaurantRegistration() {
                     Enable fingerprint, Face ID, Windows Hello
                     or passkey login.
                   </p>
-
                 </div>
-
               </div>
 
-              {/* TOGGLE */}
               <button
                 type="button"
                 disabled={isBusy}
@@ -703,7 +630,6 @@ export default function RestaurantRegistration() {
                   )
                 }
               >
-
                 <span
                   className={
                     'absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-all ' +
@@ -714,13 +640,10 @@ export default function RestaurantRegistration() {
                     )
                   }
                 />
-
               </button>
-
             </div>
 
             <div className="mt-3">
-
               {biometricEnabled ? (
                 <p className="text-[11px] text-green-400 font-bold">
                   ● ON — Biometric setup will be offered after account creation.
@@ -730,9 +653,7 @@ export default function RestaurantRegistration() {
                   ● OFF — You can use email, password and DOB to login.
                 </p>
               )}
-
             </div>
-
           </div>
 
           {/* NORMAL SUBMIT BUTTON */}
@@ -741,7 +662,6 @@ export default function RestaurantRegistration() {
             disabled={isBusy}
             className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-
             {biometricLoading
               ? 'Set Up Face / Fingerprint...'
               : loading
@@ -749,12 +669,10 @@ export default function RestaurantRegistration() {
               : biometricEnabled
               ? 'Create Account + Set Up Biometric 🔐'
               : 'Create Account'}
-
           </button>
 
           {/* DIVIDER */}
           <div className="flex items-center gap-3">
-
             <div className="h-px bg-neutral-800 flex-1" />
 
             <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">
@@ -762,7 +680,6 @@ export default function RestaurantRegistration() {
             </span>
 
             <div className="h-px bg-neutral-800 flex-1" />
-
           </div>
 
           {/* GOOGLE SIGN-UP BUTTON */}
@@ -772,7 +689,6 @@ export default function RestaurantRegistration() {
             disabled={isBusy}
             className="w-full bg-white hover:bg-neutral-200 text-neutral-900 font-black py-4 rounded-xl text-xs uppercase tracking-wider transition flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-
             {googleLoading ? (
               <>
                 <span className="animate-spin h-4 w-4 border-2 border-neutral-400 border-t-neutral-900 rounded-full" />
@@ -807,7 +723,6 @@ export default function RestaurantRegistration() {
                 Continue with Google
               </>
             )}
-
           </button>
 
           <p className="text-[10px] text-neutral-500 text-center leading-relaxed">
@@ -815,24 +730,18 @@ export default function RestaurantRegistration() {
             date of birth because they are used for your restaurant
             profile and account security.
           </p>
-
         </form>
 
         {/* SECURITY NOTE */}
         <div className="border-t border-neutral-800 pt-4">
-
           <p className="text-[11px] text-neutral-500 text-center leading-relaxed">
-
             Your biometric information stays on your device.
             Digital Dining receives a cryptographic passkey
             credential rather than your face or fingerprint.
-
           </p>
-
         </div>
 
       </div>
-
     </div>
   )
 }
