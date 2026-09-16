@@ -288,11 +288,20 @@ export default function RestaurantDashboard() {
         .eq('owner_id', user.id)
         .maybeSingle()
 
-      if (ownershipError || !ownedRestaurant) {
-        console.error('Dashboard ownership verification failed:', ownershipError)
-        if (!cancelled) router.replace('/login')
-        return
-      }
+     if (ownershipError || !ownedRestaurant) {
+  console.error('Dashboard ownership verification failed:', {
+    restaurantId,
+    userId: user?.id,
+    ownershipError,
+    ownedRestaurant,
+  })
+
+  if (!cancelled) {
+    router.replace('/login')
+  }
+
+  return
+}
 
       if (!cancelled) setAuthChecked(true)
     }
@@ -1929,6 +1938,7 @@ export default function RestaurantDashboard() {
               id: 'settlements',
               label: '📊 Reports & Settlements'
             }
+            
           ].map((tab) => (
             <button
               key={tab.id}
@@ -2754,6 +2764,10 @@ export default function RestaurantDashboard() {
 
                                     <option value="beverage">
                                       🥤 Beverage
+                                    </option>
+
+                                    <option value="cocktail">
+                                      🍹 Cocktail
                                     </option>
 
                                     <option value="other">
