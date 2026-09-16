@@ -1,4 +1,5 @@
 'use client'
+import ThemeToggle from '@/app/components/ThemeToggle'
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -1805,6 +1806,8 @@ export default function RestaurantDashboard() {
           </div>
 
           <div className="flex items-center space-x-3">
+            <ThemeToggle />
+
             <button
               onClick={() =>
                 router.push(

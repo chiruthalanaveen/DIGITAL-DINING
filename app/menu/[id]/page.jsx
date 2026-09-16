@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import ThemeToggle from '@/app/components/ThemeToggle'
 
 // Restaurant logo used throughout the QR menu.
 function RestaurantLogo({ restaurant, className = '', imageClassName = 'w-full h-full object-contain' }) {
@@ -1226,6 +1227,10 @@ export default function CustomerMenuPage() {
    */
   return (
     <>
+      <div className="fixed top-3 right-3 z-[300]">
+        <ThemeToggle />
+      </div>
+
       <style jsx global>{`
         input, textarea, select {
           color: #000000 !important;

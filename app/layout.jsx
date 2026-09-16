@@ -12,15 +12,33 @@ export const metadata = {
   },
 }
 
+const themeInit = `
+(function () {
+  try {
+    var saved = localStorage.getItem('digitaldining-theme');
+    var theme = saved === 'light' || saved === 'dark'
+      ? saved
+      : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.dataset.theme = theme;
+  } catch (e) {
+    document.documentElement.dataset.theme = 'dark';
+  }
+})();
+`
+
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body className="bg-neutral-950 text-neutral-100 antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script id="digitaldining-theme-init" strategy="beforeInteractive">
+          {themeInit}
+        </Script>
+      </head>
+      <body className="antialiased">
         {children}
-        {/* Load Razorpay checkout script globally */}
-        <Script 
-          src="https://checkout.razorpay.com/v1/checkout.js" 
-          strategy="lazyOnload" 
+        <Script
+          src="https://checkout.razorpay.com/v1/checkout.js"
+          strategy="lazyOnload"
         />
       </body>
     </html>
