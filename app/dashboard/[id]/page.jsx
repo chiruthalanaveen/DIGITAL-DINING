@@ -2047,11 +2047,6 @@ export default function RestaurantDashboard() {
               id: 'gateway',
               label: '💳 Payment Gateways'
             },
-            {
-              id: 'settlements',
-              label: '📊 Reports & Settlements'
-            }
-            
           ].map((tab) => (
             <button
               key={tab.id}
