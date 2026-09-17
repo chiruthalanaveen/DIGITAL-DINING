@@ -116,3 +116,122 @@ html.dd-theme-switching *, html.dd-theme-switching *::before, html.dd-theme-swit
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration:0ms !important; animation-duration:0ms !important; }
 }
+
+
+
+
+/* ==================================================
+   QR MENU FULL PAGE DAY/NIGHT THEME
+================================================== */
+
+.dd-qr-menu-page {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  isolation: isolate;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+/* Night mode */
+.dd-qr-menu-page.dd-qr-menu-night {
+  background: #080b16 !important;
+  color: #f8fafc !important;
+}
+
+/* Day mode */
+.dd-qr-menu-page.dd-qr-menu-day {
+  background: #f3f6fb !important;
+  color: #172033 !important;
+}
+
+/* Full viewport background behind the QR menu */
+html:has(.dd-qr-menu-page.dd-qr-menu-day),
+body:has(.dd-qr-menu-page.dd-qr-menu-day) {
+  background: #f3f6fb !important;
+  color: #172033 !important;
+}
+
+html:has(.dd-qr-menu-page.dd-qr-menu-night),
+body:has(.dd-qr-menu-page.dd-qr-menu-night) {
+  background: #080b16 !important;
+  color: #f8fafc !important;
+}
+
+/* Common direct child full-page backgrounds */
+.dd-qr-menu-page.dd-qr-menu-day > .bg-black,
+.dd-qr-menu-page.dd-qr-menu-day > .bg-neutral-950,
+.dd-qr-menu-page.dd-qr-menu-day > .bg-gray-950,
+.dd-qr-menu-page.dd-qr-menu-day > .bg-zinc-950,
+.dd-qr-menu-page.dd-qr-menu-day > [style*='#080b16'],
+.dd-qr-menu-page.dd-qr-menu-day > [style*='#090d1f'],
+.dd-qr-menu-page.dd-qr-menu-day > [style*='#0a0d16'] {
+  background: #f3f6fb !important;
+  background-color: #f3f6fb !important;
+}
+
+/* Convert major QR menu dark surfaces in Day mode */
+.dd-qr-menu-page.dd-qr-menu-day .bg-black,
+.dd-qr-menu-page.dd-qr-menu-day .bg-neutral-950,
+.dd-qr-menu-page.dd-qr-menu-day .bg-gray-950,
+.dd-qr-menu-page.dd-qr-menu-day .bg-zinc-950 {
+  background-color: #f3f6fb !important;
+}
+
+.dd-qr-menu-page.dd-qr-menu-day .bg-neutral-900,
+.dd-qr-menu-page.dd-qr-menu-day .bg-gray-900,
+.dd-qr-menu-page.dd-qr-menu-day .bg-zinc-900 {
+  background-color: #ffffff !important;
+}
+
+.dd-qr-menu-page.dd-qr-menu-day .bg-neutral-800,
+.dd-qr-menu-page.dd-qr-menu-day .bg-gray-800,
+.dd-qr-menu-page.dd-qr-menu-day .bg-zinc-800 {
+  background-color: #e7edf6 !important;
+}
+
+/* Day mode text */
+.dd-qr-menu-page.dd-qr-menu-day .text-white,
+.dd-qr-menu-page.dd-qr-menu-day .text-neutral-100,
+.dd-qr-menu-page.dd-qr-menu-day .text-neutral-200,
+.dd-qr-menu-page.dd-qr-menu-day .text-neutral-300,
+.dd-qr-menu-page.dd-qr-menu-day .text-gray-100,
+.dd-qr-menu-page.dd-qr-menu-day .text-gray-200,
+.dd-qr-menu-page.dd-qr-menu-day .text-gray-300 {
+  color: #172033 !important;
+}
+
+.dd-qr-menu-page.dd-qr-menu-day .text-neutral-400,
+.dd-qr-menu-page.dd-qr-menu-day .text-neutral-500,
+.dd-qr-menu-page.dd-qr-menu-day .text-gray-400,
+.dd-qr-menu-page.dd-qr-menu-day .text-gray-500 {
+  color: #667085 !important;
+}
+
+/* Day mode borders */
+.dd-qr-menu-page.dd-qr-menu-day [class*='border-neutral-'],
+.dd-qr-menu-page.dd-qr-menu-day [class*='border-gray-'],
+.dd-qr-menu-page.dd-qr-menu-day [class*='border-white/'] {
+  border-color: #d6deea !important;
+}
+
+/* Form controls in Day mode */
+.dd-qr-menu-page.dd-qr-menu-day input,
+.dd-qr-menu-page.dd-qr-menu-day textarea,
+.dd-qr-menu-page.dd-qr-menu-day select {
+  background-color: #ffffff !important;
+  color: #172033 !important;
+  border-color: #d6deea !important;
+}
+
+.dd-qr-menu-page.dd-qr-menu-day input::placeholder,
+.dd-qr-menu-page.dd-qr-menu-day textarea::placeholder {
+  color: #667085 !important;
+}
+
+/* Fast page transition */
+.dd-qr-menu-page,
+.dd-qr-menu-page * {
+  transition-duration: 180ms;
+}

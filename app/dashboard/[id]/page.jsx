@@ -162,7 +162,7 @@ export default function RestaurantDashboard() {
   const [menuItems, setMenuItems] = useState([])
   const [dailyOffers, setDailyOffers] = useState([])
   const [orders, setOrders] = useState([])
-  const [activeTab, setActiveTab] = useState('orders')
+  const [activeTab, setActiveTab] = useState('settlements')
   const [isStoreOpen, setIsStoreOpen] = useState(true)
 
   // Add Dish Form States
@@ -195,7 +195,7 @@ export default function RestaurantDashboard() {
   const [staffName, setStaffName] = useState('')
   const [staffUserId, setStaffUserId] = useState('')
   const [staffPassword, setStaffPassword] = useState('')
-  const [staffRole, setStaffRole] = useState('waiter')
+  const [staffRole] = useState('manager')
   const [addingStaff, setAddingStaff] = useState(false)
 
   // Tax & Packing Charge Configuration States
@@ -967,7 +967,7 @@ export default function RestaurantDashboard() {
             .toLowerCase(),
         password:
           staffPassword.trim(),
-        role: staffRole,
+        role: 'manager',
         pin:
           staffPassword.trim()
       }
@@ -983,7 +983,7 @@ export default function RestaurantDashboard() {
       if (error) throw error
 
       alert(
-        'Staff member created successfully! 🎉'
+        'Restaurant Manager account created successfully! 🎉'
       )
 
       setStaffName('')
@@ -1394,20 +1394,130 @@ export default function RestaurantDashboard() {
     if (editingOfferId === offer.id) resetOfferForm()
   }
 
-  const handleReportTimeframeChange =
-    (frame) => {
-      if (
-        frame === 'yearly' &&
-        currentPlan !== 'Pro+'
-      ) {
-        alert(
-          '🔒 Yearly comprehensive audit reports are exclusive to the Pro+ tier. Please upgrade to Pro+ to unlock yearly analytics.'
-        )
-        return
-      }
+  // ---------------------------------------------------------
+  // ANALYTICS & REPORTING
+  // ---------------------------------------------------------
+  const getReportRange = (frame) => {
+    const now = new Date()
+    const start = new Date(now)
 
-      setReportTimeframe(frame)
+    if (frame === 'daily') {
+      start.setHours(0, 0, 0, 0)
+    } else if (frame === 'weekly') {
+      const day = start.getDay()
+      const daysSinceMonday = day === 0 ? 6 : day - 1
+      start.setDate(start.getDate() - daysSinceMonday)
+      start.setHours(0, 0, 0, 0)
+    } else if (frame === 'monthly') {
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+    } else if (frame === 'yearly') {
+      start.setMonth(0, 1)
+      start.setHours(0, 0, 0, 0)
     }
+
+    return { start, end: now }
+  }
+
+  const reportRange = getReportRange(reportTimeframe)
+
+  const reportOrders = orders.filter((order) => {
+    if (!order?.created_at || order.status === 'cancelled') return false
+    const createdAt = new Date(order.created_at)
+    return createdAt >= reportRange.start && createdAt <= reportRange.end
+  })
+
+  const reportOrderCount = reportOrders.length
+
+  const reportRevenue = reportOrders.reduce(
+    (sum, order) => sum + Number(order.total_amount || 0),
+    0
+  )
+
+  const reportAverageOrderValue = reportOrderCount
+    ? reportRevenue / reportOrderCount
+    : 0
+
+  const hourlyReport = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    orders: 0,
+    revenue: 0
+  }))
+
+  reportOrders.forEach((order) => {
+    const hour = new Date(order.created_at).getHours()
+    hourlyReport[hour].orders += 1
+    hourlyReport[hour].revenue += Number(order.total_amount || 0)
+  })
+
+  const peakHour = hourlyReport.reduce(
+    (peak, item) => item.orders > peak.orders ? item : peak,
+    { hour: 0, orders: 0, revenue: 0 }
+  )
+
+  const formatHour = (hour) => {
+    const suffix = hour >= 12 ? 'PM' : 'AM'
+    const displayHour = hour % 12 || 12
+    return `${displayHour}:00 ${suffix}`
+  }
+
+  const formatCurrency = (value) =>
+    `₹${Number(value || 0).toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`
+
+  const handleGenerateAnalyticsReport = () => {
+    if (reportOrders.length === 0) {
+      alert('There are no orders in the selected period to generate a report.')
+      return
+    }
+
+    const rows = [
+      ['Report Period', reportTimeframe],
+      ['Generated At', new Date().toLocaleString('en-IN')],
+      ['Total Orders', reportOrderCount],
+      ['Total Revenue', reportRevenue.toFixed(2)],
+      ['Average Order Value', reportAverageOrderValue.toFixed(2)],
+      ['Peak Sales Hour', formatHour(peakHour.hour)],
+      ['Peak Hour Orders', peakHour.orders],
+      [],
+      ['Order ID', 'Date', 'Time', 'Status', 'Payment Mode', 'Total Amount']
+    ]
+
+    reportOrders.forEach((order) => {
+      const date = new Date(order.created_at)
+      rows.push([
+        order.id || '',
+        date.toLocaleDateString('en-IN'),
+        date.toLocaleTimeString('en-IN'),
+        order.status || '',
+        order.payment_mode || '',
+        Number(order.total_amount || 0).toFixed(2)
+      ])
+    })
+
+    const csv = rows
+      .map((row) => row.map((cell) => {
+        const value = String(cell ?? '')
+        return `"${value.replace(/"/g, '""')}"`
+      }).join(','))
+      .join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `restaurant-${reportTimeframe}-report-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleReportTimeframeChange = (frame) => {
+    setReportTimeframe(frame)
+  }
 
   const handleUpgradePlan =
     (targetPlan) => {
@@ -1906,8 +2016,8 @@ export default function RestaurantDashboard() {
         <div className="flex space-x-2 border-b border-neutral-800 pb-3 overflow-x-auto">
           {[
             {
-              id: 'orders',
-              label: `🔥 Live Orders (${orders.length})`
+              id: 'settlements',
+              label: '📊 Analytics & Reports'
             },
             {
               id: 'menu',
@@ -1915,7 +2025,7 @@ export default function RestaurantDashboard() {
             },
             {
               id: 'staff',
-              label: `👥 Staff Management (${staffList.length})`
+              label: `👥 Manager Management (${staffList.length})`
             },
             {
               id: 'taxes',
@@ -1958,197 +2068,6 @@ export default function RestaurantDashboard() {
             </button>
           ))}
         </div>
-
-        {/* TAB 1: LIVE ORDERS */}
-        {activeTab === 'orders' && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-black text-white">
-              Live Kitchen Orders Queue
-            </h2>
-
-            {orders.length === 0 ? (
-              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-16 text-center text-neutral-500 space-y-2">
-                <div className="text-4xl">
-                  🛎️
-                </div>
-
-                <p className="font-bold text-white text-base">
-                  No orders in queue
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {orders.map((order) => {
-                  const orderTime =
-                    new Date(
-                      order.created_at
-                    ).getTime()
-
-                  const currentTime =
-                    Date.now()
-
-                  const diffMinutes =
-                    (
-                      currentTime -
-                      orderTime
-                    ) /
-                    (1000 * 60)
-
-                  const isProPlus =
-                    currentPlan ===
-                    'Pro+'
-
-                  const isWithin3MinWindow =
-                    isProPlus &&
-                    diffMinutes <=
-                      3 &&
-                    order.status !==
-                      'completed'
-
-                  return (
-                    <div
-                      key={order.id}
-                      className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-md flex flex-col justify-between space-y-4"
-                    >
-                      <div>
-                        <div className="flex justify-between items-start">
-                          <div className="flex items-center space-x-2">
-                            <span className="bg-orange-500 text-white text-xs font-black px-3 py-1 rounded-xl">
-                              Table{' '}
-                              {order.table_number ||
-                                '1'}
-                            </span>
-
-                            {order.waiter_name && (
-                              <span className="bg-neutral-800 text-orange-400 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-neutral-700">
-                                Waiter:{' '}
-                                {
-                                  order.waiter_name
-                                }
-                              </span>
-                            )}
-                          </div>
-
-                          <span
-                            className={`text-[10px] font-black px-3 py-1 rounded-xl uppercase ${
-                              order.status ===
-                              'ready'
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse'
-                            }`}
-                          >
-                            {order.payment_mode ||
-                              'Online'}{' '}
-                            •{' '}
-                            {
-                              order.status
-                            }
-                          </span>
-                        </div>
-
-                        {isWithin3MinWindow && (
-                          <div className="mt-3 bg-amber-500/10 border border-amber-500/30 p-2.5 rounded-xl text-[11px] text-amber-300 flex items-center justify-between">
-                            <span>
-                              ⏳ 3-Min Add-On Active: Customer can append items.
-                            </span>
-
-                            <span className="font-bold font-mono">
-                              {Math.max(
-                                0,
-                                Math.ceil(
-                                  3 -
-                                    diffMinutes
-                                )
-                              )}{' '}
-                              min left
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="mt-3 space-y-2 bg-neutral-950 p-4 rounded-2xl border border-neutral-800">
-                          {order.items &&
-                            order.items.map(
-                              (
-                                item,
-                                idx
-                              ) => (
-                                <div
-                                  key={
-                                    idx
-                                  }
-                                  className="flex justify-between items-center text-sm"
-                                >
-                                  <span className="text-neutral-200 font-medium">
-                                    •{' '}
-                                    {
-                                      item.name
-                                    }{' '}
-                                    <strong className="text-orange-400">
-                                      ×
-                                      {item.qty ||
-                                        item.quantity}
-                                    </strong>
-                                  </span>
-
-                                  <span className="text-xs text-neutral-400">
-                                    ₹
-                                    {item.price *
-                                      (item.qty ||
-                                        item.quantity ||
-                                        1)}
-                                  </span>
-                                </div>
-                              )
-                            )}
-                        </div>
-                      </div>
-
-                      <div className="border-t border-neutral-800 pt-4 flex justify-between items-center">
-                        <div>
-                          <p className="text-[10px] uppercase font-bold text-neutral-500">
-                            Total Amount (Incl. Taxes & Packing)
-                          </p>
-
-                          <p className="text-lg font-black text-emerald-400">
-                            ₹
-                            {
-                              order.total_amount
-                            }
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handlePrintBill(order)}
-                            className="bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white border border-orange-500/20 text-xs font-bold px-4 py-2 rounded-xl transition"
-                          >
-                            🧾 Generate Bill
-                          </button>
-
-                          {order.status !==
-                            'completed' && (
-                            <button
-                              onClick={() =>
-                                updateOrderStatus(
-                                  order.id,
-                                  'completed'
-                                )
-                              }
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow"
-                            >
-                              Mark Completed 🚀
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* TAB 2: MENU CATALOG */}
         {activeTab === 'menu' && (
@@ -3171,15 +3090,15 @@ export default function RestaurantDashboard() {
 
             <div className="border-b border-neutral-800 pb-4">
               <span className="text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
-                Staff Access Control
+                Restaurant Manager Access Control
               </span>
 
               <h2 className="text-xl font-black text-white mt-2">
-                Waiter & Kitchen User IDs & Passwords
+                Restaurant Manager Login Credentials
               </h2>
 
               <p className="text-xs text-neutral-400">
-                Create login credentials for your waiters and kitchen staff so they can access their respective portals.
+                Create a Restaurant Manager account. The Manager can later create Waiter and Kitchen accounts from the Manager dashboard.
               </p>
             </div>
 
@@ -3250,24 +3169,9 @@ export default function RestaurantDashboard() {
                 <label className="text-[10px] font-bold text-neutral-400 block mb-1 uppercase">
                   Role
                 </label>
-
-                <select
-                  value={staffRole}
-                  onChange={(e) =>
-                    setStaffRole(
-                      e.target.value
-                    )
-                  }
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-orange-500"
-                >
-                  <option value="waiter">
-                    Waiter
-                  </option>
-
-                  <option value="kitchen">
-                    Kitchen KDS
-                  </option>
-                </select>
+                <div className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-orange-400 text-xs font-black">
+                  Restaurant Manager
+                </div>
               </div>
 
               <button
@@ -3308,7 +3212,7 @@ export default function RestaurantDashboard() {
                         colSpan="4"
                         className="p-6 text-center text-neutral-500"
                       >
-                        No staff accounts created yet.
+                        No manager accounts created yet.
                       </td>
                     </tr>
                   ) : (
@@ -3335,9 +3239,9 @@ export default function RestaurantDashboard() {
                             <span
                               className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
                                 staff.role ===
-                                'waiter'
+                                'manager'
                                   ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
-                                  : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                  : 'bg-neutral-500/10 text-neutral-400 border border-neutral-500/20'
                               }`}
                             >
                               {
@@ -3350,16 +3254,13 @@ export default function RestaurantDashboard() {
                             <button
                               onClick={() =>
                                 window.open(
-                                  staff.role ===
-                                    'waiter'
-                                    ? `/waiter/${restaurantId}`
-                                    : `/kitchen/${restaurantId}`,
+                                  `/manager/${restaurantId}`,
                                   '_blank'
                                 )
                               }
                               className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-3 py-1 rounded-lg font-bold transition"
                             >
-                              Open Portal ↗
+                              Open Manager Portal ↗
                             </button>
 
                             <button
@@ -4197,133 +4098,172 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* TAB 7: REPORTS & SETTLEMENTS */}
-        {activeTab ===
-          'settlements' && (
-          <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-xl mx-auto space-y-6 shadow-xl">
+        {/* TAB 7: ANALYTICS & REPORTS */}
+        {activeTab === 'settlements' && (
+          <div className="space-y-6">
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+              <div>
+                <span className="text-[10px] font-extrabold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
+                  Restaurant Analytics
+                </span>
+                <h2 className="text-2xl font-black text-white mt-3">
+                  Sales & Order Reports
+                </h2>
+                <p className="text-xs text-neutral-400 mt-2">
+                  Review order volume, revenue, average order value, and the time of day when orders sell most.
+                </p>
+              </div>
 
-            <div className="text-center space-y-2">
-              <span className="text-[10px] font-extrabold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
-                Financial Reporting & Payouts
-              </span>
-
-              <h2 className="text-xl font-black text-white">
-                Order & Revenue Reports
-              </h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleGenerateAnalyticsReport}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 rounded-xl text-xs font-black transition"
+                >
+                  Generate CSV Report 📥
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-3 rounded-xl text-xs font-black transition"
+                >
+                  Print Report 🖨️
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-2 bg-neutral-950 p-1.5 rounded-2xl border border-neutral-800">
-
-              <button
-                onClick={() =>
-                  handleReportTimeframeChange(
-                    'daily'
-                  )
-                }
-                className={`py-2 rounded-xl text-[11px] font-bold transition ${
-                  reportTimeframe ===
-                  'daily'
-                    ? 'bg-orange-500 text-white'
-                    : 'text-neutral-400'
-                }`}
-              >
-                Daily
-              </button>
-
-              <button
-                onClick={() =>
-                  handleReportTimeframeChange(
-                    'weekly'
-                  )
-                }
-                className={`py-2 rounded-xl text-[11px] font-bold transition ${
-                  reportTimeframe ===
-                  'weekly'
-                    ? 'bg-orange-500 text-white'
-                    : 'text-neutral-400'
-                }`}
-              >
-                Weekly
-              </button>
-
-              <button
-                onClick={() =>
-                  handleReportTimeframeChange(
-                    'monthly'
-                  )
-                }
-                className={`py-2 rounded-xl text-[11px] font-bold transition ${
-                  reportTimeframe ===
-                  'monthly'
-                    ? 'bg-orange-500 text-white'
-                    : 'text-neutral-400'
-                }`}
-              >
-                Monthly
-              </button>
-
-              <button
-                onClick={() =>
-                  handleReportTimeframeChange(
-                    'yearly'
-                  )
-                }
-                className={`py-2 rounded-xl text-[11px] font-bold transition ${
-                  reportTimeframe ===
-                  'yearly'
-                    ? 'bg-amber-500 text-neutral-950 font-black'
-                    : 'text-neutral-400'
-                }`}
-              >
-                Yearly{' '}
-                {currentPlan !==
-                  'Pro+' &&
-                  '🔒'}
-              </button>
-            </div>
-
-            <div className="bg-neutral-950 border border-neutral-800 p-6 rounded-2xl text-center space-y-1">
-              <p className="text-xs font-bold uppercase text-neutral-500">
-
-                {reportTimeframe ===
-                  'daily' &&
-                  'Daily Revenue Report'}
-
-                {reportTimeframe ===
-                  'weekly' &&
-                  'Weekly Revenue Report'}
-
-                {reportTimeframe ===
-                  'monthly' &&
-                  'Monthly Revenue Report'}
-
-                {reportTimeframe ===
-                  'yearly' &&
-                  'Yearly Pro+ Audit Report'}
-              </p>
-
-              <p className="text-3xl font-black text-emerald-400">
-                ₹{totalRevenue}
-              </p>
-
-              <p className="text-[10px] text-neutral-500 pt-1">
-                Active Membership Tier:{' '}
-                <strong className="text-amber-400">
-                  {currentPlan}
-                </strong>
-              </p>
-            </div>
-
-            <button
-              onClick={() =>
-                alert(
-                  'Payout requested successfully!'
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[
+                ['Today', 'daily'],
+                ['This Week', 'weekly'],
+                ['This Month', 'monthly'],
+                ['This Year', 'yearly']
+              ].map(([label, frame]) => {
+                const range = getReportRange(frame)
+                const periodOrders = orders.filter((order) => {
+                  if (!order?.created_at || order.status === 'cancelled') return false
+                  const createdAt = new Date(order.created_at)
+                  return createdAt >= range.start && createdAt <= range.end
+                })
+                const periodRevenue = periodOrders.reduce(
+                  (sum, order) => sum + Number(order.total_amount || 0),
+                  0
                 )
-              }
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 rounded-xl text-xs transition shadow"
-            >
-              Request Bank Payout 🏦
-            </button>
+
+                return (
+                  <button
+                    key={frame}
+                    onClick={() => handleReportTimeframeChange(frame)}
+                    className={`text-left p-4 rounded-2xl border transition ${
+                      reportTimeframe === frame
+                        ? 'bg-orange-500/15 border-orange-500/60'
+                        : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
+                    }`}
+                  >
+                    <p className="text-[10px] uppercase tracking-wider text-neutral-400 font-black">
+                      {label}
+                    </p>
+                    <p className="text-2xl font-black text-white mt-2">
+                      {periodOrders.length}
+                    </p>
+                    <p className="text-xs text-emerald-400 font-bold mt-1">
+                      {formatCurrency(periodRevenue)} sales
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+                <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">
+                  Selected Period Orders
+                </p>
+                <p className="text-3xl font-black text-white mt-2">
+                  {reportOrderCount}
+                </p>
+              </div>
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+                <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">
+                  Selected Period Sales
+                </p>
+                <p className="text-3xl font-black text-emerald-400 mt-2">
+                  {formatCurrency(reportRevenue)}
+                </p>
+              </div>
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+                <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">
+                  Average Order Value
+                </p>
+                <p className="text-3xl font-black text-orange-400 mt-2">
+                  {formatCurrency(reportAverageOrderValue)}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h3 className="text-lg font-black text-white">
+                    What time do customers order most?
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Hourly order generation for the selected {reportTimeframe} period.
+                  </p>
+                </div>
+                <div className="text-left sm:text-right">
+                  <p className="text-[10px] uppercase text-neutral-500 font-black">Peak Hour</p>
+                  <p className="text-lg font-black text-amber-400">
+                    {peakHour.orders > 0 ? formatHour(peakHour.hour) : 'No orders'}
+                  </p>
+                  <p className="text-[10px] text-neutral-500">
+                    {peakHour.orders} order{peakHour.orders === 1 ? '' : 's'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {hourlyReport.map((item) => {
+                  const maxOrders = Math.max(...hourlyReport.map((hour) => hour.orders), 1)
+                  const width = `${Math.max((item.orders / maxOrders) * 100, item.orders ? 5 : 0)}%`
+
+                  return (
+                    <div key={item.hour} className="grid grid-cols-[72px_1fr_80px] items-center gap-3 text-xs">
+                      <span className="text-neutral-400 font-mono">{formatHour(item.hour)}</span>
+                      <div className="h-5 bg-neutral-950 rounded-lg overflow-hidden border border-neutral-800">
+                        <div
+                          className="h-full bg-orange-500 rounded-lg transition-all"
+                          style={{ width }}
+                        />
+                      </div>
+                      <span className="text-right text-neutral-300 font-bold">
+                        {item.orders} · {formatCurrency(item.revenue)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6">
+              <h3 className="text-lg font-black text-white">Report Summary</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
+                <div>
+                  <p className="text-[10px] uppercase text-neutral-500 font-black">Period</p>
+                  <p className="text-sm font-bold text-white mt-1 capitalize">{reportTimeframe}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-neutral-500 font-black">Orders Generated</p>
+                  <p className="text-sm font-bold text-white mt-1">{reportOrderCount}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-neutral-500 font-black">Sales Generated</p>
+                  <p className="text-sm font-bold text-emerald-400 mt-1">{formatCurrency(reportRevenue)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-neutral-500 font-black">Report Status</p>
+                  <p className="text-sm font-bold text-emerald-400 mt-1">Ready to export</p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
