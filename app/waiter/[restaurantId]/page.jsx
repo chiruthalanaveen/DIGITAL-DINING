@@ -3,12 +3,12 @@
 import { useState, useEffect, use, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
-const ALARM_SOUND_URL =
-  'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'
+const DEFAULT_ALARM_SOUND_URL = '/sounds/waiter-default.mp3'
 
 export default function WaiterPortal({ params }) {
   const unwrappedParams = use(params)
-  const restaurantId = unwrappedParams.restaurantId
+  const restaurantId =
+    unwrappedParams?.restaurantid || unwrappedParams?.restaurantId || unwrappedParams?.id
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userId, setUserId] = useState('')
@@ -26,6 +26,9 @@ export default function WaiterPortal({ params }) {
   const alarmAudioRef = useRef(null)
   const soundEnabledRef = useRef(false)
   const alarmActiveRef = useRef(false)
+  const [alarmSoundUrl, setAlarmSoundUrl] = useState(DEFAULT_ALARM_SOUND_URL)
+  const [alarmEnabledByOwner, setAlarmEnabledByOwner] = useState(true)
+  const [alarmVolume, setAlarmVolume] = useState(1)
 
   /*
    * ---------------------------------------------------------
@@ -37,17 +40,17 @@ export default function WaiterPortal({ params }) {
     if (typeof window === 'undefined') return null
 
     if (!alarmAudioRef.current) {
-      const audio = new Audio(ALARM_SOUND_URL)
+      const audio = new Audio(alarmSoundUrl)
 
       audio.preload = 'auto'
       audio.loop = true
-      audio.volume = 1.0
+      audio.volume = alarmVolume
 
       alarmAudioRef.current = audio
     }
 
     return alarmAudioRef.current
-  }, [])
+  }, [alarmSoundUrl, alarmVolume])
 
   const stopAlarm = useCallback(() => {
     alarmActiveRef.current = false
@@ -65,7 +68,7 @@ export default function WaiterPortal({ params }) {
   }, [])
 
   const startAlarm = useCallback(async () => {
-    if (!soundEnabledRef.current) return
+    if (!soundEnabledRef.current || !alarmEnabledByOwner) return
 
     const audio = initializeAlarmAudio()
 
@@ -87,7 +90,7 @@ export default function WaiterPortal({ params }) {
       setAlarmActive(false)
       alarmActiveRef.current = false
     }
-  }, [initializeAlarmAudio])
+  }, [initializeAlarmAudio, alarmEnabledByOwner])
 
   const enableAlarmSound = async () => {
     const audio = initializeAlarmAudio()
@@ -134,6 +137,33 @@ export default function WaiterPortal({ params }) {
     }
   }
 
+  const fetchAlarmSettings = useCallback(async () => {
+    if (!restaurantId) return
+
+    const { data, error } = await supabase
+      .from('restaurants')
+      .select('waiter_alarm_sound, waiter_alarm_enabled, waiter_alarm_volume')
+      .eq('id', restaurantId)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Waiter alarm settings error:', error)
+      return
+    }
+
+    const soundMap = {
+      'waiter-default': '/sounds/waiter-default.mp3',
+      'waiter-1': '/sounds/waiter-1.mp3',
+      'waiter-2': '/sounds/waiter-2.mp3',
+      'waiter-3': '/sounds/waiter-3.mp3',
+      'waiter-4': '/sounds/waiter-4.mp3',
+    }
+
+    setAlarmSoundUrl(soundMap[data?.waiter_alarm_sound] || soundMap['waiter-default'])
+    setAlarmEnabledByOwner(data?.waiter_alarm_enabled ?? true)
+    setAlarmVolume(Math.min(1, Math.max(0, Number(data?.waiter_alarm_volume ?? 1))))
+  }, [restaurantId])
+
   /*
    * ---------------------------------------------------------
    * LOGIN
@@ -160,6 +190,7 @@ export default function WaiterPortal({ params }) {
       setWaiterName(data.name)
       setIsAuthenticated(true)
 
+      await fetchAlarmSettings()
       fetchMenu()
       fetchReadyOrders()
     } catch (err) {
@@ -232,10 +263,12 @@ export default function WaiterPortal({ params }) {
    */
 
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated || !restaurantId) return undefined
+
+    let mounted = true
 
     const channel = supabase
-      .channel(`waiter-channel-${restaurantId}`)
+      .channel(`waiter-orders-${restaurantId}`)
       .on(
         'postgres_changes',
         {
@@ -244,68 +277,64 @@ export default function WaiterPortal({ params }) {
           table: 'orders',
           filter: `restaurant_id=eq.${restaurantId}`,
         },
-        async (payload) => {
-          const newOrder = payload.new
+        (payload) => {
+          if (!mounted) return
 
-          /*
-           * New order became READY.
-           * Keep alarm running continuously.
-           */
-          if (
-            newOrder &&
-            newOrder.status === 'ready'
-          ) {
+          const changedOrder = payload.new
+          const changedOrderId = payload.old?.id || changedOrder?.id
+
+          if (payload.eventType === 'DELETE') {
+            setReadyOrders((current) =>
+              current.filter(
+                (order) => String(order.id) !== String(changedOrderId)
+              )
+            )
+            return
+          }
+
+          if (!changedOrder?.id) return
+
+          if (changedOrder.status === 'ready') {
             setReadyOrders((current) => {
               const exists = current.some(
-                (order) => order.id === newOrder.id
+                (order) => String(order.id) === String(changedOrder.id)
               )
 
               if (exists) {
                 return current.map((order) =>
-                  order.id === newOrder.id
-                    ? newOrder
+                  String(order.id) === String(changedOrder.id)
+                    ? changedOrder
                     : order
                 )
               }
 
-              return [newOrder, ...current]
+              return [changedOrder, ...current]
             })
 
             if (soundEnabledRef.current) {
               startAlarm()
             }
-          }
-
-          /*
-           * Order was accepted / handed over / otherwise
-           * changed away from READY.
-           */
-          if (
-            payload.eventType === 'UPDATE' &&
-            newOrder &&
-            newOrder.status !== 'ready'
-          ) {
+          } else {
+            // Remove orders that were handed over or changed away from READY.
             setReadyOrders((current) =>
               current.filter(
-                (order) => order.id !== newOrder.id
+                (order) => String(order.id) !== String(changedOrder.id)
               )
             )
           }
-
-          await fetchReadyOrders()
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('Waiter realtime subscription error:', status)
+        }
+      })
 
     return () => {
+      mounted = false
       supabase.removeChannel(channel)
     }
-  }, [
-    isAuthenticated,
-    restaurantId,
-    startAlarm,
-    stopAlarm,
-  ])
+  }, [isAuthenticated, restaurantId, startAlarm])
 
   /*
    * ---------------------------------------------------------
@@ -410,6 +439,8 @@ export default function WaiterPortal({ params }) {
    */
 
   const handleHandover = async (orderId) => {
+    if (!orderId || !restaurantId) return
+
     const { error } = await supabase
       .from('orders')
       .update({
@@ -421,20 +452,14 @@ export default function WaiterPortal({ params }) {
 
     if (error) {
       console.error('Handover error:', error)
-      alert('Unable to record handover. Please try again.')
+      alert(`Unable to record handover: ${error.message}`)
       return
     }
 
     setReadyOrders((current) =>
-      current.filter(
-        (order) => order.id !== orderId
-      )
+      current.filter((order) => String(order.id) !== String(orderId))
     )
 
-    /*
-     * Alarm automatically stops if this was
-     * the last READY order.
-     */
     alert('Handover recorded successfully! ✅')
   }
 

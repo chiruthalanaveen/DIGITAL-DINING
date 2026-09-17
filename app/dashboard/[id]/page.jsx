@@ -195,7 +195,7 @@ export default function RestaurantDashboard() {
   const [staffName, setStaffName] = useState('')
   const [staffUserId, setStaffUserId] = useState('')
   const [staffPassword, setStaffPassword] = useState('')
-  const [staffRole] = useState('manager')
+  const [staffRole, setStaffRole] = useState('waiter')
   const [addingStaff, setAddingStaff] = useState(false)
 
   // Tax & Packing Charge Configuration States
@@ -250,6 +250,31 @@ export default function RestaurantDashboard() {
   // Audio Alarm Reference for Pro+ real-time order sound
   const audioRef = useRef(null)
   const prevOrdersLengthRef = useRef(0)
+
+  // Kitchen and waiter alarm settings
+  const [kitchenAlarmSound, setKitchenAlarmSound] = useState('kitchen-default')
+  const [waiterAlarmSound, setWaiterAlarmSound] = useState('waiter-default')
+  const [kitchenAlarmEnabled, setKitchenAlarmEnabled] = useState(true)
+  const [waiterAlarmEnabled, setWaiterAlarmEnabled] = useState(true)
+  const [kitchenAlarmVolume, setKitchenAlarmVolume] = useState(1)
+  const [waiterAlarmVolume, setWaiterAlarmVolume] = useState(1)
+  const [savingAlarmSettings, setSavingAlarmSettings] = useState(false)
+  const [previewAudio, setPreviewAudio] = useState(null)
+
+  const kitchenAlarmOptions = [
+    { value: 'kitchen-default', label: 'Kitchen Default', src: '/sounds/kitchen-default.mp3' },
+    { value: 'kitchen-1', label: 'Kitchen Sound 1', src: '/sounds/kitchen-1.mp3' },
+    { value: 'kitchen-2', label: 'Kitchen Sound 2', src: '/sounds/kitchen-2.mp3' },
+    { value: 'kitchen-3', label: 'Kitchen Sound 3', src: '/sounds/kitchen-3.mp3' },
+  ]
+
+  const waiterAlarmOptions = [
+    { value: 'waiter-default', label: 'Waiter Default', src: '/sounds/waiter-default.mp3' },
+    { value: 'waiter-1', label: 'Waiter Sound 1', src: '/sounds/waiter-1.mp3' },
+    { value: 'waiter-2', label: 'Waiter Sound 2', src: '/sounds/waiter-2.mp3' },
+    { value: 'waiter-3', label: 'Waiter Sound 3', src: '/sounds/waiter-3.mp3' },
+    { value: 'waiter-4', label: 'Waiter Sound 4', src: '/sounds/waiter-4.mp3' },
+  ]
 
   // Plan limit mapping
   const planLimits = {
@@ -362,6 +387,13 @@ export default function RestaurantDashboard() {
       }
 
       setRestaurant(restData)
+
+      setKitchenAlarmSound(restData.kitchen_alarm_sound || 'kitchen-default')
+      setWaiterAlarmSound(restData.waiter_alarm_sound || 'waiter-default')
+      setKitchenAlarmEnabled(restData.kitchen_alarm_enabled ?? true)
+      setWaiterAlarmEnabled(restData.waiter_alarm_enabled ?? true)
+      setKitchenAlarmVolume(Number(restData.kitchen_alarm_volume ?? 1))
+      setWaiterAlarmVolume(Number(restData.waiter_alarm_volume ?? 1))
 
       setBillingRestaurantName((prev) =>
         prev || restData.billing_restaurant_name || restData.name || ''
@@ -983,7 +1015,7 @@ export default function RestaurantDashboard() {
       if (error) throw error
 
       alert(
-        'Restaurant Manager account created successfully! 🎉'
+        `${staffRole === 'waiter' ? 'Waiter' : staffRole === 'kitchen' ? 'Kitchen' : 'Restaurant Manager'} account created successfully! 🎉`
       )
 
       setStaffName('')
@@ -1543,6 +1575,57 @@ export default function RestaurantDashboard() {
       )
     }
 
+  const getAlarmSource = (options, value) => {
+    return options.find((option) => option.value === value)?.src || options[0].src
+  }
+
+  const handlePreviewAlarm = (src, volume = 1) => {
+    try {
+      if (previewAudio) {
+        previewAudio.pause()
+        previewAudio.currentTime = 0
+      }
+
+      const audio = new Audio(src)
+      audio.volume = Math.min(1, Math.max(0, Number(volume) || 0))
+      audio.play().catch((error) => console.error('Preview audio blocked:', error))
+      setPreviewAudio(audio)
+    } catch (error) {
+      console.error('Alarm preview error:', error)
+    }
+  }
+
+  const handleSaveAlarmSettings = async (event) => {
+    event.preventDefault()
+    if (!restaurantId || savingAlarmSettings) return
+
+    setSavingAlarmSettings(true)
+
+    const { data, error } = await supabase
+      .from('restaurants')
+      .update({
+        kitchen_alarm_sound: kitchenAlarmSound,
+        waiter_alarm_sound: waiterAlarmSound,
+        kitchen_alarm_enabled: kitchenAlarmEnabled,
+        waiter_alarm_enabled: waiterAlarmEnabled,
+        kitchen_alarm_volume: Number(kitchenAlarmVolume),
+        waiter_alarm_volume: Number(waiterAlarmVolume),
+      })
+      .eq('id', restaurantId)
+      .select('*')
+      .maybeSingle()
+
+    if (error) {
+      console.error('Alarm settings save error:', error)
+      alert(`Failed to save alarm settings: ${error.message}`)
+    } else {
+      if (data) setRestaurant(data)
+      alert('Alarm settings saved successfully! ✅')
+    }
+
+    setSavingAlarmSettings(false)
+  }
+
   const handleTabSwitch = (
     tabId
   ) => {
@@ -1854,7 +1937,7 @@ export default function RestaurantDashboard() {
 
       <audio
         ref={audioRef}
-        src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+        src="/sounds/kitchen-default.mp3"
         preload="auto"
       />
 
@@ -2046,6 +2129,10 @@ export default function RestaurantDashboard() {
             {
               id: 'gateway',
               label: '💳 Payment Gateways'
+            },
+            {
+              id: 'alarm-settings',
+              label: '🔔 Alarm Settings'
             },
           ].map((tab) => (
             <button
@@ -3093,7 +3180,7 @@ export default function RestaurantDashboard() {
               </h2>
 
               <p className="text-xs text-neutral-400">
-                Create a Restaurant Manager account. The Manager can later create Waiter and Kitchen accounts from the Manager dashboard.
+                Create login accounts for Waiter, Kitchen, or Restaurant Manager staff. Each role opens its own dedicated portal.
               </p>
             </div>
 
@@ -3247,15 +3334,23 @@ export default function RestaurantDashboard() {
 
                           <td className="p-3 text-right space-x-2">
                             <button
-                              onClick={() =>
-                                window.open(
-                                  `/manager/${restaurantId}`,
-                                  '_blank'
-                                )
-                              }
-                              className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-3 py-1 rounded-lg font-bold transition"
+                              onClick={() => {
+                                const portalPath =
+                                  staff.role === 'waiter'
+                                    ? `/waiter/${restaurantId}`
+                                    : staff.role === 'kitchen'
+                                      ? `/kitchen/${restaurantId}`
+                                      : `/manager/${restaurantId}`
+
+                                window.open(portalPath, '_blank', 'noopener,noreferrer')
+                              }}
+                              className="bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white border border-orange-500/20 px-3 py-1 rounded-lg font-bold transition"
                             >
-                              Open Manager Portal ↗
+                              {staff.role === 'waiter'
+                                ? 'Open Waiter Portal ↗'
+                                : staff.role === 'kitchen'
+                                  ? 'Open Kitchen Portal ↗'
+                                  : 'Open Manager Portal ↗'}
                             </button>
 
                             <button
@@ -3844,6 +3939,78 @@ export default function RestaurantDashboard() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* TAB: ALARM SETTINGS */}
+        {activeTab === 'alarm-settings' && (
+          <form
+            onSubmit={handleSaveAlarmSettings}
+            className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+          >
+            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl space-y-5">
+              <div>
+                <span className="text-[10px] font-extrabold text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Kitchen</span>
+                <h2 className="text-xl font-black text-white mt-3">Kitchen Alarm Sound</h2>
+                <p className="text-xs text-neutral-400 mt-1">Used by the Kitchen/KDS page when a new order arrives.</p>
+              </div>
+
+              <label className="flex items-center justify-between gap-4 bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
+                <span>
+                  <span className="block text-sm font-bold text-white">Enable Kitchen Alarm</span>
+                  <span className="block text-[11px] text-neutral-500 mt-1">Allow sound notifications in the kitchen.</span>
+                </span>
+                <input type="checkbox" checked={kitchenAlarmEnabled} onChange={(e) => setKitchenAlarmEnabled(e.target.checked)} className="h-5 w-5 accent-orange-500" />
+              </label>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-neutral-300">Select Kitchen Sound</label>
+                <select value={kitchenAlarmSound} onChange={(e) => setKitchenAlarmSound(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-orange-500">
+                  {kitchenAlarmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-bold text-neutral-300"><span>Kitchen Volume</span><span>{Math.round(kitchenAlarmVolume * 100)}%</span></div>
+                <input type="range" min="0" max="1" step="0.05" value={kitchenAlarmVolume} onChange={(e) => setKitchenAlarmVolume(Number(e.target.value))} className="w-full accent-orange-500" />
+              </div>
+
+              <button type="button" onClick={() => handlePreviewAlarm(getAlarmSource(kitchenAlarmOptions, kitchenAlarmSound), kitchenAlarmVolume)} className="w-full bg-neutral-950 border border-neutral-700 hover:border-orange-500 text-white font-bold py-3 rounded-xl text-xs">▶ Preview Kitchen Sound</button>
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl space-y-5">
+              <div>
+                <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Waiter</span>
+                <h2 className="text-xl font-black text-white mt-3">Waiter Alarm Sound</h2>
+                <p className="text-xs text-neutral-400 mt-1">Used by the Waiter page when an order becomes ready.</p>
+              </div>
+
+              <label className="flex items-center justify-between gap-4 bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
+                <span>
+                  <span className="block text-sm font-bold text-white">Enable Waiter Alarm</span>
+                  <span className="block text-[11px] text-neutral-500 mt-1">Allow sound notifications for ready orders.</span>
+                </span>
+                <input type="checkbox" checked={waiterAlarmEnabled} onChange={(e) => setWaiterAlarmEnabled(e.target.checked)} className="h-5 w-5 accent-orange-500" />
+              </label>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-neutral-300">Select Waiter Sound</label>
+                <select value={waiterAlarmSound} onChange={(e) => setWaiterAlarmSound(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-orange-500">
+                  {waiterAlarmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-bold text-neutral-300"><span>Waiter Volume</span><span>{Math.round(waiterAlarmVolume * 100)}%</span></div>
+                <input type="range" min="0" max="1" step="0.05" value={waiterAlarmVolume} onChange={(e) => setWaiterAlarmVolume(Number(e.target.value))} className="w-full accent-orange-500" />
+              </div>
+
+              <button type="button" onClick={() => handlePreviewAlarm(getAlarmSource(waiterAlarmOptions, waiterAlarmSound), waiterAlarmVolume)} className="w-full bg-neutral-950 border border-neutral-700 hover:border-orange-500 text-white font-bold py-3 rounded-xl text-xs">▶ Preview Waiter Sound</button>
+            </div>
+
+            <div className="lg:col-span-2 flex justify-end">
+              <button type="submit" disabled={savingAlarmSettings} className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-black px-8 py-3 rounded-xl text-xs uppercase tracking-wider">{savingAlarmSettings ? 'Saving...' : 'Save Alarm Settings 🔔'}</button>
+            </div>
+          </form>
         )}
 
         {/* TAB 6: PAYMENT GATEWAYS */}

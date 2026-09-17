@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 
 export default function KitchenPortal({ params }) {
   const unwrappedParams = use(params)
-  const restaurantId = unwrappedParams.restaurantId
+  const restaurantId = unwrappedParams?.restaurantid || unwrappedParams?.restaurantId
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userId, setUserId] = useState('')
@@ -23,6 +23,9 @@ export default function KitchenPortal({ params }) {
   const [isConnected, setIsConnected] = useState(false)
 
   const audioRef = useRef(null)
+  const [alarmSoundUrl, setAlarmSoundUrl] = useState('/sounds/kitchen-default.mp3')
+  const [alarmEnabled, setAlarmEnabled] = useState(true)
+  const [alarmVolume, setAlarmVolume] = useState(1)
 
   /*
    * ---------------------------------------------------------
@@ -38,6 +41,25 @@ export default function KitchenPortal({ params }) {
     if (Number.isNaN(created)) return 0
 
     return Math.max(0, Math.floor((currentTime - created) / 60000))
+  }
+
+  // Normalize all customer-facing initial order states to the kitchen's
+  // internal "pending" state. Online orders are inserted as "paid", so
+  // without this mapping they would not show the Start Preparing button.
+  const getKitchenStatus = (status) => {
+    const value = String(status || '').trim().toLowerCase()
+
+    if (
+      value === 'paid' ||
+      value === 'confirmed' ||
+      value === 'placed' ||
+      value === 'order_placed' ||
+      value === 'new'
+    ) {
+      return 'pending'
+    }
+
+    return value || 'pending'
   }
 
   const formatTime = (createdAt) => {
@@ -72,7 +94,7 @@ export default function KitchenPortal({ params }) {
   const getOrderBorder = (order) => {
     const age = getOrderAgeMinutes(order.created_at)
 
-    if (order.status === 'ready') {
+    if (getKitchenStatus(order.status) === 'ready') {
       return 'border-emerald-500/30'
     }
 
@@ -84,7 +106,7 @@ export default function KitchenPortal({ params }) {
       return 'border-orange-500/50'
     }
 
-    if (order.status === 'preparing') {
+    if (getKitchenStatus(order.status) === 'preparing') {
       return 'border-orange-500/30'
     }
 
@@ -92,19 +114,47 @@ export default function KitchenPortal({ params }) {
   }
 
   const playNotificationSound = useCallback(() => {
+    if (!alarmEnabled) return
+
     try {
-      if (!audioRef.current) {
-        audioRef.current = new Audio(
-          'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'
-        )
+      if (!audioRef.current || audioRef.current.src !== new URL(alarmSoundUrl, window.location.origin).href) {
+        audioRef.current = new Audio(alarmSoundUrl)
+        audioRef.current.preload = 'auto'
       }
 
+      audioRef.current.volume = Math.min(1, Math.max(0, Number(alarmVolume) || 0))
       audioRef.current.currentTime = 0
       audioRef.current.play().catch(() => {})
     } catch {
       // Browser may block autoplay.
     }
-  }, [])
+  }, [alarmEnabled, alarmSoundUrl, alarmVolume])
+
+  const fetchAlarmSettings = useCallback(async () => {
+    if (!restaurantId) return
+
+    const { data, error } = await supabase
+      .from('restaurants')
+      .select('kitchen_alarm_sound, kitchen_alarm_enabled, kitchen_alarm_volume')
+      .eq('id', restaurantId)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Kitchen alarm settings error:', error)
+      return
+    }
+
+    const soundMap = {
+      'kitchen-default': '/sounds/kitchen-default.mp3',
+      'kitchen-1': '/sounds/kitchen-1.mp3',
+      'kitchen-2': '/sounds/kitchen-2.mp3',
+      'kitchen-3': '/sounds/kitchen-3.mp3',
+    }
+
+    setAlarmSoundUrl(soundMap[data?.kitchen_alarm_sound] || soundMap['kitchen-default'])
+    setAlarmEnabled(data?.kitchen_alarm_enabled ?? true)
+    setAlarmVolume(Math.min(1, Math.max(0, Number(data?.kitchen_alarm_volume ?? 1))))
+  }, [restaurantId])
 
   /*
    * ---------------------------------------------------------
@@ -163,6 +213,7 @@ export default function KitchenPortal({ params }) {
 
       setIsAuthenticated(true)
 
+      await fetchAlarmSettings()
       await fetchActiveOrders()
     } catch (err) {
       alert(err.message || 'Unable to login.')
@@ -256,6 +307,12 @@ export default function KitchenPortal({ params }) {
     setUpdatingOrder(orderId)
 
     try {
+      /*
+       * Do not use .select('*').single() after UPDATE.
+       * Supabase may successfully update the row but return no row
+       * because of the current SELECT/RLS policy. Calling .single()
+       * in that situation causes the JSON coercion error.
+       */
       const { error } = await supabase
         .from('orders')
         .update({
@@ -268,10 +325,18 @@ export default function KitchenPortal({ params }) {
         throw error
       }
 
-      await fetchActiveOrders()
+      // Update the local KDS immediately. Supabase Realtime will also
+      // broadcast this same database change to the customer and manager.
+      setOrders((current) =>
+        current.map((order) =>
+          String(order.id) === String(orderId)
+            ? { ...order, status: newStatus }
+            : order
+        )
+      )
     } catch (error) {
       console.error('Status update error:', error)
-      alert('Unable to update order status.')
+      alert(`Unable to update order status: ${error.message || 'Unknown error'}`)
     } finally {
       setUpdatingOrder(null)
     }
@@ -284,8 +349,9 @@ export default function KitchenPortal({ params }) {
    */
 
   const filteredOrders = orders.filter((order) => {
+    const kitchenStatus = getKitchenStatus(order.status)
     const matchesStatus =
-      statusFilter === 'all' || order.status === statusFilter
+      statusFilter === 'all' || kitchenStatus === statusFilter
 
     const searchText = search.trim().toLowerCase()
 
@@ -342,15 +408,15 @@ export default function KitchenPortal({ params }) {
    */
 
   const pendingCount = orders.filter(
-    (order) => order.status === 'pending'
+    (order) => getKitchenStatus(order.status) === 'pending'
   ).length
 
   const preparingCount = orders.filter(
-    (order) => order.status === 'preparing'
+    (order) => getKitchenStatus(order.status) === 'preparing'
   ).length
 
   const readyCount = orders.filter(
-    (order) => order.status === 'ready'
+    (order) => getKitchenStatus(order.status) === 'ready'
   ).length
 
   /*
@@ -621,12 +687,13 @@ export default function KitchenPortal({ params }) {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {sortedOrders.map((order) => {
               const age = getOrderAgeMinutes(order.created_at)
+              const kitchenStatus = getKitchenStatus(order.status)
 
               const isOverdue =
-                age >= 30 && order.status !== 'ready'
+                age >= 30 && kitchenStatus !== 'ready'
 
               const isWarning =
-                age >= 20 && order.status !== 'ready'
+                age >= 20 && kitchenStatus !== 'ready'
 
               const items = Array.isArray(order.items)
                 ? order.items
@@ -656,14 +723,14 @@ export default function KitchenPortal({ params }) {
                       <div className="text-right">
                         <span
                           className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${
-                            order.status === 'ready'
+                            kitchenStatus === 'ready'
                               ? 'bg-emerald-500/20 text-emerald-400'
-                              : order.status === 'preparing'
+                              : kitchenStatus === 'preparing'
                               ? 'bg-orange-500/20 text-orange-400'
                               : 'bg-yellow-500/20 text-yellow-400'
                           }`}
                         >
-                          {order.status}
+                          {kitchenStatus}
                         </span>
 
                         <p className="text-[9px] text-neutral-600 mt-2 font-mono">
@@ -774,7 +841,7 @@ export default function KitchenPortal({ params }) {
                   {/* ACTIONS */}
 
                   <div className="pt-2 border-t border-neutral-800">
-                    {order.status === 'pending' && (
+                    {kitchenStatus === 'pending' && (
                       <button
                         onClick={() =>
                           setOrderStatus(order.id, 'preparing')
@@ -788,7 +855,7 @@ export default function KitchenPortal({ params }) {
                       </button>
                     )}
 
-                    {order.status === 'preparing' && (
+                    {kitchenStatus === 'preparing' && (
                       <button
                         onClick={() =>
                           setOrderStatus(order.id, 'ready')
@@ -802,7 +869,7 @@ export default function KitchenPortal({ params }) {
                       </button>
                     )}
 
-                    {order.status === 'ready' && (
+                    {kitchenStatus === 'ready' && (
                       <div className="space-y-2">
                         <div className="w-full text-center text-[11px] font-bold text-emerald-400 py-3 bg-emerald-950/20 rounded-xl border border-emerald-500/20">
                           ✓ Ready — Waiting for Waiter

@@ -287,9 +287,43 @@ export default function CustomerMenuPage() {
           table: 'orders',
           filter: `restaurant_id=eq.${restaurantId}`
         },
-        () => {
-          if (isVerified) {
-            fetchCustomerOrders()
+        payload => {
+          if (!isVerified) return
+
+          // Apply the exact row received from Supabase immediately.
+          // This avoids a stale fetch replacing the newer kitchen status.
+          if (payload.eventType === 'INSERT' && payload.new) {
+            const belongsToCustomer =
+              String(payload.new.customer_mobile || '') === String(customerMobile.trim())
+
+            if (belongsToCustomer) {
+              setCustomerOrders(current => {
+                if (current.some(order => String(order.id) === String(payload.new.id))) {
+                  return current.map(order =>
+                    String(order.id) === String(payload.new.id)
+                      ? payload.new
+                      : order
+                  )
+                }
+                return [payload.new, ...current].slice(0, 20)
+              })
+            }
+          }
+
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            setCustomerOrders(current =>
+              current.map(order =>
+                String(order.id) === String(payload.new.id)
+                  ? { ...order, ...payload.new }
+                  : order
+              )
+            )
+          }
+
+          if (payload.eventType === 'DELETE' && payload.old) {
+            setCustomerOrders(current =>
+              current.filter(order => String(order.id) !== String(payload.old.id))
+            )
           }
         }
       )
@@ -298,7 +332,7 @@ export default function CustomerMenuPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [restaurantId, isVerified])
+  }, [restaurantId, isVerified, customerMobile])
 
   /*
    * GUEST VERIFICATION
@@ -779,8 +813,19 @@ export default function CustomerMenuPage() {
     }
   }
 
+  // Keep the customer timeline consistent with the database status values.
+  // Razorpay orders are initially stored as "paid", which means the order
+  // has been placed but is still waiting for kitchen confirmation.
+  const normalizeCustomerStatus = status => {
+    const value = String(status || 'pending').trim().toLowerCase()
+
+    if (['paid', 'new', 'order_placed'].includes(value)) return 'pending'
+    if (value === 'processing') return 'preparing'
+    return value
+  }
+
   const getOrderStatus = status => {
-    const value = String(status || 'pending').toLowerCase()
+    const value = normalizeCustomerStatus(status)
     if (value === 'completed' || value === 'delivered') return 'Delivered'
     if (value === 'ready') return 'Ready'
     if (value === 'preparing' || value === 'processing') return 'Preparing'
@@ -789,7 +834,7 @@ export default function CustomerMenuPage() {
   }
 
   const getStatusStep = status => {
-    const value = String(status || 'pending').toLowerCase()
+    const value = normalizeCustomerStatus(status)
     if (value === 'completed' || value === 'delivered') return 4
     if (value === 'ready') return 3
     if (value === 'preparing' || value === 'processing') return 2
