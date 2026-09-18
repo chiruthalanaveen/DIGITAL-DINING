@@ -3279,7 +3279,7 @@ export default function RestaurantDashboard() {
                   title="Manager Login"
                   icon="👔"
                   description="Open the existing restaurant manager dashboard. Manager authentication remains protected by your existing owner login."
-                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/${encodeURIComponent(restaurantId)}`}
+                  url={`${typeof window !== 'undefined' ? window.location.origin : 'https://www.digitaldine-in.online'}/manager/${encodeURIComponent(restaurantId)}`}
                 />
                 <StaffLoginQrCard
                   title="Kitchen Login"
