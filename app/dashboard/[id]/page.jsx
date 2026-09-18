@@ -152,9 +152,90 @@ function RestaurantChatWidget({ restaurantId }) {
   )
 }
 
+function StaffLoginQrCard({ title, description, url, icon }) {
+  const qrUrl = `https://quickchart.io/qr?size=320&margin=2&text=${encodeURIComponent(url)}`
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      alert(`${title} URL copied.`)
+    } catch (error) {
+      console.error('Copy URL error:', error)
+      window.prompt('Copy this URL:', url)
+    }
+  }
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(qrUrl)
+      if (!response.ok) throw new Error('Unable to download QR code.')
+
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = objectUrl
+      anchor.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-login-qr.png`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(objectUrl)
+    } catch (error) {
+      console.error('QR download error:', error)
+      window.open(qrUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  return (
+    <div className="bg-neutral-950 border border-neutral-800 rounded-3xl p-5 space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="text-3xl">{icon}</div>
+        <div className="min-w-0">
+          <h3 className="text-base font-black text-white">{title}</h3>
+          <p className="text-xs text-neutral-400 mt-1">{description}</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl p-3 w-fit mx-auto">
+        <img
+          src={qrUrl}
+          alt={`${title} login QR code`}
+          width="220"
+          height="220"
+          className="block w-[220px] h-[220px]"
+          loading="lazy"
+        />
+      </div>
+
+      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3">
+        <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black mb-1">
+          Login URL
+        </p>
+        <p className="text-[11px] text-neutral-300 break-all select-all">{url}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="bg-orange-500 hover:bg-orange-600 text-white font-black py-3 rounded-xl text-xs transition"
+        >
+          📋 Copy URL
+        </button>
+        <button
+          type="button"
+          onClick={handleDownload}
+          className="bg-neutral-800 hover:bg-neutral-700 text-white font-black py-3 rounded-xl text-xs transition"
+        >
+          ⬇️ Download QR
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function RestaurantDashboard() {
   const params = useParams()
-  const restaurantId = params.id || params.restaurantId
+  const restaurantId = String(params.id || params.restaurantId || '').trim()
   const router = useRouter()
 
   const [restaurant, setRestaurant] = useState(null)
@@ -2111,6 +2192,10 @@ export default function RestaurantDashboard() {
               label: `👥 Manager Management (${staffList.length})`
             },
             {
+              id: 'staff-access',
+              label: '📱 Staff Login QR'
+            },
+            {
               id: 'taxes',
               label: `🧾 Taxes & Packing`
             },
@@ -3162,6 +3247,59 @@ export default function RestaurantDashboard() {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB: STAFF LOGIN QR CODES */}
+        {activeTab === 'staff-access' && (
+          <div className="space-y-6">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-xl">
+              <span className="text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
+                Secure Restaurant Access
+              </span>
+              <h2 className="text-2xl font-black text-white mt-3">
+                Staff Login QR Codes
+              </h2>
+              <p className="text-xs text-neutral-400 mt-2 max-w-3xl leading-relaxed">
+                Generate and share separate login QR codes for your Manager, Kitchen,
+                and Waiter pages. The QR code contains only this restaurant's URL.
+                Staff must enter their own credentials, and the Kitchen and Waiter
+                pages verify the restaurant and role before showing data.
+              </p>
+            </div>
+
+            {!restaurantId ? (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-300 rounded-2xl p-5 text-sm font-bold">
+                Restaurant ID is missing. Please reopen the dashboard from your restaurant login.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <StaffLoginQrCard
+                  title="Manager Login"
+                  icon="👔"
+                  description="Open the existing restaurant manager dashboard. Manager authentication remains protected by your existing owner login."
+                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/${encodeURIComponent(restaurantId)}`}
+                />
+                <StaffLoginQrCard
+                  title="Kitchen Login"
+                  icon="👨‍🍳"
+                  description="Kitchen staff enter their own Kitchen credentials and see only this restaurant's kitchen orders."
+                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/kitchen/${encodeURIComponent(restaurantId)}`}
+                />
+                <StaffLoginQrCard
+                  title="Waiter Login"
+                  icon="🧑‍🍽️"
+                  description="Waiters enter their own Waiter credentials and see only this restaurant's menu and ready orders."
+                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/waiter/${encodeURIComponent(restaurantId)}`}
+                />
+              </div>
+            )}
+
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 text-xs text-amber-200 leading-relaxed">
+              <strong className="text-amber-100">Important:</strong> These QR codes do not
+              store passwords. Do not share staff passwords. If a staff member is disabled
+              in Staff Management, their login should no longer be permitted.
             </div>
           </div>
         )}

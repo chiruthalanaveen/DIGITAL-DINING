@@ -157,6 +157,7 @@ export default function WaiterPortal({ params }) {
         .eq('user_id', userId.trim().toLowerCase())
         .eq('password', password.trim())
         .eq('role', 'waiter')
+        .eq('is_active', true)
         .single()
 
       if (error || !data) {

@@ -224,6 +224,7 @@ export default function KitchenPortal({ params }) {
         .eq('user_id', userId.trim().toLowerCase())
         .eq('password', password.trim())
         .eq('role', 'kitchen')
+        .eq('is_active', true)
         .single()
 
       if (error || !data) {
