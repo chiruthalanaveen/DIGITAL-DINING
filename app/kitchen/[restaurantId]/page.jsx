@@ -185,6 +185,12 @@ export default function KitchenPortal({ params }) {
         .eq('restaurant_id', restaurantId)
         .neq('status', 'completed')
         .order('created_at', { ascending: true })
+        console.log('KITCHEN DEBUG:', {
+  restaurantId,
+  data,
+  error,
+  count: data?.length,
+})
 
       if (error) {
         console.error('[KITCHEN] Order fetch error:', error)
