@@ -192,7 +192,7 @@ export default function WaiterPortal({ params }) {
 
       await fetchAlarmSettings()
       fetchMenu()
-      fetchReadyOrders()
+      await fetchReadyOrders()
     } catch (err) {
       alert(err.message)
     }
@@ -258,7 +258,7 @@ export default function WaiterPortal({ params }) {
 
   /*
    * ---------------------------------------------------------
-   * REALTIME READY ORDERS
+   * REALTIME + MOBILE-SAFE READY ORDERS SYNC
    * ---------------------------------------------------------
    */
 
@@ -266,9 +266,10 @@ export default function WaiterPortal({ params }) {
     if (!isAuthenticated || !restaurantId) return undefined
 
     let mounted = true
+    const channelName = `waiter-ready-orders-${restaurantId}-${Date.now()}`
 
     const channel = supabase
-      .channel(`waiter-orders-${restaurantId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -277,64 +278,73 @@ export default function WaiterPortal({ params }) {
           table: 'orders',
           filter: `restaurant_id=eq.${restaurantId}`,
         },
-        (payload) => {
+        async (payload) => {
           if (!mounted) return
 
-          const changedOrder = payload.new
-          const changedOrderId = payload.old?.id || changedOrder?.id
-
-          if (payload.eventType === 'DELETE') {
-            setReadyOrders((current) =>
-              current.filter(
-                (order) => String(order.id) !== String(changedOrderId)
-              )
-            )
-            return
-          }
-
-          if (!changedOrder?.id) return
-
-          if (changedOrder.status === 'ready') {
-            setReadyOrders((current) => {
-              const exists = current.some(
-                (order) => String(order.id) === String(changedOrder.id)
-              )
-
-              if (exists) {
-                return current.map((order) =>
-                  String(order.id) === String(changedOrder.id)
-                    ? changedOrder
-                    : order
-                )
-              }
-
-              return [changedOrder, ...current]
-            })
-
-            if (soundEnabledRef.current) {
-              startAlarm()
-            }
-          } else {
-            // Remove orders that were handed over or changed away from READY.
-            setReadyOrders((current) =>
-              current.filter(
-                (order) => String(order.id) !== String(changedOrder.id)
-              )
-            )
-          }
+          // Always re-fetch from the database. This avoids stale or partial
+          // payloads and also handles status changes reliably.
+          await fetchReadyOrders()
         }
       )
       .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error('Waiter realtime subscription error:', status)
-        }
+        if (!mounted) return
+
+        console.log('[WAITER REALTIME]', {
+          status,
+          restaurantId,
+          channelName,
+          url: window.location.href,
+        })
       })
 
     return () => {
       mounted = false
       supabase.removeChannel(channel)
     }
-  }, [isAuthenticated, restaurantId, startAlarm])
+  }, [isAuthenticated, restaurantId])
+
+  /*
+   * ---------------------------------------------------------
+   * POLLING FALLBACK FOR MOBILE BROWSERS
+   * ---------------------------------------------------------
+   * Mobile browsers may suspend WebSocket connections when the tab is
+   * backgrounded, the screen is locked, or the network changes. Polling
+   * guarantees that READY orders still appear even if Realtime disconnects.
+   */
+
+  useEffect(() => {
+    if (!isAuthenticated || !restaurantId) return undefined
+
+    let active = true
+    let intervalId
+
+    const syncOrders = async () => {
+      if (!active || document.visibilityState === 'hidden') return
+      await fetchReadyOrders()
+    }
+
+    intervalId = window.setInterval(syncOrders, 5000)
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncOrders()
+      }
+    }
+
+    const handleOnline = () => {
+      syncOrders()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [isAuthenticated, restaurantId])
 
   /*
    * ---------------------------------------------------------

@@ -234,7 +234,7 @@ export default function KitchenPortal({ params }) {
     let mounted = true
 
     const channel = supabase
-      .channel(`kitchen-orders-${restaurantId}`)
+      .channel(`kitchen-orders-${restaurantId}-${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -255,6 +255,8 @@ export default function KitchenPortal({ params }) {
       )
       .subscribe((status) => {
         if (!mounted) return
+
+        console.log('[KITCHEN REALTIME]', { status, restaurantId, url: window.location.href })
 
         if (status === 'SUBSCRIBED') {
           setIsConnected(true)
@@ -278,6 +280,41 @@ export default function KitchenPortal({ params }) {
     fetchActiveOrders,
     playNotificationSound,
   ])
+
+  /*
+   * ---------------------------------------------------------
+   * MOBILE-SAFE POLLING FALLBACK
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!isAuthenticated || !restaurantId) return undefined
+
+    let active = true
+
+    const syncOrders = async () => {
+      if (!active || document.visibilityState === 'hidden') return
+      await fetchActiveOrders()
+    }
+
+    const intervalId = window.setInterval(syncOrders, 5000)
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') syncOrders()
+    }
+
+    const handleOnline = () => syncOrders()
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [isAuthenticated, restaurantId, fetchActiveOrders])
 
   /*
    * ---------------------------------------------------------

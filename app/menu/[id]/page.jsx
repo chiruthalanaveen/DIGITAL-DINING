@@ -240,7 +240,7 @@ export default function CustomerMenuPage() {
     if (!restaurantId) return
 
     const channel = supabase
-      .channel(`customer-menu-sync-${restaurantId}`)
+      .channel(`customer-menu-sync-${restaurantId}-${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -327,12 +327,50 @@ export default function CustomerMenuPage() {
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log('[CUSTOMER MENU REALTIME]', { status, restaurantId, url: window.location.href })
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
   }, [restaurantId, isVerified, customerMobile])
+
+
+  /*
+   * ---------------------------------------------------------
+   * MOBILE-SAFE MENU REFRESH FALLBACK
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!restaurantId) return undefined
+
+    let active = true
+
+    const syncMenu = async () => {
+      if (!active || document.visibilityState === 'hidden') return
+      await fetchMenu()
+    }
+
+    const intervalId = window.setInterval(syncMenu, 15000)
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') syncMenu()
+    }
+
+    const handleOnline = () => syncMenu()
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [restaurantId])
 
   /*
    * GUEST VERIFICATION
