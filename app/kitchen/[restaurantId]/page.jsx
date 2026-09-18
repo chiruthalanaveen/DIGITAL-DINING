@@ -5,7 +5,13 @@ import { supabase } from '@/lib/supabase'
 
 export default function KitchenPortal({ params }) {
   const unwrappedParams = use(params)
-  const restaurantId = unwrappedParams?.restaurantid || unwrappedParams?.restaurantId
+  const restaurantId = String(
+    unwrappedParams?.restaurantid ||
+    unwrappedParams?.restaurantId ||
+    unwrappedParams?.restaurant_id ||
+    unwrappedParams?.id ||
+    ''
+  ).trim()
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userId, setUserId] = useState('')
@@ -162,8 +168,15 @@ export default function KitchenPortal({ params }) {
    * ---------------------------------------------------------
    */
 
-  const fetchActiveOrders = useCallback(async () => {
-    setLoading(true)
+  const fetchActiveOrders = useCallback(async (showLoader = true) => {
+    if (!restaurantId) {
+      console.error('[KITCHEN] Missing restaurantId', { params: unwrappedParams })
+      setOrders([])
+      setLoading(false)
+      return
+    }
+
+    if (showLoader) setLoading(true)
 
     try {
       const { data, error } = await supabase
@@ -174,7 +187,7 @@ export default function KitchenPortal({ params }) {
         .order('created_at', { ascending: true })
 
       if (error) {
-        console.error('KDS order fetch error:', error)
+        console.error('[KITCHEN] Order fetch error:', error)
         return
       }
 
@@ -229,12 +242,12 @@ export default function KitchenPortal({ params }) {
    */
 
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated || !restaurantId) return
 
     let mounted = true
 
     const channel = supabase
-      .channel(`kitchen-orders-${restaurantId}-${Date.now()}`)
+      .channel(`kitchen-orders-${restaurantId}`)
       .on(
         'postgres_changes',
         {
@@ -254,9 +267,8 @@ export default function KitchenPortal({ params }) {
         }
       )
       .subscribe((status) => {
+        console.log('[KITCHEN REALTIME]', { status, restaurantId, url: typeof window !== 'undefined' ? window.location.href : '' })
         if (!mounted) return
-
-        console.log('[KITCHEN REALTIME]', { status, restaurantId, url: window.location.href })
 
         if (status === 'SUBSCRIBED') {
           setIsConnected(true)
@@ -283,7 +295,7 @@ export default function KitchenPortal({ params }) {
 
   /*
    * ---------------------------------------------------------
-   * MOBILE-SAFE POLLING FALLBACK
+   * MOBILE DATABASE POLLING FALLBACK
    * ---------------------------------------------------------
    */
 
@@ -292,27 +304,25 @@ export default function KitchenPortal({ params }) {
 
     let active = true
 
-    const syncOrders = async () => {
+    const sync = async () => {
       if (!active || document.visibilityState === 'hidden') return
-      await fetchActiveOrders()
+      await fetchActiveOrders(false)
     }
 
-    const intervalId = window.setInterval(syncOrders, 5000)
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') syncOrders()
+    const intervalId = window.setInterval(sync, 5000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sync()
     }
+    const onOnline = () => sync()
 
-    const handleOnline = () => syncOrders()
-
-    document.addEventListener('visibilitychange', handleVisibility)
-    window.addEventListener('online', handleOnline)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('online', onOnline)
 
     return () => {
       active = false
       window.clearInterval(intervalId)
-      document.removeEventListener('visibilitychange', handleVisibility)
-      window.removeEventListener('online', handleOnline)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('online', onOnline)
     }
   }, [isAuthenticated, restaurantId, fetchActiveOrders])
 

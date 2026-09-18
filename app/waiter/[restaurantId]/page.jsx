@@ -3,12 +3,18 @@
 import { useState, useEffect, use, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
-const DEFAULT_ALARM_SOUND_URL = '/sounds/waiter-default.mp3'
+const ALARM_SOUND_URL =
+  'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'
 
 export default function WaiterPortal({ params }) {
   const unwrappedParams = use(params)
-  const restaurantId =
-    unwrappedParams?.restaurantid || unwrappedParams?.restaurantId || unwrappedParams?.id
+  const restaurantId = String(
+    unwrappedParams?.restaurantid ||
+    unwrappedParams?.restaurantId ||
+    unwrappedParams?.restaurant_id ||
+    unwrappedParams?.id ||
+    ''
+  ).trim()
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userId, setUserId] = useState('')
@@ -26,9 +32,6 @@ export default function WaiterPortal({ params }) {
   const alarmAudioRef = useRef(null)
   const soundEnabledRef = useRef(false)
   const alarmActiveRef = useRef(false)
-  const [alarmSoundUrl, setAlarmSoundUrl] = useState(DEFAULT_ALARM_SOUND_URL)
-  const [alarmEnabledByOwner, setAlarmEnabledByOwner] = useState(true)
-  const [alarmVolume, setAlarmVolume] = useState(1)
 
   /*
    * ---------------------------------------------------------
@@ -40,17 +43,17 @@ export default function WaiterPortal({ params }) {
     if (typeof window === 'undefined') return null
 
     if (!alarmAudioRef.current) {
-      const audio = new Audio(alarmSoundUrl)
+      const audio = new Audio(ALARM_SOUND_URL)
 
       audio.preload = 'auto'
       audio.loop = true
-      audio.volume = alarmVolume
+      audio.volume = 1.0
 
       alarmAudioRef.current = audio
     }
 
     return alarmAudioRef.current
-  }, [alarmSoundUrl, alarmVolume])
+  }, [])
 
   const stopAlarm = useCallback(() => {
     alarmActiveRef.current = false
@@ -68,7 +71,7 @@ export default function WaiterPortal({ params }) {
   }, [])
 
   const startAlarm = useCallback(async () => {
-    if (!soundEnabledRef.current || !alarmEnabledByOwner) return
+    if (!soundEnabledRef.current) return
 
     const audio = initializeAlarmAudio()
 
@@ -90,7 +93,7 @@ export default function WaiterPortal({ params }) {
       setAlarmActive(false)
       alarmActiveRef.current = false
     }
-  }, [initializeAlarmAudio, alarmEnabledByOwner])
+  }, [initializeAlarmAudio])
 
   const enableAlarmSound = async () => {
     const audio = initializeAlarmAudio()
@@ -137,33 +140,6 @@ export default function WaiterPortal({ params }) {
     }
   }
 
-  const fetchAlarmSettings = useCallback(async () => {
-    if (!restaurantId) return
-
-    const { data, error } = await supabase
-      .from('restaurants')
-      .select('waiter_alarm_sound, waiter_alarm_enabled, waiter_alarm_volume')
-      .eq('id', restaurantId)
-      .maybeSingle()
-
-    if (error) {
-      console.error('Waiter alarm settings error:', error)
-      return
-    }
-
-    const soundMap = {
-      'waiter-default': '/sounds/waiter-default.mp3',
-      'waiter-1': '/sounds/waiter-1.mp3',
-      'waiter-2': '/sounds/waiter-2.mp3',
-      'waiter-3': '/sounds/waiter-3.mp3',
-      'waiter-4': '/sounds/waiter-4.mp3',
-    }
-
-    setAlarmSoundUrl(soundMap[data?.waiter_alarm_sound] || soundMap['waiter-default'])
-    setAlarmEnabledByOwner(data?.waiter_alarm_enabled ?? true)
-    setAlarmVolume(Math.min(1, Math.max(0, Number(data?.waiter_alarm_volume ?? 1))))
-  }, [restaurantId])
-
   /*
    * ---------------------------------------------------------
    * LOGIN
@@ -190,9 +166,8 @@ export default function WaiterPortal({ params }) {
       setWaiterName(data.name)
       setIsAuthenticated(true)
 
-      await fetchAlarmSettings()
       fetchMenu()
-      await fetchReadyOrders()
+      fetchReadyOrders()
     } catch (err) {
       alert(err.message)
     }
@@ -228,6 +203,12 @@ export default function WaiterPortal({ params }) {
    */
 
   const fetchReadyOrders = async () => {
+    if (!restaurantId) {
+      console.error('[WAITER] Missing restaurantId', { params: unwrappedParams })
+      setReadyOrders([])
+      return
+    }
+
     const { data, error } = await supabase
       .from('orders')
       .select('*')
@@ -236,7 +217,7 @@ export default function WaiterPortal({ params }) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Waiter ready-order loading error:', error)
+      console.error('[WAITER] Ready orders fetch error:', error)
       return
     }
 
@@ -258,7 +239,7 @@ export default function WaiterPortal({ params }) {
 
   /*
    * ---------------------------------------------------------
-   * REALTIME + MOBILE-SAFE READY ORDERS SYNC
+   * REALTIME READY ORDERS
    * ---------------------------------------------------------
    */
 
@@ -266,10 +247,9 @@ export default function WaiterPortal({ params }) {
     if (!isAuthenticated || !restaurantId) return undefined
 
     let mounted = true
-    const channelName = `waiter-ready-orders-${restaurantId}-${Date.now()}`
 
     const channel = supabase
-      .channel(channelName)
+      .channel(`waiter-orders-${restaurantId}`)
       .on(
         'postgres_changes',
         {
@@ -278,73 +258,64 @@ export default function WaiterPortal({ params }) {
           table: 'orders',
           filter: `restaurant_id=eq.${restaurantId}`,
         },
-        async (payload) => {
+        (payload) => {
           if (!mounted) return
 
-          // Always re-fetch from the database. This avoids stale or partial
-          // payloads and also handles status changes reliably.
-          await fetchReadyOrders()
+          const changedOrder = payload.new
+          const changedOrderId = payload.old?.id || changedOrder?.id
+
+          if (payload.eventType === 'DELETE') {
+            setReadyOrders((current) =>
+              current.filter(
+                (order) => String(order.id) !== String(changedOrderId)
+              )
+            )
+            return
+          }
+
+          if (!changedOrder?.id) return
+
+          if (changedOrder.status === 'ready') {
+            setReadyOrders((current) => {
+              const exists = current.some(
+                (order) => String(order.id) === String(changedOrder.id)
+              )
+
+              if (exists) {
+                return current.map((order) =>
+                  String(order.id) === String(changedOrder.id)
+                    ? changedOrder
+                    : order
+                )
+              }
+
+              return [changedOrder, ...current]
+            })
+
+            if (soundEnabledRef.current) {
+              startAlarm()
+            }
+          } else {
+            // Remove orders that were handed over or changed away from READY.
+            setReadyOrders((current) =>
+              current.filter(
+                (order) => String(order.id) !== String(changedOrder.id)
+              )
+            )
+          }
         }
       )
       .subscribe((status) => {
-        if (!mounted) return
-
-        console.log('[WAITER REALTIME]', {
-          status,
-          restaurantId,
-          channelName,
-          url: window.location.href,
-        })
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('Waiter realtime subscription error:', status)
+        }
       })
 
     return () => {
       mounted = false
       supabase.removeChannel(channel)
     }
-  }, [isAuthenticated, restaurantId])
-
-  /*
-   * ---------------------------------------------------------
-   * POLLING FALLBACK FOR MOBILE BROWSERS
-   * ---------------------------------------------------------
-   * Mobile browsers may suspend WebSocket connections when the tab is
-   * backgrounded, the screen is locked, or the network changes. Polling
-   * guarantees that READY orders still appear even if Realtime disconnects.
-   */
-
-  useEffect(() => {
-    if (!isAuthenticated || !restaurantId) return undefined
-
-    let active = true
-    let intervalId
-
-    const syncOrders = async () => {
-      if (!active || document.visibilityState === 'hidden') return
-      await fetchReadyOrders()
-    }
-
-    intervalId = window.setInterval(syncOrders, 5000)
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        syncOrders()
-      }
-    }
-
-    const handleOnline = () => {
-      syncOrders()
-    }
-
-    document.addEventListener('visibilitychange', handleVisibility)
-    window.addEventListener('online', handleOnline)
-
-    return () => {
-      active = false
-      window.clearInterval(intervalId)
-      document.removeEventListener('visibilitychange', handleVisibility)
-      window.removeEventListener('online', handleOnline)
-    }
-  }, [isAuthenticated, restaurantId])
+  }, [isAuthenticated, restaurantId, startAlarm])
 
   /*
    * ---------------------------------------------------------
