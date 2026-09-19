@@ -64,6 +64,15 @@ export default function CustomerMenuPage() {
   const [isVerified, setIsVerified] = useState(false)
   const [customerName, setCustomerName] = useState('')
   const [customerMobile, setCustomerMobile] = useState('')
+  const customerMobileRef = useRef('')
+
+  // Keep the latest mobile number available to realtime callbacks without
+  // recreating the Supabase channel on every digit typed into the form.
+  // Recreating the menu effect on every keystroke can toggle the loading
+  // view and dismiss the mobile keyboard.
+  useEffect(() => {
+    customerMobileRef.current = customerMobile
+  }, [customerMobile])
 
   const [activeNav, setActiveNav] = useState('home')
   const [showOrders, setShowOrders] = useState(false)
@@ -316,7 +325,8 @@ export default function CustomerMenuPage() {
           // This avoids a stale fetch replacing the newer kitchen status.
           if (payload.eventType === 'INSERT' && payload.new) {
             const belongsToCustomer =
-              String(payload.new.customer_mobile || '') === String(customerMobile.trim())
+              String(payload.new.customer_mobile || '') ===
+              String(customerMobileRef.current.trim())
 
             if (belongsToCustomer) {
               setCustomerOrders(current => {
@@ -354,7 +364,7 @@ export default function CustomerMenuPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [restaurantId, isVerified, customerMobile])
+  }, [restaurantId, isVerified])
 
   /*
    * GUEST VERIFICATION
@@ -601,21 +611,95 @@ export default function CustomerMenuPage() {
     }
   }
 
-  const getDailyOrderNumber = async () => {
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-
-    const { count, error } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('restaurant_id', restaurantId)
-      .gte('created_at', todayStart.toISOString())
-
-    if (error) {
-      throw new Error('Unable to generate order number: ' + error.message)
+  const createPublicOrder = async ({
+    paymentMode,
+    status,
+    itemsSnapshot,
+    totalAmount,
+    taxAmount,
+    packingFeeAmount,
+    diningTable,
+    customerFullName,
+    customerPhone
+  }) => {
+    if (!restaurantId) {
+      throw new Error('Restaurant ID is missing. Please reopen the QR menu.')
     }
 
-    return (count || 0) + 1
+    const cleanName = String(customerFullName || '').trim()
+    const cleanMobile = String(customerPhone || '').trim()
+
+    if (!cleanName) {
+      throw new Error('Customer name is required.')
+    }
+
+    if (!/^[0-9]{10}$/.test(cleanMobile)) {
+      throw new Error('Please enter a valid 10-digit mobile number.')
+    }
+
+    if (!Array.isArray(itemsSnapshot) || itemsSnapshot.length === 0) {
+      throw new Error('Your cart is empty.')
+    }
+
+    const { data, error } = await supabase.rpc(
+      'create_public_qr_order',
+      {
+        p_restaurant_id: String(restaurantId),
+        p_table_number: String(diningTable || tableNumber || '1'),
+        p_customer_name: cleanName,
+        p_customer_mobile: cleanMobile,
+        p_items: itemsSnapshot,
+        p_total_amount: Number(totalAmount || 0),
+        p_tax_amount: Number(taxAmount || 0),
+        p_packing_fee: Number(packingFeeAmount || 0),
+        p_payment_mode: String(paymentMode || 'Pay at Counter'),
+        p_status: String(status || 'pending')
+      }
+    )
+
+    if (error) {
+      console.error('[QR MENU] Public order RPC failed:', {
+        restaurantId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      })
+
+      throw new Error(
+        error.message ||
+          'Unable to place order. Please try again.'
+      )
+    }
+
+    let result = data
+
+    if (typeof result === 'string') {
+      try {
+        result = JSON.parse(result)
+      } catch {
+        result = {}
+      }
+    }
+
+    const order =
+      result && typeof result === 'object' && !Array.isArray(result)
+        ? result.order || result
+        : null
+
+    const orderNumber = Number(
+      order?.order_number ?? result?.order_number
+    )
+
+    if (!Number.isSafeInteger(orderNumber) || orderNumber < 1) {
+      console.error('[QR MENU] Invalid order response:', result)
+      throw new Error('Unable to generate a valid order number.')
+    }
+
+    return {
+      orderNumber,
+      order
+    }
   }
 
   const createItemsSnapshot = () => {
@@ -655,27 +739,19 @@ export default function CustomerMenuPage() {
         orderType === 'parcel' ? `Parcel (${tableNumber})` : `Dine-In (${tableNumber})`
       const finalMobile = customerMobile.trim()
 
-      const dailyOrderNumber = await getDailyOrderNumber()
       const itemsSnapshot = createItemsSnapshot()
-
-      const { error } = await supabase.from('orders').insert([
-        {
-          restaurant_id: restaurantId,
-          order_number: dailyOrderNumber,
-          table_number:
-            orderType === 'parcel' ? `Parcel (${tableNumber})` : tableNumber,
-          customer_name: customerName.trim(),
-          customer_mobile: finalMobile,
-          items: itemsSnapshot,
-          total_amount: finalBillTotal,
-          tax_amount: finalGst,
-          packing_fee: finalPacking,
-          payment_mode: 'Pay at Counter',
-          status: 'pending'
-        }
-      ])
-
-      if (error) throw new Error(error.message)
+      const { orderNumber: dailyOrderNumber } = await createPublicOrder({
+        paymentMode: 'Pay at Counter',
+        status: 'pending',
+        itemsSnapshot,
+        totalAmount: finalBillTotal,
+        taxAmount: finalGst,
+        packingFeeAmount: finalPacking,
+        diningTable:
+          orderType === 'parcel' ? `Parcel (${tableNumber})` : tableNumber,
+        customerFullName: customerName,
+        customerPhone: finalMobile
+      })
 
       await incrementOrderedItems(cartItemsArray)
 
@@ -750,27 +826,19 @@ export default function CustomerMenuPage() {
         description: `Table ${tableNumber} Order (${customerName})`,
         handler: async response => {
           try {
-            const dailyOrderNumber = await getDailyOrderNumber()
             const itemsSnapshot = createItemsSnapshot()
-
-            const { error } = await supabase.from('orders').insert([
-              {
-                restaurant_id: restaurantId,
-                order_number: dailyOrderNumber,
-                table_number:
-                  orderType === 'parcel' ? `Parcel (${tableNumber})` : tableNumber,
-                customer_name: customerName.trim(),
-                customer_mobile: finalMobile,
-                items: itemsSnapshot,
-                total_amount: finalBillTotal,
-                tax_amount: finalGst,
-                packing_fee: finalPacking,
-                payment_mode: 'Razorpay Online',
-                status: 'paid'
-              }
-            ])
-
-            if (error) throw new Error(error.message)
+            const { orderNumber: dailyOrderNumber } = await createPublicOrder({
+              paymentMode: 'Razorpay Online',
+              status: 'paid',
+              itemsSnapshot,
+              totalAmount: finalBillTotal,
+              taxAmount: finalGst,
+              packingFeeAmount: finalPacking,
+              diningTable:
+                orderType === 'parcel' ? `Parcel (${tableNumber})` : tableNumber,
+              customerFullName: customerName,
+              customerPhone: finalMobile
+            })
 
             await incrementOrderedItems(cartItemsArray)
 
@@ -1117,9 +1185,12 @@ export default function CustomerMenuPage() {
               <input
                 type="text"
                 value={customerName}
-                onChange={e => setCustomerName(e.target.value)}
+                onChange={e => setCustomerName(e.currentTarget.value)}
                 placeholder="Enter your name"
-                autoComplete="off"
+                autoComplete="name"
+                autoCorrect="off"
+                autoCapitalize="words"
+                spellCheck={false}
                 required
                 className="w-full px-4 py-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 focus:border-red-400 focus:outline-none text-sm font-medium !text-black placeholder:!text-neutral-400 caret-black"
                 style={{ color: '#000000', opacity: 1 }}
@@ -1131,14 +1202,31 @@ export default function CustomerMenuPage() {
                 Mobile Number
               </label>
               <input
-                type="tel"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 maxLength={10}
                 value={customerMobile}
-                onChange={e =>
-                  setCustomerMobile(e.target.value.replace(/\D/g, ''))
-                }
+                onChange={e => {
+                  const nextValue = e.currentTarget.value
+                    .replace(/\D/g, '')
+                    .slice(0, 10)
+                  setCustomerMobile(nextValue)
+                }}
+                onInput={e => {
+                  const nextValue = e.currentTarget.value
+                    .replace(/\D/g, '')
+                    .slice(0, 10)
+                  if (nextValue !== e.currentTarget.value) {
+                    e.currentTarget.value = nextValue
+                  }
+                }}
                 placeholder="10 digit mobile number"
-                autoComplete="off"
+                autoComplete="tel"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                enterKeyHint="done"
                 required
                 className="w-full px-4 py-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 focus:border-red-400 focus:outline-none text-sm font-medium !text-black placeholder:!text-neutral-400 caret-black"
                 style={{ color: '#000000', opacity: 1 }}
