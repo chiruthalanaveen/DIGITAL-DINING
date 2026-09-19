@@ -36,7 +36,10 @@ export default function CustomerMenuPage() {
   const params = useParams()
   const searchParams = useSearchParams()
 
-  const restaurantId = params.id || params.restaurantId
+  // Normalize the QR restaurant id so it works consistently on every device/browser.
+  const restaurantId = String(
+    params?.id ?? params?.restaurantId ?? ''
+  ).trim()
   const tableNumber = searchParams.get('table') || '1'
 
   const [restaurant, setRestaurant] = useState(null)
@@ -175,60 +178,79 @@ export default function CustomerMenuPage() {
 
   /*
    * FETCH RESTAURANT + MENU
+   *
+   * QR visitors are anonymous users. Do not depend on a logged-in
+   * Supabase session or direct table RLS policies for the public menu.
+   * The public RPC returns only the fields that the QR menu needs.
    */
   const fetchMenu = async () => {
     if (!restaurantId) {
+      setRestaurant(null)
+      setMenuItems([])
+      setDailyOffers([])
       setLoading(false)
       return
     }
 
     try {
-      const { data: restData, error: restError } =
-        await supabase
-          .from('restaurants')
-          .select('*')
-          .eq('id', restaurantId)
-          .maybeSingle()
+      setLoading(true)
 
-      if (restError) {
-        console.error('Restaurant loading error:', restError)
+      const { data, error } = await supabase.rpc(
+        'get_public_qr_menu',
+        {
+          p_restaurant_id: restaurantId
+        }
+      )
+
+      if (error) {
+        console.error('[QR MENU] Public menu RPC failed:', {
+          restaurantId,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
+
+        // Do not leave stale data from another restaurant on screen.
+        setRestaurant(null)
+        setMenuItems([])
+        setDailyOffers([])
+        return
       }
 
-      if (restData) {
-        setRestaurant(restData)
-      }
+      const payload =
+        data && typeof data === 'object' ? data : {}
 
-      const { data: menuData, error: menuError } =
-        await supabase
-          .from('menu_items')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .eq('is_available', true)
+      const nextRestaurant =
+        payload.restaurant &&
+        typeof payload.restaurant === 'object' &&
+        !Array.isArray(payload.restaurant)
+          ? payload.restaurant
+          : null
 
-      if (menuError) {
-        console.error('Menu loading error:', menuError)
-      }
+      const nextMenuItems = Array.isArray(payload.menu_items)
+        ? payload.menu_items
+        : []
 
-      if (menuData) {
-        setMenuItems(menuData)
-      }
+      const nextDailyOffers = Array.isArray(payload.daily_offers)
+        ? payload.daily_offers
+        : []
 
-      const today = new Date().toLocaleDateString('en-CA')
-      const { data: offersData, error: offersError } = await supabase
-        .from('daily_offers')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true)
-        .eq('offer_date', today)
-        .order('created_at', { ascending: false })
+      setRestaurant(nextRestaurant)
+      setMenuItems(nextMenuItems)
+      setDailyOffers(nextDailyOffers)
 
-      if (offersError) {
-        console.error('Daily offers loading error:', offersError)
-      }
-
-      setDailyOffers(offersData || [])
+      console.log('[QR MENU] Public menu loaded:', {
+        restaurantId,
+        dishes: nextMenuItems.length,
+        offers: nextDailyOffers.length,
+        device: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
+      })
     } catch (error) {
-      console.error('Menu fetch error:', error)
+      console.error('[QR MENU] Menu fetch error:', error)
+      setRestaurant(null)
+      setMenuItems([])
+      setDailyOffers([])
     } finally {
       setLoading(false)
     }
@@ -240,7 +262,7 @@ export default function CustomerMenuPage() {
     if (!restaurantId) return
 
     const channel = supabase
-      .channel(`customer-menu-sync-${restaurantId}-${Date.now()}`)
+      .channel(`customer-menu-sync-${restaurantId}`)
       .on(
         'postgres_changes',
         {
@@ -327,50 +349,12 @@ export default function CustomerMenuPage() {
           }
         }
       )
-      .subscribe((status) => {
-        console.log('[CUSTOMER MENU REALTIME]', { status, restaurantId, url: window.location.href })
-      })
+      .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
   }, [restaurantId, isVerified, customerMobile])
-
-
-  /*
-   * ---------------------------------------------------------
-   * MOBILE-SAFE MENU REFRESH FALLBACK
-   * ---------------------------------------------------------
-   */
-
-  useEffect(() => {
-    if (!restaurantId) return undefined
-
-    let active = true
-
-    const syncMenu = async () => {
-      if (!active || document.visibilityState === 'hidden') return
-      await fetchMenu()
-    }
-
-    const intervalId = window.setInterval(syncMenu, 15000)
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') syncMenu()
-    }
-
-    const handleOnline = () => syncMenu()
-
-    document.addEventListener('visibilitychange', handleVisibility)
-    window.addEventListener('online', handleOnline)
-
-    return () => {
-      active = false
-      window.clearInterval(intervalId)
-      document.removeEventListener('visibilitychange', handleVisibility)
-      window.removeEventListener('online', handleOnline)
-    }
-  }, [restaurantId])
 
   /*
    * GUEST VERIFICATION
