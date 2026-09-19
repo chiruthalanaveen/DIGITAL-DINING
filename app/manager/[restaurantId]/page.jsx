@@ -42,100 +42,317 @@ function Stat({ title, value, accent = 'text-white' }) {
 }
 
 function RestaurantChatWidget({ restaurantId }) {
-  const [open, setOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
+  const [session, setSession] = useState(null)
   const [messages, setMessages] = useState([])
-  const [text, setText] = useState('')
-  const endRef = useRef(null)
+  const [newMessage, setNewMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const chatEndRef = useRef(null)
+  const pollRef = useRef(null)
+  const mountedRef = useRef(false)
+  const sessionIdRef = useRef(null)
+
+  const mergeMessage = (message) => {
+    if (!message?.id) return
+    setMessages((current) => {
+      if (current.some((item) => String(item.id) === String(message.id))) {
+        return current
+      }
+      return [...current, message].sort(
+        (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+      )
+    })
+  }
+
+  const loadSupportChat = async (createIfMissing = false) => {
+    if (!restaurantId) return
+    if (createIfMissing) setLoading(true)
+
+    try {
+      if (createIfMissing) {
+        const { data: created, error: createError } = await supabase.rpc(
+          'create_support_chat_session',
+          { p_restaurant_id: String(restaurantId) }
+        )
+
+        if (createError) throw createError
+        if (created?.success === false) {
+          throw new Error(created?.message || 'Unable to start support chat.')
+        }
+        if (created?.session) {
+          sessionIdRef.current = String(created.session.id)
+          setSession(created.session)
+        }
+      }
+
+      const { data, error } = await supabase.rpc('get_support_chat_state', {
+        p_restaurant_id: String(restaurantId),
+      })
+
+      if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to load support chat.')
+      }
+
+      const nextSession = data?.session || null
+      sessionIdRef.current = nextSession?.id ? String(nextSession.id) : null
+      setSession(nextSession)
+      setMessages(Array.isArray(data?.messages) ? data.messages : [])
+    } catch (error) {
+      console.error('Restaurant support chat error:', error)
+    } finally {
+      if (createIfMissing) setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    if (!open || !restaurantId) return
-    let active = true
+    if (!isOpen || !restaurantId) return undefined
 
-    const load = async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: true })
-
-      if (!error && active) setMessages(data || [])
-    }
-
-    load()
+    mountedRef.current = true
+    loadSupportChat(true)
 
     const channel = supabase
-      .channel(`manager-support-chat-${restaurantId}`)
+      .channel(`restaurant-support-chat-${restaurantId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `restaurant_id=eq.${restaurantId}`
+          filter: `restaurant_id=eq.${restaurantId}`,
         },
-        (payload) => setMessages((current) => [...current, payload.new])
+        (payload) => {
+          if (!mountedRef.current) return
+          if (
+            payload?.new?.support_session_id &&
+            sessionIdRef.current &&
+            String(payload.new.support_session_id) !== String(sessionIdRef.current)
+          ) {
+            return
+          }
+          mergeMessage(payload.new)
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'support_chat_sessions',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        () => loadSupportChat(false)
       )
       .subscribe()
 
+    pollRef.current = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadSupportChat(false)
+      }
+    }, 2000)
+
     return () => {
-      active = false
+      mountedRef.current = false
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current)
+        pollRef.current = null
+      }
       supabase.removeChannel(channel)
     }
-  }, [open, restaurantId])
+  }, [isOpen, restaurantId])
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const send = async (event) => {
-    event.preventDefault()
-    const message = text.trim()
-    if (!message || !restaurantId) return
-    setText('')
-    const { error } = await supabase.from('messages').insert({
-      restaurant_id: restaurantId,
-      sender: 'restaurant',
-      message
-    })
-    if (error) alert(`Unable to send message: ${error.message}`)
+  const handleOpen = async () => {
+    setIsOpen(true)
   }
 
+  const handleSendMessage = async (event) => {
+    event.preventDefault()
+    const message = newMessage.trim()
+    const sessionId = sessionIdRef.current
+
+    if (!message || !restaurantId || !sessionId) return
+    if (String(session?.status || '').toLowerCase() !== 'connected') {
+      alert('Please wait until Admin accepts the support chat.')
+      return
+    }
+
+    setSending(true)
+    try {
+      const { data, error } = await supabase.rpc('support_chat_send_message', {
+        p_restaurant_id: String(restaurantId),
+        p_session_id: String(sessionId),
+        p_sender: 'restaurant',
+        p_message: message,
+      })
+
+      if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to send message.')
+      }
+
+      setNewMessage('')
+      if (data?.message) mergeMessage(data.message)
+    } catch (error) {
+      console.error('Support message send error:', error)
+      alert(`Unable to send message: ${error.message || 'Please try again.'}`)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const status = String(session?.status || '').toLowerCase()
+  const isConnected = status === 'connected'
+  const isPending = status === 'pending'
+  const isClosed = status === 'closed'
+
   return (
-    <div className="fixed bottom-5 right-5 z-50">
-      {!open ? (
-        <button onClick={() => setOpen(true)} className="rounded-full bg-orange-500 px-5 py-4 text-xs font-black text-white shadow-2xl">
-          💬 Support Chat
+    <div className="fixed bottom-6 right-6 z-50 font-sans">
+      {!isOpen ? (
+        <button
+          onClick={handleOpen}
+          className="bg-orange-500 hover:bg-orange-600 text-white font-black p-4 rounded-full shadow-2xl flex items-center space-x-2 transition transform hover:scale-105"
+        >
+          <span>💬</span>
+          <span className="text-xs uppercase tracking-wider pr-1">Support Chat</span>
         </button>
       ) : (
-        <div className="flex h-[450px] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-950 shadow-2xl">
-          <div className="flex items-center justify-between border-b border-neutral-800 p-4">
-            <h3 className="text-xs font-black uppercase text-white">Restaurant Support</h3>
-            <button onClick={() => setOpen(false)} className="text-neutral-400">✕</button>
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(380px,calc(100vw-2rem))] h-[500px] shadow-2xl flex flex-col overflow-hidden">
+          <div className="bg-neutral-950 p-4 border-b border-neutral-800 flex justify-between items-center">
+            <div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    isConnected
+                      ? 'bg-emerald-500 animate-pulse'
+                      : isPending
+                        ? 'bg-yellow-400 animate-pulse'
+                        : 'bg-neutral-600'
+                  }`}
+                />
+                <h3 className="text-xs font-black text-white uppercase tracking-wider">
+                  Restaurant Support
+                </h3>
+              </div>
+              <p
+                className={`text-[10px] mt-1 font-bold ${
+                  isConnected
+                    ? 'text-emerald-400'
+                    : isPending
+                      ? 'text-yellow-400'
+                      : 'text-neutral-500'
+                }`}
+              >
+                {loading
+                  ? 'Connecting...'
+                  : isConnected
+                    ? '🟢 Live Chat Connected'
+                    : isPending
+                      ? '⏳ Waiting for Admin to Accept'
+                      : isClosed
+                        ? 'Chat closed — open Support Chat again to request a new session'
+                        : 'Clicking Support Chat sends a request to Admin'}
+              </p>
+            </div>
+
+            <button
+              onClick={() => setIsOpen(false)}
+              className="text-neutral-400 hover:text-white font-bold text-sm px-2 py-1"
+              aria-label="Close support chat"
+            >
+              ✕
+            </button>
           </div>
-          <div className="flex-1 space-y-3 overflow-y-auto p-4">
-            {!messages.length && <p className="mt-12 text-center text-xs text-neutral-500">No messages yet.</p>}
-            {messages.map((message) => (
-              <div key={message.id} className={`flex ${message.sender === 'restaurant' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs ${
-                  message.sender === 'restaurant'
-                    ? 'rounded-br-none bg-orange-500 text-white'
-                    : 'rounded-bl-none border border-neutral-700 bg-neutral-800 text-neutral-200'
-                }`}>
-                  {message.message}
+
+          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-neutral-950/50">
+            {!isConnected && messages.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-center px-5">
+                <div>
+                  <div className="text-4xl mb-3">{isPending ? '⏳' : isClosed ? '💬' : '🛎️'}</div>
+                  <p className="text-sm font-black text-white">
+                    {isPending
+                      ? 'Support request sent'
+                      : isClosed
+                        ? 'Support chat is closed'
+                        : 'Support request'}
+                  </p>
+                  <p className="text-[11px] text-neutral-500 mt-2 leading-relaxed">
+                    {isPending
+                      ? 'Admin has received your request. The live chat will become available after Admin accepts it.'
+                      : isClosed
+                        ? 'Close this window and open Support Chat again to create another request.'
+                        : 'A support session is created automatically when you open this chat.'}
+                  </p>
                 </div>
               </div>
-            ))}
-            <div ref={endRef} />
+            ) : messages.length === 0 ? (
+              <p className="text-center text-xs text-neutral-500 mt-12">
+                Live chat connected. Send a message to Admin.
+              </p>
+            ) : (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${
+                    msg.sender === 'restaurant' ? 'justify-end' : 'justify-start'
+                  }`}
+                >
+                  <div
+                    className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
+                      msg.sender === 'restaurant'
+                        ? 'bg-orange-500 text-white rounded-br-none'
+                        : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
+                    }`}
+                  >
+                    <div>{msg.message}</div>
+                    {msg.created_at && (
+                      <div className="text-[8px] opacity-60 mt-1">
+                        {new Date(msg.created_at).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            <div ref={chatEndRef} />
           </div>
-          <form onSubmit={send} className="flex gap-2 border-t border-neutral-800 p-3">
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Type your message..." className="min-w-0 flex-1 rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-white outline-none" />
-            <button className="rounded-xl bg-orange-500 px-4 text-xs font-black text-white">Send</button>
+
+          <form
+            onSubmit={handleSendMessage}
+            className="p-3 bg-neutral-950 border-t border-neutral-800 flex space-x-2"
+          >
+            <input
+              type="text"
+              placeholder={
+                isConnected ? 'Type your message...' : 'Waiting for Admin acceptance...'
+              }
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              disabled={!isConnected || sending}
+              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500 disabled:opacity-50"
+            />
+
+            <button
+              type="submit"
+              disabled={!isConnected || sending || !newMessage.trim()}
+              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black px-4 py-2.5 rounded-xl text-xs transition"
+            >
+              {sending ? '...' : 'Send'}
+            </button>
           </form>
         </div>
       )}
     </div>
   )
 }
+
 
 export default function RestaurantManagerDashboard({ params }) {
   const routeParams = use(params)

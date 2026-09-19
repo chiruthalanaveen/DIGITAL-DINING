@@ -7,43 +7,121 @@ import { supabase } from '@/lib/supabase'
 // Real-Time Restaurant Chat Widget Component
 function RestaurantChatWidget({ restaurantId }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [session, setSession] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
   const chatEndRef = useRef(null)
+  const pollRef = useRef(null)
+  const mountedRef = useRef(false)
+  const sessionIdRef = useRef(null)
+
+  const mergeMessage = (message) => {
+    if (!message?.id) return
+    setMessages((current) => {
+      if (current.some((item) => String(item.id) === String(message.id))) {
+        return current
+      }
+      return [...current, message].sort(
+        (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+      )
+    })
+  }
+
+  const loadSupportChat = async (createIfMissing = false) => {
+    if (!restaurantId) return
+    if (createIfMissing) setLoading(true)
+
+    try {
+      if (createIfMissing) {
+        const { data: created, error: createError } = await supabase.rpc(
+          'create_support_chat_session',
+          { p_restaurant_id: String(restaurantId) }
+        )
+
+        if (createError) throw createError
+        if (created?.success === false) {
+          throw new Error(created?.message || 'Unable to start support chat.')
+        }
+        if (created?.session) {
+          sessionIdRef.current = String(created.session.id)
+          setSession(created.session)
+        }
+      }
+
+      const { data, error } = await supabase.rpc('get_support_chat_state', {
+        p_restaurant_id: String(restaurantId),
+      })
+
+      if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to load support chat.')
+      }
+
+      const nextSession = data?.session || null
+      sessionIdRef.current = nextSession?.id ? String(nextSession.id) : null
+      setSession(nextSession)
+      setMessages(Array.isArray(data?.messages) ? data.messages : [])
+    } catch (error) {
+      console.error('Restaurant support chat error:', error)
+    } finally {
+      if (createIfMissing) setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    if (!isOpen || !restaurantId) return
+    if (!isOpen || !restaurantId) return undefined
 
-    const fetchMessages = async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: true })
+    mountedRef.current = true
+    loadSupportChat(true)
 
-      if (!error && data) setMessages(data)
-    }
-
-    fetchMessages()
-
-    // Real-time subscription for this specific restaurant chat room
     const channel = supabase
-      .channel(`restaurant-live-chat-${restaurantId}`)
+      .channel(`restaurant-support-chat-${restaurantId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `restaurant_id=eq.${restaurantId}`
+          filter: `restaurant_id=eq.${restaurantId}`,
         },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new])
+          if (!mountedRef.current) return
+          if (
+            payload?.new?.support_session_id &&
+            sessionIdRef.current &&
+            String(payload.new.support_session_id) !== String(sessionIdRef.current)
+          ) {
+            return
+          }
+          mergeMessage(payload.new)
         }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'support_chat_sessions',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        () => loadSupportChat(false)
       )
       .subscribe()
 
+    pollRef.current = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadSupportChat(false)
+      }
+    }, 2000)
+
     return () => {
+      mountedRef.current = false
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current)
+        pollRef.current = null
+      }
       supabase.removeChannel(channel)
     }
   }, [isOpen, restaurantId])
@@ -52,78 +130,161 @@ function RestaurantChatWidget({ restaurantId }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault()
-    if (!newMessage.trim() || !restaurantId) return
-
-    const messageText = newMessage.trim()
-    setNewMessage('')
-
-    await supabase.from('messages').insert([
-      {
-        restaurant_id: restaurantId,
-        sender: 'restaurant',
-        message: messageText
-      }
-    ])
+  const handleOpen = async () => {
+    setIsOpen(true)
   }
+
+  const handleSendMessage = async (event) => {
+    event.preventDefault()
+    const message = newMessage.trim()
+    const sessionId = sessionIdRef.current
+
+    if (!message || !restaurantId || !sessionId) return
+    if (String(session?.status || '').toLowerCase() !== 'connected') {
+      alert('Please wait until Admin accepts the support chat.')
+      return
+    }
+
+    setSending(true)
+    try {
+      const { data, error } = await supabase.rpc('support_chat_send_message', {
+        p_restaurant_id: String(restaurantId),
+        p_session_id: String(sessionId),
+        p_sender: 'restaurant',
+        p_message: message,
+      })
+
+      if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to send message.')
+      }
+
+      setNewMessage('')
+      if (data?.message) mergeMessage(data.message)
+    } catch (error) {
+      console.error('Support message send error:', error)
+      alert(`Unable to send message: ${error.message || 'Please try again.'}`)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const status = String(session?.status || '').toLowerCase()
+  const isConnected = status === 'connected'
+  const isPending = status === 'pending'
+  const isClosed = status === 'closed'
 
   return (
     <div className="fixed bottom-6 right-6 z-50 font-sans">
       {!isOpen ? (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={handleOpen}
           className="bg-orange-500 hover:bg-orange-600 text-white font-black p-4 rounded-full shadow-2xl flex items-center space-x-2 transition transform hover:scale-105"
         >
           <span>💬</span>
           <span className="text-xs uppercase tracking-wider pr-1">Support Chat</span>
         </button>
       ) : (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-80 sm:w-96 h-[450px] shadow-2xl flex flex-col overflow-hidden">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(380px,calc(100vw-2rem))] h-[500px] shadow-2xl flex flex-col overflow-hidden">
           <div className="bg-neutral-950 p-4 border-b border-neutral-800 flex justify-between items-center">
-            <div className="flex items-center space-x-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <h3 className="text-xs font-black text-white uppercase tracking-wider">
-                Restaurant Support
-              </h3>
+            <div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    isConnected
+                      ? 'bg-emerald-500 animate-pulse'
+                      : isPending
+                        ? 'bg-yellow-400 animate-pulse'
+                        : 'bg-neutral-600'
+                  }`}
+                />
+                <h3 className="text-xs font-black text-white uppercase tracking-wider">
+                  Restaurant Support
+                </h3>
+              </div>
+              <p
+                className={`text-[10px] mt-1 font-bold ${
+                  isConnected
+                    ? 'text-emerald-400'
+                    : isPending
+                      ? 'text-yellow-400'
+                      : 'text-neutral-500'
+                }`}
+              >
+                {loading
+                  ? 'Connecting...'
+                  : isConnected
+                    ? '🟢 Live Chat Connected'
+                    : isPending
+                      ? '⏳ Waiting for Admin to Accept'
+                      : isClosed
+                        ? 'Chat closed — open Support Chat again to request a new session'
+                        : 'Clicking Support Chat sends a request to Admin'}
+              </p>
             </div>
 
             <button
               onClick={() => setIsOpen(false)}
               className="text-neutral-400 hover:text-white font-bold text-sm px-2 py-1"
+              aria-label="Close support chat"
             >
               ✕
             </button>
           </div>
 
           <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-neutral-950/50">
-            {messages.length === 0 ? (
+            {!isConnected && messages.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-center px-5">
+                <div>
+                  <div className="text-4xl mb-3">{isPending ? '⏳' : isClosed ? '💬' : '🛎️'}</div>
+                  <p className="text-sm font-black text-white">
+                    {isPending
+                      ? 'Support request sent'
+                      : isClosed
+                        ? 'Support chat is closed'
+                        : 'Support request'}
+                  </p>
+                  <p className="text-[11px] text-neutral-500 mt-2 leading-relaxed">
+                    {isPending
+                      ? 'Admin has received your request. The live chat will become available after Admin accepts it.'
+                      : isClosed
+                        ? 'Close this window and open Support Chat again to create another request.'
+                        : 'A support session is created automatically when you open this chat.'}
+                  </p>
+                </div>
+              </div>
+            ) : messages.length === 0 ? (
               <p className="text-center text-xs text-neutral-500 mt-12">
-                No messages yet. Send a message to start chatting!
+                Live chat connected. Send a message to Admin.
               </p>
             ) : (
               messages.map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex ${
-                    msg.sender === 'restaurant'
-                      ? 'justify-end'
-                      : 'justify-start'
+                    msg.sender === 'restaurant' ? 'justify-end' : 'justify-start'
                   }`}
                 >
                   <div
-                    className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-xs ${
+                    className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
                       msg.sender === 'restaurant'
                         ? 'bg-orange-500 text-white rounded-br-none'
                         : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
                     }`}
                   >
-                    {msg.message}
+                    <div>{msg.message}</div>
+                    {msg.created_at && (
+                      <div className="text-[8px] opacity-60 mt-1">
+                        {new Date(msg.created_at).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
             )}
-
             <div ref={chatEndRef} />
           </div>
 
@@ -133,17 +294,21 @@ function RestaurantChatWidget({ restaurantId }) {
           >
             <input
               type="text"
-              placeholder="Type your message..."
+              placeholder={
+                isConnected ? 'Type your message...' : 'Waiting for Admin acceptance...'
+              }
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500"
+              disabled={!isConnected || sending}
+              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500 disabled:opacity-50"
             />
 
             <button
               type="submit"
-              className="bg-orange-500 hover:bg-orange-600 text-white font-black px-4 py-2.5 rounded-xl text-xs transition"
+              disabled={!isConnected || sending || !newMessage.trim()}
+              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black px-4 py-2.5 rounded-xl text-xs transition"
             >
-              Send
+              {sending ? '...' : 'Send'}
             </button>
           </form>
         </div>
@@ -151,6 +316,7 @@ function RestaurantChatWidget({ restaurantId }) {
     </div>
   )
 }
+
 
 function StaffLoginQrCard({ title, description, url, icon, restaurantCode }) {
   const qrUrl = `https://quickchart.io/qr?size=320&margin=2&text=${encodeURIComponent(url)}`
