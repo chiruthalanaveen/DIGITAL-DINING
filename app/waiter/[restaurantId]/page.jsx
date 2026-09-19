@@ -17,6 +17,7 @@ export default function WaiterPortal({ params }) {
   ).trim()
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [restaurantCode, setRestaurantCode] = useState('')
   const [userId, setUserId] = useState('')
   const [password, setPassword] = useState('')
   const [waiterName, setWaiterName] = useState('')
@@ -149,28 +150,36 @@ export default function WaiterPortal({ params }) {
   const handleLogin = async (e) => {
     e.preventDefault()
 
-    try {
-      const { data, error } = await supabase
-        .from('staff_users')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('user_id', userId.trim().toLowerCase())
-        .eq('password', password.trim())
-        .eq('role', 'waiter')
-        .eq('is_active', true)
-        .single()
+    if (!restaurantId || !restaurantCode.trim() || !userId.trim() || !password.trim()) {
+      alert('Enter the 5-digit Restaurant Code, Waiter User ID, and password.')
+      return
+    }
 
-      if (error || !data) {
-        throw new Error('Invalid waiter credentials.')
+    try {
+      const { data, error } = await supabase.rpc('authenticate_staff_login', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: String(restaurantCode).trim(),
+        p_user_id: String(userId).trim().toLowerCase(),
+        p_password: String(password).trim(),
+        p_role: 'waiter',
+      })
+
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.message || 'Invalid restaurant credentials.')
+      if (String(data.restaurantId) !== String(restaurantId)) {
+        throw new Error('These credentials do not belong to this restaurant.')
       }
 
-      setWaiterName(data.name)
+      setWaiterName(data.staff?.name || data.staff?.user_id || '')
+      setRestaurantCode(String(data.restaurantCode || restaurantCode).trim())
       setIsAuthenticated(true)
 
-      fetchMenu()
-      fetchReadyOrders()
+      await fetchMenu()
+      await fetchReadyOrders()
     } catch (err) {
-      alert(err.message)
+      console.error('[WAITER] Login error:', err)
+      setIsAuthenticated(false)
+      alert(err.message || 'Unable to login.')
     }
   }
 
@@ -181,20 +190,26 @@ export default function WaiterPortal({ params }) {
    */
 
   const fetchMenu = async () => {
-    const { data, error } = await supabase
-      .from('menu_items')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('is_available', true)
+    if (!restaurantId || !restaurantCode || !userId || !password) return
+
+    const { data, error } = await supabase.rpc('get_waiter_portal_data', {
+      p_restaurant_id: String(restaurantId),
+      p_restaurant_code: String(restaurantCode).trim(),
+      p_user_id: String(userId).trim().toLowerCase(),
+      p_password: String(password).trim(),
+    })
 
     if (error) {
       console.error('Waiter menu loading error:', error)
       return
     }
 
-    if (data) {
-      setMenuItems(data)
+    if (!data?.success) {
+      console.error('Waiter portal rejected:', data?.message)
+      return
     }
+
+    setMenuItems(Array.isArray(data.menuItems) ? data.menuItems : [])
   }
 
   /*
@@ -204,32 +219,32 @@ export default function WaiterPortal({ params }) {
    */
 
   const fetchReadyOrders = async () => {
-    if (!restaurantId) {
-      console.error('[WAITER] Missing restaurantId', { params: unwrappedParams })
+    if (!restaurantId || !restaurantCode || !userId || !password) {
       setReadyOrders([])
       return
     }
 
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('status', 'ready')
-      .order('created_at', { ascending: false })
+    const { data, error } = await supabase.rpc('get_waiter_portal_data', {
+      p_restaurant_id: String(restaurantId),
+      p_restaurant_code: String(restaurantCode).trim(),
+      p_user_id: String(userId).trim().toLowerCase(),
+      p_password: String(password).trim(),
+    })
 
     if (error) {
       console.error('[WAITER] Ready orders fetch error:', error)
       return
     }
 
-    const ordersData = data || []
+    if (!data?.success) {
+      console.error('[WAITER] Ready orders rejected:', data?.message)
+      return
+    }
 
+    const ordersData = Array.isArray(data.readyOrders) ? data.readyOrders : []
     setReadyOrders(ordersData)
 
-    if (
-      ordersData.length > 0 &&
-      soundEnabledRef.current
-    ) {
+    if (ordersData.length > 0 && soundEnabledRef.current) {
       startAlarm()
     }
 
@@ -317,6 +332,39 @@ export default function WaiterPortal({ params }) {
       supabase.removeChannel(channel)
     }
   }, [isAuthenticated, restaurantId, startAlarm])
+
+  /*
+   * ---------------------------------------------------------
+   * DATABASE POLLING FALLBACK
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!isAuthenticated || !restaurantId) return undefined
+
+    let active = true
+
+    const sync = async () => {
+      if (!active || document.visibilityState === 'hidden') return
+      await fetchReadyOrders()
+    }
+
+    const intervalId = window.setInterval(sync, 5000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sync()
+    }
+    const onOnline = () => sync()
+
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('online', onOnline)
+
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [isAuthenticated, restaurantId, restaurantCode, userId, password])
 
   /*
    * ---------------------------------------------------------
@@ -423,26 +471,30 @@ export default function WaiterPortal({ params }) {
   const handleHandover = async (orderId) => {
     if (!orderId || !restaurantId) return
 
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        status: 'completed',
-        waiter_name: waiterName,
+    try {
+      const { data, error } = await supabase.rpc('staff_update_order_status', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: String(restaurantCode).trim(),
+        p_user_id: String(userId).trim().toLowerCase(),
+        p_password: String(password).trim(),
+        p_role: 'waiter',
+        p_order_id: String(orderId),
+        p_new_status: 'completed',
       })
-      .eq('id', orderId)
-      .eq('restaurant_id', restaurantId)
 
-    if (error) {
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.message || 'Unable to record handover.')
+
+      setReadyOrders((current) =>
+        current.filter((order) => String(order.id) !== String(orderId))
+      )
+
+      if (readyOrders.length <= 1) stopAlarm()
+      alert('Handover recorded successfully! ✅')
+    } catch (error) {
       console.error('Handover error:', error)
       alert(`Unable to record handover: ${error.message}`)
-      return
     }
-
-    setReadyOrders((current) =>
-      current.filter((order) => String(order.id) !== String(orderId))
-    )
-
-    alert('Handover recorded successfully! ✅')
   }
 
   /*
@@ -455,32 +507,30 @@ export default function WaiterPortal({ params }) {
     if (cart.length === 0) return
 
     const total = cart.reduce(
-      (sum, i) => sum + i.price * i.qty,
+      (sum, i) => sum + Number(i.price || 0) * Number(i.qty || 0),
       0
     )
 
-    const { error } = await supabase
-      .from('orders')
-      .insert([
-        {
-          restaurant_id: restaurantId,
-          table_number: tableNumber,
-          waiter_name: waiterName,
-          items: cart,
-          total_amount: total,
-          payment_mode: 'Cash at Counter',
-          status: 'pending',
-        },
-      ])
+    try {
+      const { data, error } = await supabase.rpc('waiter_place_direct_order', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: String(restaurantCode).trim(),
+        p_user_id: String(userId).trim().toLowerCase(),
+        p_password: String(password).trim(),
+        p_table_number: String(tableNumber),
+        p_items: cart,
+        p_total_amount: total,
+      })
 
-    if (error) {
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.message || 'Unable to send order to kitchen.')
+
+      alert('Order sent to kitchen! 🍳')
+      setCart([])
+    } catch (error) {
       console.error('Direct order error:', error)
-      alert('Unable to send order to kitchen.')
-      return
+      alert(`Unable to send order to kitchen: ${error.message}`)
     }
-
-    alert('Order sent to kitchen! 🍳')
-    setCart([])
   }
 
   /*
@@ -495,6 +545,7 @@ export default function WaiterPortal({ params }) {
     soundEnabledRef.current = false
 
     setSoundEnabled(false)
+    setRestaurantCode('')
     setIsAuthenticated(false)
     setReadyOrders([])
     setCart([])
@@ -529,6 +580,17 @@ export default function WaiterPortal({ params }) {
               Sign in to manage waiter orders
             </p>
           </div>
+
+          <input
+            type="text"
+            placeholder="5-digit Restaurant Code"
+            value={restaurantCode}
+            onChange={(e) => setRestaurantCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+            inputMode="numeric"
+            maxLength={5}
+            required
+            className="w-full bg-neutral-950 border border-orange-500/30 p-3 rounded-xl text-xs font-mono tracking-widest"
+          />
 
           <input
             type="text"
@@ -587,6 +649,9 @@ export default function WaiterPortal({ params }) {
             <strong className="text-orange-400">
               {waiterName}
             </strong>
+          </p>
+          <p className="inline-flex mt-2 rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[10px] font-black font-mono tracking-widest text-orange-300">
+            Restaurant Code: {restaurantCode || '-----'}
           </p>
         </div>
 

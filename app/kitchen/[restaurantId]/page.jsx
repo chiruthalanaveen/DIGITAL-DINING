@@ -14,6 +14,7 @@ export default function KitchenPortal({ params }) {
   ).trim()
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [restaurantCode, setRestaurantCode] = useState('')
   const [userId, setUserId] = useState('')
   const [password, setPassword] = useState('')
 
@@ -427,18 +428,21 @@ export default function KitchenPortal({ params }) {
   }, [playNotificationSound])
 
   const fetchAlarmSettings = useCallback(async () => {
-    if (!restaurantId) return
+    if (!restaurantId || !restaurantCode || !userId || !password) return
 
-    const { data, error } = await supabase
-      .from('restaurants')
-      .select('kitchen_alarm_sound, kitchen_alarm_enabled, kitchen_alarm_volume')
-      .eq('id', restaurantId)
-      .maybeSingle()
+    const { data, error } = await supabase.rpc('get_kitchen_portal_data', {
+      p_restaurant_id: String(restaurantId),
+      p_restaurant_code: String(restaurantCode).trim(),
+      p_user_id: String(userId).trim().toLowerCase(),
+      p_password: String(password).trim(),
+    })
 
     if (error) {
       console.error('Kitchen alarm settings error:', error)
       return
     }
+
+    if (!data?.success) return
 
     const soundMap = {
       'kitchen-default': '/sounds/kitchen-default.mp3',
@@ -447,10 +451,11 @@ export default function KitchenPortal({ params }) {
       'kitchen-3': '/sounds/kitchen-3.mp3',
     }
 
-    setAlarmSoundUrl(soundMap[data?.kitchen_alarm_sound] || soundMap['kitchen-default'])
-    setAlarmEnabled(data?.kitchen_alarm_enabled ?? true)
-    setAlarmVolume(Math.min(1, Math.max(0, Number(data?.kitchen_alarm_volume ?? 1))))
-  }, [restaurantId])
+    const restaurant = data.restaurant || {}
+    setAlarmSoundUrl(soundMap[restaurant.kitchen_alarm_sound] || soundMap['kitchen-default'])
+    setAlarmEnabled(restaurant.kitchen_alarm_enabled ?? true)
+    setAlarmVolume(Math.min(1, Math.max(0, Number(restaurant.kitchen_alarm_volume ?? 1))))
+  }, [restaurantId, restaurantCode, userId, password])
 
   /*
    * ---------------------------------------------------------
@@ -460,14 +465,12 @@ export default function KitchenPortal({ params }) {
 
   const applyActiveOrders = useCallback((data, announceNew = false) => {
     const rows = Array.isArray(data) ? data : []
-
     const activeRows = rows.filter((order) => !isFinishedStatus(order?.status))
 
     if (announceNew) {
       activeRows.forEach((order) => {
         const orderId = String(order?.id || '')
         if (!orderId) return
-
         if (!knownOrderIdsRef.current.has(orderId)) {
           knownOrderIdsRef.current.add(orderId)
           triggerNewOrderAlert(order)
@@ -477,9 +480,42 @@ export default function KitchenPortal({ params }) {
 
     setOrders(activeRows)
     setLastOrdersRefresh(new Date())
-
     return activeRows
   }, [triggerNewOrderAlert])
+
+  const fetchKitchenSnapshot = useCallback(async () => {
+    if (!restaurantId || !restaurantCode || !userId || !password) return null
+
+    const { data, error } = await supabase.rpc('get_kitchen_portal_data', {
+      p_restaurant_id: String(restaurantId),
+      p_restaurant_code: String(restaurantCode).trim(),
+      p_user_id: String(userId).trim().toLowerCase(),
+      p_password: String(password).trim(),
+    })
+
+    if (error) {
+      console.error('[KITCHEN] Portal data fetch error:', error)
+      return null
+    }
+
+    if (!data?.success) {
+      console.error('[KITCHEN] Portal data rejected:', data?.message)
+      return null
+    }
+
+    const restaurant = data.restaurant || {}
+    const soundMap = {
+      'kitchen-default': '/sounds/kitchen-default.mp3',
+      'kitchen-1': '/sounds/kitchen-1.mp3',
+      'kitchen-2': '/sounds/kitchen-2.mp3',
+      'kitchen-3': '/sounds/kitchen-3.mp3',
+    }
+    setAlarmSoundUrl(soundMap[restaurant.kitchen_alarm_sound] || soundMap['kitchen-default'])
+    setAlarmEnabled(restaurant.kitchen_alarm_enabled ?? true)
+    setAlarmVolume(Math.min(1, Math.max(0, Number(restaurant.kitchen_alarm_volume ?? 1))))
+
+    return Array.isArray(data.orders) ? data.orders : []
+  }, [restaurantId, restaurantCode, userId, password])
 
   const fetchActiveOrders = useCallback(async (showLoader = true, announceNew = false) => {
     if (!restaurantId) {
@@ -492,30 +528,13 @@ export default function KitchenPortal({ params }) {
     if (showLoader) setLoading(true)
 
     try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .neq('status', 'completed')
-        .order('created_at', { ascending: true })
-
-      console.log('KITCHEN DEBUG:', {
-        restaurantId,
-        data,
-        error,
-        count: data?.length,
-      })
-
-      if (error) {
-        console.error('[KITCHEN] Order fetch error:', error)
-        return []
-      }
-
-      return applyActiveOrders(data, announceNew)
+      const rows = await fetchKitchenSnapshot()
+      if (!rows) return []
+      return applyActiveOrders(rows, announceNew)
     } finally {
       setLoading(false)
     }
-  }, [restaurantId, unwrappedParams, applyActiveOrders])
+  }, [restaurantId, unwrappedParams, fetchKitchenSnapshot, applyActiveOrders])
 
   const fetchTodayOrders = useCallback(async (showLoader = false) => {
     if (!restaurantId) {
@@ -526,29 +545,22 @@ export default function KitchenPortal({ params }) {
     if (showLoader) setTodayOrdersLoading(true)
 
     try {
+      const rows = await fetchKitchenSnapshot()
+      if (!rows) return []
+
       const { start, end } = getTodayBounds()
+      const todayRows = rows.filter((order) => {
+        const created = order?.created_at
+        return created && created >= start && created < end
+      }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .gte('created_at', start)
-        .lt('created_at', end)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('[KITCHEN] Today orders fetch error:', error)
-        return []
-      }
-
-      const rows = Array.isArray(data) ? data : []
-      setTodayOrders(rows)
+      setTodayOrders(todayRows)
       setLastTodayRefresh(new Date())
-      return rows
+      return todayRows
     } finally {
       setTodayOrdersLoading(false)
     }
-  }, [restaurantId])
+  }, [restaurantId, fetchKitchenSnapshot])
 
   const refreshKitchenData = useCallback(async ({ showLoader = false, announceNew = true } = {}) => {
     if (syncInProgressRef.current) return
@@ -574,32 +586,38 @@ export default function KitchenPortal({ params }) {
   const handleLogin = async (e) => {
     e.preventDefault()
 
-    // This user gesture is important because modern browsers usually block
-    // automatic alarm playback until the kitchen user interacts with the page.
     await unlockAlarmAudio()
+
+    if (!restaurantId || !restaurantCode.trim() || !userId.trim() || !password.trim()) {
+      alert('Enter the 5-digit Restaurant Code, Kitchen User ID, and password.')
+      return
+    }
 
     setLoading(true)
 
     try {
-      const { data, error } = await supabase
-        .from('staff_users')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('user_id', userId.trim().toLowerCase())
-        .eq('password', password.trim())
-        .eq('role', 'kitchen')
-        .eq('is_active', true)
-        .single()
+      const { data, error } = await supabase.rpc('authenticate_staff_login', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: String(restaurantCode).trim(),
+        p_user_id: String(userId).trim().toLowerCase(),
+        p_password: String(password).trim(),
+        p_role: 'kitchen',
+      })
 
-      if (error || !data) {
-        throw new Error('Invalid kitchen credentials.')
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.message || 'Invalid restaurant credentials.')
+      if (String(data.restaurantId) !== String(restaurantId)) {
+        throw new Error('These credentials do not belong to this restaurant.')
       }
 
+      setRestaurantCode(String(data.restaurantCode || restaurantCode).trim())
       setIsAuthenticated(true)
 
       await fetchAlarmSettings()
       await refreshKitchenData({ showLoader: true, announceNew: false })
     } catch (err) {
+      console.error('[KITCHEN] Login error:', err)
+      setIsAuthenticated(false)
       alert(err.message || 'Unable to login.')
     } finally {
       setLoading(false)
@@ -759,44 +777,32 @@ export default function KitchenPortal({ params }) {
     setUpdatingOrder(orderId)
 
     try {
-      /*
-       * Do not use .select('*').single() after UPDATE.
-       * Supabase may successfully update the row but return no row
-       * because of the current SELECT/RLS policy. Calling .single()
-       * in that situation causes the JSON coercion error.
-       */
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          status: newStatus,
-        })
-        .eq('id', orderId)
-        .eq('restaurant_id', restaurantId)
-
-      if (error) {
-        throw error
-      }
-
-      // Update the active KDS immediately.
-      setOrders((current) => {
-        const updated = current
-          .map((order) =>
-            String(order.id) === String(orderId)
-              ? { ...order, status: newStatus }
-              : order
-          )
-          .filter((order) => !isFinishedStatus(order.status))
-
-        return updated
+      const { data, error } = await supabase.rpc('staff_update_order_status', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: String(restaurantCode).trim(),
+        p_user_id: String(userId).trim().toLowerCase(),
+        p_password: String(password).trim(),
+        p_role: 'kitchen',
+        p_order_id: String(orderId),
+        p_new_status: String(newStatus),
       })
 
-      // Keep the Today's Orders history visible even after a waiter delivers
-      // or completes an order. Re-fetching also captures any database-side
-      // changes made by the waiter terminal.
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.message || 'Unable to update order.')
+
+      const updatedOrder = data.order
+      setOrders((current) =>
+        current.map((order) =>
+          String(order.id) === String(orderId)
+            ? (updatedOrder || { ...order, status: newStatus })
+            : order
+        ).filter((order) => !isFinishedStatus(order.status))
+      )
+
       await fetchTodayOrders(false)
     } catch (error) {
       console.error('Status update error:', error)
-      alert(`Unable to update order status: ${error.message || 'Unknown error'}`)
+      alert(`Unable to update order: ${error.message || 'Unknown error'}`)
     } finally {
       setUpdatingOrder(null)
     }
@@ -932,6 +938,7 @@ export default function KitchenPortal({ params }) {
     setIsAuthenticated(false)
     setOrders([])
     setTodayOrders([])
+    setRestaurantCode('')
     setUserId('')
     setPassword('')
     setSearch('')
@@ -990,6 +997,17 @@ export default function KitchenPortal({ params }) {
               Sign in to manage kitchen orders
             </p>
           </div>
+
+          <input
+            type="text"
+            placeholder="5-digit Restaurant Code"
+            value={restaurantCode}
+            onChange={(e) => setRestaurantCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+            inputMode="numeric"
+            maxLength={5}
+            required
+            className="w-full bg-neutral-950 border border-orange-500/30 p-3 rounded-xl text-xs font-mono tracking-widest outline-none focus:border-red-500"
+          />
 
           <input
             type="text"

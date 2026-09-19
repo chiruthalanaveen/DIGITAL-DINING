@@ -143,6 +143,7 @@ export default function RestaurantManagerDashboard({ params }) {
 
   const [authenticated, setAuthenticated] = useState(false)
   const [manager, setManager] = useState(null)
+  const [restaurantCode, setRestaurantCode] = useState('')
   const [loginUserId, setLoginUserId] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
@@ -181,59 +182,82 @@ export default function RestaurantManagerDashboard({ params }) {
   }
 
   const fetchDashboard = useCallback(async () => {
-    if (!restaurantId) return
+    if (!restaurantId || !restaurantCode || !loginUserId || !loginPassword) return
     setLoading(true)
     try {
-      const [restaurantResult, menuResult, offerResult, orderResult, staffResult] = await Promise.all([
-        supabase.from('restaurants').select('*').eq('id', restaurantId).maybeSingle(),
-        supabase.from('menu_items').select('*').eq('restaurant_id', restaurantId).order('name', { ascending: true }),
-        supabase.from('daily_offers').select('*').eq('restaurant_id', restaurantId).order('offer_date', { ascending: false }),
-        supabase.from('orders').select('*').eq('restaurant_id', restaurantId).order('created_at', { ascending: false }),
-        supabase.from('staff_users').select('id, restaurant_id, name, user_id, role').eq('restaurant_id', restaurantId).in('role', ['waiter', 'kitchen']).order('name', { ascending: true })
-      ])
+      const { data, error } = await supabase.rpc('get_manager_dashboard_data', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: String(restaurantCode).trim(),
+        p_user_id: String(loginUserId).trim().toLowerCase(),
+        p_password: String(loginPassword).trim(),
+      })
 
-      if (restaurantResult.error) throw restaurantResult.error
-      if (menuResult.error) throw menuResult.error
-      if (orderResult.error) throw orderResult.error
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.message || 'Unable to load manager dashboard.')
 
-      setRestaurant(restaurantResult.data || null)
-      setMenuItems(menuResult.data || [])
-      setDailyOffers(offerResult.error ? [] : (offerResult.data || []))
-      setOrders(orderResult.data || [])
-      setStaffList(staffResult.error ? [] : (staffResult.data || []))
-      setStoreOpen(restaurantResult.data?.is_open ?? true)
+      setRestaurant(data.restaurant || null)
+      setMenuItems(Array.isArray(data.menuItems) ? data.menuItems : [])
+      setDailyOffers(Array.isArray(data.dailyOffers) ? data.dailyOffers : [])
+      setOrders(Array.isArray(data.orders) ? data.orders : [])
+      setStaffList(Array.isArray(data.staffList) ? data.staffList : [])
+      setStoreOpen(data.restaurant?.is_open ?? true)
     } catch (error) {
       console.error('Manager dashboard loading error:', error)
       setNotice(`Loading issue: ${error.message}`)
     } finally {
       setLoading(false)
     }
-  }, [restaurantId])
+  }, [restaurantId, restaurantCode, loginUserId, loginPassword])
+
+  const managerRpcAction = useCallback(async (action, payload = {}) => {
+    if (!restaurantId || !restaurantCode || !loginUserId || !loginPassword) {
+      throw new Error('Manager session is missing. Please sign in again.')
+    }
+
+    const { data, error } = await supabase.rpc('manager_action', {
+      p_restaurant_id: String(restaurantId),
+      p_restaurant_code: String(restaurantCode).trim(),
+      p_user_id: String(loginUserId).trim().toLowerCase(),
+      p_password: String(loginPassword).trim(),
+      p_action: action,
+      p_payload: payload,
+    })
+
+    if (error) throw error
+    if (!data?.success) throw new Error(data?.message || 'Manager action failed.')
+    return data
+  }, [restaurantId, restaurantCode, loginUserId, loginPassword])
 
   const handleLogin = async (event) => {
     event.preventDefault()
-    if (!restaurantId || !loginUserId.trim() || !loginPassword.trim()) {
-      alert('Enter your Manager User ID and password.')
+    if (!restaurantId || !restaurantCode.trim() || !loginUserId.trim() || !loginPassword.trim()) {
+      alert('Enter the Restaurant Code, Manager User ID, and password.')
       return
     }
 
     setLoginLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('staff_users')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('user_id', loginUserId.trim().toLowerCase())
-        .eq('password', loginPassword.trim())
-        .eq('role', 'manager')
-        .maybeSingle()
+      const { data, error } = await supabase.rpc('authenticate_staff_login', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: String(restaurantCode).trim(),
+        p_user_id: String(loginUserId).trim().toLowerCase(),
+        p_password: String(loginPassword).trim(),
+        p_role: 'manager',
+      })
 
-      if (error || !data) throw new Error('Invalid Manager credentials.')
-      setManager(data)
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.message || 'Invalid restaurant credentials.')
+      if (String(data.restaurantId) !== String(restaurantId)) {
+        throw new Error('These credentials do not belong to this restaurant.')
+      }
+
+      setManager(data.staff || null)
+      setRestaurantCode(String(data.restaurantCode || restaurantCode).trim())
       setAuthenticated(true)
       await fetchDashboard()
     } catch (error) {
       console.error(error)
+      setAuthenticated(false)
       alert(error.message || 'Unable to sign in.')
     } finally {
       setLoginLoading(false)
@@ -385,7 +409,7 @@ export default function RestaurantManagerDashboard({ params }) {
 
     setSavingDish(true)
     const payload = {
-      restaurant_id: restaurantId,
+      ...(editingDishId ? { id: editingDishId } : {}),
       name,
       price: offerPrice !== null ? offerPrice : price,
       original_price: originalPrice,
@@ -396,18 +420,14 @@ export default function RestaurantManagerDashboard({ params }) {
       is_veg: dish.food_type === 'veg',
       food_type: dish.food_type,
       reorder_mode: dish.reorder_mode,
-      addons: dish.addons.split(',').map((value) => value.trim()).filter(Boolean)
+      addons: dish.addons.split(',').map((value) => value.trim()).filter(Boolean),
     }
 
     try {
-      const query = editingDishId
-        ? supabase.from('menu_items').update(payload).eq('id', editingDishId).eq('restaurant_id', restaurantId).select('*').single()
-        : supabase.from('menu_items').insert(payload).select('*').single()
-      const { data, error } = await query
-      if (error) throw error
-
-      if (editingDishId) setMenuItems((items) => items.map((item) => item.id === editingDishId ? data : item))
-      else setMenuItems((items) => [data, ...items])
+      const result = await managerRpcAction('save_menu', payload)
+      const saved = result.data
+      if (editingDishId) setMenuItems((items) => items.map((item) => item.id === editingDishId ? saved : item))
+      else setMenuItems((items) => [saved, ...items])
       resetDish()
       notify(editingDishId ? 'Dish updated successfully.' : 'Dish added successfully.')
     } catch (error) {
@@ -420,17 +440,23 @@ export default function RestaurantManagerDashboard({ params }) {
 
   const deleteDish = async (item) => {
     if (!window.confirm(`Delete ${item.name}?`)) return
-    const { error } = await supabase.from('menu_items').delete().eq('id', item.id).eq('restaurant_id', restaurantId)
-    if (error) return alert(`Unable to delete dish: ${error.message}`)
-    setMenuItems((items) => items.filter((value) => value.id !== item.id))
-    notify('Dish deleted.')
+    try {
+      await managerRpcAction('delete_menu', { id: item.id })
+      setMenuItems((items) => items.filter((value) => value.id !== item.id))
+      notify('Dish deleted.')
+    } catch (error) {
+      alert(`Unable to delete dish: ${error.message}`)
+    }
   }
 
   const toggleAvailability = async (item) => {
     const next = item.is_available === false
-    const { error } = await supabase.from('menu_items').update({ is_available: next }).eq('id', item.id).eq('restaurant_id', restaurantId)
-    if (error) return alert(`Unable to update availability: ${error.message}`)
-    setMenuItems((items) => items.map((value) => value.id === item.id ? { ...value, is_available: next } : value))
+    try {
+      const result = await managerRpcAction('toggle_menu', { id: item.id, is_available: next })
+      setMenuItems((items) => items.map((value) => value.id === item.id ? result.data : value))
+    } catch (error) {
+      alert(`Unable to update availability: ${error.message}`)
+    }
   }
 
   const resetOffer = () => {
@@ -447,7 +473,7 @@ export default function RestaurantManagerDashboard({ params }) {
 
     setSavingOffer(true)
     const payload = {
-      restaurant_id: restaurantId,
+      ...(editingOfferId ? { id: editingOfferId } : {}),
       title: offer.title.trim(),
       description: offer.description.trim(),
       discount_text: offer.discount_text.trim(),
@@ -455,17 +481,14 @@ export default function RestaurantManagerDashboard({ params }) {
       offer_price: Number(offer.offer_price),
       offer_date: offer.offer_date,
       image_url: offer.image_url.trim() || null,
-      is_active: true
+      is_active: true,
     }
 
     try {
-      const query = editingOfferId
-        ? supabase.from('daily_offers').update(payload).eq('id', editingOfferId).eq('restaurant_id', restaurantId).select('*').single()
-        : supabase.from('daily_offers').insert(payload).select('*').single()
-      const { data, error } = await query
-      if (error) throw error
-      if (editingOfferId) setDailyOffers((items) => items.map((item) => item.id === editingOfferId ? data : item))
-      else setDailyOffers((items) => [data, ...items])
+      const result = await managerRpcAction('save_offer', payload)
+      const saved = result.data
+      if (editingOfferId) setDailyOffers((items) => items.map((item) => item.id === editingOfferId ? saved : item))
+      else setDailyOffers((items) => [saved, ...items])
       resetOffer()
       notify(editingOfferId ? 'Offer updated.' : 'Offer created.')
     } catch (error) {
@@ -491,17 +514,23 @@ export default function RestaurantManagerDashboard({ params }) {
 
   const deleteOffer = async (item) => {
     if (!window.confirm(`Delete offer ${item.title}?`)) return
-    const { error } = await supabase.from('daily_offers').delete().eq('id', item.id).eq('restaurant_id', restaurantId)
-    if (error) return alert(`Unable to delete offer: ${error.message}`)
-    setDailyOffers((items) => items.filter((value) => value.id !== item.id))
-    notify('Offer deleted.')
+    try {
+      await managerRpcAction('delete_offer', { id: item.id })
+      setDailyOffers((items) => items.filter((value) => value.id !== item.id))
+      notify('Offer deleted.')
+    } catch (error) {
+      alert(`Unable to delete offer: ${error.message}`)
+    }
   }
 
   const toggleOffer = async (item) => {
     const next = item.is_active === false
-    const { error } = await supabase.from('daily_offers').update({ is_active: next }).eq('id', item.id).eq('restaurant_id', restaurantId)
-    if (error) return alert(`Unable to update offer: ${error.message}`)
-    setDailyOffers((items) => items.map((value) => value.id === item.id ? { ...value, is_active: next } : value))
+    try {
+      const result = await managerRpcAction('toggle_offer', { id: item.id, is_active: next })
+      setDailyOffers((items) => items.map((value) => value.id === item.id ? result.data : value))
+    } catch (error) {
+      alert(`Unable to update offer: ${error.message}`)
+    }
   }
 
   const saveStaff = async (event) => {
@@ -515,20 +544,13 @@ export default function RestaurantManagerDashboard({ params }) {
 
     setSavingStaff(true)
     try {
-      const { data, error } = await supabase
-        .from('staff_users')
-        .insert({
-          restaurant_id: restaurantId,
-          name,
-          user_id: userId,
-          password,
-          pin: password,
-          role: staffRole
-        })
-        .select('id, restaurant_id, name, user_id, role')
-        .single()
-      if (error) throw error
-      setStaffList((items) => [data, ...items])
+      const result = await managerRpcAction('create_staff', {
+        name,
+        user_id: userId,
+        password,
+        role: staffRole,
+      })
+      setStaffList((items) => [result.data, ...items])
       setStaffName('')
       setStaffUserId('')
       setStaffPassword('')
@@ -543,69 +565,38 @@ export default function RestaurantManagerDashboard({ params }) {
 
   const revokeStaff = async (staff) => {
     if (!window.confirm(`Revoke ${staff.name}'s account?`)) return
-    const { error } = await supabase.from('staff_users').delete().eq('id', staff.id).eq('restaurant_id', restaurantId).in('role', ['waiter', 'kitchen'])
-    if (error) return alert(`Unable to revoke account: ${error.message}`)
-    setStaffList((items) => items.filter((item) => item.id !== staff.id))
-    notify('Staff account revoked.')
+    try {
+      await managerRpcAction('revoke_staff', { id: staff.id })
+      setStaffList((items) => items.filter((item) => item.id !== staff.id))
+      notify('Staff account revoked.')
+    } catch (error) {
+      alert(`Unable to revoke account: ${error.message}`)
+    }
   }
 
   const updateOrderStatus = async (orderId, nextStatus) => {
-    if (!orderId || !restaurantId || !nextStatus) return
-
+    if (!orderId || !nextStatus) return
     try {
-      /*
-       * Do not use .select().single() after this UPDATE.
-       * With Supabase RLS, an UPDATE can succeed while the updated
-       * row is not returned to the browser. That causes:
-       * "Cannot coerce the result to a single JSON object".
-       */
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: nextStatus })
-        .eq('id', orderId)
-        .eq('restaurant_id', restaurantId)
-
-      if (error) {
-        console.error('Order status update error:', error)
-        alert(`Unable to update order: ${error.message}`)
-        return
-      }
-
-      /*
-       * Update this dashboard immediately. The same database update
-       * is then delivered to the kitchen, customer QR page, and any
-       * other subscribed POS screen through Supabase Realtime.
-       */
-      setOrders((items) =>
-        items.map((item) =>
-          String(item.id) === String(orderId)
-            ? { ...item, status: nextStatus }
-            : item
-        )
-      )
-
-      const selectedOrder = orders.find(
-        (item) => String(item.id) === String(orderId)
-      )
-
-      notify(
-        `Order #${
-          selectedOrder?.order_number || String(orderId).slice(0, 8)
-        } marked ${nextStatus}.`
-      )
+      const result = await managerRpcAction('update_order_status', { id: orderId, status: nextStatus })
+      setOrders((items) => items.map((item) => String(item.id) === String(orderId) ? result.data : item))
+      const selectedOrder = orders.find((item) => String(item.id) === String(orderId))
+      notify(`Order #${selectedOrder?.order_number || String(orderId).slice(0, 8)} marked ${nextStatus}.`)
     } catch (error) {
-      console.error('Unexpected order status update error:', error)
+      console.error('Order status update error:', error)
       alert(`Unable to update order: ${error.message || 'Unknown error'}`)
     }
   }
 
   const handleStoreToggle = async () => {
     const next = !storeOpen
-    const { error } = await supabase.from('restaurants').update({ is_open: next }).eq('id', restaurantId)
-    if (error) return alert(`Unable to update store status: ${error.message}`)
-    setStoreOpen(next)
-    setRestaurant((value) => ({ ...value, is_open: next }))
-    notify(next ? 'Restaurant is now open.' : 'Restaurant is now closed.')
+    try {
+      await managerRpcAction('toggle_store', { is_open: next })
+      setStoreOpen(next)
+      setRestaurant((value) => ({ ...value, is_open: next }))
+      notify(next ? 'Restaurant is now open.' : 'Restaurant is now closed.')
+    } catch (error) {
+      alert(`Unable to update store status: ${error.message}`)
+    }
   }
 
   const handleSwiggySync = async (event) => {
@@ -622,7 +613,6 @@ export default function RestaurantManagerDashboard({ params }) {
     setSyncingSwiggy(true)
     try {
       const rows = items.map((item) => ({
-        restaurant_id: restaurantId,
         name: String(item.name || '').trim(),
         price: Number(item.price || 0),
         category: item.category || 'Other',
@@ -632,15 +622,14 @@ export default function RestaurantManagerDashboard({ params }) {
         food_type: item.food_type || (item.is_veg ? 'veg' : 'non-veg'),
         reorder_mode: item.reorder_mode || 'auto',
         addons: Array.isArray(item.addons) ? item.addons : [],
-        is_available: true
       })).filter((item) => item.name && item.price > 0)
 
       if (!rows.length) throw new Error('No valid menu items found.')
-      const { data, error } = await supabase.from('menu_items').insert(rows).select('*')
-      if (error) throw error
-      setMenuItems((current) => [...(data || []), ...current])
+      const result = await managerRpcAction('import_menu', { items: rows })
+      const imported = Array.isArray(result.data) ? result.data : []
+      setMenuItems((current) => [...imported, ...current])
       setSwiggyDataInput('')
-      notify(`${data?.length || rows.length} menu items imported.`)
+      notify(`${imported.length || rows.length} menu items imported.`)
     } catch (error) {
       console.error(error)
       alert(`Unable to sync menu: ${error.message}`)
@@ -743,6 +732,7 @@ export default function RestaurantManagerDashboard({ params }) {
             <h1 className="text-2xl font-black">Restaurant Manager</h1>
             <p className="mt-2 text-xs text-neutral-500">Sign in to manage restaurant operations</p>
           </div>
+          <input value={restaurantCode} onChange={(e) => setRestaurantCode(e.target.value.replace(/\D/g, '').slice(0, 5))} placeholder="5-digit Restaurant Code" inputMode="numeric" maxLength={5} required className="w-full rounded-xl border border-orange-500/30 bg-neutral-950 px-4 py-3 text-sm font-mono tracking-widest text-white outline-none focus:border-orange-500" />
           <input value={loginUserId} onChange={(e) => setLoginUserId(e.target.value)} placeholder="Manager User ID" autoComplete="username" required className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-orange-500" />
           <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Password / PIN" autoComplete="current-password" required className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-orange-500" />
           <button disabled={loginLoading} className="w-full rounded-xl bg-orange-500 py-3 text-sm font-black uppercase text-white disabled:opacity-50">
@@ -761,6 +751,7 @@ export default function RestaurantManagerDashboard({ params }) {
             <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">Restaurant Manager Portal</span>
             <h1 className="mt-3 text-2xl font-black sm:text-3xl">{restaurant?.name || 'Restaurant'} Manager Dashboard</h1>
             <p className="mt-1 text-xs text-neutral-500">Logged in as {manager?.name || manager?.user_id} · Operational access only</p>
+            <p className="mt-2 inline-flex rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black font-mono tracking-widest text-orange-300">Restaurant Code: {restaurant?.restaurant_code || restaurantCode || '-----'}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={handleStoreToggle} className={`rounded-xl px-4 py-2.5 text-xs font-black ${storeOpen ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>{storeOpen ? '🟢 Store Open' : '🔴 Store Closed'}</button>
@@ -1053,6 +1044,10 @@ export default function RestaurantManagerDashboard({ params }) {
               <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">Operational Staff</span>
               <h2 className="mt-3 text-xl font-black">Create Waiter and Kitchen Accounts</h2>
               <p className="mt-2 text-xs text-neutral-400">Manager account creation is intentionally unavailable here. This section is only for operational staff.</p>
+              <div className="mt-4 inline-flex flex-col rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-orange-400">Restaurant Code</span>
+                <span className="mt-1 font-mono text-2xl font-black tracking-[0.22em] text-white">{restaurant?.restaurant_code || restaurantCode || '-----'}</span>
+              </div>
               <form onSubmit={saveStaff} className="mt-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <Input label="Staff Name" value={staffName} onChange={setStaffName} placeholder="Staff name" />
                 <Input label="User ID" value={staffUserId} onChange={setStaffUserId} placeholder="waiter01" />
@@ -1062,7 +1057,7 @@ export default function RestaurantManagerDashboard({ params }) {
               </form>
             </div>
             <div className="overflow-x-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-              <table className="w-full min-w-[600px] text-left text-xs"><thead className="border-b border-neutral-800 text-neutral-500"><tr><th className="p-3">Name</th><th className="p-3">User ID</th><th className="p-3">Role</th><th className="p-3">Created</th><th className="p-3">Action</th></tr></thead><tbody>{staffList.map((staff) => <tr key={staff.id} className="border-b border-neutral-800/70"><td className="p-3 font-bold">{staff.name}</td><td className="p-3">{staff.user_id}</td><td className="p-3 uppercase text-orange-400">{staff.role}</td><td className="p-3 text-neutral-500">{staff.created_at ? new Date(staff.created_at).toLocaleDateString('en-IN') : '—'}</td><td className="p-3"><button onClick={() => revokeStaff(staff)} className="rounded-lg bg-red-500/10 px-3 py-2 font-bold text-red-300">Revoke</button></td></tr>)}</tbody></table>
+              <table className="w-full min-w-[760px] text-left text-xs"><thead className="border-b border-neutral-800 text-neutral-500"><tr><th className="p-3">Name</th><th className="p-3">User ID</th><th className="p-3">Password / PIN</th><th className="p-3">Role</th><th className="p-3">Created</th><th className="p-3">Action</th></tr></thead><tbody>{staffList.map((staff) => <tr key={staff.id} className="border-b border-neutral-800/70"><td className="p-3 font-bold">{staff.name}</td><td className="p-3 font-mono">{staff.user_id}</td><td className="p-3 font-mono text-neutral-300">{staff.password || '••••••'}</td><td className="p-3 uppercase text-orange-400">{staff.role}</td><td className="p-3 text-neutral-500">{staff.created_at ? new Date(staff.created_at).toLocaleDateString('en-IN') : '—'}</td><td className="p-3"><button onClick={() => revokeStaff(staff)} className="rounded-lg bg-red-500/10 px-3 py-2 font-bold text-red-300">Revoke</button></td></tr>)}</tbody></table>
               {!staffList.length && <p className="py-10 text-center text-sm text-neutral-500">No waiter or kitchen accounts found.</p>}
             </div>
           </section>

@@ -167,7 +167,7 @@ export async function POST(request) {
         dob,
         owner_id: userId,
       })
-      .select('id')
+      .select('id, restaurant_code')
       .single()
 
     if (restaurantError) {
@@ -205,6 +205,7 @@ export async function POST(request) {
         success: true,
         message: 'Registration successful.',
         restaurantId: restaurant.id,
+        restaurantCode: restaurant.restaurant_code,
       },
       { status: 201 }
     )

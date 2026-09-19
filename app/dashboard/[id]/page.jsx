@@ -152,7 +152,7 @@ function RestaurantChatWidget({ restaurantId }) {
   )
 }
 
-function StaffLoginQrCard({ title, description, url, icon }) {
+function StaffLoginQrCard({ title, description, url, icon, restaurantCode }) {
   const qrUrl = `https://quickchart.io/qr?size=320&margin=2&text=${encodeURIComponent(url)}`
 
   const handleCopy = async () => {
@@ -194,6 +194,14 @@ function StaffLoginQrCard({ title, description, url, icon }) {
           <p className="text-xs text-neutral-400 mt-1">{description}</p>
         </div>
       </div>
+
+      {restaurantCode && (
+        <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 text-center">
+          <p className="text-[10px] uppercase tracking-wider text-orange-400 font-black">Restaurant Code</p>
+          <p className="text-2xl font-black font-mono tracking-[0.3em] text-white mt-1">{restaurantCode}</p>
+          <p className="text-[9px] text-neutral-500 mt-1">Staff must enter this code on the login screen.</p>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl p-3 w-fit mx-auto">
         <img
@@ -1080,9 +1088,10 @@ export default function RestaurantDashboard() {
             .toLowerCase(),
         password:
           staffPassword.trim(),
-        role: 'manager',
+        role: staffRole,
         pin:
-          staffPassword.trim()
+          staffPassword.trim(),
+        is_active: true
       }
 
       const {
@@ -2073,9 +2082,16 @@ export default function RestaurantDashboard() {
                 </button>
               </div>
 
-              <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
-                Unique URL ID: {restaurant.id}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                <p className="text-[11px] text-neutral-400 font-mono">
+                  Unique URL ID: {restaurant.id}
+                </p>
+                {restaurant.restaurant_code && (
+                  <span className="text-[11px] font-black font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-300 px-2.5 py-1 rounded-lg">
+                    Restaurant Code: {restaurant.restaurant_code}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2173,6 +2189,18 @@ export default function RestaurantDashboard() {
                 </button>
               </div>
             )}
+          </div>
+
+          <div className="bg-neutral-900 border border-orange-500/20 p-5 rounded-3xl shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-orange-400">
+              Restaurant Code
+            </p>
+            <p className="text-3xl font-black font-mono tracking-[0.2em] text-white mt-1">
+              {restaurant.restaurant_code || '-----'}
+            </p>
+            <p className="text-[10px] text-neutral-500 mt-1">
+              Use this code with the assigned staff username and password.
+            </p>
           </div>
         </div>
 
@@ -3278,19 +3306,22 @@ export default function RestaurantDashboard() {
                 <StaffLoginQrCard
                   title="Manager Login"
                   icon="👔"
-                  description="Open the existing restaurant manager dashboard. Manager authentication remains protected by your existing owner login."
+                  description="Open the existing restaurant manager dashboard. Staff must enter this restaurant's code and manager credentials."
+                  restaurantCode={restaurant?.restaurant_code}
                   url={`${typeof window !== 'undefined' ? window.location.origin : 'https://www.digitaldine-in.online'}/manager/${encodeURIComponent(restaurantId)}`}
                 />
                 <StaffLoginQrCard
                   title="Kitchen Login"
                   icon="👨‍🍳"
-                  description="Kitchen staff enter their own Kitchen credentials and see only this restaurant's kitchen orders."
+                  description="Kitchen staff enter the restaurant code, Kitchen username, and password and see only this restaurant's kitchen orders."
+                  restaurantCode={restaurant?.restaurant_code}
                   url={`${typeof window !== 'undefined' ? window.location.origin : ''}/kitchen/${encodeURIComponent(restaurantId)}`}
                 />
                 <StaffLoginQrCard
                   title="Waiter Login"
                   icon="🧑‍🍽️"
-                  description="Waiters enter their own Waiter credentials and see only this restaurant's menu and ready orders."
+                  description="Waiters enter the restaurant code, Waiter username, and password and see only this restaurant's menu and ready orders."
+                  restaurantCode={restaurant?.restaurant_code}
                   url={`${typeof window !== 'undefined' ? window.location.origin : ''}/waiter/${encodeURIComponent(restaurantId)}`}
                 />
               </div>
@@ -3389,9 +3420,15 @@ export default function RestaurantDashboard() {
                 <label className="text-[10px] font-bold text-neutral-400 block mb-1 uppercase">
                   Role
                 </label>
-                <div className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-orange-400 text-xs font-black">
-                  Restaurant Manager
-                </div>
+                <select
+                  value={staffRole}
+                  onChange={(e) => setStaffRole(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-orange-500"
+                >
+                  <option value="waiter">Waiter</option>
+                  <option value="kitchen">Kitchen</option>
+                  <option value="manager">Restaurant Manager</option>
+                </select>
               </div>
 
               <button
@@ -3416,6 +3453,9 @@ export default function RestaurantDashboard() {
                       Login User ID
                     </th>
                     <th className="p-3 font-bold">
+                      Password / PIN
+                    </th>
+                    <th className="p-3 font-bold">
                       Role Portal
                     </th>
                     <th className="p-3 font-bold text-right">
@@ -3429,10 +3469,10 @@ export default function RestaurantDashboard() {
                   0 ? (
                     <tr>
                       <td
-                        colSpan="4"
+                        colSpan="5"
                         className="p-6 text-center text-neutral-500"
                       >
-                        No manager accounts created yet.
+                        No staff accounts created yet.
                       </td>
                     </tr>
                   ) : (
@@ -3449,10 +3489,11 @@ export default function RestaurantDashboard() {
                           </td>
 
                           <td className="p-3 font-mono text-neutral-300">
-                            {
-                              staff.user_id ||
-                              staff.pin
-                            }
+                            {staff.user_id || staff.pin}
+                          </td>
+
+                          <td className="p-3 font-mono text-neutral-300">
+                            {staff.password || staff.pin || '••••••'}
                           </td>
 
                           <td className="p-3">
