@@ -708,22 +708,19 @@ export default function DeveloperAdminDashboard() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <h2 className="text-lg font-black text-white uppercase tracking-wider">Live Restaurant Support Chat</h2>
+                <h2 className="text-lg font-black text-white uppercase tracking-wider">
+                  Live Restaurant Support Chat
+                </h2>
               </div>
               <p className="text-[10px] text-neutral-500 mt-1">
-                Restaurants must request support first. Chat becomes live only after Admin accepts the request.
+                AI support requests and direct restaurant support requests appear here. Live chat starts only after Admin accepts.
               </p>
             </div>
+
             <div className="flex items-center gap-2">
-              {supportChatLastRefresh && (
-                <span className="text-[9px] text-neutral-600 hidden sm:inline">
-                  Updated {supportChatLastRefresh.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                  })}
-                </span>
-              )}
+              <span className="text-[9px] bg-violet-500/10 text-violet-400 border border-violet-500/20 px-3 py-2 rounded-xl font-black uppercase">
+                🤖 AI Handoff Enabled
+              </span>
               <button
                 type="button"
                 onClick={fetchSupportChatSessions}
@@ -737,18 +734,11 @@ export default function DeveloperAdminDashboard() {
           {supportChatError && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
               <p className="text-[10px] font-black uppercase text-red-400">
-                Support Inbox Connection Problem
+                Support Inbox Error
               </p>
               <p className="text-[10px] text-red-200/70 mt-1 break-words">
                 {supportChatError}
               </p>
-              <button
-                type="button"
-                onClick={fetchSupportChatSessions}
-                className="mt-3 bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase"
-              >
-                Retry Support Inbox
-              </button>
             </div>
           )}
 
@@ -756,16 +746,29 @@ export default function DeveloperAdminDashboard() {
             <div className="space-y-3">
               <div className="bg-neutral-950 border border-yellow-500/20 rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-[10px] uppercase tracking-widest font-black text-yellow-400">Pending Requests</p>
-                  <span className="text-xs font-black text-white">{supportChatSessions.filter((item) => item.status === 'pending').length}</span>
+                  <p className="text-[10px] uppercase tracking-widest font-black text-yellow-400">
+                    Pending Requests
+                  </p>
+                  <span className="text-xs font-black text-white">
+                    {
+                      supportChatSessions.filter(
+                        (item) =>
+                          String(item.status || '').toLowerCase() === 'pending'
+                      ).length
+                    }
+                  </span>
                 </div>
               </div>
 
               {supportChatSessions.length === 0 ? (
                 <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-8 text-center">
                   <div className="text-3xl mb-2">💬</div>
-                  <p className="text-xs font-black text-neutral-300">No support chat requests.</p>
-                  <p className="text-[10px] text-neutral-600 mt-1">A restaurant request will appear here automatically.</p>
+                  <p className="text-xs font-black text-neutral-300">
+                    No support chat requests.
+                  </p>
+                  <p className="text-[10px] text-neutral-600 mt-1">
+                    AI escalations and direct support requests will appear here.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
@@ -784,17 +787,44 @@ export default function DeveloperAdminDashboard() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-black text-white truncate">{chat.restaurant_name || 'Restaurant'}</p>
-                          <p className="text-[10px] text-orange-400 font-mono mt-1">Code: {chat.restaurant_code || '-----'}</p>
-                          <p className="text-[9px] text-neutral-600 mt-1">Requested {chat.requested_at ? new Date(chat.requested_at).toLocaleString('en-IN') : '--'}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-black text-white truncate">
+                              {chat.restaurant_name || 'Restaurant'}
+                            </p>
+                            {chat.ai_issue_category && (
+                              <span className="text-[8px] bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded-md px-2 py-1 font-black uppercase">
+                                🤖 AI Handoff
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-[10px] text-orange-400 font-mono mt-1">
+                            Code: {chat.restaurant_code || '-----'}
+                          </p>
+
+                          {chat.ai_issue_category && (
+                            <p className="text-[9px] text-violet-300 mt-1 truncate">
+                              {chat.ai_issue_category}
+                            </p>
+                          )}
+
+                          <p className="text-[9px] text-neutral-600 mt-1">
+                            Requested{' '}
+                            {chat.requested_at
+                              ? new Date(chat.requested_at).toLocaleString('en-IN')
+                              : '--'}
+                          </p>
                         </div>
-                        <span className={`text-[9px] uppercase font-black px-2 py-1 rounded-lg border whitespace-nowrap ${
-                          chat.status === 'pending'
-                            ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
-                            : chat.status === 'connected'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : 'bg-neutral-800 text-neutral-500 border-neutral-700'
-                        }`}>
+
+                        <span
+                          className={`text-[9px] uppercase font-black px-2 py-1 rounded-lg border whitespace-nowrap ${
+                            chat.status === 'pending'
+                              ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+                              : chat.status === 'connected'
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : 'bg-neutral-800 text-neutral-500 border-neutral-700'
+                          }`}
+                        >
                           {chat.status === 'connected' ? 'Live' : chat.status}
                         </span>
                       </div>
@@ -820,40 +850,108 @@ export default function DeveloperAdminDashboard() {
                 <div className="flex-1 flex items-center justify-center text-center p-8">
                   <div>
                     <div className="text-4xl mb-3">🛟</div>
-                    <h3 className="text-sm font-black text-white">Select a support request</h3>
+                    <h3 className="text-sm font-black text-white">
+                      Select a support request
+                    </h3>
                     <p className="text-[10px] text-neutral-600 mt-1 max-w-sm">
-                      Select a restaurant from the support inbox to accept the request and start live chat.
+                      AI-assisted escalations include the issue category, AI summary and conversation transcript before you accept the live chat.
                     </p>
                   </div>
                 </div>
               ) : (
                 <>
                   <div className="p-4 border-b border-neutral-800 bg-neutral-900">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-black text-white">{selectedSupportSession.restaurant_name || 'Restaurant'}</p>
-                        <p className="text-[10px] text-orange-400 font-mono mt-1">Restaurant Code: {selectedSupportSession.restaurant_code || '-----'}</p>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-white">
+                          {selectedSupportSession.restaurant_name || 'Restaurant'}
+                        </p>
+                        <p className="text-[10px] text-orange-400 font-mono mt-1">
+                          Restaurant Code:{' '}
+                          {selectedSupportSession.restaurant_code || '-----'}
+                        </p>
+
+                        {selectedSupportSession.ai_issue_category && (
+                          <div className="mt-3 bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
+                            <p className="text-[9px] font-black uppercase text-violet-400">
+                              🤖 AI Handoff
+                            </p>
+                            <p className="text-[10px] text-violet-200 mt-1 font-bold">
+                              {selectedSupportSession.ai_issue_category}
+                            </p>
+
+                            {selectedSupportSession.ai_summary && (
+                              <p className="text-[10px] text-neutral-300 mt-2 whitespace-pre-wrap leading-relaxed">
+                                {selectedSupportSession.ai_summary}
+                              </p>
+                            )}
+
+                            {Array.isArray(
+                              selectedSupportSession.ai_transcript
+                            ) &&
+                              selectedSupportSession.ai_transcript.length > 0 && (
+                                <details className="mt-3">
+                                  <summary className="cursor-pointer text-[9px] font-black uppercase text-violet-300">
+                                    View AI Conversation
+                                  </summary>
+
+                                  <div className="mt-2 max-h-44 overflow-y-auto space-y-2 pr-1">
+                                    {selectedSupportSession.ai_transcript.map(
+                                      (item, index) => (
+                                        <div
+                                          key={`${selectedSupportSession.id}-ai-${index}`}
+                                          className={`rounded-xl px-3 py-2 text-[9px] ${
+                                            item?.role === 'user'
+                                              ? 'bg-violet-500/15 text-violet-100 border border-violet-500/20'
+                                              : 'bg-neutral-800 text-neutral-300 border border-neutral-700'
+                                          }`}
+                                        >
+                                          <p className="font-black uppercase opacity-60 mb-1">
+                                            {item?.role === 'user'
+                                              ? 'Restaurant'
+                                              : 'AI Assistant'}
+                                          </p>
+                                          <p className="whitespace-pre-wrap leading-relaxed">
+                                            {String(item?.text || '')}
+                                          </p>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                </details>
+                              )}
+                          </div>
+                        )}
                       </div>
+
                       <div className="flex items-center gap-2 flex-wrap">
                         {selectedSupportSession.status === 'pending' && (
                           <button
                             type="button"
-                            onClick={() => acceptSupportChat(selectedSupportSession)}
+                            onClick={() =>
+                              acceptSupportChat(selectedSupportSession)
+                            }
                             disabled={supportChatLoading}
                             className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase"
                           >
-                            {supportChatLoading ? 'Accepting...' : '✓ Accept Live Chat'}
+                            {supportChatLoading
+                              ? 'Accepting...'
+                              : '✓ Accept Live Chat'}
                           </button>
                         )}
+
                         {selectedSupportSession.status === 'connected' && (
                           <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-2 rounded-xl text-[10px] font-black uppercase">
                             🟢 Live Chat Connected
                           </span>
                         )}
+
                         {selectedSupportSession.status === 'connected' && (
                           <button
                             type="button"
-                            onClick={() => closeSupportChat(selectedSupportSession)}
+                            onClick={() =>
+                              closeSupportChat(selectedSupportSession)
+                            }
                             className="bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 px-3 py-2 rounded-xl text-[10px] font-black uppercase"
                           >
                             Close Chat
@@ -864,8 +962,12 @@ export default function DeveloperAdminDashboard() {
 
                     {selectedSupportSession.status === 'pending' && (
                       <div className="mt-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3">
-                        <p className="text-[10px] font-black uppercase text-yellow-400">Waiting for Admin acceptance</p>
-                        <p className="text-[9px] text-yellow-200/60 mt-1">The restaurant cannot send chat messages until you accept this request.</p>
+                        <p className="text-[10px] font-black uppercase text-yellow-400">
+                          Waiting for Admin acceptance
+                        </p>
+                        <p className="text-[9px] text-yellow-200/60 mt-1">
+                          The restaurant can only send human-chat messages after you accept this request.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -873,24 +975,44 @@ export default function DeveloperAdminDashboard() {
                   <div className="flex-1 p-4 overflow-y-auto space-y-3">
                     {supportChatMessages.length === 0 ? (
                       <p className="text-center text-xs text-neutral-600 mt-16">
-                        {selectedSupportSession.status === 'connected' ? 'Live chat connected. Send the first message.' : 'No messages yet.'}
+                        {selectedSupportSession.status === 'connected'
+                          ? 'Live chat connected. Send the first message.'
+                          : 'AI handoff received. Accept the chat to start messaging.'}
                       </p>
                     ) : (
                       supportChatMessages.map((msg) => (
-                        <div key={msg.id} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                        <div
+                          key={msg.id}
+                          className={`flex ${
+                            msg.sender === 'admin'
+                              ? 'justify-end'
+                              : 'justify-start'
+                          }`}
+                        >
                           <div className="space-y-0.5 max-w-[78%]">
                             <p className="text-[9px] font-bold text-neutral-500 px-1">
-                              {msg.sender === 'admin' ? 'You (Admin)' : 'Restaurant'}
+                              {msg.sender === 'admin'
+                                ? 'You (Admin)'
+                                : 'Restaurant'}
                             </p>
-                            <div className={`px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
-                              msg.sender === 'admin'
-                                ? 'bg-red-600 text-white rounded-br-none shadow-md'
-                                : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
-                            }`}>
+
+                            <div
+                              className={`px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
+                                msg.sender === 'admin'
+                                  ? 'bg-red-600 text-white rounded-br-none shadow-md'
+                                  : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
+                              }`}
+                            >
                               {msg.message}
+
                               {msg.created_at && (
                                 <div className="text-[8px] opacity-50 mt-1">
-                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  {new Date(
+                                    msg.created_at
+                                  ).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
                                 </div>
                               )}
                             </div>
@@ -898,21 +1020,37 @@ export default function DeveloperAdminDashboard() {
                         </div>
                       ))
                     )}
+
                     <div ref={chatEndRef} />
                   </div>
 
-                  <form onSubmit={sendAdminChatReply} className="flex gap-2 border-t border-neutral-800 p-3 bg-neutral-900">
+                  <form
+                    onSubmit={sendAdminChatReply}
+                    className="flex gap-2 border-t border-neutral-800 p-3 bg-neutral-900"
+                  >
                     <input
                       type="text"
-                      placeholder={selectedSupportSession.status === 'connected' ? 'Type reply to restaurant...' : 'Accept the chat before replying...'}
+                      placeholder={
+                        selectedSupportSession.status === 'connected'
+                          ? 'Type reply to restaurant...'
+                          : 'Accept the chat before replying...'
+                      }
                       value={adminReply}
                       onChange={(e) => setAdminReply(e.target.value)}
-                      disabled={selectedSupportSession.status !== 'connected' || supportReplyLoading}
+                      disabled={
+                        selectedSupportSession.status !== 'connected' ||
+                        supportReplyLoading
+                      }
                       className="flex-1 min-w-0 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-red-500 disabled:opacity-50"
                     />
+
                     <button
                       type="submit"
-                      disabled={selectedSupportSession.status !== 'connected' || supportReplyLoading || !adminReply.trim()}
+                      disabled={
+                        selectedSupportSession.status !== 'connected' ||
+                        supportReplyLoading ||
+                        !adminReply.trim()
+                      }
                       className="bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black px-5 py-3 rounded-xl text-xs uppercase tracking-wider transition"
                     >
                       {supportReplyLoading ? 'Sending...' : 'Reply 🚀'}
