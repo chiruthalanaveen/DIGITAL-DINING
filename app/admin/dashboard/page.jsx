@@ -18,49 +18,81 @@ export default function DeveloperAdminDashboard() {
   const [restaurantOrders, setRestaurantOrders] = useState([])
   const [inspectTab, setInspectTab] = useState('menu')
 
-  // Live Chat States
-  const [chatMessages, setChatMessages] = useState([])
+  // Support chat states
+  const [supportChatSessions, setSupportChatSessions] = useState([])
+  const [selectedSupportSession, setSelectedSupportSession] = useState(null)
+  const [supportChatMessages, setSupportChatMessages] = useState([])
   const [adminReply, setAdminReply] = useState('')
+  const [supportChatLoading, setSupportChatLoading] = useState(false)
+  const [supportReplyLoading, setSupportReplyLoading] = useState(false)
+  const [supportChatError, setSupportChatError] = useState('')
+  const [supportChatLastRefresh, setSupportChatLastRefresh] = useState(null)
   const chatEndRef = useRef(null)
-  const targetRestaurantId = 'global-admin-chat'
 
   // Website Status Control State (Working / Not Working)
   const [siteStatus, setSiteStatus] = useState('Working')
   const [updatingStatus, setUpdatingStatus] = useState(false)
 
-  // Strict Security Check: Bounces direct URL entries straight to the landing page
+  /*
+   * ADMIN ACCESS RESTORATION
+   *
+   * The previous version checked only sessionStorage and immediately sent
+   * direct URL visits to the landing page. That made the Admin Dashboard
+   * unreliable when the URL was reopened or opened in a new tab.
+   *
+   * Keep the existing client-side admin gate, but restore the authenticated
+   * flag from localStorage when available and redirect unauthenticated users
+   * to the existing Admin Login page instead of the landing page.
+   */
   useEffect(() => {
-    const isAuth = sessionStorage.getItem('isSuperAdminAuthenticated')
-    if (!isAuth) {
-      router.replace('/')
-      return
-    }
-    setAuthorized(true)
+    let active = true
 
-    fetchRestaurants()
-    fetchChatMessages()
-    fetchWebsiteStatus()
+    try {
+      const sessionAuth =
+        window.sessionStorage.getItem('isSuperAdminAuthenticated') === 'true'
 
-    // Realtime subscription for customer messages
-    const channel = supabase
-      .channel('admin-master-live-chat')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages', filter: `restaurant_id=eq.${targetRestaurantId}` },
-        (payload) => {
-          setChatMessages((prev) => [...prev, payload.new])
+      const persistentAuth =
+        window.localStorage.getItem('isSuperAdminAuthenticated') === 'true'
+
+      if (sessionAuth || persistentAuth) {
+        if (!sessionAuth && persistentAuth) {
+          window.sessionStorage.setItem(
+            'isSuperAdminAuthenticated',
+            'true'
+          )
         }
-      )
-      .subscribe()
+
+        if (!active) return
+
+        setAuthorized(true)
+        fetchRestaurants()
+        fetchSupportChatSessions()
+        fetchWebsiteStatus()
+        return
+      }
+
+      /*
+       * Do not send the user to the public landing page.
+       * Send them to the existing Admin Login route.
+       */
+      if (active) {
+        router.replace('/admin')
+      }
+    } catch (error) {
+      console.error('Admin authorization check failed:', error)
+      if (active) {
+        router.replace('/admin')
+      }
+    }
 
     return () => {
-      supabase.removeChannel(channel)
+      active = false
     }
   }, [router])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
+  }, [supportChatMessages])
 
   const fetchWebsiteStatus = async () => {
     try {
@@ -95,40 +127,366 @@ export default function DeveloperAdminDashboard() {
       setUpdatingStatus(false)
     }
   }
+  useEffect(() => {
+    if (!authorized) return undefined
 
-  const fetchChatMessages = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('restaurant_id', targetRestaurantId)
-        .order('created_at', { ascending: true })
-
-      if (!error && data) setChatMessages(data)
-    } catch (err) {
-      console.error('Error fetching chat messages:', err)
-    }
-  }
-
-  const sendAdminChatReply = async (e) => {
-    e.preventDefault()
-    if (!adminReply.trim()) return
-
-    const msgText = adminReply.trim()
-    setAdminReply('')
-
-    try {
-      await supabase.from('messages').insert([
-        {
-          restaurant_id: targetRestaurantId,
-          sender: 'admin',
-          message: msgText
+    const channel = supabase
+      .channel('admin-support-chat-live-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'support_chat_sessions' },
+        () => {
+          fetchSupportChatSessions()
         }
-      ])
-    } catch (err) {
-      alert('Failed to send reply: ' + err.message)
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          if (
+            selectedSupportSession?.id &&
+            payload?.new?.support_session_id &&
+            String(payload.new.support_session_id) === String(selectedSupportSession.id)
+          ) {
+            setSupportChatMessages((current) => {
+              if (current.some((item) => String(item.id) === String(payload.new.id))) return current
+              return [...current, payload.new]
+            })
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [authorized, selectedSupportSession?.id])
+
+
+  const mergeSupportChatSessions = (sessions) => {
+    const safeSessions = Array.isArray(sessions) ? sessions : []
+    setSupportChatSessions(safeSessions)
+
+    setSelectedSupportSession((current) => {
+      if (!current) return null
+      return (
+        safeSessions.find(
+          (session) => String(session.id) === String(current.id)
+        ) || current
+      )
+    })
+
+    setSupportChatLastRefresh(new Date())
+  }
+
+  const fetchSupportChatsFallback = async () => {
+    try {
+      let restaurantList = restaurants
+
+      // The first dashboard load may start both requests together. If the
+      // restaurant list is not ready yet, load only the safe public identity
+      // fields needed for the support-chat fallback.
+      if (!Array.isArray(restaurantList) || restaurantList.length === 0) {
+        const { data, error } = await supabase
+          .from('restaurants')
+          .select('id, name, restaurant_code')
+          .order('name', { ascending: true })
+
+        if (error) throw error
+        restaurantList = Array.isArray(data) ? data : []
+      }
+
+      const results = await Promise.all(
+        restaurantList.map(async (restaurant) => {
+          try {
+            const { data, error } = await supabase.rpc(
+              'get_support_chat_state',
+              {
+                p_restaurant_id: String(restaurant.id),
+              }
+            )
+
+            if (error || data?.success === false || !data?.session) {
+              return null
+            }
+
+            return {
+              ...data.session,
+              restaurant_name:
+                restaurant.name || data.session.restaurant_name || 'Restaurant',
+              restaurant_code:
+                restaurant.restaurant_code ||
+                data.session.restaurant_code ||
+                '-----',
+            }
+          } catch (error) {
+            console.error(
+              'Support chat fallback error for restaurant:',
+              restaurant.id,
+              error
+            )
+            return null
+          }
+        })
+      )
+
+      const sessions = results
+        .filter(Boolean)
+        .filter((session) =>
+          ['pending', 'connected'].includes(
+            String(session.status || '').toLowerCase()
+          )
+        )
+        .sort((a, b) => {
+          const aPending =
+            String(a.status || '').toLowerCase() === 'pending' ? 0 : 1
+          const bPending =
+            String(b.status || '').toLowerCase() === 'pending' ? 0 : 1
+
+          if (aPending !== bPending) return aPending - bPending
+
+          return (
+            new Date(b.updated_at || b.requested_at || 0).getTime() -
+            new Date(a.updated_at || a.requested_at || 0).getTime()
+          )
+        })
+
+      if (sessions.length > 0) {
+        mergeSupportChatSessions(sessions)
+        return sessions
+      }
+
+      return []
+    } catch (error) {
+      console.error('Support chat fallback failed:', error)
+      throw error
     }
   }
+
+  const fetchSupportChatSessions = async () => {
+    setSupportChatError('')
+
+    try {
+      const { data, error } = await supabase.rpc('admin_get_support_chats')
+
+      if (error) {
+        throw error
+      }
+
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to load support chats.')
+      }
+
+      const sessions = Array.isArray(data?.sessions) ? data.sessions : []
+
+      /*
+       * IMPORTANT:
+       * If the admin inbox RPC returns an empty list while a restaurant has
+       * created a support session, use get_support_chat_state as a fallback.
+       * This fixes cases where the inbox RPC is outdated/missing while the
+       * restaurant request itself is successfully being created.
+       */
+      if (sessions.length === 0) {
+        const fallbackSessions = await fetchSupportChatsFallback()
+        if (fallbackSessions.length > 0) {
+          setSupportChatError('')
+          return
+        }
+      }
+
+      mergeSupportChatSessions(sessions)
+      setSupportChatError('')
+    } catch (err) {
+      console.error('Error fetching support chats:', err)
+
+      try {
+        const fallbackSessions = await fetchSupportChatsFallback()
+
+        if (fallbackSessions.length > 0) {
+          setSupportChatError('')
+          return
+        }
+
+        setSupportChatError(
+          `Support inbox could not load: ${
+            err?.message || 'Unknown error'
+          }`
+        )
+      } catch (fallbackError) {
+        setSupportChatError(
+          `Support inbox could not load: ${
+            fallbackError?.message ||
+            err?.message ||
+            'Please run the support-chat SQL repair script.'
+          }`
+        )
+      }
+    }
+  }
+
+  const loadSelectedSupportChat = async (session) => {
+    if (!session?.restaurant_id) return
+
+    try {
+      const { data, error } = await supabase.rpc('get_support_chat_state', {
+        p_restaurant_id: String(session.restaurant_id),
+      })
+
+      if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to load support conversation.')
+      }
+
+      const loadedSession = data?.session || session
+      setSelectedSupportSession(loadedSession)
+      setSupportChatMessages(Array.isArray(data?.messages) ? data.messages : [])
+    } catch (err) {
+      console.error('Error loading support conversation:', err)
+      alert(`Unable to load support chat: ${err.message || 'Unknown error'}`)
+    }
+  }
+
+  const openSupportChat = async (session) => {
+    setSelectedSupportSession(session)
+    await loadSelectedSupportChat(session)
+  }
+
+  const acceptSupportChat = async (session) => {
+    if (!session?.id) return
+
+    setSupportChatLoading(true)
+    try {
+      const { data, error } = await supabase.rpc('admin_accept_support_chat', {
+        p_session_id: String(session.id),
+        p_admin_name: 'Admin',
+      })
+
+      if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to accept support chat.')
+      }
+
+      const acceptedSession = data?.session || { ...session, status: 'connected' }
+      setSelectedSupportSession(acceptedSession)
+      await fetchSupportChatSessions()
+      await loadSelectedSupportChat(acceptedSession)
+    } catch (err) {
+      console.error('Support chat acceptance error:', err)
+      alert(`Unable to accept chat: ${err.message || 'Unknown error'}`)
+    } finally {
+      setSupportChatLoading(false)
+    }
+  }
+
+  const closeSupportChat = async (session) => {
+    if (!session?.id) return
+    if (!window.confirm(`Close the support chat for ${session.restaurant_name || 'this restaurant'}?`)) return
+
+    try {
+      const { data, error } = await supabase.rpc('admin_close_support_chat', {
+        p_session_id: String(session.id),
+        p_admin_name: 'Admin',
+      })
+
+      if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to close support chat.')
+      }
+
+      setSupportChatMessages([])
+      setSelectedSupportSession(null)
+      await fetchSupportChatSessions()
+    } catch (err) {
+      console.error('Support chat close error:', err)
+      alert(`Unable to close chat: ${err.message || 'Unknown error'}`)
+    }
+  }
+
+  const sendAdminChatReply = async (event) => {
+    event.preventDefault()
+    const message = adminReply.trim()
+    if (!message || !selectedSupportSession?.id || !selectedSupportSession?.restaurant_id) return
+
+    if (String(selectedSupportSession.status).toLowerCase() !== 'connected') {
+      alert('Accept the support chat before sending a reply.')
+      return
+    }
+
+    setSupportReplyLoading(true)
+    try {
+      const { data, error } = await supabase.rpc('support_chat_send_message', {
+        p_restaurant_id: String(selectedSupportSession.restaurant_id),
+        p_session_id: String(selectedSupportSession.id),
+        p_sender: 'admin',
+        p_message: message,
+      })
+
+      if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to send reply.')
+      }
+
+      setAdminReply('')
+      if (data?.message) {
+        setSupportChatMessages((current) => {
+          if (current.some((item) => String(item.id) === String(data.message.id))) return current
+          return [...current, data.message]
+        })
+      }
+    } catch (err) {
+      console.error('Admin reply error:', err)
+      alert(`Failed to send reply: ${err.message || 'Unknown error'}`)
+    } finally {
+      setSupportReplyLoading(false)
+    }
+  }
+
+  // Keep Admin support inbox and the selected conversation synchronized even
+  // if a browser/device does not deliver Supabase Realtime events.
+  useEffect(() => {
+    if (!authorized) return undefined
+
+    const interval = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      await fetchSupportChatSessions()
+      if (selectedSupportSession?.restaurant_id) {
+        try {
+          const { data } = await supabase.rpc('get_support_chat_state', {
+            p_restaurant_id: String(selectedSupportSession.restaurant_id),
+          })
+          if (data?.success !== false) {
+            setSelectedSupportSession(data?.session || selectedSupportSession)
+            setSupportChatMessages(Array.isArray(data?.messages) ? data.messages : [])
+          }
+        } catch (error) {
+          console.error('Support chat polling error:', error)
+        }
+      }
+    }, 2000)
+
+    return () => window.clearInterval(interval)
+  }, [authorized, selectedSupportSession?.restaurant_id])
+
+  // Refresh the Admin support inbox immediately when the tab/window becomes
+  // active again. This is useful on mobile devices and browsers that suspend
+  // background realtime connections.
+  useEffect(() => {
+    if (!authorized) return undefined
+
+    const refreshOnFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchSupportChatSessions()
+      }
+    }
+
+    window.addEventListener('focus', refreshOnFocus)
+    document.addEventListener('visibilitychange', refreshOnFocus)
+
+    return () => {
+      window.removeEventListener('focus', refreshOnFocus)
+      document.removeEventListener('visibilitychange', refreshOnFocus)
+    }
+  }, [authorized])
 
   const fetchRestaurants = async () => {
     setLoading(true)
@@ -258,8 +616,18 @@ export default function DeveloperAdminDashboard() {
   }
 
   const handleSignOut = () => {
-    sessionStorage.removeItem('isSuperAdminAuthenticated')
-    router.replace('/') // Cleanly destroys session and returns to landing page
+    try {
+      window.sessionStorage.removeItem('isSuperAdminAuthenticated')
+      window.localStorage.removeItem('isSuperAdminAuthenticated')
+    } catch (error) {
+      console.warn('Unable to clear admin storage:', error)
+    }
+
+    setAuthorized(false)
+    setSelectedSupportSession(null)
+    setSupportChatMessages([])
+    setRestaurants([])
+    router.replace('/admin')
   }
 
   if (!authorized) {
@@ -335,54 +703,225 @@ export default function DeveloperAdminDashboard() {
         </div>
 
         {/* LIVE CHAT SUPPORT CONSOLE */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 md:p-8 space-y-4 shadow-2xl">
-          <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
-            <div className="flex items-center space-x-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <h2 className="text-lg font-black text-white uppercase tracking-wider">Live Customer Support Chat</h2>
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 md:p-8 space-y-5 shadow-2xl">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3 border-b border-neutral-800 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <h2 className="text-lg font-black text-white uppercase tracking-wider">Live Restaurant Support Chat</h2>
+              </div>
+              <p className="text-[10px] text-neutral-500 mt-1">
+                Restaurants must request support first. Chat becomes live only after Admin accepts the request.
+              </p>
             </div>
-            <span className="text-[10px] bg-neutral-800 text-neutral-400 px-3 py-1 rounded-full font-mono">Realtime Connected</span>
+            <div className="flex items-center gap-2">
+              {supportChatLastRefresh && (
+                <span className="text-[9px] text-neutral-600 hidden sm:inline">
+                  Updated {supportChatLastRefresh.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={fetchSupportChatSessions}
+                className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase"
+              >
+                ↻ Refresh Chats
+              </button>
+            </div>
           </div>
 
-          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl h-64 overflow-y-auto p-4 space-y-3">
-            {chatMessages.length === 0 ? (
-              <p className="text-center text-xs text-neutral-500 mt-20">No active support chat messages.</p>
-            ) : (
-              chatMessages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                  <div className="space-y-0.5 max-w-[70%]">
-                    <p className="text-[9px] font-bold text-neutral-500 px-1">
-                      {msg.sender === 'admin' ? 'You (Admin)' : 'Customer'}
+          {supportChatError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
+              <p className="text-[10px] font-black uppercase text-red-400">
+                Support Inbox Connection Problem
+              </p>
+              <p className="text-[10px] text-red-200/70 mt-1 break-words">
+                {supportChatError}
+              </p>
+              <button
+                type="button"
+                onClick={fetchSupportChatSessions}
+                className="mt-3 bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase"
+              >
+                Retry Support Inbox
+              </button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-5">
+            <div className="space-y-3">
+              <div className="bg-neutral-950 border border-yellow-500/20 rounded-2xl p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] uppercase tracking-widest font-black text-yellow-400">Pending Requests</p>
+                  <span className="text-xs font-black text-white">{supportChatSessions.filter((item) => item.status === 'pending').length}</span>
+                </div>
+              </div>
+
+              {supportChatSessions.length === 0 ? (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-8 text-center">
+                  <div className="text-3xl mb-2">💬</div>
+                  <p className="text-xs font-black text-neutral-300">No support chat requests.</p>
+                  <p className="text-[10px] text-neutral-600 mt-1">A restaurant request will appear here automatically.</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                  {supportChatSessions.map((chat) => (
+                    <button
+                      type="button"
+                      key={chat.id}
+                      onClick={() => openSupportChat(chat)}
+                      className={`w-full text-left bg-neutral-950 border rounded-2xl p-4 transition ${
+                        selectedSupportSession?.id === chat.id
+                          ? 'border-red-500/60 shadow-lg shadow-red-950/20'
+                          : chat.status === 'pending'
+                            ? 'border-yellow-500/30 hover:border-yellow-500/60'
+                            : 'border-neutral-800 hover:border-neutral-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-white truncate">{chat.restaurant_name || 'Restaurant'}</p>
+                          <p className="text-[10px] text-orange-400 font-mono mt-1">Code: {chat.restaurant_code || '-----'}</p>
+                          <p className="text-[9px] text-neutral-600 mt-1">Requested {chat.requested_at ? new Date(chat.requested_at).toLocaleString('en-IN') : '--'}</p>
+                        </div>
+                        <span className={`text-[9px] uppercase font-black px-2 py-1 rounded-lg border whitespace-nowrap ${
+                          chat.status === 'pending'
+                            ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+                            : chat.status === 'connected'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : 'bg-neutral-800 text-neutral-500 border-neutral-700'
+                        }`}>
+                          {chat.status === 'connected' ? 'Live' : chat.status}
+                        </span>
+                      </div>
+
+                      {chat.status === 'pending' && (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <span className="bg-yellow-500/10 text-yellow-300 border border-yellow-500/20 rounded-xl py-2 text-center text-[10px] font-black">
+                            📨 New Request
+                          </span>
+                          <span className="bg-neutral-800 text-neutral-300 rounded-xl py-2 text-center text-[10px] font-black">
+                            Click to Open
+                          </span>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-neutral-950 border border-neutral-800 rounded-2xl overflow-hidden flex flex-col min-h-[520px]">
+              {!selectedSupportSession ? (
+                <div className="flex-1 flex items-center justify-center text-center p-8">
+                  <div>
+                    <div className="text-4xl mb-3">🛟</div>
+                    <h3 className="text-sm font-black text-white">Select a support request</h3>
+                    <p className="text-[10px] text-neutral-600 mt-1 max-w-sm">
+                      Select a restaurant from the support inbox to accept the request and start live chat.
                     </p>
-                    <div className={`px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
-                      msg.sender === 'admin'
-                        ? 'bg-red-600 text-white rounded-br-none shadow-md'
-                        : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
-                    }`}>
-                      {msg.message}
-                    </div>
                   </div>
                 </div>
-              ))
-            )}
-            <div ref={chatEndRef} />
-          </div>
+              ) : (
+                <>
+                  <div className="p-4 border-b border-neutral-800 bg-neutral-900">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-white">{selectedSupportSession.restaurant_name || 'Restaurant'}</p>
+                        <p className="text-[10px] text-orange-400 font-mono mt-1">Restaurant Code: {selectedSupportSession.restaurant_code || '-----'}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {selectedSupportSession.status === 'pending' && (
+                          <button
+                            type="button"
+                            onClick={() => acceptSupportChat(selectedSupportSession)}
+                            disabled={supportChatLoading}
+                            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase"
+                          >
+                            {supportChatLoading ? 'Accepting...' : '✓ Accept Live Chat'}
+                          </button>
+                        )}
+                        {selectedSupportSession.status === 'connected' && (
+                          <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-2 rounded-xl text-[10px] font-black uppercase">
+                            🟢 Live Chat Connected
+                          </span>
+                        )}
+                        {selectedSupportSession.status === 'connected' && (
+                          <button
+                            type="button"
+                            onClick={() => closeSupportChat(selectedSupportSession)}
+                            className="bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 px-3 py-2 rounded-xl text-[10px] font-black uppercase"
+                          >
+                            Close Chat
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-          <form onSubmit={sendAdminChatReply} className="flex space-x-2">
-            <input 
-              type="text" 
-              placeholder="Type reply to customer..." 
-              value={adminReply}
-              onChange={(e) => setAdminReply(e.target.value)}
-              className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-red-500"
-            />
-            <button 
-              type="submit"
-              className="bg-red-600 hover:bg-red-700 text-white font-black px-6 py-3 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-red-600/20"
-            >
-              Reply 🚀
-            </button>
-          </form>
+                    {selectedSupportSession.status === 'pending' && (
+                      <div className="mt-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3">
+                        <p className="text-[10px] font-black uppercase text-yellow-400">Waiting for Admin acceptance</p>
+                        <p className="text-[9px] text-yellow-200/60 mt-1">The restaurant cannot send chat messages until you accept this request.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 p-4 overflow-y-auto space-y-3">
+                    {supportChatMessages.length === 0 ? (
+                      <p className="text-center text-xs text-neutral-600 mt-16">
+                        {selectedSupportSession.status === 'connected' ? 'Live chat connected. Send the first message.' : 'No messages yet.'}
+                      </p>
+                    ) : (
+                      supportChatMessages.map((msg) => (
+                        <div key={msg.id} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                          <div className="space-y-0.5 max-w-[78%]">
+                            <p className="text-[9px] font-bold text-neutral-500 px-1">
+                              {msg.sender === 'admin' ? 'You (Admin)' : 'Restaurant'}
+                            </p>
+                            <div className={`px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
+                              msg.sender === 'admin'
+                                ? 'bg-red-600 text-white rounded-br-none shadow-md'
+                                : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
+                            }`}>
+                              {msg.message}
+                              {msg.created_at && (
+                                <div className="text-[8px] opacity-50 mt-1">
+                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  <form onSubmit={sendAdminChatReply} className="flex gap-2 border-t border-neutral-800 p-3 bg-neutral-900">
+                    <input
+                      type="text"
+                      placeholder={selectedSupportSession.status === 'connected' ? 'Type reply to restaurant...' : 'Accept the chat before replying...'}
+                      value={adminReply}
+                      onChange={(e) => setAdminReply(e.target.value)}
+                      disabled={selectedSupportSession.status !== 'connected' || supportReplyLoading}
+                      className="flex-1 min-w-0 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-red-500 disabled:opacity-50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={selectedSupportSession.status !== 'connected' || supportReplyLoading || !adminReply.trim()}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black px-5 py-3 rounded-xl text-xs uppercase tracking-wider transition"
+                    >
+                      {supportReplyLoading ? 'Sending...' : 'Reply 🚀'}
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* DEEP INSPECTOR MODAL / DRAWER (IF ACTIVE RESTAURANT SELECTED) */}
