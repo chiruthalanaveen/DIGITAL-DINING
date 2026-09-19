@@ -25,6 +25,8 @@ export default function DeveloperAdminDashboard() {
   const [adminReply, setAdminReply] = useState('')
   const [supportChatLoading, setSupportChatLoading] = useState(false)
   const [supportReplyLoading, setSupportReplyLoading] = useState(false)
+  const [supportChatError, setSupportChatError] = useState('')
+  const [supportChatLastRefresh, setSupportChatLastRefresh] = useState(null)
   const chatEndRef = useRef(null)
 
   // Website Status Control State (Working / Not Working)
@@ -161,23 +163,164 @@ export default function DeveloperAdminDashboard() {
   }, [authorized, selectedSupportSession?.id])
 
 
+  const mergeSupportChatSessions = (sessions) => {
+    const safeSessions = Array.isArray(sessions) ? sessions : []
+    setSupportChatSessions(safeSessions)
+
+    setSelectedSupportSession((current) => {
+      if (!current) return null
+      return (
+        safeSessions.find(
+          (session) => String(session.id) === String(current.id)
+        ) || current
+      )
+    })
+
+    setSupportChatLastRefresh(new Date())
+  }
+
+  const fetchSupportChatsFallback = async () => {
+    try {
+      let restaurantList = restaurants
+
+      // The first dashboard load may start both requests together. If the
+      // restaurant list is not ready yet, load only the safe public identity
+      // fields needed for the support-chat fallback.
+      if (!Array.isArray(restaurantList) || restaurantList.length === 0) {
+        const { data, error } = await supabase
+          .from('restaurants')
+          .select('id, name, restaurant_code')
+          .order('name', { ascending: true })
+
+        if (error) throw error
+        restaurantList = Array.isArray(data) ? data : []
+      }
+
+      const results = await Promise.all(
+        restaurantList.map(async (restaurant) => {
+          try {
+            const { data, error } = await supabase.rpc(
+              'get_support_chat_state',
+              {
+                p_restaurant_id: String(restaurant.id),
+              }
+            )
+
+            if (error || data?.success === false || !data?.session) {
+              return null
+            }
+
+            return {
+              ...data.session,
+              restaurant_name:
+                restaurant.name || data.session.restaurant_name || 'Restaurant',
+              restaurant_code:
+                restaurant.restaurant_code ||
+                data.session.restaurant_code ||
+                '-----',
+            }
+          } catch (error) {
+            console.error(
+              'Support chat fallback error for restaurant:',
+              restaurant.id,
+              error
+            )
+            return null
+          }
+        })
+      )
+
+      const sessions = results
+        .filter(Boolean)
+        .filter((session) =>
+          ['pending', 'connected'].includes(
+            String(session.status || '').toLowerCase()
+          )
+        )
+        .sort((a, b) => {
+          const aPending =
+            String(a.status || '').toLowerCase() === 'pending' ? 0 : 1
+          const bPending =
+            String(b.status || '').toLowerCase() === 'pending' ? 0 : 1
+
+          if (aPending !== bPending) return aPending - bPending
+
+          return (
+            new Date(b.updated_at || b.requested_at || 0).getTime() -
+            new Date(a.updated_at || a.requested_at || 0).getTime()
+          )
+        })
+
+      if (sessions.length > 0) {
+        mergeSupportChatSessions(sessions)
+        return sessions
+      }
+
+      return []
+    } catch (error) {
+      console.error('Support chat fallback failed:', error)
+      throw error
+    }
+  }
+
   const fetchSupportChatSessions = async () => {
+    setSupportChatError('')
+
     try {
       const { data, error } = await supabase.rpc('admin_get_support_chats')
-      if (error) throw error
+
+      if (error) {
+        throw error
+      }
+
       if (data?.success === false) {
         throw new Error(data?.message || 'Unable to load support chats.')
       }
 
       const sessions = Array.isArray(data?.sessions) ? data.sessions : []
-      setSupportChatSessions(sessions)
 
-      setSelectedSupportSession((current) => {
-        if (!current) return null
-        return sessions.find((session) => String(session.id) === String(current.id)) || current
-      })
+      /*
+       * IMPORTANT:
+       * If the admin inbox RPC returns an empty list while a restaurant has
+       * created a support session, use get_support_chat_state as a fallback.
+       * This fixes cases where the inbox RPC is outdated/missing while the
+       * restaurant request itself is successfully being created.
+       */
+      if (sessions.length === 0) {
+        const fallbackSessions = await fetchSupportChatsFallback()
+        if (fallbackSessions.length > 0) {
+          setSupportChatError('')
+          return
+        }
+      }
+
+      mergeSupportChatSessions(sessions)
+      setSupportChatError('')
     } catch (err) {
       console.error('Error fetching support chats:', err)
+
+      try {
+        const fallbackSessions = await fetchSupportChatsFallback()
+
+        if (fallbackSessions.length > 0) {
+          setSupportChatError('')
+          return
+        }
+
+        setSupportChatError(
+          `Support inbox could not load: ${
+            err?.message || 'Unknown error'
+          }`
+        )
+      } catch (fallbackError) {
+        setSupportChatError(
+          `Support inbox could not load: ${
+            fallbackError?.message ||
+            err?.message ||
+            'Please run the support-chat SQL repair script.'
+          }`
+        )
+      }
     }
   }
 
@@ -324,6 +467,26 @@ export default function DeveloperAdminDashboard() {
     return () => window.clearInterval(interval)
   }, [authorized, selectedSupportSession?.restaurant_id])
 
+  // Refresh the Admin support inbox immediately when the tab/window becomes
+  // active again. This is useful on mobile devices and browsers that suspend
+  // background realtime connections.
+  useEffect(() => {
+    if (!authorized) return undefined
+
+    const refreshOnFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchSupportChatSessions()
+      }
+    }
+
+    window.addEventListener('focus', refreshOnFocus)
+    document.addEventListener('visibilitychange', refreshOnFocus)
+
+    return () => {
+      window.removeEventListener('focus', refreshOnFocus)
+      document.removeEventListener('visibilitychange', refreshOnFocus)
+    }
+  }, [authorized])
 
   const fetchRestaurants = async () => {
     setLoading(true)
@@ -551,14 +714,43 @@ export default function DeveloperAdminDashboard() {
                 Restaurants must request support first. Chat becomes live only after Admin accepts the request.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={fetchSupportChatSessions}
-              className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase"
-            >
-              ↻ Refresh Chats
-            </button>
+            <div className="flex items-center gap-2">
+              {supportChatLastRefresh && (
+                <span className="text-[9px] text-neutral-600 hidden sm:inline">
+                  Updated {supportChatLastRefresh.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={fetchSupportChatSessions}
+                className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase"
+              >
+                ↻ Refresh Chats
+              </button>
+            </div>
           </div>
+
+          {supportChatError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
+              <p className="text-[10px] font-black uppercase text-red-400">
+                Support Inbox Connection Problem
+              </p>
+              <p className="text-[10px] text-red-200/70 mt-1 break-words">
+                {supportChatError}
+              </p>
+              <button
+                type="button"
+                onClick={fetchSupportChatSessions}
+                className="mt-3 bg-red-600 hover:bg-red-500 text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase"
+              >
+                Retry Support Inbox
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-5">
             <div className="space-y-3">
