@@ -221,7 +221,7 @@ function RestaurantChatWidget({ restaurantId }) {
     setSupportMode(session?.status === 'connected' ? 'human' : 'ai')
   }
 
-  const askAi = async (conversation, issueCategory) => {
+  const askAi = async (conversation, issueCategory, stage = 'conversation') => {
     setAiLoading(true)
 
     try {
@@ -236,6 +236,7 @@ function RestaurantChatWidget({ restaurantId }) {
             content: String(item.text || ''),
           })),
           issueCategory: String(issueCategory || ''),
+          stage: String(stage || 'conversation'),
         }),
       })
 
@@ -281,7 +282,7 @@ function RestaurantChatWidget({ restaurantId }) {
 
     setAiMessages(nextMessages)
 
-    await askAi(nextMessages, category)
+    await askAi(nextMessages, category, 'category_selected')
   }
 
   const handleAiSend = async (event) => {
@@ -571,10 +572,10 @@ function RestaurantChatWidget({ restaurantId }) {
                   ))
                 )}
 
-                {aiIssueCategory && (
+                {!aiIssueCategory && (
                   <div className="space-y-2 pt-2">
                     <p className="text-[9px] text-neutral-500 uppercase font-black tracking-wider">
-                      Choose another issue
+                      Choose the issue you are facing
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       {AI_CATEGORIES.map((category) => (
