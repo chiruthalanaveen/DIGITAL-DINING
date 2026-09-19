@@ -31,18 +31,61 @@ export default function DeveloperAdminDashboard() {
   const [siteStatus, setSiteStatus] = useState('Working')
   const [updatingStatus, setUpdatingStatus] = useState(false)
 
-  // Strict Security Check: Bounces direct URL entries straight to the landing page
+  /*
+   * ADMIN ACCESS RESTORATION
+   *
+   * The previous version checked only sessionStorage and immediately sent
+   * direct URL visits to the landing page. That made the Admin Dashboard
+   * unreliable when the URL was reopened or opened in a new tab.
+   *
+   * Keep the existing client-side admin gate, but restore the authenticated
+   * flag from localStorage when available and redirect unauthenticated users
+   * to the existing Admin Login page instead of the landing page.
+   */
   useEffect(() => {
-    const isAuth = sessionStorage.getItem('isSuperAdminAuthenticated')
-    if (!isAuth) {
-      router.replace('/')
-      return
+    let active = true
+
+    try {
+      const sessionAuth =
+        window.sessionStorage.getItem('isSuperAdminAuthenticated') === 'true'
+
+      const persistentAuth =
+        window.localStorage.getItem('isSuperAdminAuthenticated') === 'true'
+
+      if (sessionAuth || persistentAuth) {
+        if (!sessionAuth && persistentAuth) {
+          window.sessionStorage.setItem(
+            'isSuperAdminAuthenticated',
+            'true'
+          )
+        }
+
+        if (!active) return
+
+        setAuthorized(true)
+        fetchRestaurants()
+        fetchSupportChatSessions()
+        fetchWebsiteStatus()
+        return
+      }
+
+      /*
+       * Do not send the user to the public landing page.
+       * Send them to the existing Admin Login route.
+       */
+      if (active) {
+        router.replace('/admin')
+      }
+    } catch (error) {
+      console.error('Admin authorization check failed:', error)
+      if (active) {
+        router.replace('/admin')
+      }
     }
 
-    setAuthorized(true)
-    fetchRestaurants()
-    fetchSupportChatSessions()
-    fetchWebsiteStatus()
+    return () => {
+      active = false
+    }
   }, [router])
 
   useEffect(() => {
@@ -410,8 +453,18 @@ export default function DeveloperAdminDashboard() {
   }
 
   const handleSignOut = () => {
-    sessionStorage.removeItem('isSuperAdminAuthenticated')
-    router.replace('/') // Cleanly destroys session and returns to landing page
+    try {
+      window.sessionStorage.removeItem('isSuperAdminAuthenticated')
+      window.localStorage.removeItem('isSuperAdminAuthenticated')
+    } catch (error) {
+      console.warn('Unable to clear admin storage:', error)
+    }
+
+    setAuthorized(false)
+    setSelectedSupportSession(null)
+    setSupportChatMessages([])
+    setRestaurants([])
+    router.replace('/admin')
   }
 
   if (!authorized) {
