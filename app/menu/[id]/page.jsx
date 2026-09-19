@@ -387,42 +387,111 @@ export default function CustomerMenuPage() {
   }
 
   /*
-   * LOAD ORDERS
+   * LOAD CUSTOMER ORDERS
+   *
+   * QR visitors are anonymous Supabase clients. Direct SELECT access to
+   * public.orders can be blocked by RLS, so customer history is loaded
+   * through a dedicated SECURITY DEFINER RPC instead.
    */
-  const fetchCustomerOrders = async () => {
-    if (!restaurantId || !customerMobile.trim()) {
-      return
+  const fetchCustomerOrders = async (mobileOverride = null) => {
+    const mobile = String(
+      mobileOverride ?? customerMobileRef.current ?? customerMobile ?? ''
+    ).trim()
+
+    if (!restaurantId || !mobile) {
+      return []
     }
 
     setOrdersLoading(true)
 
     try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('customer_mobile', customerMobile.trim())
-        .order('created_at', { ascending: false })
-        .limit(20)
+      const { data, error } = await supabase.rpc(
+        'get_public_customer_orders',
+        {
+          p_restaurant_id: String(restaurantId),
+          p_customer_mobile: mobile
+        }
+      )
 
       if (error) {
-        console.error('Orders loading error:', error)
-        return
+        console.error('[QR MENU] Customer orders RPC error:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
+        return []
       }
 
-      setCustomerOrders(data || [])
+      let orders = data
+
+      if (typeof orders === 'string') {
+        try {
+          orders = JSON.parse(orders)
+        } catch {
+          orders = []
+        }
+      }
+
+      if (!Array.isArray(orders)) {
+        orders = orders?.orders || []
+      }
+
+      const safeOrders = Array.isArray(orders) ? orders : []
+      setCustomerOrders(safeOrders)
+      return safeOrders
     } catch (error) {
       console.error('Customer orders error:', error)
+      return []
     } finally {
       setOrdersLoading(false)
     }
   }
 
+  const mergePlacedOrderIntoCustomerOrders = order => {
+    if (!order?.id) return
+
+    setCustomerOrders(current => {
+      const existing = current.findIndex(
+        item => String(item.id) === String(order.id)
+      )
+
+      if (existing >= 0) {
+        return current.map(item =>
+          String(item.id) === String(order.id)
+            ? { ...item, ...order }
+            : item
+        )
+      }
+
+      return [order, ...current].slice(0, 20)
+    })
+  }
+
   const openOrders = async () => {
     setActiveNav('orders')
     setShowOrders(true)
-    await fetchCustomerOrders()
+    await fetchCustomerOrders(
+      customerMobileRef.current || customerMobile
+    )
   }
+
+  /*
+   * When the Orders sheet is open, refresh customer orders periodically.
+   * This is a fallback for deployments where Realtime order payloads are
+   * restricted by RLS for anonymous QR visitors.
+   */
+  useEffect(() => {
+    if (!isVerified || !showOrders || !restaurantId) return undefined
+
+    const intervalId = window.setInterval(() => {
+      fetchCustomerOrders(
+        customerMobileRef.current || customerMobile
+      )
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
+  }, [isVerified, showOrders, restaurantId])
 
   const loadRazorpayScript = () =>
     new Promise(resolve => {
@@ -740,7 +809,7 @@ export default function CustomerMenuPage() {
       const finalMobile = customerMobile.trim()
 
       const itemsSnapshot = createItemsSnapshot()
-      const { orderNumber: dailyOrderNumber } = await createPublicOrder({
+      const { orderNumber: dailyOrderNumber, order: createdOrder } = await createPublicOrder({
         paymentMode: 'Pay at Counter',
         status: 'pending',
         itemsSnapshot,
@@ -773,10 +842,11 @@ export default function CustomerMenuPage() {
         timestamp: new Date().toLocaleTimeString()
       })
 
+      mergePlacedOrderIntoCustomerOrders(createdOrder)
       setCart({})
       setShowCart(false)
       setOrderPlaced(true)
-      fetchCustomerOrders()
+      await fetchCustomerOrders(finalMobile)
     } catch (error) {
       console.error('Counter payment error:', error)
       alert('Failed to place order: ' + error.message)
@@ -827,7 +897,7 @@ export default function CustomerMenuPage() {
         handler: async response => {
           try {
             const itemsSnapshot = createItemsSnapshot()
-            const { orderNumber: dailyOrderNumber } = await createPublicOrder({
+            const { orderNumber: dailyOrderNumber, order: createdOrder } = await createPublicOrder({
               paymentMode: 'Razorpay Online',
               status: 'paid',
               itemsSnapshot,
@@ -860,10 +930,11 @@ export default function CustomerMenuPage() {
               timestamp: new Date().toLocaleTimeString()
             })
 
+            mergePlacedOrderIntoCustomerOrders(createdOrder)
             setCart({})
             setShowCart(false)
             setOrderPlaced(true)
-            fetchCustomerOrders()
+            await fetchCustomerOrders(finalMobile)
           } catch (error) {
             console.error('Online order logging error:', error)
             alert('Payment received, but failed to log order: ' + error.message)
