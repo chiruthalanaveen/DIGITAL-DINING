@@ -1090,7 +1090,7 @@ export default function RestaurantDashboard() {
     restaurant_resort_pro: {
       code: 'restaurant_resort_pro',
       name: 'Restaurant + Resort Pro',
-      monthlyPrice: 199,
+      monthlyPrice: 2999,
       advanced: true,
       resort: true,
       advancedResort: true,
