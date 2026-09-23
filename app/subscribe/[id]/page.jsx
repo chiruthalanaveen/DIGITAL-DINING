@@ -103,7 +103,7 @@ const PLANS = {
       true,
 
     prices: {
-      '1month': 199,
+      '1month': 2999,
       '6months': 16195,
       '12months': 28790,
     },
@@ -1107,7 +1107,6 @@ export default function SubscriptionPage({
 
 
             <div className="bg-neutral-950 border border-neutral-800 p-4 rounded-2xl flex items-center justify-between gap-4">
-
               <div>
 
                 <p className="text-[10px] text-neutral-400 uppercase tracking-widest font-bold">
