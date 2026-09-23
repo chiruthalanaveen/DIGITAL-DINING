@@ -14,6 +14,7 @@ export default function RestaurantLogin() {
   const [loading, setLoading] = useState(false)
   const [biometricLoading, setBiometricLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [appleLoading, setAppleLoading] = useState(false)
 
   const [biometricEnabled, setBiometricEnabled] = useState(false)
 
@@ -31,7 +32,7 @@ export default function RestaurantLogin() {
   }, [])
 
   const toggleBiometric = () => {
-    if (loading || biometricLoading || googleLoading) {
+    if (loading || biometricLoading || googleLoading || appleLoading) {
       return
     }
 
@@ -144,6 +145,34 @@ export default function RestaurantLogin() {
       )
 
       setGoogleLoading(false)
+    }
+  }
+
+  const handleAppleLogin = async () => {
+    if (loading || biometricLoading || googleLoading || appleLoading) {
+      return
+    }
+
+    setAppleLoading(true)
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'apple',
+        options: {
+          redirectTo: `${window.location.origin}/auth/apple-login`,
+        },
+      })
+
+      if (error) {
+        throw error
+      }
+    } catch (error) {
+      console.error('Apple login error:', error)
+      alert(
+        'Apple Login Failed: ' +
+          (error?.message || 'Something went wrong.')
+      )
+      setAppleLoading(false)
     }
   }
 
@@ -343,7 +372,8 @@ export default function RestaurantLogin() {
   const isBusy =
     loading ||
     biometricLoading ||
-    googleLoading
+    googleLoading ||
+    appleLoading
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 font-sans">
@@ -596,6 +626,27 @@ export default function RestaurantLogin() {
               </svg>
 
               Continue with Google
+            </>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleAppleLogin}
+          disabled={isBusy}
+          className="w-full flex items-center justify-center gap-3 bg-black hover:bg-neutral-900 text-white border border-neutral-700 font-black py-4 rounded-xl text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {appleLoading ? (
+            <>
+              <span className="h-4 w-4 animate-spin border-2 border-white/40 border-t-white rounded-full" />
+              Connecting to Apple...
+            </>
+          ) : (
+            <>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M17.05 12.54c-.02-2.15 1.76-3.18 1.84-3.23-1.01-1.47-2.58-1.67-3.13-1.69-1.31-.14-2.58.78-3.25.78-.68 0-1.72-.76-2.82-.74-1.45.02-2.79.84-3.54 2.14-1.52 2.63-.39 6.5 1.08 8.63.74 1.04 1.59 2.19 2.72 2.15 1.09-.04 1.5-.69 2.81-.69 1.31 0 1.68.69 2.82.67 1.17-.02 1.9-1.05 2.61-2.1.83-1.21 1.17-2.38 1.19-2.44-.03-.01-2.29-.88-2.31-3.48ZM14.9 6.22c.6-.73 1.01-1.74.9-2.74-.87.04-1.93.58-2.55 1.3-.56.64-1.06 1.66-.93 2.64.97.08 1.96-.49 2.58-1.2Z"/>
+              </svg>
+              Continue with Apple
             </>
           )}
         </button>

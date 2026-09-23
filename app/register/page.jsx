@@ -49,6 +49,10 @@ function getPasskeyErrorMessage(error) {
 export default function RestaurantRegistration() {
   const router = useRouter()
 
+  // Bird cursor-follow animation
+  const birdRef = useRef(null)
+  const birdTargetRef = useRef({ x: 0, y: 0 })
+  const birdPositionRef = useRef({ x: 0, y: 0 })
   const fireflyRef = useRef(null)
   const fireflyPositionRef = useRef({ x: 0, y: 0 })
   const fireflyTargetRef = useRef({ x: 0, y: 0 })
@@ -118,6 +122,51 @@ export default function RestaurantRegistration() {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    birdTargetRef.current = {
+      x: window.innerWidth * 0.72,
+      y: window.innerHeight * 0.22,
+    }
+
+    birdPositionRef.current = {
+      x: window.innerWidth * 0.72,
+      y: window.innerHeight * 0.22,
+    }
+
+    const handlePointerMove = (event) => {
+      birdTargetRef.current = {
+        x: event.clientX + 22,
+        y: event.clientY - 34,
+      }
+    }
+
+    let animationFrameId
+
+    const animateBird = () => {
+      const current = birdPositionRef.current
+      const target = birdTargetRef.current
+
+      current.x += (target.x - current.x) * 0.075
+      current.y += (target.y - current.y) * 0.075
+
+      if (birdRef.current) {
+        birdRef.current.style.transform = `translate3d(${current.x}px, ${current.y}px, 0)`
+      }
+
+      animationFrameId = window.requestAnimationFrame(animateBird)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true })
+    animationFrameId = window.requestAnimationFrame(animateBird)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.cancelAnimationFrame(animationFrameId)
+    }
+  }, [])
+
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -129,6 +178,7 @@ export default function RestaurantRegistration() {
 
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [appleLoading, setAppleLoading] = useState(false)
   const [biometricLoading, setBiometricLoading] = useState(false)
   const [focusedField, setFocusedField] = useState('')
 
@@ -204,6 +254,64 @@ export default function RestaurantRegistration() {
       )
 
       setGoogleLoading(false)
+    }
+  }
+
+  // ============================================================
+  // APPLE SIGN-UP
+  // ============================================================
+
+  const handleAppleSignup = async () => {
+    if (appleLoading || googleLoading || loading || biometricLoading) {
+      return
+    }
+
+    if (!name.trim() || !phone.trim() || !dob.trim()) {
+      alert(
+        'Please enter your Restaurant Name, Phone Number and Date of Birth before continuing with Apple sign-up.'
+      )
+      return
+    }
+
+    if (phone.trim().replace(/\D/g, '').length !== 10) {
+      alert('Please enter a valid 10-digit phone number.')
+      return
+    }
+
+    setAppleLoading(true)
+
+    try {
+      localStorage.setItem(
+        'digitaldining_apple_registration',
+        JSON.stringify({
+          name: name.trim(),
+          phone: phone.trim(),
+          dob: dob.trim(),
+          biometricEnabled,
+        })
+      )
+
+      const redirectTo =
+        `${window.location.origin}/auth/apple-complete`
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'apple',
+        options: {
+          redirectTo,
+        },
+      })
+
+      if (error) {
+        localStorage.removeItem('digitaldining_apple_registration')
+        throw error
+      }
+    } catch (error) {
+      console.error('APPLE SIGN-UP ERROR:', error)
+      alert(
+        'Apple Sign-up Failed: ' +
+          (error?.message || 'Something went wrong while starting Apple sign-up.')
+      )
+      setAppleLoading(false)
     }
   }
 
@@ -500,27 +608,15 @@ export default function RestaurantRegistration() {
   const isBusy =
     loading ||
     googleLoading ||
+    appleLoading ||
     biometricLoading
 
   return (
     <>
       <style>{`
-        .register-scene { position: relative; isolation: isolate; overflow: hidden; min-height: 100vh; background: radial-gradient(ellipse at 50% 8%, rgba(55,77,151,.42) 0%, transparent 42%), radial-gradient(ellipse at 15% 80%, rgba(84,35,130,.32) 0%, transparent 38%), radial-gradient(ellipse at 88% 42%, rgba(13,103,153,.22) 0%, transparent 35%), linear-gradient(180deg, #030617 0%, #07102b 48%, #02030d 100%); }
-        .register-scene::before { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: -5; opacity: .95; background-image: radial-gradient(circle at 4% 12%, #fff 0 1px, transparent 1.8px), radial-gradient(circle at 18% 72%, #b8d7ff 0 1px, transparent 1.8px), radial-gradient(circle at 31% 21%, #fff 0 1.2px, transparent 2px), radial-gradient(circle at 47% 86%, #d6c7ff 0 1px, transparent 1.8px), radial-gradient(circle at 62% 13%, #fff 0 1px, transparent 1.8px), radial-gradient(circle at 74% 63%, #b8d7ff 0 1.2px, transparent 2px), radial-gradient(circle at 89% 20%, #fff 0 1px, transparent 1.8px), radial-gradient(circle at 96% 84%, #d6c7ff 0 1px, transparent 1.8px); background-size: 170px 170px, 230px 230px, 190px 190px, 280px 280px, 210px 210px, 250px 250px, 180px 180px, 310px 310px; animation: star-drift 22s linear infinite; }
-        .register-scene::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: -4; background: radial-gradient(ellipse at 50% 105%, rgba(35,67,140,.36), transparent 48%), linear-gradient(115deg, transparent 0 38%, rgba(120,92,220,.06) 45%, transparent 54%); }
-        .space-stars { position: absolute; inset: 0; pointer-events: none; z-index: -3; overflow: hidden; }
-        .space-stars::before, .space-stars::after { content: ''; position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff; box-shadow: 7vw 12vh #fff, 14vw 34vh #9ecbff, 22vw 8vh #fff, 29vw 54vh #d8c6ff, 37vw 20vh #fff, 43vw 72vh #9ecbff, 51vw 12vh #fff, 58vw 42vh #d8c6ff, 66vw 25vh #fff, 72vw 82vh #9ecbff, 81vw 14vh #fff, 91vw 48vh #d8c6ff, 96vw 76vh #fff, 11vw 90vh #9ecbff, 34vw 92vh #fff, 84vw 92vh #fff; opacity: .85; animation: twinkle 3.5s ease-in-out infinite alternate; }
-        .space-stars::after { width: 3px; height: 3px; opacity: .55; transform: translate(20px, 12px); animation-delay: -1.4s; }
-        .space-ship { position: absolute; left: 4%; bottom: 7%; width: clamp(150px, 24vw, 310px); pointer-events: none; z-index: -1; filter: drop-shadow(0 0 18px rgba(80,174,255,.55)); animation: ship-float 7s ease-in-out infinite; transform: rotate(-8deg); }
-        .space-ship .ship-flame { transform-origin: center top; animation: flame-flicker .24s ease-in-out infinite alternate; }
-        .asteroid { position: absolute; border-radius: 42% 58% 55% 45%; pointer-events: none; z-index: -2; background: radial-gradient(circle at 30% 25%, #9b9bad 0 5%, #55566d 25%, #272b42 62%, #111426 100%); box-shadow: inset -10px -12px 18px rgba(0,0,0,.55), 0 0 12px rgba(130,145,190,.14); opacity: .9; }
-        .asteroid::before, .asteroid::after { content: ''; position: absolute; border-radius: 50%; background: rgba(10,13,29,.55); box-shadow: inset 2px 2px 4px rgba(0,0,0,.35); }
-        .asteroid::before { width: 18%; height: 18%; left: 23%; top: 27%; }
-        .asteroid::after { width: 25%; height: 20%; right: 18%; bottom: 20%; }
-        .asteroid-one { width: 72px; height: 58px; top: 13%; left: 7%; animation: asteroid-float-one 14s ease-in-out infinite; }
-        .asteroid-two { width: 105px; height: 82px; top: 18%; right: 5%; transform: rotate(28deg); animation: asteroid-float-two 18s ease-in-out infinite; }
-        .asteroid-three { width: 48px; height: 40px; bottom: 16%; right: 18%; transform: rotate(-18deg); animation: asteroid-float-three 11s ease-in-out infinite; }
-        .asteroid-four { width: 34px; height: 28px; top: 55%; left: 18%; animation: asteroid-float-three 13s ease-in-out infinite reverse; opacity: .65; }
+        .register-scene { position: relative; isolation: isolate; overflow: hidden; min-height: 100vh; background: radial-gradient(circle at 50% -10%, rgba(255,255,255,.96) 0 8%, transparent 28%), linear-gradient(180deg, #dce8ff 0%, #c9dcfb 38%, #72b5e5 68%, #092d47 100%); }
+        .register-scene::before { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: -3; opacity: .42; background-image: radial-gradient(circle at 15% 22%, #fff 0 1px, transparent 2px), radial-gradient(circle at 80% 18%, #fff 0 1px, transparent 2px), radial-gradient(circle at 64% 64%, #fff 0 1px, transparent 2px), radial-gradient(circle at 32% 72%, #fff 0 1px, transparent 2px); background-size: 180px 180px, 230px 230px, 260px 260px, 210px 210px; animation: sky-drift 18s linear infinite; }
+        .register-scene::after { content: ''; position: absolute; z-index: -2; pointer-events: none; width: 130vw; height: 34vh; left: -15vw; bottom: -13vh; border-radius: 50% 50% 0 0; background: #061523; box-shadow: 0 -8vh 0 rgba(5,55,82,.78); }
         .register-card { position: relative; background: linear-gradient(180deg, rgba(255,255,255,.90) 0%, rgba(84,151,201,.93) 47%, rgba(7,30,49,.97) 100%); border: 1px solid rgba(255,255,255,.82); box-shadow: 0 28px 70px rgba(2,25,45,.44), inset 0 1px 0 rgba(255,255,255,.62); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
         .register-card::before { content: ''; position: absolute; inset: 1px; border-radius: inherit; pointer-events: none; background: linear-gradient(120deg, rgba(255,255,255,.18), transparent 35%, rgba(255,255,255,.08)); }
         .register-card input { background: rgba(5,24,40,.32) !important; border: 1px solid rgba(255,255,255,.52) !important; color: #fff !important; opacity: 1 !important; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,.35); transition: border-color .18s ease, box-shadow .18s ease, background .18s ease, transform .18s ease; }
@@ -539,62 +635,22 @@ export default function RestaurantRegistration() {
         .magic-submit:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 12px 30px rgba(190,111,20,.46), 0 0 22px rgba(255,190,74,.25); }
         .magic-submit:active:not(:disabled) { transform: translateY(0) scale(.985); }
         .field-glow { position: absolute; right: 14px; top: 50%; width: 5px; height: 5px; border-radius: 50%; background: #ffe6a0; box-shadow: 0 0 12px #ffc04d; transform: translateY(-50%); pointer-events: none; animation: tiny-glow 1s ease-in-out infinite alternate; }
+        .cursor-bird { position: fixed; top: 0; left: 0; z-index: 50; width: 58px; height: 38px; pointer-events: none; will-change: transform; filter: drop-shadow(0 5px 5px rgba(0,0,0,.2)); opacity: .78; }
+        .bird-wing { transform-box: fill-box; transform-origin: center; animation: bird-flap .42s ease-in-out infinite alternate; }
+        .bird-wing-reverse { animation-delay: .18s; }
         @keyframes firefly-pulse { from { opacity: .58; transform: scale(.82); } to { opacity: 1; transform: scale(1.18); } }
         @keyframes firefly-halo { from { transform: scale(.8); opacity: .3; } to { transform: scale(1.18); opacity: .8; } }
         @keyframes trail-fade { 0% { opacity: .75; transform: scale(1); } 100% { opacity: 0; transform: scale(.1) translateY(12px); } }
         @keyframes button-gradient { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
         @keyframes button-shine { 0%,55% { left: -75%; } 78%,100% { left: 135%; } }
         @keyframes tiny-glow { from { opacity: .45; box-shadow: 0 0 6px #ffc04d; } to { opacity: 1; box-shadow: 0 0 16px #fff0ae; } }
-        @keyframes star-drift { from { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(-8px,10px) scale(1.02); } to { transform: translate3d(6px,18px) scale(1); } }
-        @keyframes twinkle { from { opacity: .35; transform: scale(.8); } to { opacity: 1; transform: scale(1.2); } }
-        @keyframes ship-float { 0%,100% { transform: translate3d(0,0,0) rotate(-8deg); } 50% { transform: translate3d(18px,-16px,0) rotate(-4deg); } }
-        @keyframes flame-flicker { from { transform: scaleY(.72) scaleX(.82); opacity: .65; } to { transform: scaleY(1.2) scaleX(1.08); opacity: 1; } }
-        @keyframes asteroid-float-one { 0%,100% { transform: translate3d(0,0,0) rotate(0deg); } 50% { transform: translate3d(24px,18px,0) rotate(130deg); } }
-        @keyframes asteroid-float-two { 0%,100% { transform: translate3d(0,0,0) rotate(28deg); } 50% { transform: translate3d(-28px,22px,0) rotate(150deg); } }
-        @keyframes asteroid-float-three { 0%,100% { transform: translate3d(0,0,0) rotate(-18deg); } 50% { transform: translate3d(-16px,-24px,0) rotate(80deg); } }
-        @media (prefers-reduced-motion: reduce) { .firefly-orb, .firefly-orb::before, .firefly-orb::after, .magic-submit, .magic-submit::before, .register-scene::before, .space-stars::before, .space-stars::after, .space-ship, .asteroid { animation: none !important; } }
-        @media (max-width: 640px) { .register-scene { padding: 1rem .75rem; } .register-card { border-radius: 1.5rem; padding: 1.25rem !important; } .firefly-orb { width: 10px; height: 10px; } }
+        @keyframes bird-flap { from { transform: rotate(12deg) translateY(1px); } to { transform: rotate(-18deg) translateY(-4px); } }
+        @keyframes sky-drift { from { transform: translate3d(0,0,0); } to { transform: translate3d(0,18px,0); } }
+        @media (prefers-reduced-motion: reduce) { .firefly-orb, .firefly-orb::before, .firefly-orb::after, .magic-submit, .magic-submit::before, .bird-wing, .register-scene::before { animation: none !important; } }
+        @media (max-width: 640px) { .register-scene { padding: 1rem .75rem; } .register-card { border-radius: 1.5rem; padding: 1.25rem !important; } .cursor-bird { width: 46px; height: 30px; } .firefly-orb { width: 10px; height: 10px; } }
       `}</style>
 
       <div className="register-scene text-white flex items-center justify-center p-4 font-sans py-12">
-        <div className="space-stars" aria-hidden="true" />
-
-        <div className="asteroid asteroid-one" aria-hidden="true" />
-        <div className="asteroid asteroid-two" aria-hidden="true" />
-        <div className="asteroid asteroid-three" aria-hidden="true" />
-        <div className="asteroid asteroid-four" aria-hidden="true" />
-
-        <div className="space-ship" aria-hidden="true">
-          <svg viewBox="0 0 320 180" width="100%" height="100%" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="shipBodyGradient" x1="45" y1="30" x2="260" y2="145" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#F8FBFF" />
-                <stop offset=".45" stopColor="#9EB6D8" />
-                <stop offset="1" stopColor="#344565" />
-              </linearGradient>
-              <linearGradient id="shipGlassGradient" x1="115" y1="45" x2="190" y2="105" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#B9F4FF" />
-                <stop offset="1" stopColor="#3272B7" />
-              </linearGradient>
-              <linearGradient id="shipFlameGradient" x1="0" y1="0" x2="0" y2="70" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#FFF7B2" />
-                <stop offset=".45" stopColor="#FFB52E" />
-                <stop offset="1" stopColor="#FF4C5B" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <ellipse cx="154" cy="146" rx="112" ry="12" fill="#59B9FF" fillOpacity=".16" />
-            <path className="ship-flame" d="M72 118C64 136 66 155 82 171C87 151 98 137 111 126L72 118Z" fill="url(#shipFlameGradient)" />
-            <path d="M62 112L20 133L74 137L103 119L62 112Z" fill="#516887" stroke="#BFD5F1" strokeWidth="2" />
-            <path d="M244 112L296 128L250 139L221 120L244 112Z" fill="#516887" stroke="#BFD5F1" strokeWidth="2" />
-            <path d="M47 108C69 72 111 43 160 40C209 43 251 72 274 108L241 128C193 145 127 145 79 128L47 108Z" fill="url(#shipBodyGradient)" stroke="#D9E8FF" strokeWidth="3" />
-            <path d="M111 80C122 56 143 49 160 49C177 49 198 56 209 80L198 102C176 111 144 111 122 102L111 80Z" fill="url(#shipGlassGradient)" stroke="#D8FAFF" strokeWidth="2" />
-            <path d="M129 65C141 56 153 53 163 54" stroke="white" strokeOpacity=".8" strokeWidth="4" strokeLinecap="round" />
-            <circle cx="91" cy="112" r="6" fill="#FFCC57" />
-            <circle cx="229" cy="112" r="6" fill="#6DE7FF" />
-            <path d="M80 126C126 137 194 137 240 126" stroke="#263650" strokeWidth="4" strokeLinecap="round" />
-          </svg>
-        </div>
-
         <div ref={trailContainerRef} aria-hidden="true" />
 
         <div
@@ -602,6 +658,32 @@ export default function RestaurantRegistration() {
           className="firefly-orb"
           aria-hidden="true"
         />
+
+        <div
+          ref={birdRef}
+          className="cursor-bird"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 120 80" width="100%" height="100%" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M7 42C25 18 43 19 58 35C74 11 98 10 114 27C99 26 91 34 83 43C69 59 51 59 36 46C25 37 17 39 7 42Z"
+              fill="#111827"
+            />
+            <path
+              className="bird-wing"
+              d="M57 36C43 12 28 5 13 12C29 22 37 34 38 47C45 45 51 41 57 36Z"
+              fill="#1F2937"
+            />
+            <path
+              className="bird-wing bird-wing-reverse"
+              d="M65 35C76 11 94 5 108 13C93 21 84 34 82 46C75 44 70 40 65 35Z"
+              fill="#1F2937"
+            />
+            <circle cx="91" cy="27" r="2.2" fill="#F8FAFC" />
+            <circle cx="91.5" cy="27" r="1" fill="#111827" />
+            <path d="M112 28L119 31L112 34" fill="#F59E0B" />
+          </svg>
+        </div>
 
         <div className="register-card max-w-lg w-full p-8 rounded-3xl space-y-6">
 
@@ -881,6 +963,34 @@ export default function RestaurantRegistration() {
             Google sign-up still requires your phone number and
             date of birth because they are used for your restaurant
             profile and account security.
+          </p>
+
+          {/* APPLE SIGN-UP BUTTON */}
+          <button
+            type="button"
+            onClick={handleAppleSignup}
+            disabled={isBusy}
+            className="w-full bg-black hover:bg-neutral-900 text-white border border-neutral-700 font-black py-4 rounded-xl text-xs uppercase tracking-wider transition flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {appleLoading ? (
+              <>
+                <span className="animate-spin h-4 w-4 border-2 border-white/40 border-t-white rounded-full" />
+                Connecting to Apple...
+              </>
+            ) : (
+              <>
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M17.05 12.54c-.02-2.15 1.76-3.18 1.84-3.23-1.01-1.47-2.58-1.67-3.13-1.69-1.31-.14-2.58.78-3.25.78-.68 0-1.72-.76-2.82-.74-1.45.02-2.79.84-3.54 2.14-1.52 2.63-.39 6.5 1.08 8.63.74 1.04 1.59 2.19 2.72 2.15 1.09-.04 1.5-.69 2.81-.69 1.31 0 1.68.69 2.82.67 1.17-.02 1.9-1.05 2.61-2.1.83-1.21 1.17-2.38 1.19-2.44-.03-.01-2.29-.88-2.31-3.48ZM14.9 6.22c.6-.73 1.01-1.74.9-2.74-.87.04-1.93.58-2.55 1.3-.56.64-1.06 1.66-.93 2.64.97.08 1.96-.49 2.58-1.2Z"/>
+                </svg>
+                Continue with Apple
+              </>
+            )}
+          </button>
+
+          <p className="text-[10px] text-neutral-500 text-center leading-relaxed">
+            Apple sign-up uses your Apple Account for authentication.
+            Your restaurant profile still uses the name, phone number
+            and date of birth entered above.
           </p>
         </form>
 
