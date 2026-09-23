@@ -759,7 +759,7 @@ export async function POST(req) {
 
       message:
         isTrial
-          ? '14-day Restaurant+ ResortPro trial activated successfully.'
+          ? '14-day Restaurant+ Resort Pro trial activated successfully.'
           : 'Subscription activated successfully.',
 
       restaurant:
