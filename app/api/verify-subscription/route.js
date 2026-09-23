@@ -50,7 +50,7 @@ const PLANS = {
     resortEnabled: true,
 
     prices: {
-      '1month': 2999,
+      '1month': 199,
       '6months': 16195,
       '12months': 28790,
     },
