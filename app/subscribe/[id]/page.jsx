@@ -103,7 +103,7 @@ const PLANS = {
       true,
 
     prices: {
-      '1month': 199,
+      '1month': 2999,
       '6months': 16195,
       '12months': 28790,
     },
