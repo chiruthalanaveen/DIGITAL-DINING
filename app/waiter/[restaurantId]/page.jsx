@@ -21,6 +21,7 @@ export default function WaiterPortal({ params }) {
   const [userId, setUserId] = useState('')
   const [password, setPassword] = useState('')
   const [waiterName, setWaiterName] = useState('')
+  const [showProfile, setShowProfile] = useState(false)
 
   const [menuItems, setMenuItems] = useState([])
   const [tableNumber, setTableNumber] = useState('Table 1')
@@ -552,6 +553,7 @@ export default function WaiterPortal({ params }) {
     setMenuItems([])
     setUserId('')
     setPassword('')
+    setShowProfile(false)
   }
 
   /*
@@ -636,6 +638,79 @@ export default function WaiterPortal({ params }) {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-6 space-y-6">
 
+      {/* PROFILE MODAL */}
+      {showProfile && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-neutral-800 p-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">
+                  Staff Profile
+                </p>
+                <h2 className="mt-1 text-lg font-black text-white">
+                  Waiter Profile
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProfile(false)}
+                className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-bold text-neutral-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                  Waiter Name
+                </p>
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm font-bold text-white">
+                  {waiterName || 'Waiter'}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                  Restaurant Code
+                </p>
+                <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-4 text-center">
+                  <span className="font-mono text-2xl font-black tracking-[0.35em] text-orange-300">
+                    {restaurantCode || '-----'}
+                  </span>
+                </div>
+                <p className="mt-2 text-[10px] text-neutral-500">
+                  This is the 5-digit restaurant code used for this waiter portal.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                    User ID
+                  </p>
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-mono text-white break-all">
+                    {userId || '—'}
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                    Role
+                  </p>
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-emerald-300">
+                    Waiter
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 px-4 py-3 text-[10px] leading-5 text-neutral-500">
+                🔒 Your password is never displayed in the profile section.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* HEADER */}
 
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 border-b border-neutral-800 pb-4">
@@ -656,6 +731,14 @@ export default function WaiterPortal({ params }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+
+          <button
+            type="button"
+            onClick={() => setShowProfile(true)}
+            className="bg-neutral-900 border border-neutral-800 hover:border-orange-500/40 text-orange-300 text-xs px-4 py-2.5 rounded-xl font-bold"
+          >
+            👤 Profile
+          </button>
 
           {!soundEnabled && (
             <button

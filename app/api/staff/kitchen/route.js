@@ -1113,6 +1113,15 @@ export default function KitchenPortal({ params }) {
 
               <div>
                 <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                  Restaurant ID
+                </p>
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-[11px] font-mono text-neutral-300 break-all">
+                  {restaurantId || '—'}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
                   Access
                 </p>
                 <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-neutral-300">

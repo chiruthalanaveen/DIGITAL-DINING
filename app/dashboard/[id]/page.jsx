@@ -3,6 +3,7 @@ import ThemeToggle from '@/app/components/ThemeToggle'
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import ResortManagement from '@/app/components/ResortManagement'
 
 // Real-Time Restaurant Chat Widget Component
 function RestaurantChatWidget({ restaurantId }) {
@@ -840,6 +841,80 @@ function StaffLoginQrCard({ title, description, url, icon, restaurantCode }) {
   )
 }
 
+function SalesRevenueGraph({ data, formatCurrency, periodLabel }) {
+  const width = 1000
+  const height = 320
+  const padding = { top: 24, right: 24, bottom: 58, left: 78 }
+  const plotWidth = width - padding.left - padding.right
+  const plotHeight = height - padding.top - padding.bottom
+  const safeData = Array.isArray(data) && data.length ? data : [{ label: 'No data', revenue: 0 }]
+  const maxRevenue = Math.max(...safeData.map((item) => Number(item.revenue || 0)), 1)
+  const points = safeData.map((item, index) => {
+    const x = safeData.length === 1
+      ? padding.left + plotWidth / 2
+      : padding.left + (index / (safeData.length - 1)) * plotWidth
+    const y = padding.top + plotHeight - (Number(item.revenue || 0) / maxRevenue) * plotHeight
+    return { ...item, x, y }
+  })
+  const polyline = points.map((point) => `${point.x},${point.y}`).join(' ')
+  const labelStep = Math.max(1, Math.ceil(safeData.length / 8))
+  const yTicks = [0, 0.25, 0.5, 0.75, 1]
+
+  return (
+    <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 sm:p-6 space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-emerald-400 font-black">Sales Graph</p>
+          <h3 className="text-lg font-black text-white mt-1">Sales Generated</h3>
+          <p className="text-xs text-neutral-500 mt-1">Revenue trend for {periodLabel}.</p>
+        </div>
+        <div className="sm:text-right">
+          <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Period Total</p>
+          <p className="text-xl font-black text-emerald-400">
+            {formatCurrency(safeData.reduce((sum, item) => sum + Number(item.revenue || 0), 0))}
+          </p>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <div className="min-w-[720px]">
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" role="img" aria-label={`Sales generated graph for ${periodLabel}`}>
+            {yTicks.map((tick) => {
+              const y = padding.top + plotHeight - tick * plotHeight
+              const value = maxRevenue * tick
+              return (
+                <g key={tick}>
+                  <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="currentColor" className="text-neutral-800" strokeWidth="1" />
+                  <text x={padding.left - 12} y={y + 4} textAnchor="end" fill="currentColor" className="text-neutral-500" fontSize="11">
+                    {value >= 100000 ? `₹${(value / 100000).toFixed(1)}L` : value >= 1000 ? `₹${(value / 1000).toFixed(0)}k` : `₹${Math.round(value)}`}
+                  </text>
+                </g>
+              )
+            })}
+
+            <polyline points={polyline} fill="none" stroke="currentColor" className="text-orange-500" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+
+            {points.map((point, index) => (
+              <g key={`${point.label}-${index}`}>
+                <circle cx={point.x} cy={point.y} r="5" fill="currentColor" className="text-orange-400">
+                  <title>{`${point.label}: ${formatCurrency(point.revenue)} · ${point.orders} order${point.orders === 1 ? '' : 's'}`}</title>
+                </circle>
+                {(index % labelStep === 0 || index === points.length - 1) && (
+                  <text x={point.x} y={height - 24} textAnchor="middle" fill="currentColor" className="text-neutral-500" fontSize="10">
+                    {point.label}
+                  </text>
+                )}
+              </g>
+            ))}
+          </svg>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-neutral-500">Hover a point to see sales and order count for that period.</p>
+    </div>
+  )
+}
+
 export default function RestaurantDashboard() {
   const params = useParams()
   const restaurantId = String(params.id || params.restaurantId || '').trim()
@@ -847,9 +922,17 @@ export default function RestaurantDashboard() {
 
   const [restaurant, setRestaurant] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
+
+  // Owner Profile
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileName, setProfileName] = useState('')
+  const [profileEmail, setProfileEmail] = useState('')
+  const [profilePhone, setProfilePhone] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
   const [menuItems, setMenuItems] = useState([])
   const [dailyOffers, setDailyOffers] = useState([])
   const [orders, setOrders] = useState([])
+  const [restaurantTables, setRestaurantTables] = useState([])
   const [activeTab, setActiveTab] = useState('settlements')
   const [isStoreOpen, setIsStoreOpen] = useState(true)
 
@@ -964,15 +1047,76 @@ export default function RestaurantDashboard() {
     { value: 'waiter-4', label: 'Waiter Sound 4', src: '/sounds/waiter-4.mp3' },
   ]
 
-  // Plan limit mapping
-  const planLimits = {
-    Standard: 20,
-    Pro: 50,
-    'Pro+': Infinity
+  // Subscription-wise feature control.
+  // plan_code is the canonical plan value. Legacy `plan` is used only for old accounts.
+  const legacyPlan = String(restaurant?.plan || 'Standard')
+  const legacyPlanCode =
+    legacyPlan === 'Pro+'
+      ? 'restaurant_resort_pro'
+      : legacyPlan === 'Pro'
+        ? 'restaurant_pro'
+        : 'restaurant_standard'
+
+  const currentPlanCode = String(restaurant?.plan_code || legacyPlanCode).toLowerCase()
+
+  const PLAN_FEATURES = {
+    restaurant_standard: {
+      code: 'restaurant_standard',
+      name: 'Restaurant Standard',
+      monthlyPrice: 799,
+      advanced: false,
+      resort: false,
+      advancedResort: false,
+      menuLimit: 50,
+    },
+    restaurant_pro: {
+      code: 'restaurant_pro',
+      name: 'Restaurant Pro',
+      monthlyPrice: 1299,
+      advanced: true,
+      resort: false,
+      advancedResort: false,
+      menuLimit: Infinity,
+    },
+    restaurant_resort_standard: {
+      code: 'restaurant_resort_standard',
+      name: 'Restaurant + Resort Standard',
+      monthlyPrice: 1999,
+      advanced: false,
+      resort: true,
+      advancedResort: false,
+      menuLimit: 50,
+    },
+    restaurant_resort_pro: {
+      code: 'restaurant_resort_pro',
+      name: 'Restaurant + Resort Pro',
+      monthlyPrice: 199,
+      advanced: true,
+      resort: true,
+      advancedResort: true,
+      menuLimit: Infinity,
+    },
   }
 
-  const currentPlan = restaurant?.plan || 'Standard'
-  const maxMenuAllowed = planLimits[currentPlan] || 20
+  const planFeatures = PLAN_FEATURES[currentPlanCode] || PLAN_FEATURES.restaurant_standard
+  const currentPlanDisplay = planFeatures.name
+  const currentPlanMonthlyPrice = planFeatures.monthlyPrice
+
+  // Base restaurant features are available on all four plans.
+  // Pro-only restaurant features:
+  const hasAdvancedAnalytics = planFeatures.advanced
+  const hasManagerManagement = planFeatures.advanced
+  const hasAdvancedMenuControls = planFeatures.advanced
+  const hasRealtimeOrderAlarm = planFeatures.advanced
+
+  // Resort features are available only on Restaurant + Resort plans.
+  // Resort access follows the active subscription plan exactly.
+  // A stale resort_enabled database flag must not unlock resort features on restaurant-only plans.
+  const resortModuleEnabled = planFeatures.resort
+  const hasAdvancedResortFeatures = planFeatures.advancedResort
+
+  // Menu Management is included in all four plans. The feature matrix does not impose a plan-based menu-item limit.
+  const maxMenuAllowed = Infinity
 
   // SECURITY: The restaurant ID in the URL is not authentication.
   // The authenticated Supabase user must own the dashboard being opened.
@@ -993,6 +1137,15 @@ export default function RestaurantDashboard() {
       if (error || !user) {
         if (!cancelled) router.replace('/login')
         return
+      }
+
+      if (!cancelled) {
+        setProfileName(
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          ''
+        )
+        setProfileEmail(user.email || '')
       }
 
       const { data: ownedRestaurant, error: ownershipError } = await supabase
@@ -1076,6 +1229,7 @@ export default function RestaurantDashboard() {
 
       setRestaurant(restData)
 
+      setProfilePhone(String(restData.phone || ''))
       setKitchenAlarmSound(restData.kitchen_alarm_sound || 'kitchen-default')
       setWaiterAlarmSound(restData.waiter_alarm_sound || 'waiter-default')
       setKitchenAlarmEnabled(restData.kitchen_alarm_enabled ?? true)
@@ -1135,9 +1289,21 @@ export default function RestaurantDashboard() {
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false })
 
+      const { data: tableData, error: tableError } = await supabase
+        .from('tables')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .order('table_number', { ascending: true })
+
+      if (tableError) {
+        console.error('Table inventory loading error:', tableError)
+      } else {
+        setRestaurantTables(Array.isArray(tableData) ? tableData : [])
+      }
+
       if (orderData) {
         if (
-          currentPlan === 'Pro+' &&
+          hasRealtimeOrderAlarm &&
           orderData.length > prevOrdersLengthRef.current &&
           prevOrdersLengthRef.current > 0
         ) {
@@ -1164,10 +1330,29 @@ export default function RestaurantDashboard() {
     authChecked,
     restaurantId,
     router,
-    currentPlan,
+    currentPlanCode,
     hasInitializedKeys,
     savingPayment
   ])
+
+  const configuredTableNumbers = [...new Set(
+    restaurantTables
+      .map((table, index) => String(table?.table_number ?? table?.number ?? table?.table_no ?? table?.name ?? (index + 1)).trim())
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+
+  const activeTableOrders = orders.filter((order) => {
+    const status = String(order?.status || '').trim().toLowerCase()
+    if (['completed', 'cancelled', 'delivered'].includes(status)) return false
+    const tableNumber = String(order?.table_number ?? '').trim()
+    if (!tableNumber) return false
+    const diningMode = String(order?.dining_mode ?? order?.order_type ?? 'dine-in').trim().toLowerCase()
+    return !['parcel', 'takeaway', 'take-away', 'delivery'].some((mode) => diningMode.includes(mode))
+  })
+
+  const occupiedTableNumbers = new Set(activeTableOrders.map((order) => String(order.table_number).trim()))
+  const occupiedTableCount = configuredTableNumbers.filter((number) => occupiedTableNumbers.has(number)).length
+  const availableTableCount = Math.max(0, configuredTableNumbers.length - occupiedTableCount)
 
   const updateOrderStatus = async (orderId, newStatus) => {
     setOrders(
@@ -1188,9 +1373,9 @@ export default function RestaurantDashboard() {
     itemId,
     currentAvailability
   ) => {
-    if (currentPlan !== 'Pro+') {
+    if (!hasAdvancedMenuControls) {
       alert(
-        '🔒 Item availability toggle is restricted to Pro+ plan members.'
+        '🔒 Advanced menu controls are available on Restaurant Pro and Restaurant + Resort Pro.'
       )
       return
     }
@@ -1218,9 +1403,9 @@ export default function RestaurantDashboard() {
   }
 
   const handleSaveItemPrice = async (itemId) => {
-    if (currentPlan !== 'Pro+') {
+    if (!hasAdvancedMenuControls) {
       alert(
-        '🔒 Price modification is exclusive to the Pro+ tier.'
+        '🔒 Advanced menu pricing is available on Restaurant Pro and Restaurant + Resort Pro.'
       )
       setEditingItemId(null)
       return
@@ -1480,7 +1665,7 @@ export default function RestaurantDashboard() {
     // The existing Pro+ price protection remains in place.
     // An offer also changes the effective customer price, so offer pricing
     // follows the same protection and does not bypass the existing plan rule.
-    if (currentPlan !== 'Pro+') {
+    if (!hasAdvancedMenuControls) {
       const currentItem = menuItems.find(
         (item) => item.id === itemId
       )
@@ -1502,7 +1687,7 @@ export default function RestaurantDashboard() {
 
       if (pricingChanged) {
         alert(
-          '🔒 Price and offer modification is exclusive to the Pro+ tier. Keep the existing pricing or upgrade to Pro+.'
+          '🔒 Advanced price and offer modification is available on Restaurant Pro and Restaurant + Resort Pro.'
         )
         return
       }
@@ -1579,7 +1764,7 @@ export default function RestaurantDashboard() {
 
     if (menuItems.length >= maxMenuAllowed) {
       alert(
-        `⚠️ Limit Reached! Your current ${currentPlan} plan allows a maximum of ${maxMenuAllowed} menu items. Please upgrade to Pro or Pro+ to add more dishes.`
+        'Menu item limit reached.'
       )
       return
     }
@@ -1811,9 +1996,9 @@ export default function RestaurantDashboard() {
   const handleSwiggySync = async (e) => {
     e.preventDefault()
 
-    if (currentPlan === 'Standard') {
+    if (!hasAdvancedMenuControls) {
       alert(
-        '🔒 Swiggy sync is locked on the Standard plan. Please upgrade to Pro or Pro+.'
+        '🔒 Menu import/sync is available on Restaurant Pro and Restaurant + Resort Pro.'
       )
       return
     }
@@ -2118,6 +2303,17 @@ export default function RestaurantDashboard() {
   // ---------------------------------------------------------
   // ANALYTICS & REPORTING
   // ---------------------------------------------------------
+  const REPORT_TIMEFRAMES = [
+    { label: 'Today', value: 'daily' },
+    { label: 'Week', value: 'weekly' },
+    { label: 'Month', value: 'monthly' },
+    { label: '3 Months', value: '3months' },
+    { label: '6 Months', value: '6months' },
+    { label: '1 Year', value: '1year' },
+    { label: '2 Years', value: '2years' },
+    { label: '3 Years', value: '3years' }
+  ]
+
   const getReportRange = (frame) => {
     const now = new Date()
     const start = new Date(now)
@@ -2132,18 +2328,37 @@ export default function RestaurantDashboard() {
     } else if (frame === 'monthly') {
       start.setDate(1)
       start.setHours(0, 0, 0, 0)
+    } else if (frame === '3months') {
+      start.setMonth(start.getMonth() - 3)
+      start.setHours(0, 0, 0, 0)
+    } else if (frame === '6months') {
+      start.setMonth(start.getMonth() - 6)
+      start.setHours(0, 0, 0, 0)
+    } else if (frame === '1year') {
+      start.setFullYear(start.getFullYear() - 1)
+      start.setHours(0, 0, 0, 0)
+    } else if (frame === '2years') {
+      start.setFullYear(start.getFullYear() - 2)
+      start.setHours(0, 0, 0, 0)
+    } else if (frame === '3years') {
+      start.setFullYear(start.getFullYear() - 3)
+      start.setHours(0, 0, 0, 0)
     } else if (frame === 'yearly') {
-      start.setMonth(0, 1)
+      // Backward compatibility for any existing saved/old UI state.
+      start.setFullYear(start.getFullYear() - 1)
       start.setHours(0, 0, 0, 0)
     }
 
     return { start, end: now }
   }
 
+  const getReportPeriodLabel = (frame) =>
+    REPORT_TIMEFRAMES.find((item) => item.value === frame)?.label || 'Selected Period'
+
   const reportRange = getReportRange(reportTimeframe)
 
   const reportOrders = orders.filter((order) => {
-    if (!order?.created_at || order.status === 'cancelled') return false
+    if (!order?.created_at || String(order.status || '').toLowerCase() === 'cancelled') return false
     const createdAt = new Date(order.created_at)
     return createdAt >= reportRange.start && createdAt <= reportRange.end
   })
@@ -2188,6 +2403,77 @@ export default function RestaurantDashboard() {
       maximumFractionDigits: 2
     })}`
 
+  const buildSalesGraphData = (frame, orderList) => {
+    const range = getReportRange(frame)
+    const buckets = []
+    const bucketMap = new Map()
+
+    const addBucket = (key, label) => {
+      if (bucketMap.has(key)) return
+      const bucket = { key, label, revenue: 0, orders: 0 }
+      bucketMap.set(key, bucket)
+      buckets.push(bucket)
+    }
+
+    if (frame === 'daily') {
+      for (let hour = 0; hour < 24; hour += 1) {
+        addBucket(String(hour), formatHour(hour))
+      }
+    } else if (frame === 'weekly') {
+      const cursor = new Date(range.start)
+      while (cursor <= range.end) {
+        const key = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`
+        addBucket(key, cursor.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' }))
+        cursor.setDate(cursor.getDate() + 1)
+      }
+    } else if (frame === 'monthly') {
+      const cursor = new Date(range.start)
+      while (cursor <= range.end) {
+        const key = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`
+        addBucket(key, cursor.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }))
+        cursor.setDate(cursor.getDate() + 1)
+      }
+    } else {
+      const cursor = new Date(range.start.getFullYear(), range.start.getMonth(), 1)
+      const endMonth = new Date(range.end.getFullYear(), range.end.getMonth(), 1)
+      while (cursor <= endMonth) {
+        const key = `${cursor.getFullYear()}-${cursor.getMonth()}`
+        addBucket(
+          key,
+          cursor.toLocaleDateString('en-IN', {
+            month: 'short',
+            year: buckets.length === 0 || cursor.getMonth() === 0 ? '2-digit' : undefined
+          })
+        )
+        cursor.setMonth(cursor.getMonth() + 1)
+      }
+    }
+
+    orderList.forEach((order) => {
+      if (!order?.created_at || String(order.status || '').toLowerCase() === 'cancelled') return
+      const createdAt = new Date(order.created_at)
+      if (createdAt < range.start || createdAt > range.end) return
+
+      let key
+      if (frame === 'daily') {
+        key = String(createdAt.getHours())
+      } else if (frame === 'weekly' || frame === 'monthly') {
+        key = `${createdAt.getFullYear()}-${createdAt.getMonth()}-${createdAt.getDate()}`
+      } else {
+        key = `${createdAt.getFullYear()}-${createdAt.getMonth()}`
+      }
+
+      const bucket = bucketMap.get(key)
+      if (!bucket) return
+      bucket.orders += 1
+      bucket.revenue += Number(order.total_amount || 0)
+    })
+
+    return buckets
+  }
+
+  const salesGraphData = buildSalesGraphData(reportTimeframe, orders)
+
   const handleGenerateAnalyticsReport = () => {
     if (reportOrders.length === 0) {
       alert('There are no orders in the selected period to generate a report.')
@@ -2195,7 +2481,7 @@ export default function RestaurantDashboard() {
     }
 
     const rows = [
-      ['Report Period', reportTimeframe],
+      ['Report Period', getReportPeriodLabel(reportTimeframe)],
       ['Generated At', new Date().toLocaleString('en-IN')],
       ['Total Orders', reportOrderCount],
       ['Total Revenue', reportRevenue.toFixed(2)],
@@ -2249,9 +2535,12 @@ export default function RestaurantDashboard() {
         return
       }
 
+      const targetPlanDetails = PLAN_FEATURES[targetPlan]
+      const targetPlanName = targetPlanDetails?.name || targetPlan
+
       const confirmation =
         window.confirm(
-          `Upgrade your subscription to ${targetPlan}? You will be taken to the secure payment page to complete the upgrade.`
+          `Change your subscription to ${targetPlanName}? You will be taken to the secure payment page to continue.`
         )
 
       if (!confirmation) return
@@ -2315,21 +2604,90 @@ export default function RestaurantDashboard() {
     setSavingAlarmSettings(false)
   }
 
-  const handleTabSwitch = (
-    tabId
-  ) => {
-    if (
-      tabId ===
-        'swiggy-sync' &&
-      currentPlan === 'Standard'
-    ) {
+  const handleTabSwitch = (tabId) => {
+    const advancedTabs = ['settlements', 'staff', 'swiggy-sync', 'alarm-settings']
+
+    if (advancedTabs.includes(tabId) && !planFeatures.advanced) {
       alert(
-        '🔒 Swiggy menu sync is locked on the Standard plan. Please upgrade to Pro or Pro+.'
+        `🔒 ${currentPlanDisplay} includes Basic Analytics, but this advanced dashboard feature requires Restaurant Pro or Restaurant + Resort Pro.`
       )
       return
     }
 
+    if (tabId === 'resort' && !resortModuleEnabled) {
+      alert('🔒 Resort Management is available only on Restaurant + Resort plans.')
+      return
+    }
+
     setActiveTab(tabId)
+  }
+
+
+  const saveOwnerProfile = async (event) => {
+    event.preventDefault()
+
+    const cleanName = String(profileName || '').trim()
+    const cleanPhone = String(profilePhone || '').replace(/\D/g, '')
+
+    if (!cleanName) {
+      alert('Please enter your name.')
+      return
+    }
+
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      alert('Name must be between 2 and 80 characters.')
+      return
+    }
+
+    if (cleanPhone && cleanPhone.length !== 10) {
+      alert('Please enter a valid 10-digit phone number.')
+      return
+    }
+
+    setProfileSaving(true)
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError || !user) {
+        throw new Error('Your login session has expired. Please sign in again.')
+      }
+
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: {
+          full_name: cleanName,
+        },
+      })
+
+      if (metadataError) throw metadataError
+
+      const { error: restaurantError } = await supabase
+        .from('restaurants')
+        .update({
+          phone: cleanPhone || null,
+        })
+        .eq('id', restaurantId)
+        .eq('owner_id', user.id)
+
+      if (restaurantError) throw restaurantError
+
+      setProfileName(cleanName)
+      setProfilePhone(cleanPhone)
+      setRestaurant((current) =>
+        current ? { ...current, phone: cleanPhone || null } : current
+      )
+      setProfileOpen(false)
+
+      alert('Profile updated successfully! ✅')
+    } catch (error) {
+      console.error('Owner profile update error:', error)
+      alert(`Unable to update profile: ${error.message || 'Please try again.'}`)
+    } finally {
+      setProfileSaving(false)
+    }
   }
 
   const handleLogout = async () => {
@@ -2698,6 +3056,14 @@ export default function RestaurantDashboard() {
             <ThemeToggle />
 
             <button
+              onClick={() => setProfileOpen(true)}
+              className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition flex items-center space-x-2 shadow"
+              type="button"
+            >
+              <span>👤 Profile</span>
+            </button>
+
+            <button
               onClick={() =>
                 router.push(
                   `/dashboard/${restaurant.id}/qr`
@@ -2716,9 +3082,110 @@ export default function RestaurantDashboard() {
             </button>
           </div>
         </div>
+
       </header>
 
+      {profileOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">
+                  Account
+                </span>
+                <h2 className="mt-3 text-xl font-black text-white">Owner Profile</h2>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Update your personal contact details. Login credentials remain unchanged.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProfileOpen(false)}
+                className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-black text-neutral-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={saveOwnerProfile} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">
+                  Owner Name
+                </label>
+                <input
+                  type="text"
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  maxLength={80}
+                  autoComplete="name"
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-white outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={profileEmail}
+                  readOnly
+                  className="w-full cursor-not-allowed rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-sm text-neutral-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={profilePhone}
+                  onChange={(e) =>
+                    setProfilePhone(e.target.value.replace(/\D/g, '').slice(0, 10))
+                  }
+                  inputMode="numeric"
+                  maxLength={10}
+                  autoComplete="tel"
+                  placeholder="10-digit mobile number"
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-white outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Restaurant</p>
+                <p className="mt-1 text-sm font-black text-white">{restaurant?.name || 'Restaurant'}</p>
+                <p className="mt-2 text-[10px] font-mono text-neutral-500 break-all">
+                  Restaurant ID: {restaurant?.id || restaurantId}
+                </p>
+                <p className="mt-1 text-[10px] font-black text-orange-400">
+                  Plan: {currentPlanDisplay}
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
+                  className="flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs font-black text-neutral-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={profileSaving}
+                  className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                >
+                  {profileSaving ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Main Container */}
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-6">
 
         {/* Metrics Grid */}
@@ -2761,33 +3228,28 @@ export default function RestaurantDashboard() {
               </p>
 
               <p className="text-xl font-black text-amber-400 mt-0.5">
-                {currentPlan}
+                {currentPlanDisplay}
               </p>
             </div>
 
-            {currentPlan !== 'Pro+' && (
-              <div className="flex space-x-1 pt-2">
-                {currentPlan === 'Standard' && (
-                  <button
-                    onClick={() =>
-                      handleUpgradePlan('Pro')
-                    }
-                    className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-[10px] py-1.5 rounded-lg transition"
-                  >
-                    Upgrade to Pro 🚀
-                  </button>
-                )}
+            <p className="text-[10px] text-neutral-500 mt-1">
+              ₹{currentPlanMonthlyPrice.toLocaleString('en-IN')} / month
+            </p>
 
-                <button
-                  onClick={() =>
-                    handleUpgradePlan('Pro+')
-                  }
-                  className="w-full bg-amber-500 hover:bg-amber-600 text-neutral-950 font-black text-[10px] py-1.5 rounded-lg transition"
-                >
-                  Go Pro+ 👑
-                </button>
-              </div>
-            )}
+            <div className="grid grid-cols-1 gap-1.5 pt-3">
+              {Object.values(PLAN_FEATURES)
+                .filter((plan) => plan.code !== currentPlanCode)
+                .map((plan) => (
+                  <button
+                    key={plan.code}
+                    type="button"
+                    onClick={() => handleUpgradePlan(plan.code)}
+                    className="w-full bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold text-[10px] py-2 px-2 rounded-lg transition text-left"
+                  >
+                    {plan.name} · ₹{plan.monthlyPrice.toLocaleString('en-IN')}/mo
+                  </button>
+                ))}
+            </div>
           </div>
 
           <div className="bg-neutral-900 border border-orange-500/20 p-5 rounded-3xl shadow-sm">
@@ -2812,7 +3274,7 @@ export default function RestaurantDashboard() {
             },
             {
               id: 'menu',
-              label: `🍔 Menu Catalog (${menuItems.length}/${maxMenuAllowed})`
+              label: `🍔 Menu Catalog (${menuItems.length})`
             },
             {
               id: 'staff',
@@ -2821,6 +3283,10 @@ export default function RestaurantDashboard() {
             {
               id: 'staff-access',
               label: '📱 Staff Login QR'
+            },
+            {
+              id: 'tables',
+              label: `🪑 Tables (${availableTableCount}/${configuredTableNumbers.length})`
             },
             {
               id: 'taxes',
@@ -2838,6 +3304,14 @@ export default function RestaurantDashboard() {
               id: 'swiggy-sync',
               label: '🟠 Swiggy Sync'
             },
+            ...(resortModuleEnabled
+              ? [
+                  {
+                    id: 'resort',
+                    label: '🏨 Resort Management'
+                  }
+                ]
+              : []),
             {
               id: 'gateway',
               label: '💳 Payment Gateways'
@@ -2846,7 +3320,14 @@ export default function RestaurantDashboard() {
               id: 'alarm-settings',
               label: '🔔 Alarm Settings'
             },
-          ].map((tab) => (
+          ]
+            .filter((tab) => {
+              if (['staff', 'swiggy-sync', 'alarm-settings'].includes(tab.id)) {
+                return planFeatures.advanced
+              }
+              return true
+            })
+            .map((tab) => (
             <button
               key={tab.id}
               onClick={() =>
@@ -2863,6 +3344,51 @@ export default function RestaurantDashboard() {
           ))}
         </div>
 
+        {activeTab === 'tables' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5">
+                <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Total Tables</p>
+                <p className="text-3xl font-black text-white mt-2">{configuredTableNumbers.length}</p>
+              </div>
+              <div className="bg-neutral-900 border border-emerald-500/20 rounded-3xl p-5">
+                <p className="text-[10px] uppercase tracking-wider text-emerald-400 font-black">Available</p>
+                <p className="text-3xl font-black text-emerald-400 mt-2">{availableTableCount}/{configuredTableNumbers.length}</p>
+              </div>
+              <div className="bg-neutral-900 border border-red-500/20 rounded-3xl p-5">
+                <p className="text-[10px] uppercase tracking-wider text-red-400 font-black">Occupied</p>
+                <p className="text-3xl font-black text-red-400 mt-2">{occupiedTableCount}</p>
+              </div>
+            </div>
+
+            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                <div>
+                  <h2 className="text-lg font-black text-white">Restaurant Tables</h2>
+                  <p className="text-xs text-neutral-500 mt-1">Only table QR codes registered from your Table QR page are counted.</p>
+                </div>
+                <button type="button" onClick={() => router.push(`/dashboard/${restaurantId}/qr`)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black">📷 Manage Table QR Codes</button>
+              </div>
+              {configuredTableNumbers.length === 0 ? (
+                <div className="text-center py-10 text-sm text-neutral-500">No table QR codes have been registered yet.</div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                  {configuredTableNumbers.map((number) => {
+                    const occupied = occupiedTableNumbers.has(number)
+                    return (
+                      <div key={number} className={`rounded-2xl border p-4 text-center ${occupied ? 'border-red-500/30 bg-red-500/10' : 'border-emerald-500/30 bg-emerald-500/10'}`}>
+                        <div className="text-2xl">{occupied ? '🔴' : '🟢'}</div>
+                        <p className="font-black text-white mt-2">Table {number}</p>
+                        <p className={`text-[10px] font-black uppercase mt-1 ${occupied ? 'text-red-400' : 'text-emerald-400'}`}>{occupied ? 'Occupied' : 'Available'}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* TAB 2: MENU CATALOG */}
         {activeTab === 'menu' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -2875,8 +3401,7 @@ export default function RestaurantDashboard() {
                 </h2>
 
                 <span className="text-[10px] text-neutral-400 font-bold">
-                  {menuItems.length} /{' '}
-                  {maxMenuAllowed} used
+                  {menuItems.length} items · Included in all plans
                 </span>
               </div>
 
@@ -3207,10 +3732,9 @@ export default function RestaurantDashboard() {
                   Active Catalog ({menuItems.length})
                 </h2>
 
-                {currentPlan !==
-                  'Pro+' && (
+                {!hasAdvancedMenuControls && (
                   <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-lg">
-                    🔒 Price modification locked (Pro+ required)
+                    🔒 Advanced menu controls require Restaurant Pro or Restaurant + Resort Pro
                   </span>
                 )}
               </div>
@@ -3311,7 +3835,7 @@ export default function RestaurantDashboard() {
                                       </p>
                                     </div>
                                     <span className="shrink-0 bg-orange-500/10 border border-orange-500/20 text-orange-400 px-2 py-1 rounded-lg text-[9px] font-black">
-                                      {currentPlan === 'Pro+' ? 'PRO+ PRICING' : 'PRO+ REQUIRED'}
+                                      {hasAdvancedMenuControls ? 'PRO PRICING' : 'PRO REQUIRED'}
                                     </span>
                                   </div>
 
@@ -3334,10 +3858,10 @@ export default function RestaurantDashboard() {
                                             setEditItemPrice(value)
                                           }
                                         }}
-                                        disabled={currentPlan !== 'Pro+'}
+                                        disabled={!hasAdvancedMenuControls}
                                         placeholder="299"
                                         className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm ${
-                                          currentPlan !== 'Pro+' ? 'opacity-50 cursor-not-allowed' : ''
+                                          !hasAdvancedMenuControls ? 'opacity-50 cursor-not-allowed' : ''
                                         }`}
                                       />
                                     </div>
@@ -3358,10 +3882,10 @@ export default function RestaurantDashboard() {
                                             setEditItemPrice(value)
                                           }
                                         }}
-                                        disabled={currentPlan !== 'Pro+'}
+                                        disabled={!hasAdvancedMenuControls}
                                         placeholder="199"
                                         className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm ${
-                                          currentPlan !== 'Pro+' ? 'opacity-50 cursor-not-allowed' : ''
+                                          !hasAdvancedMenuControls ? 'opacity-50 cursor-not-allowed' : ''
                                         }`}
                                       />
                                     </div>
@@ -3398,9 +3922,9 @@ export default function RestaurantDashboard() {
                                     )}
                                   </div>
 
-                                  {currentPlan !== 'Pro+' && (
+                                  {!hasAdvancedMenuControls && (
                                     <p className="text-[9px] text-amber-400">
-                                      🔒 Price, original price and offer price editing require Pro+. Your existing pricing restriction is unchanged.
+                                      🔒 Price, original price and offer price editing require Restaurant Pro or Restaurant + Resort Pro.
                                     </p>
                                   )}
                                 </div>
@@ -3415,9 +3939,9 @@ export default function RestaurantDashboard() {
                                     step="0.01"
                                     value={editItemPrice}
                                     onChange={(e) => setEditItemPrice(e.target.value)}
-                                    disabled={currentPlan !== 'Pro+'}
+                                    disabled={!hasAdvancedMenuControls}
                                     className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm ${
-                                      currentPlan !== 'Pro+' ? 'opacity-50 cursor-not-allowed' : ''
+                                      !hasAdvancedMenuControls ? 'opacity-50 cursor-not-allowed' : ''
                                     }`}
                                   />
                                   <p className="text-[9px] text-neutral-500 mt-1">
@@ -3859,10 +4383,9 @@ export default function RestaurantDashboard() {
                                   </span>
                                 </div>
 
-                                {currentPlan !==
-                                  'Pro+' && (
+                                {!hasAdvancedMenuControls && (
                                   <span className="text-[9px] text-neutral-600">
-                                    Price editing: Pro+
+                                    Price editing: Restaurant Pro / Restaurant + Resort Pro
                                   </span>
                                 )}
                               </div>
@@ -3935,7 +4458,7 @@ export default function RestaurantDashboard() {
         )}
 
         {/* TAB 3: STAFF MANAGEMENT */}
-        {activeTab === 'staff' && (
+        {activeTab === 'staff' && hasManagerManagement && (
           <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-4xl mx-auto space-y-6 shadow-xl">
 
             <div className="border-b border-neutral-800 pb-4">
@@ -4720,7 +5243,7 @@ export default function RestaurantDashboard() {
         )}
 
         {/* TAB: ALARM SETTINGS */}
-        {activeTab === 'alarm-settings' && (
+        {activeTab === 'alarm-settings' && hasRealtimeOrderAlarm && (
           <form
             onSubmit={handleSaveAlarmSettings}
             className="grid grid-cols-1 lg:grid-cols-2 gap-6"
@@ -5040,6 +5563,7 @@ export default function RestaurantDashboard() {
 
         {/* TAB 7: ANALYTICS & REPORTS */}
         {activeTab === 'settlements' && (
+          hasAdvancedAnalytics ? (
           <div className="space-y-6">
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
               <div>
@@ -5070,13 +5594,8 @@ export default function RestaurantDashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {[
-                ['Today', 'daily'],
-                ['This Week', 'weekly'],
-                ['This Month', 'monthly'],
-                ['This Year', 'yearly']
-              ].map(([label, frame]) => {
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+              {REPORT_TIMEFRAMES.map(({ label, value: frame }) => {
                 const range = getReportRange(frame)
                 const periodOrders = orders.filter((order) => {
                   if (!order?.created_at || order.status === 'cancelled') return false
@@ -5139,6 +5658,12 @@ export default function RestaurantDashboard() {
               </div>
             </div>
 
+            <SalesRevenueGraph
+              data={salesGraphData}
+              formatCurrency={formatCurrency}
+              periodLabel={getReportPeriodLabel(reportTimeframe)}
+            />
+
             <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
@@ -5188,7 +5713,7 @@ export default function RestaurantDashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
                 <div>
                   <p className="text-[10px] uppercase text-neutral-500 font-black">Period</p>
-                  <p className="text-sm font-bold text-white mt-1 capitalize">{reportTimeframe}</p>
+                  <p className="text-sm font-bold text-white mt-1">{getReportPeriodLabel(reportTimeframe)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase text-neutral-500 font-black">Orders Generated</p>
@@ -5205,6 +5730,47 @@ export default function RestaurantDashboard() {
               </div>
             </div>
           </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6">
+                <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
+                  Basic Analytics
+                </span>
+                <h2 className="text-2xl font-black text-white mt-3">Restaurant Overview</h2>
+                <p className="text-xs text-neutral-400 mt-2">
+                  Basic analytics are included with {currentPlanDisplay}.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5">
+                    <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Orders Today</p>
+                    <p className="text-3xl font-black text-white mt-2">{todaysOrders.length}</p>
+                  </div>
+                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5">
+                    <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Revenue Today</p>
+                    <p className="text-3xl font-black text-emerald-400 mt-2">₹{totalRevenue}</p>
+                  </div>
+                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5">
+                    <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Live Kitchen Queue</p>
+                    <p className="text-3xl font-black text-orange-400 mt-2">{activeOrders.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6">
+                <h3 className="text-lg font-black text-white">Advanced Analytics & Reports</h3>
+                <p className="text-xs text-neutral-300 mt-2">
+                  CSV reports, period reports, average order value, peak-hour analysis and advanced reporting are available with Restaurant Pro or Restaurant + Resort Pro.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleUpgradePlan(planFeatures.resort ? 'restaurant_resort_pro' : 'restaurant_pro')}
+                  className="mt-4 bg-orange-500 hover:bg-orange-600 text-white px-5 py-3 rounded-xl text-xs font-black transition"
+                >
+                  Upgrade for Advanced Analytics 🚀
+                </button>
+              </div>
+            </div>
+          )
         )}
 
       </main>
@@ -5354,6 +5920,14 @@ export default function RestaurantDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === 'resort' && resortModuleEnabled && (
+        <ResortManagement
+          restaurant={restaurant}
+          planCode={currentPlanCode}
+          advancedFeaturesEnabled={hasAdvancedResortFeatures}
+        />
       )}
 
       {/* Embedded Real-Time Restaurant Chat Widget */}

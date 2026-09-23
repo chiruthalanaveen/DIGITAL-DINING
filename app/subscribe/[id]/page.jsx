@@ -1,242 +1,869 @@
 'use client'
 
-import { useState, use, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import {
+  useState,
+  use,
+  useEffect,
+  useMemo,
+} from 'react'
 
-export default function SubscriptionPage({ params, searchParams }) {
-  const unwrappedParams = use(params)
-  const unwrappedSearchParams = use(searchParams)
-  const restaurantId = unwrappedParams.id
-  const router = useRouter()
+import {
+  useRouter,
+} from 'next/navigation'
 
-  const requestedPlan = unwrappedSearchParams?.plan
-  const initialPlan = ['Standard', 'Pro', 'Pro+'].includes(requestedPlan)
-    ? requestedPlan
-    : 'Standard'
+import {
+  supabase,
+} from '@/lib/supabase'
 
-  const [selectedPlan, setSelectedPlan] = useState(initialPlan)
-  const [billingCycle, setBillingCycle] = useState('1month')
-  const [trialPasscode, setTrialPasscode] = useState('')
-  const [isTrialUnlocked, setIsTrialUnlocked] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [scriptLoaded, setScriptLoaded] = useState(false)
-  const [isActivated, setIsActivated] = useState(false)
 
-  // Automatically load Razorpay Checkout SDK
+const PLANS = {
+  restaurant_standard: {
+    code:
+      'restaurant_standard',
+
+    name:
+      'Restaurant Standard',
+
+    legacyPlan:
+      'Standard',
+
+    businessType:
+      'restaurant',
+
+    resortEnabled:
+      false,
+
+    prices: {
+      '1month': 799,
+      '6months': 4315,
+      '12months': 7670,
+    },
+  },
+
+  restaurant_pro: {
+    code:
+      'restaurant_pro',
+
+    name:
+      'Restaurant Pro',
+
+    legacyPlan:
+      'Pro',
+
+    businessType:
+      'restaurant',
+
+    resortEnabled:
+      false,
+
+    prices: {
+      '1month': 1299,
+      '6months': 7015,
+      '12months': 12470,
+    },
+  },
+
+  restaurant_resort_standard: {
+    code:
+      'restaurant_resort_standard',
+
+    name:
+      'Restaurant + Resort Standard',
+
+    legacyPlan:
+      'Standard',
+
+    businessType:
+      'restaurant_resort',
+
+    resortEnabled:
+      true,
+
+    prices: {
+      '1month': 1999,
+      '6months': 10795,
+      '12months': 19190,
+    },
+  },
+
+  restaurant_resort_pro: {
+    code:
+      'restaurant_resort_pro',
+
+    name:
+      'Restaurant + Resort Pro',
+
+    legacyPlan:
+      'Pro+',
+
+    businessType:
+      'restaurant_resort',
+
+    resortEnabled:
+      true,
+
+    prices: {
+      '1month': 199,
+      '6months': 16195,
+      '12months': 28790,
+    },
+  },
+}
+
+
+const PLAN_ALIASES = {
+  Standard:
+    'restaurant_standard',
+
+  Pro:
+    'restaurant_pro',
+
+  'Pro+':
+    'restaurant_resort_pro',
+
+  restaurant_standard:
+    'restaurant_standard',
+
+  restaurant_pro:
+    'restaurant_pro',
+
+  restaurant_resort_standard:
+    'restaurant_resort_standard',
+
+  restaurant_resort_pro:
+    'restaurant_resort_pro',
+}
+
+
+export default function SubscriptionPage({
+  params,
+  searchParams,
+}) {
+  const unwrappedParams =
+    use(params)
+
+  const unwrappedSearchParams =
+    use(searchParams)
+
+  const restaurantId =
+    String(
+      unwrappedParams?.id ||
+        ''
+    ).trim()
+
+  const router =
+    useRouter()
+
+  const requestedPlan =
+    String(
+      unwrappedSearchParams
+        ?.plan ||
+        ''
+    )
+
+  const initialPlan =
+    PLAN_ALIASES[
+      requestedPlan
+    ] ||
+    'restaurant_standard'
+
+  const [
+    selectedPlan,
+    setSelectedPlan,
+  ] =
+    useState(
+      initialPlan
+    )
+
+  const [
+    billingCycle,
+    setBillingCycle,
+  ] =
+    useState(
+      '1month'
+    )
+
+  const [
+    trialPasscode,
+    setTrialPasscode,
+  ] =
+    useState('')
+
+  const [
+    isTrialUnlocked,
+    setIsTrialUnlocked,
+  ] =
+    useState(false)
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(false)
+
+  const [
+    scriptLoaded,
+    setScriptLoaded,
+  ] =
+    useState(false)
+
+  const [
+    isActivated,
+    setIsActivated,
+  ] =
+    useState(false)
+
+  const [
+    activatedRestaurant,
+    setActivatedRestaurant,
+  ] =
+    useState(null)
+
+
+  const selectedPlanData =
+    useMemo(
+      () =>
+        PLANS[
+          selectedPlan
+        ] ||
+        PLANS
+          .restaurant_standard,
+
+      [selectedPlan]
+    )
+
+
+  // ==================================================
+  // LOAD RAZORPAY
+  // ==================================================
+
   useEffect(() => {
-    const script = document.createElement('script')
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-    script.async = true
-
-    script.onload = () => setScriptLoaded(true)
-
-    document.body.appendChild(script)
-
-    return () => {
-      if (script.parentNode) {
-        script.parentNode.removeChild(script)
-      }
+    if (
+      typeof window ===
+      'undefined'
+    ) {
+      return
     }
+
+    if (
+      window.Razorpay
+    ) {
+      setScriptLoaded(
+        true
+      )
+
+      return
+    }
+
+    const existing =
+      document.querySelector(
+        'script[data-digital-dining-razorpay="true"]'
+      )
+
+    if (existing) {
+      const onLoad =
+        () =>
+          setScriptLoaded(
+            true
+          )
+
+      existing
+        .addEventListener(
+          'load',
+          onLoad
+        )
+
+      return () =>
+        existing
+          .removeEventListener(
+            'load',
+            onLoad
+          )
+    }
+
+    const script =
+      document.createElement(
+        'script'
+      )
+
+    script.src =
+      'https://checkout.razorpay.com/v1/checkout.js'
+
+    script.async =
+      true
+
+    script.dataset
+      .digitalDiningRazorpay =
+      'true'
+
+    script.onload =
+      () =>
+        setScriptLoaded(
+          true
+        )
+
+    script.onerror =
+      () =>
+        setScriptLoaded(
+          false
+        )
+
+    document.body
+      .appendChild(
+        script
+      )
   }, [])
 
-  // Subscription pricing
-  // These prices already represent the amount charged to the customer.
-  // GST is included in the displayed/charged amount.
-  const pricingTable = {
-    Standard: { '1month': 799, '3months': 2199,'6months': 4399, '1year': 7999 },
-    Pro: { '1month': 1299, '3months': 3599,'6months': 7399, '1year': 13599 },
-    'Pro+': { '1month': 1999, '3months': 5699,'6months': 11599,'1year': 19999 }
-  }
 
-  const handleApplyPasscode = () => {
-  
-    if (trialPasscode.trim() === 'Naveen@2006') {
-      setIsTrialUnlocked(true)
-      setSelectedPlan('pro')
-      setBillingCycle('14days')
+  // ==================================================
+  // AUTH TOKEN
+  // ==================================================
 
-      alert('🎉 Free Trial Coupon Applied Successfully!')
-    } else {
-      alert('❌ Invalid Coupon Code.')
-    }
-  }
+  const getAccessToken =
+    async () => {
+      const {
+        data: {
+          session,
+        },
 
+        error,
+      } =
+        await supabase
+          .auth
+          .getSession()
 
-  const handlePaymentCheckout = async () => {
-    setLoading(true)
-
-    try {
-      // IMPORTANT:
-      // Do not add GST here.
-      // The pricing table already contains the final amount to charge.
-      const amountToPay = isTrialUnlocked
-        ? 0
-        : pricingTable[selectedPlan][billingCycle]
-
-      // If free trial coupon is applied, bypass payment gateway directly
-      if (isTrialUnlocked || amountToPay === 0) {
-        await finalizeSubscription()
-        return
-      }
-
-      if (!scriptLoaded && typeof window.Razorpay === 'undefined') {
+      if (
+        error ||
+        !session
+          ?.access_token
+      ) {
         throw new Error(
-          'Razorpay SDK is loading. Please try again in 3 seconds.'
+          'Your login session has expired. Please sign in again.'
         )
       }
 
-      // Create order on backend API route
-      const res = await fetch('/api/create-order', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          amount: amountToPay,
-          restaurantId
-        })
-      })
+      return session
+        .access_token
+    }
 
-      const responseText = await res.text()
 
-      if (!responseText || responseText.trim() === '') {
-        throw new Error('Server returned an empty response.')
+  // ==================================================
+  // SAFE API RESPONSE
+  // ==================================================
+
+  const readJsonResponse =
+    async (
+      response
+    ) => {
+      const text =
+        await response
+          .text()
+
+      if (
+        !text?.trim()
+      ) {
+        throw new Error(
+          'Server returned an empty response.'
+        )
       }
 
-      if (responseText.trim().startsWith('<')) {
+      if (
+        text
+          .trim()
+          .startsWith(
+            '<'
+          )
+      ) {
         throw new Error(
-          'API Route returned an HTML page (500/404 error). Check your server terminal logs.'
+          'API route returned an HTML error page. Check your server terminal.'
         )
       }
 
       let data
 
       try {
-        data = JSON.parse(responseText)
-      } catch (e) {
+        data =
+          JSON.parse(
+            text
+          )
+      } catch {
         throw new Error(
-          `Failed to parse server response: ${responseText}`
+          `Failed to parse server response: ${text}`
         )
       }
 
-      if (!data || !data.success) {
+      if (
+        !response.ok ||
+        !data?.success
+      ) {
         throw new Error(
           data?.message ||
-          data?.error ||
-          'Order creation failed on server.'
+            data?.error ||
+            'Request failed.'
         )
       }
 
-      // Safe extraction supporting multiple response formats
-      const orderData = data.order || data
-      const orderAmount = orderData.amount || data.amount
-      const orderId = orderData.id || data.orderId
-      const razorpayKey =
-        data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
+      return data
+    }
 
-      if (!orderAmount || !orderId) {
-        throw new Error(
-          'Server returned invalid order details structure.'
+
+  // ==================================================
+  // TRIAL COUPON
+  // ==================================================
+
+  const handleApplyPasscode =
+    () => {
+      if (
+        !trialPasscode
+          .trim()
+      ) {
+        alert(
+          '❌ Enter the coupon code.'
         )
+
+        return
       }
 
-      // Configure Razorpay modal options
-      const options = {
-        key: razorpayKey,
-        amount: orderAmount,
-        currency: orderData.currency || 'INR',
-        name: 'Digital Dining',
-        description: `${selectedPlan} Plan (${billingCycle}) Subscription`,
-        order_id: orderId,
+      setIsTrialUnlocked(
+        true
+      )
 
-        handler: async function (response) {
-          await finalizeSubscription()
-        },
+      setSelectedPlan(
+        'restaurant_pro'
+      )
 
-        prefill: {
-          name: 'Restaurant Partner'
-        },
+      setBillingCycle(
+        '1month'
+      )
 
-        theme: {
-          color: '#f97316'
+      alert(
+        '🎁 Coupon entered. Click Activate Free Trial to verify and activate it.'
+      )
+    }
+
+
+  // ==================================================
+  // ACTIVATE TRIAL
+  // ==================================================
+
+  const activateTrial =
+    async () => {
+      const accessToken =
+        await getAccessToken()
+
+      const response =
+        await fetch(
+          '/api/verify-subscription',
+          {
+            method:
+              'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  mode:
+                    'trial',
+
+                  restaurantId,
+
+                  trialPasscode:
+                    trialPasscode
+                      .trim(),
+                }
+              ),
+          }
+        )
+
+      const data =
+        await readJsonResponse(
+          response
+        )
+
+      setActivatedRestaurant(
+        data.restaurant ||
+          null
+      )
+
+      setIsActivated(
+        true
+      )
+    }
+
+
+  // ==================================================
+  // VERIFY PAID SUBSCRIPTION
+  // ==================================================
+
+  const verifyPaidSubscription =
+    async (
+      razorpayResponse
+    ) => {
+      const accessToken =
+        await getAccessToken()
+
+      const response =
+        await fetch(
+          '/api/verify-subscription',
+          {
+            method:
+              'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  mode:
+                    'payment',
+
+                  restaurantId,
+
+                  planCode:
+                    selectedPlanData
+                      .code,
+
+                  billingCycle,
+
+                  razorpay_order_id:
+                    razorpayResponse
+                      ?.razorpay_order_id,
+
+                  razorpay_payment_id:
+                    razorpayResponse
+                      ?.razorpay_payment_id,
+
+                  razorpay_signature:
+                    razorpayResponse
+                      ?.razorpay_signature,
+                }
+              ),
+          }
+        )
+
+      const data =
+        await readJsonResponse(
+          response
+        )
+
+      setActivatedRestaurant(
+        data.restaurant ||
+          null
+      )
+
+      setIsActivated(
+        true
+      )
+    }
+
+
+  // ==================================================
+  // CHECKOUT
+  // ==================================================
+
+  const handlePaymentCheckout =
+    async () => {
+      if (loading) {
+        return
+      }
+
+      setLoading(true)
+
+      try {
+        if (
+          !restaurantId
+        ) {
+          throw new Error(
+            'Restaurant ID is missing.'
+          )
         }
+
+        // ----------------------------------------------
+        // FREE TRIAL
+        // ----------------------------------------------
+
+        if (
+          isTrialUnlocked
+        ) {
+          await activateTrial()
+
+          return
+        }
+
+        // ----------------------------------------------
+        // PAID PLAN
+        // ----------------------------------------------
+
+        const amountToPay =
+          selectedPlanData
+            .prices[
+              billingCycle
+            ]
+
+        if (
+          !Number.isFinite(
+            amountToPay
+          ) ||
+          amountToPay <= 0
+        ) {
+          throw new Error(
+            'Paid subscription price must be greater than ₹0. Use the free-trial option for zero-cost testing.'
+          )
+        }
+
+        if (
+          !scriptLoaded &&
+          typeof window
+            .Razorpay ===
+            'undefined'
+        ) {
+          throw new Error(
+            'Razorpay SDK is loading. Please try again in 3 seconds.'
+          )
+        }
+
+        const accessToken =
+          await getAccessToken()
+
+        const response =
+          await fetch(
+            '/api/create-order',
+            {
+              method:
+                'POST',
+
+              headers: {
+                'Content-Type':
+                  'application/json',
+
+                Authorization:
+                  `Bearer ${accessToken}`,
+              },
+
+              body:
+                JSON.stringify(
+                  {
+                    restaurantId,
+
+                    plan:
+                      selectedPlanData
+                        .code,
+
+                    billingCycle,
+                  }
+                ),
+            }
+          )
+
+        const data =
+          await readJsonResponse(
+            response
+          )
+
+        const orderData =
+          data.order ||
+          data
+
+        const orderAmount =
+          orderData.amount ||
+          data.amount
+
+        const orderId =
+          orderData.id ||
+          data.orderId
+
+        const razorpayKey =
+          data.keyId ||
+          data.key_id ||
+          data.key
+
+        if (
+          !orderAmount ||
+          !orderId
+        ) {
+          throw new Error(
+            'Server returned invalid Razorpay order details.'
+          )
+        }
+
+        if (
+          !razorpayKey
+        ) {
+          throw new Error(
+            'Razorpay Key ID is missing from the server response.'
+          )
+        }
+
+        const paymentObject =
+          new window.Razorpay(
+            {
+              key:
+                razorpayKey,
+
+              amount:
+                orderAmount,
+
+              currency:
+                orderData
+                  .currency ||
+                'INR',
+
+              name:
+                'Digital Dining',
+
+              description:
+                `${selectedPlanData.name} (${billingCycle}) Subscription`,
+
+              order_id:
+                orderId,
+
+              handler:
+                async function (
+                  razorpayResponse
+                ) {
+                  setLoading(
+                    true
+                  )
+
+                  try {
+                    await verifyPaidSubscription(
+                      razorpayResponse
+                    )
+                  } catch (
+                    error
+                  ) {
+                    console.error(
+                      'Subscription verification failed:',
+                      error
+                    )
+
+                    alert(
+                      'Payment was received, but subscription verification failed: ' +
+                        (
+                          error
+                            ?.message ||
+                          'Unknown error'
+                        )
+                    )
+                  } finally {
+                    setLoading(
+                      false
+                    )
+                  }
+                },
+
+              prefill: {
+                name:
+                  'Restaurant Partner',
+              },
+
+              theme: {
+                color:
+                  '#f97316',
+              },
+
+              modal: {
+                ondismiss:
+                  () =>
+                    setLoading(
+                      false
+                    ),
+              },
+            }
+          )
+
+        paymentObject.on(
+          'payment.failed',
+
+          (response) => {
+            setLoading(
+              false
+            )
+
+            alert(
+              'Payment Failed: ' +
+                (
+                  response
+                    ?.error
+                    ?.description ||
+                  'Please try again.'
+                )
+            )
+          }
+        )
+
+        paymentObject.open()
+      } catch (
+        error
+      ) {
+        console.error(
+          'Payment initialization error:',
+          error
+        )
+
+        alert(
+          'Payment Initialization Error: ' +
+            (
+              error
+                ?.message ||
+              'Unknown error'
+            )
+        )
+
+        setLoading(
+          false
+        )
       }
-
-      const paymentObject = new window.Razorpay(options)
-
-      paymentObject.open()
-
-      setLoading(false)
-    } catch (err) {
-      alert(
-        'Payment Initialization Error: ' +
-          (err?.message || 'Unknown error')
-      )
-
-      setLoading(false)
     }
-  }
 
-  const finalizeSubscription = async () => {
-    try {
-      const subscriptionExpiry = new Date()
 
-      if (billingCycle === '1month' || isTrialUnlocked) {
-        subscriptionExpiry.setDate(
-          subscriptionExpiry.getDate() + 30
+  const currentPrice =
+    isTrialUnlocked
+      ? 0
+      : (
+          selectedPlanData
+            .prices[
+              billingCycle
+            ] ?? 0
         )
-      } else if (billingCycle === '3months') {
-        subscriptionExpiry.setDate(
-          subscriptionExpiry.getDate() + 90
-        )
-      } else if (billingCycle === '1year') {
-        subscriptionExpiry.setDate(
-          subscriptionExpiry.getDate() + 365
-        )
-      }
 
-      // Update Supabase restaurant subscription record
-      const { error } = await supabase
-        .from('restaurants')
-        .update({
-          // Keep database value exactly as:
-          // Standard, Pro, or Pro+
-          plan: selectedPlan,
-          billing_cycle: billingCycle,
-          subscription_status: 'active',
-          subscription_expires_at:
-            subscriptionExpiry.toISOString()
-        })
-        .eq('id', restaurantId)
 
-      if (error) {
-        throw new Error(error.message)
-      }
+  const cycles = [
+    {
+      id: '1month',
+      label: '1 Month',
+    },
 
-      setIsActivated(true)
-    } catch (err) {
-      alert(
-        'Database Update Error: ' +
-          (err?.message || 'Unknown error')
-      )
+    {
+      id: '6months',
+      label: '6 Months',
+    },
 
-      setLoading(false)
-    }
-  }
+    {
+      id: '12months',
+      label: '12 Months',
+    },
+  ]
 
-  // No GST calculation here.
-  // This is exactly the amount that will be sent to Razorpay.
-  const currentPrice = isTrialUnlocked
-    ? 0
-    : pricingTable[selectedPlan][billingCycle]
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 font-sans py-12">
-      <div className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-xl w-full p-8 shadow-2xl space-y-6">
+      <div className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-3xl w-full p-8 shadow-2xl space-y-6">
 
         {isActivated ? (
-          // SUCCESS & CONTACT SUPPORT SCREEN
           <div className="text-center space-y-6 py-6">
 
             <span className="text-4xl">
@@ -244,15 +871,26 @@ export default function SubscriptionPage({ params, searchParams }) {
             </span>
 
             <div className="space-y-2">
+
               <h1 className="text-2xl font-black text-white">
                 Subscription Activated Successfully!
               </h1>
 
+              {activatedRestaurant
+                ?.plan_code && (
+                <p className="text-xs font-bold text-emerald-400">
+                  Active Plan:{' '}
+                  {
+                    activatedRestaurant
+                      .plan_code
+                  }
+                </p>
+              )}
+
               <p className="text-xs text-neutral-400">
-                Your account is ready to go. If you need any
-                assistance with your setup or support, please
-                contact us anytime:
+                Your account is ready to go. If you need any assistance with your setup or support, please contact us anytime:
               </p>
+
             </div>
 
             <div className="bg-neutral-950 border border-neutral-800 p-6 rounded-3xl space-y-2 text-xs">
@@ -275,7 +913,9 @@ export default function SubscriptionPage({ params, searchParams }) {
 
             <button
               onClick={() =>
-                router.push(`/dashboard/${restaurantId}`)
+                router.push(
+                  `/dashboard/${restaurantId}`
+                )
               }
               className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/25"
             >
@@ -284,9 +924,8 @@ export default function SubscriptionPage({ params, searchParams }) {
 
           </div>
         ) : (
-
-          // REGULAR SUBSCRIPTION & CHECKOUT SCREEN
           <>
+
             <div className="text-center space-y-2">
 
               <span className="text-[10px] bg-orange-500/15 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
@@ -298,13 +937,12 @@ export default function SubscriptionPage({ params, searchParams }) {
               </h1>
 
               <p className="text-xs text-neutral-400">
-                Complete payment via UPI, Card, or NetBanking
-                to launch your dashboard.
+                Complete payment via UPI, Card, or NetBanking to launch your dashboard.
               </p>
 
             </div>
 
-            {/* FREE TRIAL COUPON */}
+
             <div className="bg-neutral-950 border border-neutral-800 p-4 rounded-2xl space-y-2">
 
               <p className="text-xs font-bold text-amber-400">
@@ -316,16 +954,29 @@ export default function SubscriptionPage({ params, searchParams }) {
                 <input
                   type="password"
                   placeholder="Enter coupon code"
-                  value={trialPasscode}
-                  onChange={(e) =>
-                    setTrialPasscode(e.target.value)
+                  value={
+                    trialPasscode
                   }
+                  onChange={(
+                    event
+                  ) => {
+                    setTrialPasscode(
+                      event.target
+                        .value
+                    )
+
+                    setIsTrialUnlocked(
+                      false
+                    )
+                  }}
                   className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500 font-mono"
                 />
 
                 <button
                   type="button"
-                  onClick={handleApplyPasscode}
+                  onClick={
+                    handleApplyPasscode
+                  }
                   className="bg-amber-500 hover:bg-amber-600 text-neutral-950 font-black px-4 py-2 rounded-xl text-xs transition"
                 >
                   Apply
@@ -335,92 +986,127 @@ export default function SubscriptionPage({ params, searchParams }) {
 
               {isTrialUnlocked && (
                 <p className="text-[10px] text-emerald-400 font-bold">
-                  ✓ 14-days Free Trial Active (₹0)
+                  ✓ 14-days Restaurant Pro Free Trial Ready
                 </p>
               )}
 
             </div>
 
+
             {!isTrialUnlocked && (
               <div className="space-y-4">
 
-                {/* PLAN SELECTION */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-                  {['Standard', 'Pro', 'Pro+'].map((plan) => (
-                    <button
-                      key={plan}
-                      type="button"
-                      onClick={() => setSelectedPlan(plan)}
-                      className={`p-3 rounded-2xl border text-left transition ${
-                        selectedPlan === plan
-                          ? 'bg-orange-500/10 border-orange-500 text-white'
-                          : 'bg-neutral-950 border-neutral-800 text-neutral-400'
-                      }`}
-                    >
+                  {Object.values(
+                    PLANS
+                  ).map(
+                    (
+                      plan
+                    ) => (
+                      <button
+                        key={
+                          plan.code
+                        }
+                        type="button"
+                        onClick={() =>
+                          setSelectedPlan(
+                            plan.code
+                          )
+                        }
+                        className={`p-4 rounded-2xl border text-left transition ${
+                          selectedPlan ===
+                          plan.code
+                            ? 'bg-orange-500/10 border-orange-500 text-white'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
+                        }`}
+                      >
 
-                      <p className="text-xs font-black">
-                        {plan}
-                      </p>
+                        <div className="flex items-center justify-between gap-2">
 
-                      <p className="text-[10px] text-neutral-500 mt-1">
-                        ₹{pricingTable[plan]['1month']}/mo
-                      </p>
+                          <p className="text-xs font-black">
+                            {
+                              plan.name
+                            }
+                          </p>
 
-                    </button>
-                  ))}
+                          {plan.resortEnabled && (
+                            <span className="text-[9px] bg-emerald-500/15 text-emerald-400 px-2 py-1 rounded-full font-black">
+                              🏨 RESORT
+                            </span>
+                          )}
+
+                        </div>
+
+                        <p className="text-[10px] text-neutral-500 mt-1">
+                          ₹
+                          {plan.prices[
+                            '1month'
+                          ].toLocaleString(
+                            'en-IN'
+                          )}
+                          /month
+                        </p>
+
+                      </button>
+                    )
+                  )}
 
                 </div>
 
-                {/* BILLING CYCLE SELECTION */}
+
                 <div className="grid grid-cols-3 gap-3">
 
-                  {[
-                    {
-                      id: '1month',
-                      label: '1 Month'
-                    },
-                    {
-                      id: '3months',
-                      label: '3 Months'
-                    },
-                    {
-                      id: '6months',
-                      label: '6 months'
-                    },{
-                      id: '1year',
-                      label: '1 Year'
-                    }
-                  ].map((cycle) => (
+                  {cycles.map(
+                    (
+                      cycle
+                    ) => (
+                      <button
+                        key={
+                          cycle.id
+                        }
+                        type="button"
+                        onClick={() =>
+                          setBillingCycle(
+                            cycle.id
+                          )
+                        }
+                        className={`p-3 rounded-2xl border text-center transition ${
+                          billingCycle ===
+                          cycle.id
+                            ? 'bg-neutral-800 border-neutral-600 text-white'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
+                        }`}
+                      >
 
-                    <button
-                      key={cycle.id}
-                      type="button"
-                      onClick={() =>
-                        setBillingCycle(cycle.id)
-                      }
-                      className={`p-3 rounded-2xl border text-center transition ${
-                        billingCycle === cycle.id
-                          ? 'bg-neutral-800 border-neutral-600 text-white'
-                          : 'bg-neutral-950 border-neutral-800 text-neutral-400'
-                      }`}
-                    >
+                        <p className="text-[11px] font-bold">
+                          {
+                            cycle.label
+                          }
+                        </p>
 
-                      <p className="text-[11px] font-bold">
-                        {cycle.label}
-                      </p>
+                        <p className="text-[10px] text-neutral-500 mt-1">
+                          ₹
+                          {selectedPlanData
+                            .prices[
+                              cycle.id
+                            ]
+                            .toLocaleString(
+                              'en-IN'
+                            )}
+                        </p>
 
-                    </button>
-
-                  ))}
+                      </button>
+                    )
+                  )}
 
                 </div>
 
               </div>
             )}
 
-            {/* SUMMARY & CHECKOUT BUTTON */}
-            <div className="bg-neutral-950 border border-neutral-800 p-4 rounded-2xl flex items-center justify-between">
+
+            <div className="bg-neutral-950 border border-neutral-800 p-4 rounded-2xl flex items-center justify-between gap-4">
 
               <div>
 
@@ -429,7 +1115,11 @@ export default function SubscriptionPage({ params, searchParams }) {
                 </p>
 
                 <p className="text-xl font-black text-white font-mono">
-                  ₹{currentPrice}
+                  ₹
+                  {currentPrice
+                    .toLocaleString(
+                      'en-IN'
+                    )}
                 </p>
 
                 <p className="text-[10px] text-emerald-400 font-bold mt-1">
@@ -439,13 +1129,19 @@ export default function SubscriptionPage({ params, searchParams }) {
               </div>
 
               <button
-                onClick={handlePaymentCheckout}
-                disabled={loading}
+                onClick={
+                  handlePaymentCheckout
+                }
+                disabled={
+                  loading
+                }
                 className="bg-orange-500 hover:bg-orange-600 text-white font-black px-6 py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/25 disabled:opacity-50"
               >
                 {loading
-                  ? 'Opening Gateway...'
-                  : 'Pay with Razorpay 💳'}
+                  ? 'Processing...'
+                  : isTrialUnlocked
+                    ? 'Activate Free Trial 🎁'
+                    : 'Pay with Razorpay 💳'}
               </button>
 
             </div>

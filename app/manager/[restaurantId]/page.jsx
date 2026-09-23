@@ -793,6 +793,11 @@ export default function RestaurantManagerDashboard({ params }) {
 
   const [authenticated, setAuthenticated] = useState(false)
   const [manager, setManager] = useState(null)
+
+  // Manager Profile
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileName, setProfileName] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
   const [restaurantCode, setRestaurantCode] = useState('')
   const [loginUserId, setLoginUserId] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -802,6 +807,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const [menuItems, setMenuItems] = useState([])
   const [dailyOffers, setDailyOffers] = useState([])
   const [orders, setOrders] = useState([])
+  const [restaurantTables, setRestaurantTables] = useState([])
   const [staffList, setStaffList] = useState([])
   const [activeTab, setActiveTab] = useState('settlements')
   const [loading, setLoading] = useState(false)
@@ -850,6 +856,17 @@ export default function RestaurantManagerDashboard({ params }) {
       setDailyOffers(Array.isArray(data.dailyOffers) ? data.dailyOffers : [])
       setOrders(Array.isArray(data.orders) ? data.orders : [])
       setStaffList(Array.isArray(data.staffList) ? data.staffList : [])
+      const { data: tableResult, error: tableError } = await supabase.rpc('get_manager_table_inventory', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: String(restaurantCode).trim(),
+        p_user_id: String(loginUserId).trim().toLowerCase(),
+        p_password: String(loginPassword).trim(),
+      })
+      if (tableError) {
+        console.error('Manager table inventory error:', tableError)
+      } else if (tableResult?.success) {
+        setRestaurantTables(Array.isArray(tableResult.tables) ? tableResult.tables : [])
+      }
       setStoreOpen(data.restaurant?.is_open ?? true)
     } catch (error) {
       console.error('Manager dashboard loading error:', error)
@@ -902,6 +919,7 @@ export default function RestaurantManagerDashboard({ params }) {
       }
 
       setManager(data.staff || null)
+      setProfileName(String(data.staff?.name || data.staff?.user_id || ''))
       setRestaurantCode(String(data.restaurantCode || restaurantCode).trim())
       setAuthenticated(true)
       await fetchDashboard()
@@ -984,8 +1002,29 @@ export default function RestaurantManagerDashboard({ params }) {
     return () => window.clearInterval(interval)
   }, [authenticated, fetchDashboard])
 
+  // Subscription-wise feature control. plan_code is primary; legacy plan is fallback.
+  const legacyPlan = String(restaurant?.plan || 'Standard')
+  const legacyPlanCode =
+    legacyPlan === 'Pro+'
+      ? 'restaurant_resort_pro'
+      : legacyPlan === 'Pro'
+        ? 'restaurant_pro'
+        : 'restaurant_standard'
+
+  const currentPlanCode = String(restaurant?.plan_code || legacyPlanCode).toLowerCase()
+  const PLAN_FEATURES = {
+    restaurant_standard: { name: 'Restaurant Standard', legacyPlan: 'Standard', advanced: false, resort: false, advancedResort: false },
+    restaurant_pro: { name: 'Restaurant Pro', legacyPlan: 'Pro', advanced: true, resort: false, advancedResort: false },
+    restaurant_resort_standard: { name: 'Restaurant + Resort Standard', legacyPlan: 'Standard', advanced: false, resort: true, advancedResort: false },
+    restaurant_resort_pro: { name: 'Restaurant + Resort Pro', legacyPlan: 'Pro+', advanced: true, resort: true, advancedResort: true },
+  }
+  const planFeatures = PLAN_FEATURES[currentPlanCode] || PLAN_FEATURES.restaurant_standard
+  const currentPlan = planFeatures.legacyPlan
+  const currentPlanDisplay = planFeatures.name
+  const hasAdvancedAnalytics = planFeatures.advanced
+  const hasAdvancedMenuControls = planFeatures.advanced
+
   const planLimits = { Standard: 20, Pro: 50, 'Pro+': Infinity }
-  const currentPlan = restaurant?.plan || 'Standard'
   const maxMenuAllowed = planLimits[currentPlan] ?? 20
 
   const getItemOrderCount = useCallback((item) => {
@@ -1336,6 +1375,24 @@ export default function RestaurantManagerDashboard({ params }) {
   }, [orders])
   const activeOrders = useMemo(() => orders.filter((order) => !['completed', 'cancelled', 'delivered'].includes(String(order.status || '').toLowerCase())), [orders])
 
+  const configuredTableNumbers = useMemo(() => [...new Set(
+    restaurantTables.map((table, index) => String(table?.table_number ?? table?.number ?? table?.table_no ?? table?.name ?? (index + 1)).trim()).filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })), [restaurantTables])
+
+  const occupiedTableNumbers = useMemo(() => {
+    const occupied = new Set()
+    activeOrders.forEach((order) => {
+      const number = String(order?.table_number ?? '').trim()
+      if (!number) return
+      const mode = String(order?.dining_mode ?? order?.order_type ?? 'dine-in').trim().toLowerCase()
+      if (!['parcel', 'takeaway', 'take-away', 'delivery'].some((item) => mode.includes(item))) occupied.add(number)
+    })
+    return occupied
+  }, [activeOrders])
+
+  const occupiedTableCount = useMemo(() => configuredTableNumbers.filter((number) => occupiedTableNumbers.has(number)).length, [configuredTableNumbers, occupiedTableNumbers])
+  const availableTableCount = Math.max(0, configuredTableNumbers.length - occupiedTableCount)
+
   const downloadReport = () => {
     const rows = [
       ['Restaurant', restaurant?.name || ''],
@@ -1361,6 +1418,54 @@ export default function RestaurantManagerDashboard({ params }) {
     anchor.download = `restaurant-manager-${reportTimeframe}-${new Date().toLocaleDateString('en-CA')}.csv`
     anchor.click()
     URL.revokeObjectURL(url)
+  }
+
+
+  const saveManagerProfile = async (event) => {
+    event.preventDefault()
+
+    const cleanName = String(profileName || '').trim()
+
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      alert('Manager name must be between 2 and 80 characters.')
+      return
+    }
+
+    setProfileSaving(true)
+
+    try {
+      const { data, error } = await supabase.rpc('staff_update_profile', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: String(restaurantCode).trim(),
+        p_user_id: String(loginUserId).trim().toLowerCase(),
+        p_password: String(loginPassword).trim(),
+        p_role: 'manager',
+        p_name: cleanName,
+      })
+
+      if (error) throw error
+      if (!data?.success) {
+        throw new Error(data?.message || 'Unable to update profile.')
+      }
+
+      const updatedStaff = data.staff || { ...manager, name: cleanName }
+      setManager(updatedStaff)
+      setProfileName(String(updatedStaff.name || cleanName))
+      setStaffList((current) =>
+        current.map((item) =>
+          String(item.id) === String(updatedStaff.id)
+            ? { ...item, name: updatedStaff.name }
+            : item
+        )
+      )
+      setProfileOpen(false)
+      notify('Profile updated successfully. ✅')
+    } catch (error) {
+      console.error('Manager profile update error:', error)
+      alert(`Unable to update profile: ${error.message || 'Please try again.'}`)
+    } finally {
+      setProfileSaving(false)
+    }
   }
 
   const logout = () => {
@@ -1406,33 +1511,133 @@ export default function RestaurantManagerDashboard({ params }) {
           <div className="flex flex-wrap gap-2">
             <button onClick={handleStoreToggle} className={`rounded-xl px-4 py-2.5 text-xs font-black ${storeOpen ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>{storeOpen ? '🟢 Store Open' : '🔴 Store Closed'}</button>
             <button onClick={fetchDashboard} className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-black">{loading ? 'Refreshing...' : '↻ Refresh'}</button>
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              className="rounded-xl border border-orange-500/20 bg-orange-500/10 px-4 py-2.5 text-xs font-black text-orange-300"
+            >
+              👤 Profile
+            </button>
             <button onClick={logout} className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs font-black text-red-400">Log Out ⎋</button>
           </div>
         </header>
 
+        {profileOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">
+                    Staff Account
+                  </span>
+                  <h2 className="mt-3 text-xl font-black text-white">Manager Profile</h2>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Update your display name. Login ID, role, and password remain unchanged.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
+                  className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-black text-neutral-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={saveManagerProfile} className="space-y-4">
+                <div>
+                  <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Manager Name</label>
+                  <input
+                    type="text"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    maxLength={80}
+                    autoComplete="name"
+                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-white outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                    <p className="text-[10px] font-black uppercase text-neutral-500">User ID</p>
+                    <p className="mt-1 break-all text-sm font-mono font-black text-white">{manager?.user_id || loginUserId}</p>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                    <p className="text-[10px] font-black uppercase text-neutral-500">Role</p>
+                    <p className="mt-1 text-sm font-black capitalize text-white">{manager?.role || 'manager'}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">Restaurant</p>
+                  <p className="mt-1 text-sm font-black text-white">{restaurant?.name || 'Restaurant'}</p>
+                  <p className="mt-2 text-[10px] font-mono text-neutral-500">Code: {restaurant?.restaurant_code || restaurantCode || '-----'}</p>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button type="button" onClick={() => setProfileOpen(false)} className="flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs font-black text-neutral-300">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={profileSaving} className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-xs font-black text-white disabled:opacity-50">
+                    {profileSaving ? 'Saving...' : 'Save Profile'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {notice && <div className="fixed right-5 top-5 z-50 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice}</div>}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Stat title="Total Revenue" value={money(totalRevenue)} />
           <Stat title="Orders Today" value={todayOrders.length} accent="text-emerald-400" />
           <Stat title="Active Orders" value={activeOrders.length} accent="text-orange-400" />
           <Stat title="Menu Items" value={`${menuItems.length}/${maxMenuAllowed === Infinity ? '∞' : maxMenuAllowed}`} accent="text-amber-400" />
+          <Stat title="Partner Tier" value={currentPlanDisplay} accent="text-amber-400" />
         </div>
 
         <nav className="flex gap-2 overflow-x-auto border-b border-neutral-800 pb-3">
           {[
             ['live-orders', `🔴 Live Orders (${activeOrders.length})`],
+            ['tables', `🪑 Tables (${availableTableCount}/${configuredTableNumbers.length})`],
             ['settlements', '📊 Analytics & Reports'],
             ['menu', `🍔 Menu Catalog (${menuItems.length})`],
             ['staff', `👥 Waiter & Kitchen Staff (${staffList.length})`],
             ['offers', `🔥 Offers of the Day (${dailyOffers.filter((item) => item.is_active !== false).length})`],
             ['swiggy-sync', '🟠 Menu Import / Sync']
-          ].map(([id, label]) => (
+          ]
+            .filter(([id]) => id !== 'settlements' || hasAdvancedAnalytics)
+            .map(([id, label]) => (
             <button key={id} onClick={() => setActiveTab(id)} className={`whitespace-nowrap rounded-2xl border px-4 py-2.5 text-xs font-black uppercase ${activeTab === id ? 'border-orange-500 bg-orange-500 text-white' : 'border-neutral-800 bg-neutral-900 text-neutral-400'}`}>
               {label}
             </button>
           ))}
         </nav>
+
+        {activeTab === 'tables' && (
+          <section className="space-y-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Stat title="Total Tables" value={configuredTableNumbers.length} />
+              <Stat title="Available Tables" value={`${availableTableCount}/${configuredTableNumbers.length}`} accent="text-emerald-400" />
+              <Stat title="Occupied Tables" value={occupiedTableCount} accent="text-red-400" />
+            </div>
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+              <h2 className="text-xl font-black">Table Status</h2>
+              <p className="mt-1 text-xs text-neutral-500">A table is occupied while it has an active dine-in order.</p>
+              {configuredTableNumbers.length === 0 ? (
+                <p className="py-10 text-center text-sm text-neutral-500">No table QR codes have been registered by the restaurant owner.</p>
+              ) : (
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                  {configuredTableNumbers.map((number) => {
+                    const occupied = occupiedTableNumbers.has(number)
+                    return <div key={number} className={`rounded-2xl border p-4 text-center ${occupied ? 'border-red-500/30 bg-red-500/10' : 'border-emerald-500/30 bg-emerald-500/10'}`}><div className="text-2xl">{occupied ? '🔴' : '🟢'}</div><p className="mt-2 font-black">Table {number}</p><p className={`mt-1 text-[10px] font-black uppercase ${occupied ? 'text-red-400' : 'text-emerald-400'}`}>{occupied ? 'Occupied' : 'Available'}</p></div>
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {activeTab === 'live-orders' && (
           <section className="space-y-5">
@@ -1568,7 +1773,7 @@ export default function RestaurantManagerDashboard({ params }) {
           </section>
         )}
 
-        {activeTab === 'settlements' && (
+        {activeTab === 'settlements' && hasAdvancedAnalytics && (
           <section className="space-y-5">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
               <div>
@@ -1658,16 +1863,21 @@ export default function RestaurantManagerDashboard({ params }) {
           <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
             <div className="h-fit space-y-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-6">
               <div className="flex items-center justify-between"><h2 className="font-black">{editingDishId ? 'Edit Dish' : 'Add New Dish'}</h2><span className="text-[10px] text-neutral-500">{menuItems.length}/{maxMenuAllowed === Infinity ? '∞' : maxMenuAllowed}</span></div>
+              {!hasAdvancedMenuControls && (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[11px] font-bold text-amber-300">
+                  🔒 Advanced pricing and Highly Reordered manual controls require Restaurant Pro or Restaurant + Resort Pro. Basic menu management remains available.
+                </div>
+              )}
               <form onSubmit={saveDish} className="space-y-3">
                 <Input label="Dish Name" value={dish.name} onChange={(value) => setDish({ ...dish, name: value })} placeholder="Chicken Biryani" />
                 <Input label="Price" type="number" value={dish.price} onChange={(value) => setDish({ ...dish, price: value })} placeholder="180" />
-                <Input label="Original Price" type="number" value={dish.original_price} onChange={(value) => setDish({ ...dish, original_price: value })} placeholder="Optional" />
-                <Input label="Offer Price" type="number" value={dish.offer_price} onChange={(value) => setDish({ ...dish, offer_price: value })} placeholder="Optional" />
+                <Input label="Original Price (Pro)" type="number" value={dish.original_price} onChange={(value) => hasAdvancedMenuControls && setDish({ ...dish, original_price: value })} placeholder={hasAdvancedMenuControls ? "Optional" : "Pro plan required"} />
+                <Input label="Offer Price (Pro)" type="number" value={dish.offer_price} onChange={(value) => hasAdvancedMenuControls && setDish({ ...dish, offer_price: value })} placeholder={hasAdvancedMenuControls ? "Optional" : "Pro plan required"} />
                 <Input label="Category" value={dish.category} onChange={(value) => setDish({ ...dish, category: value })} placeholder="Main Course" />
                 <Input label="Image URL" value={dish.image_url} onChange={(value) => setDish({ ...dish, image_url: value })} placeholder="https://..." />
                 <Input label="Add-ons comma separated" value={dish.addons} onChange={(value) => setDish({ ...dish, addons: value })} placeholder="Extra rice, Raita" />
                 <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Food Type</label><select value={dish.food_type} onChange={(e) => setDish({ ...dish, food_type: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs"><option value="veg">Veg</option><option value="non-veg">Non-Veg</option><option value="egg">Egg</option><option value="beverage">Beverage</option><option value="other">Other</option></select></div>
-                <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Highly Reordered</label><select value={dish.reorder_mode} onChange={(e) => setDish({ ...dish, reorder_mode: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs"><option value="auto">Automatic</option><option value="on">Always On</option><option value="off">Off</option></select></div>
+                <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Highly Reordered</label><select value={dish.reorder_mode} onChange={(e) => hasAdvancedMenuControls && setDish({ ...dish, reorder_mode: e.target.value })} disabled={!hasAdvancedMenuControls} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs disabled:opacity-50"><option value="auto">Automatic</option><option value="on">Always On</option><option value="off">Off</option></select></div>
                 <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Description</label><textarea rows={3} value={dish.description} onChange={(e) => setDish({ ...dish, description: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs" /></div>
                 <div className="flex gap-2"><button disabled={savingDish} className="rounded-xl bg-orange-500 px-5 py-3 text-xs font-black">{savingDish ? 'Saving...' : editingDishId ? 'Update Dish' : 'Add Dish'}</button>{editingDishId && <button type="button" onClick={resetDish} className="rounded-xl bg-neutral-800 px-5 py-3 text-xs font-black">Cancel</button>}</div>
               </form>
