@@ -2,6 +2,9 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import ResortManagement from '@/app/components/ResortManagement'
+
+const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
 const EMPTY_DISH = {
   name: '', price: '', original_price: '', offer_price: '', category: '',
@@ -803,6 +806,17 @@ export default function RestaurantManagerDashboard({ params }) {
   const [loginPassword, setLoginPassword] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
 
+  // /app staff session. The manager password is never stored in localStorage.
+  const [sessionToken, setSessionToken] = useState('')
+  const [sessionMode, setSessionMode] = useState(false)
+  const [sessionChecking, setSessionChecking] = useState(true)
+
+  const sessionTokenRef = useRef('')
+  const sessionModeRef = useRef(false)
+  const restaurantCodeRef = useRef('')
+  const loginUserIdRef = useRef('')
+  const loginPasswordRef = useRef('')
+
   const [restaurant, setRestaurant] = useState(null)
   const [menuItems, setMenuItems] = useState([])
   const [dailyOffers, setDailyOffers] = useState([])
@@ -810,6 +824,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const [restaurantTables, setRestaurantTables] = useState([])
   const [staffList, setStaffList] = useState([])
   const [activeTab, setActiveTab] = useState('settlements')
+  const [dashboardMode, setDashboardMode] = useState('restaurant')
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState('')
 
@@ -837,63 +852,139 @@ export default function RestaurantManagerDashboard({ params }) {
     window.setTimeout(() => setNotice(''), 3500)
   }
 
+  const clearSavedManagerSession = useCallback(() => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.removeItem(SESSION_STORAGE_KEY)
+    } catch (error) {
+      console.error('Unable to clear manager session:', error)
+    }
+  }, [])
+
   const fetchDashboard = useCallback(async () => {
-    if (!restaurantId || !restaurantCode || !loginUserId || !loginPassword) return
+    if (!restaurantId) return
+
+    const usingSession = Boolean(sessionModeRef.current && sessionTokenRef.current)
+    const code = String(restaurantCodeRef.current || '').trim()
+    const user = String(loginUserIdRef.current || '').trim().toLowerCase()
+    const pass = String(loginPasswordRef.current || '').trim()
+
+    if (!usingSession && (!code || !user || !pass)) return
+
     setLoading(true)
     try {
-      const { data, error } = await supabase.rpc('get_manager_dashboard_data', {
-        p_restaurant_id: String(restaurantId),
-        p_restaurant_code: String(restaurantCode).trim(),
-        p_user_id: String(loginUserId).trim().toLowerCase(),
-        p_password: String(loginPassword).trim(),
-      })
+      let dashboardResult
 
+      if (usingSession) {
+        dashboardResult = await supabase.rpc('get_manager_dashboard_data_session', {
+          p_session_token: sessionTokenRef.current,
+        })
+      } else {
+        dashboardResult = await supabase.rpc('get_manager_dashboard_data', {
+          p_restaurant_id: String(restaurantId),
+          p_restaurant_code: code,
+          p_user_id: user,
+          p_password: pass,
+        })
+      }
+
+      const { data, error } = dashboardResult
       if (error) throw error
-      if (!data?.success) throw new Error(data?.message || 'Unable to load manager dashboard.')
+
+      if (!data?.success) {
+        if (usingSession) {
+          clearSavedManagerSession()
+          sessionTokenRef.current = ''
+          sessionModeRef.current = false
+          setSessionToken('')
+          setSessionMode(false)
+          setAuthenticated(false)
+        }
+        throw new Error(data?.message || 'Unable to load manager dashboard.')
+      }
+
+      if (data.restaurantId && String(data.restaurantId) !== String(restaurantId)) {
+        throw new Error('This manager session belongs to another restaurant.')
+      }
 
       setRestaurant(data.restaurant || null)
       setMenuItems(Array.isArray(data.menuItems) ? data.menuItems : [])
       setDailyOffers(Array.isArray(data.dailyOffers) ? data.dailyOffers : [])
       setOrders(Array.isArray(data.orders) ? data.orders : [])
       setStaffList(Array.isArray(data.staffList) ? data.staffList : [])
-      const { data: tableResult, error: tableError } = await supabase.rpc('get_manager_table_inventory', {
-        p_restaurant_id: String(restaurantId),
-        p_restaurant_code: String(restaurantCode).trim(),
-        p_user_id: String(loginUserId).trim().toLowerCase(),
-        p_password: String(loginPassword).trim(),
-      })
+      setStoreOpen(data.restaurant?.is_open ?? true)
+
+      let tableResponse
+      if (usingSession) {
+        tableResponse = await supabase.rpc('get_manager_table_inventory_session', {
+          p_session_token: sessionTokenRef.current,
+        })
+      } else {
+        tableResponse = await supabase.rpc('get_manager_table_inventory', {
+          p_restaurant_id: String(restaurantId),
+          p_restaurant_code: code,
+          p_user_id: user,
+          p_password: pass,
+        })
+      }
+
+      const { data: tableResult, error: tableError } = tableResponse
       if (tableError) {
         console.error('Manager table inventory error:', tableError)
       } else if (tableResult?.success) {
         setRestaurantTables(Array.isArray(tableResult.tables) ? tableResult.tables : [])
       }
-      setStoreOpen(data.restaurant?.is_open ?? true)
     } catch (error) {
       console.error('Manager dashboard loading error:', error)
       setNotice(`Loading issue: ${error.message}`)
     } finally {
       setLoading(false)
     }
-  }, [restaurantId, restaurantCode, loginUserId, loginPassword])
+  }, [restaurantId, clearSavedManagerSession])
 
   const managerRpcAction = useCallback(async (action, payload = {}) => {
-    if (!restaurantId || !restaurantCode || !loginUserId || !loginPassword) {
+    const usingSession = Boolean(sessionModeRef.current && sessionTokenRef.current)
+    const code = String(restaurantCodeRef.current || '').trim()
+    const user = String(loginUserIdRef.current || '').trim().toLowerCase()
+    const pass = String(loginPasswordRef.current || '').trim()
+
+    if (!restaurantId || (!usingSession && (!code || !user || !pass))) {
       throw new Error('Manager session is missing. Please sign in again.')
     }
 
-    const { data, error } = await supabase.rpc('manager_action', {
-      p_restaurant_id: String(restaurantId),
-      p_restaurant_code: String(restaurantCode).trim(),
-      p_user_id: String(loginUserId).trim().toLowerCase(),
-      p_password: String(loginPassword).trim(),
-      p_action: action,
-      p_payload: payload,
-    })
+    let response
+    if (usingSession) {
+      response = await supabase.rpc('manager_action_session', {
+        p_session_token: sessionTokenRef.current,
+        p_action: action,
+        p_payload: payload,
+      })
+    } else {
+      response = await supabase.rpc('manager_action', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: code,
+        p_user_id: user,
+        p_password: pass,
+        p_action: action,
+        p_payload: payload,
+      })
+    }
 
+    const { data, error } = response
     if (error) throw error
-    if (!data?.success) throw new Error(data?.message || 'Manager action failed.')
+    if (!data?.success) {
+      if (usingSession) {
+        clearSavedManagerSession()
+        sessionTokenRef.current = ''
+        sessionModeRef.current = false
+        setSessionToken('')
+        setSessionMode(false)
+        setAuthenticated(false)
+      }
+      throw new Error(data?.message || 'Manager action failed.')
+    }
     return data
-  }, [restaurantId, restaurantCode, loginUserId, loginPassword])
+  }, [restaurantId, clearSavedManagerSession])
 
   const handleLogin = async (event) => {
     event.preventDefault()
@@ -904,11 +995,15 @@ export default function RestaurantManagerDashboard({ params }) {
 
     setLoginLoading(true)
     try {
+      const cleanCode = String(restaurantCode).trim()
+      const cleanUser = String(loginUserId).trim().toLowerCase()
+      const cleanPassword = String(loginPassword).trim()
+
       const { data, error } = await supabase.rpc('authenticate_staff_login', {
         p_restaurant_id: String(restaurantId),
-        p_restaurant_code: String(restaurantCode).trim(),
-        p_user_id: String(loginUserId).trim().toLowerCase(),
-        p_password: String(loginPassword).trim(),
+        p_restaurant_code: cleanCode,
+        p_user_id: cleanUser,
+        p_password: cleanPassword,
         p_role: 'manager',
       })
 
@@ -918,10 +1013,20 @@ export default function RestaurantManagerDashboard({ params }) {
         throw new Error('These credentials do not belong to this restaurant.')
       }
 
+      sessionTokenRef.current = ''
+      sessionModeRef.current = false
+      restaurantCodeRef.current = String(data.restaurantCode || cleanCode).trim()
+      loginUserIdRef.current = cleanUser
+      loginPasswordRef.current = cleanPassword
+
+      setSessionToken('')
+      setSessionMode(false)
       setManager(data.staff || null)
       setProfileName(String(data.staff?.name || data.staff?.user_id || ''))
-      setRestaurantCode(String(data.restaurantCode || restaurantCode).trim())
+      setRestaurantCode(restaurantCodeRef.current)
+      setLoginUserId(cleanUser)
       setAuthenticated(true)
+
       await fetchDashboard()
     } catch (error) {
       console.error(error)
@@ -931,6 +1036,97 @@ export default function RestaurantManagerDashboard({ params }) {
       setLoginLoading(false)
     }
   }
+
+  // Restore the secure staff session created by /app.
+  useEffect(() => {
+    let active = true
+
+    const restoreManagerSession = async () => {
+      if (typeof window === 'undefined') return
+
+      try {
+        const rawSession = localStorage.getItem(SESSION_STORAGE_KEY)
+        if (!rawSession) return
+
+        let savedSession
+        try {
+          savedSession = JSON.parse(rawSession)
+        } catch {
+          clearSavedManagerSession()
+          return
+        }
+
+        const token = String(savedSession?.sessionToken || '').trim()
+        const role = String(savedSession?.role || '').trim().toLowerCase()
+        const savedRestaurantId = String(savedSession?.restaurantId || '').trim()
+
+        // Do not consume Waiter/Kitchen sessions or sessions for another restaurant.
+        if (role !== 'manager' || savedRestaurantId !== String(restaurantId)) return
+        if (!token) {
+          clearSavedManagerSession()
+          return
+        }
+
+        const { data, error } = await supabase.rpc('validate_staff_app_session', {
+          p_session_token: token,
+          p_required_role: 'manager',
+        })
+
+        if (error) throw error
+        if (!data?.success) throw new Error(data?.message || 'Manager session expired.')
+        if (String(data.restaurantId) !== String(restaurantId)) {
+          throw new Error('This manager session belongs to another restaurant.')
+        }
+        if (!active) return
+
+        const restoredCode = String(data.restaurantCode || savedSession.restaurantCode || '').trim()
+        const restoredUser = String(data.userId || savedSession.userId || '').trim().toLowerCase()
+        const restoredManager = savedSession?.staff || {
+          user_id: restoredUser,
+          name: savedSession?.staff?.name || restoredUser,
+          role: 'manager',
+          restaurant_id: String(restaurantId),
+        }
+
+        sessionTokenRef.current = token
+        sessionModeRef.current = true
+        restaurantCodeRef.current = restoredCode
+        loginUserIdRef.current = restoredUser
+        loginPasswordRef.current = ''
+
+        setSessionToken(token)
+        setSessionMode(true)
+        setRestaurantCode(restoredCode)
+        setLoginUserId(restoredUser)
+        setLoginPassword('')
+        setManager(restoredManager)
+        setProfileName(String(restoredManager?.name || restoredUser))
+        setAuthenticated(true)
+
+        await fetchDashboard()
+      } catch (error) {
+        console.error('Manager session restore error:', error)
+        clearSavedManagerSession()
+        sessionTokenRef.current = ''
+        sessionModeRef.current = false
+        restaurantCodeRef.current = ''
+        loginUserIdRef.current = ''
+        loginPasswordRef.current = ''
+        setSessionToken('')
+        setSessionMode(false)
+        setAuthenticated(false)
+        setManager(null)
+        setLoginPassword('')
+      } finally {
+        if (active) setSessionChecking(false)
+      }
+    }
+
+    restoreManagerSession()
+    return () => {
+      active = false
+    }
+  }, [restaurantId, clearSavedManagerSession, fetchDashboard])
 
   useEffect(() => {
     if (!authenticated || !restaurantId) return undefined
@@ -1023,6 +1219,8 @@ export default function RestaurantManagerDashboard({ params }) {
   const currentPlanDisplay = planFeatures.name
   const hasAdvancedAnalytics = planFeatures.advanced
   const hasAdvancedMenuControls = planFeatures.advanced
+  const hasResortAccess = Boolean(planFeatures.resort)
+  const hasAdvancedResort = Boolean(planFeatures.advancedResort)
 
   const planLimits = { Standard: 20, Pro: 50, 'Pro+': Infinity }
   const maxMenuAllowed = planLimits[currentPlan] ?? 20
@@ -1434,14 +1632,22 @@ export default function RestaurantManagerDashboard({ params }) {
     setProfileSaving(true)
 
     try {
-      const { data, error } = await supabase.rpc('staff_update_profile', {
-        p_restaurant_id: String(restaurantId),
-        p_restaurant_code: String(restaurantCode).trim(),
-        p_user_id: String(loginUserId).trim().toLowerCase(),
-        p_password: String(loginPassword).trim(),
-        p_role: 'manager',
-        p_name: cleanName,
-      })
+      const usingSession = Boolean(sessionModeRef.current && sessionTokenRef.current)
+      const response = usingSession
+        ? await supabase.rpc('staff_update_profile_session', {
+            p_session_token: sessionTokenRef.current,
+            p_name: cleanName,
+          })
+        : await supabase.rpc('staff_update_profile', {
+            p_restaurant_id: String(restaurantId),
+            p_restaurant_code: String(restaurantCodeRef.current).trim(),
+            p_user_id: String(loginUserIdRef.current).trim().toLowerCase(),
+            p_password: String(loginPasswordRef.current).trim(),
+            p_role: 'manager',
+            p_name: cleanName,
+          })
+
+      const { data, error } = response
 
       if (error) throw error
       if (!data?.success) {
@@ -1469,13 +1675,41 @@ export default function RestaurantManagerDashboard({ params }) {
   }
 
   const logout = () => {
+    if (sessionModeRef.current) clearSavedManagerSession()
+
+    sessionTokenRef.current = ''
+    sessionModeRef.current = false
+    restaurantCodeRef.current = ''
+    loginUserIdRef.current = ''
+    loginPasswordRef.current = ''
+
+    setSessionToken('')
+    setSessionMode(false)
     setAuthenticated(false)
     setManager(null)
     setOrders([])
     setMenuItems([])
     setDailyOffers([])
+    setRestaurantTables([])
     setStaffList([])
+    setRestaurant(null)
+    setRestaurantCode('')
+    setLoginUserId('')
     setLoginPassword('')
+    setProfileName('')
+    setProfileOpen(false)
+  }
+
+  if (sessionChecking) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-4 text-neutral-100">
+        <div className="w-full max-w-sm rounded-3xl border border-neutral-800 bg-neutral-900 p-8 text-center shadow-2xl">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-neutral-800 border-t-orange-500" />
+          <h1 className="mt-5 text-lg font-black">Opening Manager Dashboard</h1>
+          <p className="mt-2 text-xs text-neutral-500">Checking your Digital Dining staff session...</p>
+        </div>
+      </main>
+    )
   }
 
   if (!authenticated) {
@@ -1589,6 +1823,36 @@ export default function RestaurantManagerDashboard({ params }) {
 
         {notice && <div className="fixed right-5 top-5 z-50 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice}</div>}
 
+        <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
+          <div className={`grid gap-2 ${hasResortAccess ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <button
+              type="button"
+              onClick={() => setDashboardMode('restaurant')}
+              className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'restaurant' ? 'bg-orange-500 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
+            >
+              🍽️ Restaurant Dashboard
+            </button>
+            {hasResortAccess && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('resort')}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'resort' ? 'bg-sky-600 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
+              >
+                🏨 Resort Dashboard
+              </button>
+            )}
+          </div>
+        </div>
+
+        {dashboardMode === 'resort' && hasResortAccess && (
+          <ResortManagement
+            restaurant={restaurant}
+            planCode={currentPlanCode}
+            advancedFeaturesEnabled={hasAdvancedResort}
+          />
+        )}
+
+        {dashboardMode === 'restaurant' && (<>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Stat title="Total Revenue" value={money(totalRevenue)} />
           <Stat title="Orders Today" value={todayOrders.length} accent="text-emerald-400" />
@@ -1955,6 +2219,8 @@ export default function RestaurantManagerDashboard({ params }) {
             </div>
           </section>
         )}
+
+        </>)}
 
         <footer className="border-t border-neutral-800 pt-5 text-center text-[10px] text-neutral-600">
           Manager access excludes payment gateway settings, tax settings, subscription, billing, and manager account creation. Those remain Owner-only.

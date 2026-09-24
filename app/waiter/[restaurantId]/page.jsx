@@ -6,14 +6,17 @@ import { supabase } from '@/lib/supabase'
 const ALARM_SOUND_URL =
   'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'
 
+const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
+
 export default function WaiterPortal({ params }) {
   const unwrappedParams = use(params)
+
   const restaurantId = String(
     unwrappedParams?.restaurantid ||
-    unwrappedParams?.restaurantId ||
-    unwrappedParams?.restaurant_id ||
-    unwrappedParams?.id ||
-    ''
+      unwrappedParams?.restaurantId ||
+      unwrappedParams?.restaurant_id ||
+      unwrappedParams?.id ||
+      ''
   ).trim()
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -22,6 +25,24 @@ export default function WaiterPortal({ params }) {
   const [password, setPassword] = useState('')
   const [waiterName, setWaiterName] = useState('')
   const [showProfile, setShowProfile] = useState(false)
+
+  /*
+   * Session login
+   */
+  const [sessionToken, setSessionToken] = useState('')
+  const [sessionMode, setSessionMode] = useState(false)
+  const [sessionChecking, setSessionChecking] = useState(true)
+
+  /*
+   * Refs are used so polling/realtime callbacks always have
+   * the newest authentication values.
+   */
+  const sessionTokenRef = useRef('')
+  const sessionModeRef = useRef(false)
+
+  const restaurantCodeRef = useRef('')
+  const userIdRef = useRef('')
+  const passwordRef = useRef('')
 
   const [menuItems, setMenuItems] = useState([])
   const [tableNumber, setTableNumber] = useState('Table 1')
@@ -34,6 +55,32 @@ export default function WaiterPortal({ params }) {
   const alarmAudioRef = useRef(null)
   const soundEnabledRef = useRef(false)
   const alarmActiveRef = useRef(false)
+
+  /*
+   * ---------------------------------------------------------
+   * KEEP AUTH REFS CURRENT
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    sessionTokenRef.current = sessionToken
+  }, [sessionToken])
+
+  useEffect(() => {
+    sessionModeRef.current = sessionMode
+  }, [sessionMode])
+
+  useEffect(() => {
+    restaurantCodeRef.current = restaurantCode
+  }, [restaurantCode])
+
+  useEffect(() => {
+    userIdRef.current = userId
+  }, [userId])
+
+  useEffect(() => {
+    passwordRef.current = password
+  }, [password])
 
   /*
    * ---------------------------------------------------------
@@ -72,30 +119,35 @@ export default function WaiterPortal({ params }) {
     setAlarmActive(false)
   }, [])
 
-  const startAlarm = useCallback(async () => {
-    if (!soundEnabledRef.current) return
+  const startAlarm = useCallback(
+    async () => {
+      if (!soundEnabledRef.current) return
 
-    const audio = initializeAlarmAudio()
+      const audio = initializeAlarmAudio()
 
-    if (!audio) return
+      if (!audio) return
+      if (alarmActiveRef.current) return
 
-    if (alarmActiveRef.current) return
+      try {
+        audio.loop = true
+        audio.currentTime = 0
 
-    try {
-      audio.loop = true
-      audio.currentTime = 0
+        await audio.play()
 
-      await audio.play()
+        alarmActiveRef.current = true
+        setAlarmActive(true)
+      } catch (error) {
+        console.error(
+          'Waiter alarm could not start:',
+          error
+        )
 
-      alarmActiveRef.current = true
-      setAlarmActive(true)
-    } catch (error) {
-      console.error('Waiter alarm could not start:', error)
-
-      setAlarmActive(false)
-      alarmActiveRef.current = false
-    }
-  }, [initializeAlarmAudio])
+        setAlarmActive(false)
+        alarmActiveRef.current = false
+      }
+    },
+    [initializeAlarmAudio]
+  )
 
   const enableAlarmSound = async () => {
     const audio = initializeAlarmAudio()
@@ -107,6 +159,7 @@ export default function WaiterPortal({ params }) {
        * This function is called directly from a button click.
        * That user gesture unlocks audio playback on mobile Chrome.
        */
+
       audio.loop = false
       audio.currentTime = 0
       audio.volume = 0.01
@@ -126,15 +179,20 @@ export default function WaiterPortal({ params }) {
       setSoundEnabled(true)
 
       /*
-       * If ready orders already exist, start alarming immediately.
+       * If ready orders already exist,
+       * start alarming immediately.
        */
+
       if (readyOrders.length > 0) {
         setTimeout(() => {
           startAlarm()
         }, 200)
       }
     } catch (error) {
-      console.error('Unable to enable waiter alarm:', error)
+      console.error(
+        'Unable to enable waiter alarm:',
+        error
+      )
 
       alert(
         'Chrome blocked the alarm sound. Please tap Enable Alarm again and make sure your phone is not in silent mode.'
@@ -144,43 +202,521 @@ export default function WaiterPortal({ params }) {
 
   /*
    * ---------------------------------------------------------
-   * LOGIN
+   * CLEAR SAVED STAFF SESSION
    * ---------------------------------------------------------
+   */
+
+  const clearSavedSession = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    try {
+      localStorage.removeItem(
+        SESSION_STORAGE_KEY
+      )
+    } catch (error) {
+      console.error(
+        '[WAITER] Unable to clear saved session:',
+        error
+      )
+    }
+  }, [])
+
+  /*
+   * ---------------------------------------------------------
+   * APPLY SESSION PORTAL DATA
+   * ---------------------------------------------------------
+   */
+
+  const applyPortalData = useCallback(
+    (data) => {
+      if (!data?.success) return
+
+      const nextMenuItems =
+        Array.isArray(data.menuItems)
+          ? data.menuItems
+          : []
+
+      const nextReadyOrders =
+        Array.isArray(data.readyOrders)
+          ? data.readyOrders
+          : []
+
+      setMenuItems(nextMenuItems)
+      setReadyOrders(nextReadyOrders)
+
+      if (
+        nextReadyOrders.length > 0 &&
+        soundEnabledRef.current
+      ) {
+        startAlarm()
+      }
+
+      if (nextReadyOrders.length === 0) {
+        stopAlarm()
+      }
+    },
+    [startAlarm, stopAlarm]
+  )
+
+  /*
+   * ---------------------------------------------------------
+   * SESSION PORTAL DATA
+   * ---------------------------------------------------------
+   */
+
+  const fetchSessionPortalData =
+    useCallback(
+      async (token) => {
+        const cleanToken =
+          String(token || '').trim()
+
+        if (!cleanToken) {
+          throw new Error(
+            'Staff session is unavailable.'
+          )
+        }
+
+        const { data, error } =
+          await supabase.rpc(
+            'get_waiter_portal_data_session',
+            {
+              p_session_token: cleanToken,
+            }
+          )
+
+        if (error) {
+          throw error
+        }
+
+        if (!data?.success) {
+          throw new Error(
+            data?.message ||
+              'Invalid or expired staff session.'
+          )
+        }
+
+        if (
+          data.restaurantId &&
+          String(data.restaurantId) !==
+            String(restaurantId)
+        ) {
+          throw new Error(
+            'This staff session belongs to another restaurant.'
+          )
+        }
+
+        applyPortalData(data)
+
+        return data
+      },
+      [restaurantId, applyPortalData]
+    )
+
+  /*
+   * ---------------------------------------------------------
+   * AUTOMATIC /APP SESSION LOGIN
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    let active = true
+
+    const restoreSession = async () => {
+      if (typeof window === 'undefined') {
+        return
+      }
+
+      try {
+        const rawSession =
+          localStorage.getItem(
+            SESSION_STORAGE_KEY
+          )
+
+        /*
+         * No /app session.
+         * Keep the existing manual login screen.
+         */
+
+        if (!rawSession) {
+          return
+        }
+
+        let savedSession
+
+        try {
+          savedSession =
+            JSON.parse(rawSession)
+        } catch {
+          clearSavedSession()
+          return
+        }
+
+        const savedToken =
+          String(
+            savedSession?.sessionToken || ''
+          ).trim()
+
+        const savedRole =
+          String(
+            savedSession?.role || ''
+          )
+            .trim()
+            .toLowerCase()
+
+        const savedRestaurantId =
+          String(
+            savedSession?.restaurantId || ''
+          ).trim()
+
+        /*
+         * Do not use another role's session.
+         */
+
+        if (savedRole !== 'waiter') {
+          return
+        }
+
+        /*
+         * Do not use another restaurant's session.
+         */
+
+        if (
+          !savedRestaurantId ||
+          savedRestaurantId !==
+            String(restaurantId)
+        ) {
+          return
+        }
+
+        if (!savedToken) {
+          clearSavedSession()
+          return
+        }
+
+        /*
+         * Validate the session first.
+         */
+
+        const {
+          data: validation,
+          error: validationError,
+        } = await supabase.rpc(
+          'validate_staff_app_session',
+          {
+            p_session_token: savedToken,
+            p_required_role: 'waiter',
+          }
+        )
+
+        if (validationError) {
+          throw validationError
+        }
+
+        if (!validation?.success) {
+          clearSavedSession()
+          return
+        }
+
+        if (
+          String(validation.restaurantId) !==
+          String(restaurantId)
+        ) {
+          clearSavedSession()
+          return
+        }
+
+        if (!active) return
+
+        /*
+         * Store session authentication in state + refs.
+         */
+
+        sessionTokenRef.current =
+          savedToken
+
+        sessionModeRef.current = true
+
+        setSessionToken(savedToken)
+        setSessionMode(true)
+
+        const restoredRestaurantCode =
+          String(
+            validation.restaurantCode ||
+              savedSession.restaurantCode ||
+              ''
+          ).trim()
+
+        const restoredUserId =
+          String(
+            validation.userId ||
+              savedSession.userId ||
+              ''
+          )
+            .trim()
+            .toLowerCase()
+
+        restaurantCodeRef.current =
+          restoredRestaurantCode
+
+        userIdRef.current =
+          restoredUserId
+
+        passwordRef.current = ''
+
+        setRestaurantCode(
+          restoredRestaurantCode
+        )
+
+        setUserId(restoredUserId)
+
+        /*
+         * Password is intentionally not restored.
+         */
+
+        setPassword('')
+
+        const restoredName =
+          savedSession?.staff?.name ||
+          savedSession?.staff?.user_id ||
+          restoredUserId ||
+          'Waiter'
+
+        setWaiterName(restoredName)
+
+        /*
+         * Load the actual waiter data using
+         * the secure session RPC.
+         */
+
+        const portalData =
+          await fetchSessionPortalData(
+            savedToken
+          )
+
+        if (!active) return
+
+        /*
+         * If backend provides user/restaurant details,
+         * prefer those values.
+         */
+
+        if (portalData?.restaurantCode) {
+          const code =
+            String(
+              portalData.restaurantCode
+            ).trim()
+
+          restaurantCodeRef.current = code
+          setRestaurantCode(code)
+        }
+
+        if (portalData?.userId) {
+          const id =
+            String(portalData.userId)
+              .trim()
+              .toLowerCase()
+
+          userIdRef.current = id
+          setUserId(id)
+        }
+
+        setIsAuthenticated(true)
+
+        console.log(
+          '[WAITER] Secure staff session restored.'
+        )
+      } catch (error) {
+        console.error(
+          '[WAITER] Session restore error:',
+          error
+        )
+
+        /*
+         * An invalid/expired saved waiter session
+         * should not block the original login page.
+         */
+
+        clearSavedSession()
+
+        sessionTokenRef.current = ''
+        sessionModeRef.current = false
+
+        setSessionToken('')
+        setSessionMode(false)
+        setIsAuthenticated(false)
+      } finally {
+        if (active) {
+          setSessionChecking(false)
+        }
+      }
+    }
+
+    restoreSession()
+
+    return () => {
+      active = false
+    }
+  }, [
+    restaurantId,
+    clearSavedSession,
+    fetchSessionPortalData,
+  ])
+
+  /*
+   * ---------------------------------------------------------
+   * MANUAL LOGIN
+   * ---------------------------------------------------------
+   *
+   * Existing login is preserved as a fallback.
    */
 
   const handleLogin = async (e) => {
     e.preventDefault()
 
-    if (!restaurantId || !restaurantCode.trim() || !userId.trim() || !password.trim()) {
-      alert('Enter the 5-digit Restaurant Code, Waiter User ID, and password.')
+    if (
+      !restaurantId ||
+      !restaurantCode.trim() ||
+      !userId.trim() ||
+      !password.trim()
+    ) {
+      alert(
+        'Enter the 5-digit Restaurant Code, Waiter User ID, and password.'
+      )
+
       return
     }
 
     try {
-      const { data, error } = await supabase.rpc('authenticate_staff_login', {
-        p_restaurant_id: String(restaurantId),
-        p_restaurant_code: String(restaurantCode).trim(),
-        p_user_id: String(userId).trim().toLowerCase(),
-        p_password: String(password).trim(),
-        p_role: 'waiter',
-      })
+      const cleanRestaurantCode =
+        String(restaurantCode).trim()
+
+      const cleanUserId =
+        String(userId)
+          .trim()
+          .toLowerCase()
+
+      const cleanPassword =
+        String(password).trim()
+
+      const { data, error } =
+        await supabase.rpc(
+          'authenticate_staff_login',
+          {
+            p_restaurant_id:
+              String(restaurantId),
+
+            p_restaurant_code:
+              cleanRestaurantCode,
+
+            p_user_id:
+              cleanUserId,
+
+            p_password:
+              cleanPassword,
+
+            p_role: 'waiter',
+          }
+        )
 
       if (error) throw error
-      if (!data?.success) throw new Error(data?.message || 'Invalid restaurant credentials.')
-      if (String(data.restaurantId) !== String(restaurantId)) {
-        throw new Error('These credentials do not belong to this restaurant.')
+
+      if (!data?.success) {
+        throw new Error(
+          data?.message ||
+            'Invalid restaurant credentials.'
+        )
       }
 
-      setWaiterName(data.staff?.name || data.staff?.user_id || '')
-      setRestaurantCode(String(data.restaurantCode || restaurantCode).trim())
+      if (
+        String(data.restaurantId) !==
+        String(restaurantId)
+      ) {
+        throw new Error(
+          'These credentials do not belong to this restaurant.'
+        )
+      }
+
+      /*
+       * Manual fallback uses the original
+       * password-based RPCs.
+       */
+
+      sessionTokenRef.current = ''
+      sessionModeRef.current = false
+
+      setSessionToken('')
+      setSessionMode(false)
+
+      restaurantCodeRef.current =
+        String(
+          data.restaurantCode ||
+            cleanRestaurantCode
+        ).trim()
+
+      userIdRef.current =
+        cleanUserId
+
+      passwordRef.current =
+        cleanPassword
+
+      setWaiterName(
+        data.staff?.name ||
+          data.staff?.user_id ||
+          ''
+      )
+
+      setRestaurantCode(
+        restaurantCodeRef.current
+      )
+
+      setUserId(cleanUserId)
       setIsAuthenticated(true)
 
-      await fetchMenu()
-      await fetchReadyOrders()
+      /*
+       * Load initial data directly using
+       * the same credentials.
+       */
+
+      const {
+        data: portalData,
+        error: portalError,
+      } = await supabase.rpc(
+        'get_waiter_portal_data',
+        {
+          p_restaurant_id:
+            String(restaurantId),
+
+          p_restaurant_code:
+            restaurantCodeRef.current,
+
+          p_user_id:
+            cleanUserId,
+
+          p_password:
+            cleanPassword,
+        }
+      )
+
+      if (portalError) {
+        console.error(
+          '[WAITER] Initial portal load error:',
+          portalError
+        )
+      } else if (portalData?.success) {
+        applyPortalData(portalData)
+      }
     } catch (err) {
-      console.error('[WAITER] Login error:', err)
+      console.error(
+        '[WAITER] Login error:',
+        err
+      )
+
       setIsAuthenticated(false)
-      alert(err.message || 'Unable to login.')
+
+      alert(
+        err.message ||
+          'Unable to login.'
+      )
     }
   }
 
@@ -191,26 +727,103 @@ export default function WaiterPortal({ params }) {
    */
 
   const fetchMenu = async () => {
-    if (!restaurantId || !restaurantCode || !userId || !password) return
+    /*
+     * Secure /app session mode
+     */
 
-    const { data, error } = await supabase.rpc('get_waiter_portal_data', {
-      p_restaurant_id: String(restaurantId),
-      p_restaurant_code: String(restaurantCode).trim(),
-      p_user_id: String(userId).trim().toLowerCase(),
-      p_password: String(password).trim(),
-    })
+    if (
+      sessionModeRef.current &&
+      sessionTokenRef.current
+    ) {
+      try {
+        const data =
+          await fetchSessionPortalData(
+            sessionTokenRef.current
+          )
+
+        setMenuItems(
+          Array.isArray(data.menuItems)
+            ? data.menuItems
+            : []
+        )
+      } catch (error) {
+        console.error(
+          'Waiter session menu loading error:',
+          error
+        )
+      }
+
+      return
+    }
+
+    /*
+     * Existing manual login mode
+     */
+
+    const code =
+      restaurantCodeRef.current ||
+      restaurantCode
+
+    const id =
+      userIdRef.current ||
+      userId
+
+    const pass =
+      passwordRef.current ||
+      password
+
+    if (
+      !restaurantId ||
+      !code ||
+      !id ||
+      !pass
+    ) {
+      return
+    }
+
+    const { data, error } =
+      await supabase.rpc(
+        'get_waiter_portal_data',
+        {
+          p_restaurant_id:
+            String(restaurantId),
+
+          p_restaurant_code:
+            String(code).trim(),
+
+          p_user_id:
+            String(id)
+              .trim()
+              .toLowerCase(),
+
+          p_password:
+            String(pass).trim(),
+        }
+      )
 
     if (error) {
-      console.error('Waiter menu loading error:', error)
+      console.error(
+        'Waiter menu loading error:',
+        error
+      )
+
       return
     }
 
     if (!data?.success) {
-      console.error('Waiter portal rejected:', data?.message)
+      console.error(
+        'Waiter portal rejected:',
+        data?.message
+      )
+
       return
     }
 
-    setMenuItems(Array.isArray(data.menuItems) ? data.menuItems : [])
+    setMenuItems(
+      Array.isArray(data.menuItems)
+        ? data.menuItems
+        : []
+    )
   }
 
   /*
@@ -220,36 +833,130 @@ export default function WaiterPortal({ params }) {
    */
 
   const fetchReadyOrders = async () => {
-    if (!restaurantId || !restaurantCode || !userId || !password) {
+    /*
+     * Secure /app session mode
+     */
+
+    if (
+      sessionModeRef.current &&
+      sessionTokenRef.current
+    ) {
+      try {
+        const data =
+          await fetchSessionPortalData(
+            sessionTokenRef.current
+          )
+
+        const ordersData =
+          Array.isArray(data.readyOrders)
+            ? data.readyOrders
+            : []
+
+        setReadyOrders(ordersData)
+
+        if (
+          ordersData.length > 0 &&
+          soundEnabledRef.current
+        ) {
+          startAlarm()
+        }
+
+        if (
+          ordersData.length === 0
+        ) {
+          stopAlarm()
+        }
+      } catch (error) {
+        console.error(
+          '[WAITER] Session ready orders fetch error:',
+          error
+        )
+      }
+
+      return
+    }
+
+    /*
+     * Existing manual login mode
+     */
+
+    const code =
+      restaurantCodeRef.current ||
+      restaurantCode
+
+    const id =
+      userIdRef.current ||
+      userId
+
+    const pass =
+      passwordRef.current ||
+      password
+
+    if (
+      !restaurantId ||
+      !code ||
+      !id ||
+      !pass
+    ) {
       setReadyOrders([])
       return
     }
 
-    const { data, error } = await supabase.rpc('get_waiter_portal_data', {
-      p_restaurant_id: String(restaurantId),
-      p_restaurant_code: String(restaurantCode).trim(),
-      p_user_id: String(userId).trim().toLowerCase(),
-      p_password: String(password).trim(),
-    })
+    const { data, error } =
+      await supabase.rpc(
+        'get_waiter_portal_data',
+        {
+          p_restaurant_id:
+            String(restaurantId),
+
+          p_restaurant_code:
+            String(code).trim(),
+
+          p_user_id:
+            String(id)
+              .trim()
+              .toLowerCase(),
+
+          p_password:
+            String(pass).trim(),
+        }
+      )
 
     if (error) {
-      console.error('[WAITER] Ready orders fetch error:', error)
+      console.error(
+        '[WAITER] Ready orders fetch error:',
+        error
+      )
+
       return
     }
 
     if (!data?.success) {
-      console.error('[WAITER] Ready orders rejected:', data?.message)
+      console.error(
+        '[WAITER] Ready orders rejected:',
+        data?.message
+      )
+
       return
     }
 
-    const ordersData = Array.isArray(data.readyOrders) ? data.readyOrders : []
+    const ordersData =
+      Array.isArray(data.readyOrders)
+        ? data.readyOrders
+        : []
+
     setReadyOrders(ordersData)
 
-    if (ordersData.length > 0 && soundEnabledRef.current) {
+    if (
+      ordersData.length > 0 &&
+      soundEnabledRef.current
+    ) {
       startAlarm()
     }
 
-    if (ordersData.length === 0) {
+    if (
+      ordersData.length === 0
+    ) {
       stopAlarm()
     }
   }
@@ -261,70 +968,135 @@ export default function WaiterPortal({ params }) {
    */
 
   useEffect(() => {
-    if (!isAuthenticated || !restaurantId) return undefined
+    if (
+      !isAuthenticated ||
+      !restaurantId
+    ) {
+      return undefined
+    }
 
     let mounted = true
 
     const channel = supabase
-      .channel(`waiter-orders-${restaurantId}`)
+      .channel(
+        `waiter-orders-${restaurantId}`
+      )
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'orders',
-          filter: `restaurant_id=eq.${restaurantId}`,
+          filter:
+            `restaurant_id=eq.${restaurantId}`,
         },
         (payload) => {
           if (!mounted) return
 
-          const changedOrder = payload.new
-          const changedOrderId = payload.old?.id || changedOrder?.id
+          const changedOrder =
+            payload.new
 
-          if (payload.eventType === 'DELETE') {
-            setReadyOrders((current) =>
-              current.filter(
-                (order) => String(order.id) !== String(changedOrderId)
-              )
+          const changedOrderId =
+            payload.old?.id ||
+            changedOrder?.id
+
+          if (
+            payload.eventType ===
+            'DELETE'
+          ) {
+            setReadyOrders(
+              (current) =>
+                current.filter(
+                  (order) =>
+                    String(order.id) !==
+                    String(
+                      changedOrderId
+                    )
+                )
             )
+
             return
           }
 
-          if (!changedOrder?.id) return
+          if (!changedOrder?.id) {
+            return
+          }
 
-          if (changedOrder.status === 'ready') {
-            setReadyOrders((current) => {
-              const exists = current.some(
-                (order) => String(order.id) === String(changedOrder.id)
-              )
+          if (
+            String(
+              changedOrder.status || ''
+            ).toLowerCase() ===
+            'ready'
+          ) {
+            setReadyOrders(
+              (current) => {
+                const exists =
+                  current.some(
+                    (order) =>
+                      String(
+                        order.id
+                      ) ===
+                      String(
+                        changedOrder.id
+                      )
+                  )
 
-              if (exists) {
-                return current.map((order) =>
-                  String(order.id) === String(changedOrder.id)
-                    ? changedOrder
-                    : order
-                )
+                if (exists) {
+                  return current.map(
+                    (order) =>
+                      String(
+                        order.id
+                      ) ===
+                      String(
+                        changedOrder.id
+                      )
+                        ? changedOrder
+                        : order
+                  )
+                }
+
+                return [
+                  changedOrder,
+                  ...current,
+                ]
               }
+            )
 
-              return [changedOrder, ...current]
-            })
-
-            if (soundEnabledRef.current) {
+            if (
+              soundEnabledRef.current
+            ) {
               startAlarm()
             }
           } else {
-            // Remove orders that were handed over or changed away from READY.
-            setReadyOrders((current) =>
-              current.filter(
-                (order) => String(order.id) !== String(changedOrder.id)
-              )
+            /*
+             * Remove orders that were handed over
+             * or changed away from READY.
+             */
+
+            setReadyOrders(
+              (current) =>
+                current.filter(
+                  (order) =>
+                    String(order.id) !==
+                    String(
+                      changedOrder.id
+                    )
+                )
             )
           }
         }
       )
       .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error('Waiter realtime subscription error:', status)
+        if (
+          status ===
+            'CHANNEL_ERROR' ||
+          status ===
+            'TIMED_OUT'
+        ) {
+          console.error(
+            'Waiter realtime subscription error:',
+            status
+          )
         }
       })
 
@@ -332,7 +1104,11 @@ export default function WaiterPortal({ params }) {
       mounted = false
       supabase.removeChannel(channel)
     }
-  }, [isAuthenticated, restaurantId, startAlarm])
+  }, [
+    isAuthenticated,
+    restaurantId,
+    startAlarm,
+  ])
 
   /*
    * ---------------------------------------------------------
@@ -341,31 +1117,82 @@ export default function WaiterPortal({ params }) {
    */
 
   useEffect(() => {
-    if (!isAuthenticated || !restaurantId) return undefined
+    if (
+      !isAuthenticated ||
+      !restaurantId
+    ) {
+      return undefined
+    }
 
     let active = true
 
     const sync = async () => {
-      if (!active || document.visibilityState === 'hidden') return
+      if (
+        !active ||
+        document.visibilityState ===
+          'hidden'
+      ) {
+        return
+      }
+
       await fetchReadyOrders()
     }
 
-    const intervalId = window.setInterval(sync, 5000)
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') sync()
-    }
-    const onOnline = () => sync()
+    const intervalId =
+      window.setInterval(
+        sync,
+        5000
+      )
 
-    document.addEventListener('visibilitychange', onVisible)
-    window.addEventListener('online', onOnline)
+    const onVisible = () => {
+      if (
+        document.visibilityState ===
+        'visible'
+      ) {
+        sync()
+      }
+    }
+
+    const onOnline = () => {
+      sync()
+    }
+
+    document.addEventListener(
+      'visibilitychange',
+      onVisible
+    )
+
+    window.addEventListener(
+      'online',
+      onOnline
+    )
 
     return () => {
       active = false
-      window.clearInterval(intervalId)
-      document.removeEventListener('visibilitychange', onVisible)
-      window.removeEventListener('online', onOnline)
+
+      window.clearInterval(
+        intervalId
+      )
+
+      document.removeEventListener(
+        'visibilitychange',
+        onVisible
+      )
+
+      window.removeEventListener(
+        'online',
+        onOnline
+      )
     }
-  }, [isAuthenticated, restaurantId, restaurantCode, userId, password])
+  }, [
+    isAuthenticated,
+    restaurantId,
+    restaurantCode,
+    userId,
+    password,
+    sessionMode,
+    sessionToken,
+  ])
 
   /*
    * ---------------------------------------------------------
@@ -386,7 +1213,9 @@ export default function WaiterPortal({ params }) {
       startAlarm()
     }
 
-    if (readyOrders.length === 0) {
+    if (
+      readyOrders.length === 0
+    ) {
       stopAlarm()
     }
   }, [
@@ -413,10 +1242,16 @@ export default function WaiterPortal({ params }) {
         soundEnabledRef.current &&
         readyOrders.length > 0
       ) {
-        const audio = alarmAudioRef.current
+        const audio =
+          alarmAudioRef.current
 
-        if (audio && audio.paused) {
-          audio.play().catch(() => {})
+        if (
+          audio &&
+          audio.paused
+        ) {
+          audio
+            .play()
+            .catch(() => {})
         }
       }
     }
@@ -444,7 +1279,10 @@ export default function WaiterPortal({ params }) {
         recoverAudio
       )
     }
-  }, [isAuthenticated, readyOrders.length])
+  }, [
+    isAuthenticated,
+    readyOrders.length,
+  ])
 
   /*
    * ---------------------------------------------------------
@@ -454,10 +1292,13 @@ export default function WaiterPortal({ params }) {
 
   useEffect(() => {
     return () => {
-      if (alarmAudioRef.current) {
+      if (
+        alarmAudioRef.current
+      ) {
         try {
           alarmAudioRef.current.pause()
-          alarmAudioRef.current.currentTime = 0
+          alarmAudioRef.current.currentTime =
+            0
         } catch {}
       }
     }
@@ -469,34 +1310,132 @@ export default function WaiterPortal({ params }) {
    * ---------------------------------------------------------
    */
 
-  const handleHandover = async (orderId) => {
-    if (!orderId || !restaurantId) return
+  const handleHandover =
+    async (orderId) => {
+      if (
+        !orderId ||
+        !restaurantId
+      ) {
+        return
+      }
 
-    try {
-      const { data, error } = await supabase.rpc('staff_update_order_status', {
-        p_restaurant_id: String(restaurantId),
-        p_restaurant_code: String(restaurantCode).trim(),
-        p_user_id: String(userId).trim().toLowerCase(),
-        p_password: String(password).trim(),
-        p_role: 'waiter',
-        p_order_id: String(orderId),
-        p_new_status: 'completed',
-      })
+      try {
+        let data
+        let error
 
-      if (error) throw error
-      if (!data?.success) throw new Error(data?.message || 'Unable to record handover.')
+        /*
+         * Secure /app session
+         */
 
-      setReadyOrders((current) =>
-        current.filter((order) => String(order.id) !== String(orderId))
-      )
+        if (
+          sessionModeRef.current &&
+          sessionTokenRef.current
+        ) {
+          const response =
+            await supabase.rpc(
+              'waiter_update_order_status_session',
+              {
+                p_session_token:
+                  sessionTokenRef.current,
 
-      if (readyOrders.length <= 1) stopAlarm()
-      alert('Handover recorded successfully! ✅')
-    } catch (error) {
-      console.error('Handover error:', error)
-      alert(`Unable to record handover: ${error.message}`)
+                p_order_id:
+                  String(orderId),
+
+                p_new_status:
+                  'completed',
+              }
+            )
+
+          data = response.data
+          error = response.error
+        } else {
+          /*
+           * Existing manual login fallback
+           */
+
+          const response =
+            await supabase.rpc(
+              'staff_update_order_status',
+              {
+                p_restaurant_id:
+                  String(
+                    restaurantId
+                  ),
+
+                p_restaurant_code:
+                  String(
+                    restaurantCodeRef.current ||
+                      restaurantCode
+                  ).trim(),
+
+                p_user_id:
+                  String(
+                    userIdRef.current ||
+                      userId
+                  )
+                    .trim()
+                    .toLowerCase(),
+
+                p_password:
+                  String(
+                    passwordRef.current ||
+                      password
+                  ).trim(),
+
+                p_role: 'waiter',
+
+                p_order_id:
+                  String(orderId),
+
+                p_new_status:
+                  'completed',
+              }
+            )
+
+          data = response.data
+          error = response.error
+        }
+
+        if (error) {
+          throw error
+        }
+
+        if (!data?.success) {
+          throw new Error(
+            data?.message ||
+              'Unable to record handover.'
+          )
+        }
+
+        setReadyOrders(
+          (current) =>
+            current.filter(
+              (order) =>
+                String(order.id) !==
+                String(orderId)
+            )
+        )
+
+        if (
+          readyOrders.length <= 1
+        ) {
+          stopAlarm()
+        }
+
+        alert(
+          'Handover recorded successfully! ✅'
+        )
+      } catch (error) {
+        console.error(
+          'Handover error:',
+          error
+        )
+
+        alert(
+          `Unable to record handover: ${error.message}`
+        )
+      }
     }
-  }
 
   /*
    * ---------------------------------------------------------
@@ -504,35 +1443,139 @@ export default function WaiterPortal({ params }) {
    * ---------------------------------------------------------
    */
 
-  const handlePlaceOrder = async () => {
-    if (cart.length === 0) return
+  const handlePlaceOrder =
+    async () => {
+      if (
+        cart.length === 0
+      ) {
+        return
+      }
 
-    const total = cart.reduce(
-      (sum, i) => sum + Number(i.price || 0) * Number(i.qty || 0),
-      0
-    )
+      const total =
+        cart.reduce(
+          (sum, i) =>
+            sum +
+            Number(
+              i.price || 0
+            ) *
+              Number(
+                i.qty || 0
+              ),
+          0
+        )
 
-    try {
-      const { data, error } = await supabase.rpc('waiter_place_direct_order', {
-        p_restaurant_id: String(restaurantId),
-        p_restaurant_code: String(restaurantCode).trim(),
-        p_user_id: String(userId).trim().toLowerCase(),
-        p_password: String(password).trim(),
-        p_table_number: String(tableNumber),
-        p_items: cart,
-        p_total_amount: total,
-      })
+      try {
+        let data
+        let error
 
-      if (error) throw error
-      if (!data?.success) throw new Error(data?.message || 'Unable to send order to kitchen.')
+        /*
+         * Secure /app session
+         */
 
-      alert('Order sent to kitchen! 🍳')
-      setCart([])
-    } catch (error) {
-      console.error('Direct order error:', error)
-      alert(`Unable to send order to kitchen: ${error.message}`)
+        if (
+          sessionModeRef.current &&
+          sessionTokenRef.current
+        ) {
+          const response =
+            await supabase.rpc(
+              'waiter_place_direct_order_session',
+              {
+                p_session_token:
+                  sessionTokenRef.current,
+
+                p_table_number:
+                  String(
+                    tableNumber
+                  ),
+
+                p_items:
+                  cart,
+
+                p_total_amount:
+                  total,
+              }
+            )
+
+          data = response.data
+          error = response.error
+        } else {
+          /*
+           * Existing manual login fallback
+           */
+
+          const response =
+            await supabase.rpc(
+              'waiter_place_direct_order',
+              {
+                p_restaurant_id:
+                  String(
+                    restaurantId
+                  ),
+
+                p_restaurant_code:
+                  String(
+                    restaurantCodeRef.current ||
+                      restaurantCode
+                  ).trim(),
+
+                p_user_id:
+                  String(
+                    userIdRef.current ||
+                      userId
+                  )
+                    .trim()
+                    .toLowerCase(),
+
+                p_password:
+                  String(
+                    passwordRef.current ||
+                      password
+                  ).trim(),
+
+                p_table_number:
+                  String(
+                    tableNumber
+                  ),
+
+                p_items:
+                  cart,
+
+                p_total_amount:
+                  total,
+              }
+            )
+
+          data = response.data
+          error = response.error
+        }
+
+        if (error) {
+          throw error
+        }
+
+        if (!data?.success) {
+          throw new Error(
+            data?.message ||
+              'Unable to send order to kitchen.'
+          )
+        }
+
+        alert(
+          'Order sent to kitchen! 🍳'
+        )
+
+        setCart([])
+      } catch (error) {
+        console.error(
+          'Direct order error:',
+          error
+        )
+
+        alert(
+          `Unable to send order to kitchen: ${error.message}`
+        )
+      }
     }
-  }
 
   /*
    * ---------------------------------------------------------
@@ -545,6 +1588,26 @@ export default function WaiterPortal({ params }) {
 
     soundEnabledRef.current = false
 
+    /*
+     * Remove /app session from this device.
+     */
+
+    if (
+      sessionModeRef.current
+    ) {
+      clearSavedSession()
+    }
+
+    sessionTokenRef.current = ''
+    sessionModeRef.current = false
+
+    restaurantCodeRef.current = ''
+    userIdRef.current = ''
+    passwordRef.current = ''
+
+    setSessionToken('')
+    setSessionMode(false)
+
     setSoundEnabled(false)
     setRestaurantCode('')
     setIsAuthenticated(false)
@@ -553,7 +1616,32 @@ export default function WaiterPortal({ params }) {
     setMenuItems([])
     setUserId('')
     setPassword('')
+    setWaiterName('')
     setShowProfile(false)
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * SESSION LOADING SCREEN
+   * ---------------------------------------------------------
+   */
+
+  if (sessionChecking) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4">
+        <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-sm w-full text-center">
+          <div className="mx-auto h-10 w-10 rounded-full border-4 border-neutral-800 border-t-orange-500 animate-spin" />
+
+          <h1 className="mt-5 text-lg font-black">
+            Opening Waiter Portal
+          </h1>
+
+          <p className="text-xs text-neutral-500 mt-2">
+            Checking your Digital Dine staff session...
+          </p>
+        </div>
+      </div>
+    )
   }
 
   /*
@@ -587,7 +1675,13 @@ export default function WaiterPortal({ params }) {
             type="text"
             placeholder="5-digit Restaurant Code"
             value={restaurantCode}
-            onChange={(e) => setRestaurantCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+            onChange={(e) =>
+              setRestaurantCode(
+                e.target.value
+                  .replace(/\D/g, '')
+                  .slice(0, 5)
+              )
+            }
             inputMode="numeric"
             maxLength={5}
             required
@@ -599,7 +1693,9 @@ export default function WaiterPortal({ params }) {
             placeholder="User ID"
             value={userId}
             onChange={(e) =>
-              setUserId(e.target.value)
+              setUserId(
+                e.target.value
+              )
             }
             required
             autoComplete="username"
@@ -611,7 +1707,9 @@ export default function WaiterPortal({ params }) {
             placeholder="Password"
             value={password}
             onChange={(e) =>
-              setPassword(e.target.value)
+              setPassword(
+                e.target.value
+              )
             }
             required
             autoComplete="current-password"
@@ -639,21 +1737,29 @@ export default function WaiterPortal({ params }) {
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-6 space-y-6">
 
       {/* PROFILE MODAL */}
+
       {showProfile && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl">
+
             <div className="flex items-center justify-between border-b border-neutral-800 p-5">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">
                   Staff Profile
                 </p>
+
                 <h2 className="mt-1 text-lg font-black text-white">
                   Waiter Profile
                 </h2>
               </div>
+
               <button
                 type="button"
-                onClick={() => setShowProfile(false)}
+                onClick={() =>
+                  setShowProfile(
+                    false
+                  )
+                }
                 className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-bold text-neutral-400 hover:text-white"
               >
                 ✕
@@ -661,12 +1767,15 @@ export default function WaiterPortal({ params }) {
             </div>
 
             <div className="space-y-4 p-5">
+
               <div>
                 <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
                   Waiter Name
                 </p>
+
                 <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm font-bold text-white">
-                  {waiterName || 'Waiter'}
+                  {waiterName ||
+                    'Waiter'}
                 </div>
               </div>
 
@@ -674,38 +1783,47 @@ export default function WaiterPortal({ params }) {
                 <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
                   Restaurant Code
                 </p>
+
                 <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-4 text-center">
                   <span className="font-mono text-2xl font-black tracking-[0.35em] text-orange-300">
-                    {restaurantCode || '-----'}
+                    {restaurantCode ||
+                      '-----'}
                   </span>
                 </div>
+
                 <p className="mt-2 text-[10px] text-neutral-500">
                   This is the 5-digit restaurant code used for this waiter portal.
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
+
                 <div>
                   <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
                     User ID
                   </p>
+
                   <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-mono text-white break-all">
                     {userId || '—'}
                   </div>
                 </div>
+
                 <div>
                   <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
                     Role
                   </p>
+
                   <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-emerald-300">
                     Waiter
                   </div>
                 </div>
+
               </div>
 
               <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 px-4 py-3 text-[10px] leading-5 text-neutral-500">
                 🔒 Your password is never displayed in the profile section.
               </div>
+
             </div>
           </div>
         </div>
@@ -714,6 +1832,7 @@ export default function WaiterPortal({ params }) {
       {/* HEADER */}
 
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 border-b border-neutral-800 pb-4">
+
         <div>
           <h1 className="text-xl font-black">
             Waiter Portal
@@ -725,8 +1844,11 @@ export default function WaiterPortal({ params }) {
               {waiterName}
             </strong>
           </p>
+
           <p className="inline-flex mt-2 rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[10px] font-black font-mono tracking-widest text-orange-300">
-            Restaurant Code: {restaurantCode || '-----'}
+            Restaurant Code:{' '}
+            {restaurantCode ||
+              '-----'}
           </p>
         </div>
 
@@ -734,7 +1856,11 @@ export default function WaiterPortal({ params }) {
 
           <button
             type="button"
-            onClick={() => setShowProfile(true)}
+            onClick={() =>
+              setShowProfile(
+                true
+              )
+            }
             className="bg-neutral-900 border border-neutral-800 hover:border-orange-500/40 text-orange-300 text-xs px-4 py-2.5 rounded-xl font-bold"
           >
             👤 Profile
@@ -742,7 +1868,9 @@ export default function WaiterPortal({ params }) {
 
           {!soundEnabled && (
             <button
-              onClick={enableAlarmSound}
+              onClick={
+                enableAlarmSound
+              }
               className="bg-orange-500 hover:bg-orange-600 border border-orange-400 text-white text-xs px-4 py-2.5 rounded-xl font-black shadow-lg animate-pulse"
             >
               🔊 ENABLE ALARM SOUND
@@ -764,11 +1892,14 @@ export default function WaiterPortal({ params }) {
           )}
 
           <button
-            onClick={handleLogout}
+            onClick={
+              handleLogout
+            }
             className="bg-neutral-900 border border-neutral-800 text-xs px-4 py-2.5 rounded-xl text-red-400 font-bold"
           >
             Log Out ⎋
           </button>
+
         </div>
       </div>
 
@@ -776,6 +1907,7 @@ export default function WaiterPortal({ params }) {
 
       {!soundEnabled && (
         <div className="bg-orange-950/30 border border-orange-500/30 rounded-2xl p-4 text-center">
+
           <p className="text-sm font-black text-orange-300">
             🔊 Enable Order Alarm
           </p>
@@ -785,72 +1917,110 @@ export default function WaiterPortal({ params }) {
             The alarm will then continue until ready orders
             are handed over.
           </p>
+
         </div>
       )}
 
       {/* ACTIVE ALARM */}
 
-      {alarmActive && readyOrders.length > 0 && (
-        <div className="bg-red-950/60 border-2 border-red-500 rounded-2xl p-5 text-center animate-pulse">
-          <p className="text-xl sm:text-2xl font-black text-red-300">
-            🚨 ORDER READY 🚨
-          </p>
+      {alarmActive &&
+        readyOrders.length >
+          0 && (
+          <div className="bg-red-950/60 border-2 border-red-500 rounded-2xl p-5 text-center animate-pulse">
 
-          <p className="text-xs text-red-200 mt-1">
-            Please accept / handover the order
-          </p>
+            <p className="text-xl sm:text-2xl font-black text-red-300">
+              🚨 ORDER READY 🚨
+            </p>
 
-          <p className="text-[10px] text-red-200/60 mt-2">
-            Alarm continues until all ready orders are handed over.
-          </p>
-        </div>
-      )}
+            <p className="text-xs text-red-200 mt-1">
+              Please accept / handover the order
+            </p>
+
+            <p className="text-[10px] text-red-200/60 mt-2">
+              Alarm continues until all ready orders are handed over.
+            </p>
+
+          </div>
+        )}
 
       {/* READY ORDERS */}
 
-      {readyOrders.length > 0 && (
+      {readyOrders.length >
+        0 && (
         <div className="bg-neutral-900 border-2 border-emerald-500/40 p-5 rounded-3xl space-y-3">
+
           <h2 className="text-sm font-black text-emerald-400 uppercase tracking-wider">
             🔔 Kitchen Orders Ready for Handover ({readyOrders.length})
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {readyOrders.map((order) => (
-              <div
-                key={order.id}
-                className="bg-neutral-950 border border-neutral-800 p-4 rounded-2xl flex flex-col justify-between space-y-3"
-              >
-                <div>
-                  <div className="flex justify-between items-center">
-                    <span className="font-black text-white text-base">
-                      {order.table_number}
-                    </span>
 
-                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold uppercase">
-                      Ready
-                    </span>
-                  </div>
-
-                  <div className="mt-2 text-xs space-y-1 text-neutral-300">
-                    {order.items?.map((item, idx) => (
-                      <p key={idx}>
-                        • {item.name} ×
-                        {item.qty || item.quantity}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() =>
-                    handleHandover(order.id)
+            {readyOrders.map(
+              (order) => (
+                <div
+                  key={
+                    order.id
                   }
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl text-xs uppercase tracking-wider transition"
+                  className="bg-neutral-950 border border-neutral-800 p-4 rounded-2xl flex flex-col justify-between space-y-3"
                 >
-                  Approve & Handover 🚀
-                </button>
-              </div>
-            ))}
+
+                  <div>
+
+                    <div className="flex justify-between items-center">
+
+                      <span className="font-black text-white text-base">
+                        {
+                          order.table_number
+                        }
+                      </span>
+
+                      <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold uppercase">
+                        Ready
+                      </span>
+
+                    </div>
+
+                    <div className="mt-2 text-xs space-y-1 text-neutral-300">
+
+                      {order.items?.map(
+                        (
+                          item,
+                          idx
+                        ) => (
+                          <p
+                            key={
+                              idx
+                            }
+                          >
+                            •{' '}
+                            {
+                              item.name
+                            }{' '}
+                            ×
+                            {item.qty ||
+                              item.quantity}
+                          </p>
+                        )
+                      )}
+
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      handleHandover(
+                        order.id
+                      )
+                    }
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl text-xs uppercase tracking-wider transition"
+                  >
+                    Approve & Handover 🚀
+                  </button>
+
+                </div>
+              )
+            )}
+
           </div>
         </div>
       )}
@@ -862,67 +2032,104 @@ export default function WaiterPortal({ params }) {
         <div className="flex-1 space-y-4">
 
           <div className="flex justify-between items-center">
+
             <h2 className="text-sm font-bold text-neutral-400 uppercase">
               Take Direct Order
             </h2>
 
             <select
-              value={tableNumber}
+              value={
+                tableNumber
+              }
               onChange={(e) =>
-                setTableNumber(e.target.value)
+                setTableNumber(
+                  e.target.value
+                )
               }
               className="bg-neutral-900 border border-neutral-800 text-xs font-bold p-2 rounded-xl text-white"
             >
-              {[...Array(15)].map((_, i) => (
-                <option
-                  key={i + 1}
-                  value={`Table ${i + 1}`}
-                >
-                  Table {i + 1}
-                </option>
-              ))}
+              {[...Array(15)].map(
+                (_, i) => (
+                  <option
+                    key={
+                      i + 1
+                    }
+                    value={`Table ${
+                      i + 1
+                    }`}
+                  >
+                    Table{' '}
+                    {i + 1}
+                  </option>
+                )
+              )}
             </select>
+
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {menuItems.map((item) => (
-              <div
-                key={item.id}
-                onClick={() =>
-                  setCart((prev) => {
-                    const ex = prev.find(
-                      (x) => x.id === item.id
+
+            {menuItems.map(
+              (item) => (
+                <div
+                  key={
+                    item.id
+                  }
+                  onClick={() =>
+                    setCart(
+                      (prev) => {
+                        const ex =
+                          prev.find(
+                            (x) =>
+                              x.id ===
+                              item.id
+                          )
+
+                        return ex
+                          ? prev.map(
+                              (
+                                x
+                              ) =>
+                                x.id ===
+                                item.id
+                                  ? {
+                                      ...x,
+                                      qty:
+                                        x.qty +
+                                        1,
+                                    }
+                                  : x
+                            )
+                          : [
+                              ...prev,
+                              {
+                                ...item,
+                                qty: 1,
+                              },
+                            ]
+                      }
                     )
+                  }
+                  className="bg-neutral-900 border border-neutral-800 p-3 rounded-2xl cursor-pointer hover:border-orange-500 space-y-1"
+                >
 
-                    return ex
-                      ? prev.map((x) =>
-                          x.id === item.id
-                            ? {
-                                ...x,
-                                qty: x.qty + 1,
-                              }
-                            : x
-                        )
-                      : [
-                          ...prev,
-                          {
-                            ...item,
-                            qty: 1,
-                          },
-                        ]
-                  })
-                }
-                className="bg-neutral-900 border border-neutral-800 p-3 rounded-2xl cursor-pointer hover:border-orange-500 space-y-1"
-              >
-                <p className="text-xs font-bold text-white">
-                  {item.name}
-                </p>
+                  <p className="text-xs font-bold text-white">
+                    {
+                      item.name
+                    }
+                  </p>
 
-                <p className="text-xs font-mono text-orange-400 font-bold">
-                  ₹{item.price}
-                </p>
-              </div>
-            ))}
+                  <p className="text-xs font-mono text-orange-400 font-bold">
+                    ₹
+                    {
+                      item.price
+                    }
+                  </p>
+
+                </div>
+              )
+            )}
+
           </div>
         </div>
 
@@ -931,35 +2138,58 @@ export default function WaiterPortal({ params }) {
         <div className="w-full md:w-80 bg-neutral-900 border border-neutral-800 p-5 rounded-3xl flex flex-col justify-between space-y-4">
 
           <div>
+
             <h2 className="text-xs font-bold text-white uppercase border-b border-neutral-800 pb-2">
               Active Ticket ({tableNumber})
             </h2>
 
             <div className="space-y-2 mt-3 max-h-60 overflow-y-auto">
-              {cart.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex justify-between text-xs bg-neutral-950 p-2.5 rounded-xl"
-                >
-                  <span>
-                    {item.name} ×{item.qty}
-                  </span>
 
-                  <span className="font-mono text-orange-400 font-bold">
-                    ₹{item.price * item.qty}
-                  </span>
-                </div>
-              ))}
+              {cart.map(
+                (item) => (
+                  <div
+                    key={
+                      item.id
+                    }
+                    className="flex justify-between text-xs bg-neutral-950 p-2.5 rounded-xl"
+                  >
+
+                    <span>
+                      {
+                        item.name
+                      }{' '}
+                      ×
+                      {
+                        item.qty
+                      }
+                    </span>
+
+                    <span className="font-mono text-orange-400 font-bold">
+                      ₹
+                      {item.price *
+                        item.qty}
+                    </span>
+
+                  </div>
+                )
+              )}
+
             </div>
           </div>
 
           <button
-            onClick={handlePlaceOrder}
-            disabled={cart.length === 0}
+            onClick={
+              handlePlaceOrder
+            }
+            disabled={
+              cart.length ===
+              0
+            }
             className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-black py-3 rounded-xl text-xs uppercase"
           >
             Send to Kitchen 🍳
           </button>
+
         </div>
       </div>
     </div>

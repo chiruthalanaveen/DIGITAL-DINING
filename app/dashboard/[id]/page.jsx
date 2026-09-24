@@ -934,6 +934,7 @@ export default function RestaurantDashboard() {
   const [orders, setOrders] = useState([])
   const [restaurantTables, setRestaurantTables] = useState([])
   const [activeTab, setActiveTab] = useState('settlements')
+  const [dashboardMode, setDashboardMode] = useState('restaurant')
   const [isStoreOpen, setIsStoreOpen] = useState(true)
 
   // Add Dish Form States
@@ -3188,6 +3189,38 @@ export default function RestaurantDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-6">
 
+        {/* Owner workspace switch. Existing restaurant features remain unchanged. */}
+        <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
+          <div className={`grid gap-2 ${resortModuleEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <button
+              type="button"
+              onClick={() => setDashboardMode('restaurant')}
+              className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'restaurant' ? 'bg-orange-500 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
+            >
+              🍽️ Restaurant Dashboard
+            </button>
+            {resortModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('resort')}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'resort' ? 'bg-sky-600 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
+              >
+                🏨 Resort Dashboard
+              </button>
+            )}
+          </div>
+        </div>
+
+        {dashboardMode === 'resort' && resortModuleEnabled && (
+          <ResortManagement
+            restaurant={restaurant}
+            planCode={currentPlanCode}
+            advancedFeaturesEnabled={hasAdvancedResortFeatures}
+          />
+        )}
+
+        {dashboardMode === 'restaurant' && (
+          <div className="contents">
         {/* Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
 
@@ -3304,14 +3337,6 @@ export default function RestaurantDashboard() {
               id: 'swiggy-sync',
               label: '🟠 Swiggy Sync'
             },
-            ...(resortModuleEnabled
-              ? [
-                  {
-                    id: 'resort',
-                    label: '🏨 Resort Management'
-                  }
-                ]
-              : []),
             {
               id: 'gateway',
               label: '💳 Payment Gateways'
@@ -5773,6 +5798,8 @@ export default function RestaurantDashboard() {
           )
         )}
 
+          </div>
+        )}
       </main>
 
       {/* Printable Bill */}
@@ -5920,14 +5947,6 @@ export default function RestaurantDashboard() {
             </div>
           </div>
         </div>
-      )}
-
-      {activeTab === 'resort' && resortModuleEnabled && (
-        <ResortManagement
-          restaurant={restaurant}
-          planCode={currentPlanCode}
-          advancedFeaturesEnabled={hasAdvancedResortFeatures}
-        />
       )}
 
       {/* Embedded Real-Time Restaurant Chat Widget */}
