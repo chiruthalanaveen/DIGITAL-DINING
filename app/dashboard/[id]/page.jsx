@@ -1033,6 +1033,10 @@ export default function RestaurantDashboard() {
   const [savingAlarmSettings, setSavingAlarmSettings] = useState(false)
   const [previewAudio, setPreviewAudio] = useState(null)
 
+  // The dashboard refreshes every 2 seconds. Keep polling from overwriting
+  // Kitchen/Waiter alarm choices while the owner is editing them.
+  const alarmSettingsDirtyRef = useRef(false)
+
   const kitchenAlarmOptions = [
     { value: 'kitchen-default', label: 'Kitchen Default', src: '/sounds/kitchen-default.mp3' },
     { value: 'kitchen-1', label: 'Kitchen Sound 1', src: '/sounds/kitchen-1.mp3' },
@@ -1191,6 +1195,10 @@ export default function RestaurantDashboard() {
   }, [restaurantId, router])
 
   useEffect(() => {
+    alarmSettingsDirtyRef.current = false
+  }, [restaurantId])
+
+  useEffect(() => {
     async function fetchDashboard() {
       if (!authChecked || !restaurantId) return
 
@@ -1231,12 +1239,17 @@ export default function RestaurantDashboard() {
       setRestaurant(restData)
 
       setProfilePhone(String(restData.phone || ''))
-      setKitchenAlarmSound(restData.kitchen_alarm_sound || 'kitchen-default')
-      setWaiterAlarmSound(restData.waiter_alarm_sound || 'waiter-default')
-      setKitchenAlarmEnabled(restData.kitchen_alarm_enabled ?? true)
-      setWaiterAlarmEnabled(restData.waiter_alarm_enabled ?? true)
-      setKitchenAlarmVolume(Number(restData.kitchen_alarm_volume ?? 1))
-      setWaiterAlarmVolume(Number(restData.waiter_alarm_volume ?? 1))
+
+      // fetchDashboard runs every 2 seconds. Only sync alarm values from
+      // Supabase while the form has no unsaved owner changes.
+      if (!alarmSettingsDirtyRef.current) {
+        setKitchenAlarmSound(restData.kitchen_alarm_sound || 'kitchen-default')
+        setWaiterAlarmSound(restData.waiter_alarm_sound || 'waiter-default')
+        setKitchenAlarmEnabled(restData.kitchen_alarm_enabled ?? true)
+        setWaiterAlarmEnabled(restData.waiter_alarm_enabled ?? true)
+        setKitchenAlarmVolume(Number(restData.kitchen_alarm_volume ?? 1))
+        setWaiterAlarmVolume(Number(restData.waiter_alarm_volume ?? 1))
+      }
 
       setBillingRestaurantName((prev) =>
         prev || restData.billing_restaurant_name || restData.name || ''
@@ -2598,7 +2611,17 @@ export default function RestaurantDashboard() {
       console.error('Alarm settings save error:', error)
       alert(`Failed to save alarm settings: ${error.message}`)
     } else {
-      if (data) setRestaurant(data)
+      if (data) {
+        setRestaurant(data)
+        setKitchenAlarmSound(data.kitchen_alarm_sound || kitchenAlarmSound)
+        setWaiterAlarmSound(data.waiter_alarm_sound || waiterAlarmSound)
+        setKitchenAlarmEnabled(data.kitchen_alarm_enabled ?? kitchenAlarmEnabled)
+        setWaiterAlarmEnabled(data.waiter_alarm_enabled ?? waiterAlarmEnabled)
+        setKitchenAlarmVolume(Number(data.kitchen_alarm_volume ?? kitchenAlarmVolume))
+        setWaiterAlarmVolume(Number(data.waiter_alarm_volume ?? waiterAlarmVolume))
+      }
+
+      alarmSettingsDirtyRef.current = false
       alert('Alarm settings saved successfully! ✅')
     }
 
@@ -5285,19 +5308,19 @@ export default function RestaurantDashboard() {
                   <span className="block text-sm font-bold text-white">Enable Kitchen Alarm</span>
                   <span className="block text-[11px] text-neutral-500 mt-1">Allow sound notifications in the kitchen.</span>
                 </span>
-                <input type="checkbox" checked={kitchenAlarmEnabled} onChange={(e) => setKitchenAlarmEnabled(e.target.checked)} className="h-5 w-5 accent-orange-500" />
+                <input type="checkbox" checked={kitchenAlarmEnabled} onChange={(e) => { alarmSettingsDirtyRef.current = true; setKitchenAlarmEnabled(e.target.checked) }} className="h-5 w-5 accent-orange-500" />
               </label>
 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-neutral-300">Select Kitchen Sound</label>
-                <select value={kitchenAlarmSound} onChange={(e) => setKitchenAlarmSound(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-orange-500">
+                <select value={kitchenAlarmSound} onChange={(e) => { alarmSettingsDirtyRef.current = true; setKitchenAlarmSound(e.target.value) }} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-orange-500">
                   {kitchenAlarmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-bold text-neutral-300"><span>Kitchen Volume</span><span>{Math.round(kitchenAlarmVolume * 100)}%</span></div>
-                <input type="range" min="0" max="1" step="0.05" value={kitchenAlarmVolume} onChange={(e) => setKitchenAlarmVolume(Number(e.target.value))} className="w-full accent-orange-500" />
+                <input type="range" min="0" max="1" step="0.05" value={kitchenAlarmVolume} onChange={(e) => { alarmSettingsDirtyRef.current = true; setKitchenAlarmVolume(Number(e.target.value)) }} className="w-full accent-orange-500" />
               </div>
 
               <button type="button" onClick={() => handlePreviewAlarm(getAlarmSource(kitchenAlarmOptions, kitchenAlarmSound), kitchenAlarmVolume)} className="w-full bg-neutral-950 border border-neutral-700 hover:border-orange-500 text-white font-bold py-3 rounded-xl text-xs">▶ Preview Kitchen Sound</button>
@@ -5315,19 +5338,19 @@ export default function RestaurantDashboard() {
                   <span className="block text-sm font-bold text-white">Enable Waiter Alarm</span>
                   <span className="block text-[11px] text-neutral-500 mt-1">Allow sound notifications for ready orders.</span>
                 </span>
-                <input type="checkbox" checked={waiterAlarmEnabled} onChange={(e) => setWaiterAlarmEnabled(e.target.checked)} className="h-5 w-5 accent-orange-500" />
+                <input type="checkbox" checked={waiterAlarmEnabled} onChange={(e) => { alarmSettingsDirtyRef.current = true; setWaiterAlarmEnabled(e.target.checked) }} className="h-5 w-5 accent-orange-500" />
               </label>
 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-neutral-300">Select Waiter Sound</label>
-                <select value={waiterAlarmSound} onChange={(e) => setWaiterAlarmSound(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-orange-500">
+                <select value={waiterAlarmSound} onChange={(e) => { alarmSettingsDirtyRef.current = true; setWaiterAlarmSound(e.target.value) }} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-orange-500">
                   {waiterAlarmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-bold text-neutral-300"><span>Waiter Volume</span><span>{Math.round(waiterAlarmVolume * 100)}%</span></div>
-                <input type="range" min="0" max="1" step="0.05" value={waiterAlarmVolume} onChange={(e) => setWaiterAlarmVolume(Number(e.target.value))} className="w-full accent-orange-500" />
+                <input type="range" min="0" max="1" step="0.05" value={waiterAlarmVolume} onChange={(e) => { alarmSettingsDirtyRef.current = true; setWaiterAlarmVolume(Number(e.target.value)) }} className="w-full accent-orange-500" />
               </div>
 
               <button type="button" onClick={() => handlePreviewAlarm(getAlarmSource(waiterAlarmOptions, waiterAlarmSound), waiterAlarmVolume)} className="w-full bg-neutral-950 border border-neutral-700 hover:border-orange-500 text-white font-bold py-3 rounded-xl text-xs">▶ Preview Waiter Sound</button>
