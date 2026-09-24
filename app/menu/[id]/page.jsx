@@ -21,6 +21,7 @@ function RestaurantLogo({ restaurant, className = '', imageClassName = 'w-full h
           alt={`${restaurant?.name || 'Restaurant'} logo`}
           className={`${imageClassName} opacity-100 mix-blend-normal`}
           style={{ opacity: 1 }}
+          decoding="async"
           onError={() => setImageError(true)}
         />
       ) : (
@@ -28,6 +29,140 @@ function RestaurantLogo({ restaurant, className = '', imageClassName = 'w-full h
           🍽️
         </span>
       )}
+    </div>
+  )
+}
+
+
+// Shared browser cache for menu images.
+// The QR menu loads restaurant/menu data before the customer signs in,
+// so we use that time to preload the first visible food photos.
+const qrImageCache = new Set()
+const qrImageErrorCache = new Set()
+
+function getOptimizedMenuImageUrl(value) {
+  const rawUrl = String(value || '').trim()
+  if (!rawUrl) return ''
+
+  try {
+    const url = new URL(rawUrl)
+
+    // Wikimedia full-resolution food photos can be several MB.
+    // Use a 480px thumbnail for QR-menu cards so mobile devices load them much faster.
+    if (
+      url.hostname === 'upload.wikimedia.org' &&
+      url.pathname.startsWith('/wikipedia/commons/') &&
+      !url.pathname.includes('/thumb/')
+    ) {
+      const parts = url.pathname.split('/')
+
+      // /wikipedia/commons/f/f2/Paneer_tikka.jpg
+      if (parts.length >= 6) {
+        const hash1 = parts[3]
+        const hash2 = parts[4]
+        const fileName = parts.slice(5).join('/')
+
+        if (hash1 && hash2 && fileName) {
+          return `${url.origin}/wikipedia/commons/thumb/${hash1}/${hash2}/${fileName}/480px-${fileName}`
+        }
+      }
+    }
+
+    return rawUrl
+  } catch {
+    return rawUrl
+  }
+}
+
+function preloadQrImage(value) {
+  if (typeof window === 'undefined') return Promise.resolve(false)
+
+  const src = getOptimizedMenuImageUrl(value)
+  if (!src) return Promise.resolve(false)
+
+  if (qrImageCache.has(src)) {
+    return Promise.resolve(true)
+  }
+
+  if (qrImageErrorCache.has(src)) {
+    return Promise.resolve(false)
+  }
+
+  return new Promise(resolve => {
+    const image = new window.Image()
+    image.decoding = 'async'
+
+    image.onload = () => {
+      qrImageCache.add(src)
+      qrImageErrorCache.delete(src)
+      resolve(true)
+    }
+
+    image.onerror = () => {
+      qrImageErrorCache.add(src)
+      resolve(false)
+    }
+
+    image.src = src
+  })
+}
+
+function MenuFoodImage({
+  src,
+  alt,
+  className = 'h-full w-full object-cover',
+  fallback = '🍽️',
+  priority = false
+}) {
+  const optimizedSrc = getOptimizedMenuImageUrl(src)
+  const [loaded, setLoaded] = useState(
+    () => Boolean(optimizedSrc && qrImageCache.has(optimizedSrc))
+  )
+  const [failed, setFailed] = useState(
+    () => Boolean(!optimizedSrc || qrImageErrorCache.has(optimizedSrc))
+  )
+
+  useEffect(() => {
+    setLoaded(Boolean(optimizedSrc && qrImageCache.has(optimizedSrc)))
+    setFailed(Boolean(!optimizedSrc || qrImageErrorCache.has(optimizedSrc)))
+  }, [optimizedSrc])
+
+  if (failed || !optimizedSrc) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-3xl">
+        {fallback}
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-neutral-100">
+      {!loaded && (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 animate-pulse bg-gradient-to-br from-neutral-100 via-neutral-200 to-neutral-100"
+        />
+      )}
+
+      <img
+        src={optimizedSrc}
+        alt={alt || 'Menu item'}
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : 'auto'}
+        decoding="async"
+        className={`${className} transition-opacity duration-200 ${
+          loaded ? 'opacity-100' : 'opacity-0'
+        }`}
+        onLoad={() => {
+          qrImageCache.add(optimizedSrc)
+          qrImageErrorCache.delete(optimizedSrc)
+          setLoaded(true)
+        }}
+        onError={() => {
+          qrImageErrorCache.add(optimizedSrc)
+          setFailed(true)
+        }}
+      />
     </div>
   )
 }
@@ -629,6 +764,93 @@ export default function CustomerMenuPage() {
       .sort((a, b) => Number(b.order_count || 0) - Number(a.order_count || 0))
       .slice(0, 8)
   }, [menuItems])
+
+
+  /*
+   * PRELOAD MENU IMAGES BEFORE GUEST LOGIN COMPLETES
+   *
+   * fetchMenu() already loads the restaurant/menu before the guest form is shown.
+   * Preload the banner, offers and first/popular menu images immediately, then
+   * continue the remaining food photos during browser idle time. This prevents
+   * the menu from appearing first and only then beginning to download every image.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    let cancelled = false
+    let idleHandle = null
+
+    const uniqueUrls = values =>
+      [...new Set(
+        values
+          .map(value => String(value || '').trim())
+          .filter(Boolean)
+      )]
+
+    const priorityUrls = uniqueUrls([
+      restaurant?.banner_url,
+      restaurant?.logo_url,
+      ...dailyOffers.slice(0, 4).map(offer => offer?.image_url),
+      ...bestSellers.slice(0, 8).map(item => item?.image_url),
+      ...menuItems.slice(0, 8).map(item => item?.image_url)
+    ])
+
+    const allMenuUrls = uniqueUrls([
+      ...dailyOffers.map(offer => offer?.image_url),
+      ...menuItems.map(item => item?.image_url)
+    ])
+
+    const prioritySet = new Set(priorityUrls)
+    const remainingUrls = allMenuUrls.filter(url => !prioritySet.has(url))
+
+    // Load what the customer is most likely to see first.
+    priorityUrls.forEach(url => {
+      preloadQrImage(url)
+    })
+
+    const preloadRemainingInBatches = async () => {
+      const batchSize = 6
+
+      for (let index = 0; index < remainingUrls.length; index += batchSize) {
+        if (cancelled) return
+
+        const batch = remainingUrls.slice(index, index + batchSize)
+        await Promise.allSettled(batch.map(url => preloadQrImage(url)))
+
+        // Yield between batches so image preloading never blocks menu interaction.
+        await new Promise(resolve => window.setTimeout(resolve, 40))
+      }
+    }
+
+    if ('requestIdleCallback' in window) {
+      idleHandle = window.requestIdleCallback(
+        () => {
+          preloadRemainingInBatches()
+        },
+        { timeout: 1200 }
+      )
+    } else {
+      idleHandle = window.setTimeout(() => {
+        preloadRemainingInBatches()
+      }, 250)
+    }
+
+    return () => {
+      cancelled = true
+
+      if ('cancelIdleCallback' in window && typeof idleHandle === 'number') {
+        window.cancelIdleCallback(idleHandle)
+      } else if (idleHandle) {
+        window.clearTimeout(idleHandle)
+      }
+    }
+  }, [
+    restaurant?.banner_url,
+    restaurant?.logo_url,
+    dailyOffers,
+    bestSellers,
+    menuItems
+  ])
 
   const getAutomaticHighlyReorderedIds = items => {
     const ranked = items
@@ -1438,6 +1660,10 @@ export default function CustomerMenuPage() {
           box-shadow: 0 12px 36px rgba(15,23,42,.055);
         }
 
+        .dd-image-stable {
+          contain: layout paint;
+        }
+
         .dd-sheet {
           animation: dd-sheet-in .22s ease-out;
         }
@@ -1611,17 +1837,13 @@ export default function CustomerMenuPage() {
                       </div>
 
                       <div className="w-[38%] shrink-0 bg-neutral-900">
-                        {offer.image_url ? (
-                          <img
-                            src={offer.image_url}
-                            alt={offer.title || 'Offer'}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full min-h-[150px] items-center justify-center text-5xl">
-                            🎁
-                          </div>
-                        )}
+                        <MenuFoodImage
+                          src={offer.image_url}
+                          alt={offer.title || 'Offer'}
+                          className="h-full w-full object-cover"
+                          fallback="🎁"
+                          priority
+                        />
                       </div>
                     </div>
                   </button>
@@ -1745,17 +1967,12 @@ export default function CustomerMenuPage() {
                       className="dd-card min-w-[132px] min-[390px]:min-w-[142px] overflow-hidden rounded-[22px] min-[390px]:rounded-[24px] border border-black/5 bg-white text-left active:scale-[.99]"
                     >
                       <div className="relative h-[112px] bg-neutral-100">
-                        {item.image_url ? (
-                          <img
-                            src={item.image_url}
-                            alt={item.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-4xl">
-                            🍽️
-                          </div>
-                        )}
+                        <MenuFoodImage
+                          src={item.image_url}
+                          alt={item.name}
+                          className="h-full w-full object-cover"
+                          priority={index < 6}
+                        />
                         <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-neutral-950 text-[10px] font-black text-white">
                           {index + 1}
                         </span>
@@ -1810,7 +2027,7 @@ export default function CustomerMenuPage() {
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                {filteredItems.map(item => {
+                {filteredItems.map((item, itemIndex) => {
                   const qty = cart[item.id]?.quantity || 0
                   const foodType = getFoodType(item)
                   const highlyReordered = shouldShowHighlyReordered(item)
@@ -1867,17 +2084,12 @@ export default function CustomerMenuPage() {
 
                         <div className="relative w-[116px] min-[390px]:w-[132px] shrink-0 p-3 pl-0">
                           <div className="h-[108px] min-[390px]:h-[118px] overflow-hidden rounded-[18px] min-[390px]:rounded-[20px] bg-neutral-100">
-                            {item.image_url ? (
-                              <img
-                                src={item.image_url}
-                                alt={item.name}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center text-4xl">
-                                🍽️
-                              </div>
-                            )}
+                            <MenuFoodImage
+                              src={item.image_url}
+                              alt={item.name}
+                              className="h-full w-full object-cover"
+                              priority={itemIndex < 6}
+                            />
                           </div>
 
                           <div className="absolute inset-x-2 bottom-2 flex justify-center">
@@ -1992,17 +2204,12 @@ export default function CustomerMenuPage() {
                             className="flex items-center gap-3 rounded-2xl border border-neutral-100 bg-[#fafafa] p-3"
                           >
                             <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-neutral-100">
-                              {item.image_url ? (
-                                <img
-                                  src={item.image_url}
-                                  alt={item.name}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full items-center justify-center text-2xl">
-                                  🍽️
-                                </div>
-                              )}
+                              <MenuFoodImage
+                                src={item.image_url}
+                                alt={item.name}
+                                className="h-full w-full object-cover"
+                                priority
+                              />
                             </div>
 
                             <div className="min-w-0 flex-1">
