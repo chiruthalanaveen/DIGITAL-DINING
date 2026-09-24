@@ -10,6 +10,11 @@ const SOUND_MAP = {
   'kitchen-1': '/sounds/kitchen-1.mp3',
   'kitchen-2': '/sounds/kitchen-2.mp3',
   'kitchen-3': '/sounds/kitchen-3.mp3',
+  'kitchen-4': '/sounds/kitchen-4.mp3',
+  'kitchen-5': '/sounds/kitchen-5.mp3',
+  'kitchen-6': '/sounds/kitchen-6.mp3',
+  'kitchen-7': '/sounds/kitchen-7.mp3',
+  'kitchen-8': '/sounds/kitchen-8.mp3',
 }
 
 const money = (value) =>
