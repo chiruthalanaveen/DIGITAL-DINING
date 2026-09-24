@@ -35,71 +35,44 @@ function RestaurantLogo({ restaurant, className = '', imageClassName = 'w-full h
 
 
 // Shared browser cache for menu images.
-// The QR menu loads restaurant/menu data before the customer signs in,
-// so we use that time to preload the first visible food photos.
+// Images begin preloading before guest verification finishes.
+// Failed preloads are NOT permanently cached, so the visible <img> can retry.
 const qrImageCache = new Set()
-const qrImageErrorCache = new Set()
 
-function getOptimizedMenuImageUrl(value) {
+function getMenuImageUrl(value) {
   const rawUrl = String(value || '').trim()
+
   if (!rawUrl) return ''
 
-  try {
-    const url = new URL(rawUrl)
-
-    // Wikimedia full-resolution food photos can be several MB.
-    // Use a 480px thumbnail for QR-menu cards so mobile devices load them much faster.
-    if (
-      url.hostname === 'upload.wikimedia.org' &&
-      url.pathname.startsWith('/wikipedia/commons/') &&
-      !url.pathname.includes('/thumb/')
-    ) {
-      const parts = url.pathname.split('/')
-
-      // /wikipedia/commons/f/f2/Paneer_tikka.jpg
-      if (parts.length >= 6) {
-        const hash1 = parts[3]
-        const hash2 = parts[4]
-        const fileName = parts.slice(5).join('/')
-
-        if (hash1 && hash2 && fileName) {
-          return `${url.origin}/wikipedia/commons/thumb/${hash1}/${hash2}/${fileName}/480px-${fileName}`
-        }
-      }
-    }
-
-    return rawUrl
-  } catch {
-    return rawUrl
-  }
+  // Keep the exact image URL stored in the menu database.
+  // Do not rewrite Wikimedia/remote URLs here because a rewritten URL
+  // can fail even when the original food image URL is valid.
+  return rawUrl
 }
 
 function preloadQrImage(value) {
   if (typeof window === 'undefined') return Promise.resolve(false)
 
-  const src = getOptimizedMenuImageUrl(value)
+  const src = getMenuImageUrl(value)
   if (!src) return Promise.resolve(false)
 
   if (qrImageCache.has(src)) {
     return Promise.resolve(true)
   }
 
-  if (qrImageErrorCache.has(src)) {
-    return Promise.resolve(false)
-  }
-
   return new Promise(resolve => {
     const image = new window.Image()
     image.decoding = 'async'
+    image.referrerPolicy = 'no-referrer'
 
     image.onload = () => {
       qrImageCache.add(src)
-      qrImageErrorCache.delete(src)
       resolve(true)
     }
 
+    // Do not store failed preloads.
+    // The visible image gets another chance to load when the menu opens.
     image.onerror = () => {
-      qrImageErrorCache.add(src)
       resolve(false)
     }
 
@@ -114,20 +87,19 @@ function MenuFoodImage({
   fallback = '🍽️',
   priority = false
 }) {
-  const optimizedSrc = getOptimizedMenuImageUrl(src)
+  const imageSrc = getMenuImageUrl(src)
+
   const [loaded, setLoaded] = useState(
-    () => Boolean(optimizedSrc && qrImageCache.has(optimizedSrc))
+    () => Boolean(imageSrc && qrImageCache.has(imageSrc))
   )
-  const [failed, setFailed] = useState(
-    () => Boolean(!optimizedSrc || qrImageErrorCache.has(optimizedSrc))
-  )
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    setLoaded(Boolean(optimizedSrc && qrImageCache.has(optimizedSrc)))
-    setFailed(Boolean(!optimizedSrc || qrImageErrorCache.has(optimizedSrc)))
-  }, [optimizedSrc])
+    setLoaded(Boolean(imageSrc && qrImageCache.has(imageSrc)))
+    setFailed(false)
+  }, [imageSrc])
 
-  if (failed || !optimizedSrc) {
+  if (!imageSrc || failed) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-3xl">
         {fallback}
@@ -145,21 +117,22 @@ function MenuFoodImage({
       )}
 
       <img
-        src={optimizedSrc}
+        src={imageSrc}
         alt={alt || 'Menu item'}
         loading={priority ? 'eager' : 'lazy'}
         fetchPriority={priority ? 'high' : 'auto'}
         decoding="async"
+        referrerPolicy="no-referrer"
         className={`${className} transition-opacity duration-200 ${
           loaded ? 'opacity-100' : 'opacity-0'
         }`}
         onLoad={() => {
-          qrImageCache.add(optimizedSrc)
-          qrImageErrorCache.delete(optimizedSrc)
+          qrImageCache.add(imageSrc)
           setLoaded(true)
+          setFailed(false)
         }}
         onError={() => {
-          qrImageErrorCache.add(optimizedSrc)
+          console.warn('[QR MENU] Food image failed to load:', imageSrc)
           setFailed(true)
         }}
       />
