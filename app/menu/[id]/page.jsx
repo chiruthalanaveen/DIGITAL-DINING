@@ -1007,1561 +1007,1439 @@ export default function CustomerMenuPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0507] flex flex-col items-center justify-center text-neutral-100 gap-4">
-        <div className="relative w-14 h-14">
-          <div className="w-14 h-14 border-4 border-red-500/20 border-t-red-500 rounded-full animate-spin" />
-          <div className="absolute inset-0 flex items-center justify-center text-sm">✨</div>
+      <main className="flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-[#f7f6f2] px-6 text-neutral-900">
+        <div className="text-center">
+          <div className="relative mx-auto h-16 w-16">
+            <div className="absolute inset-0 rounded-full border-[5px] border-orange-100" />
+            <div className="absolute inset-0 animate-spin rounded-full border-[5px] border-transparent border-t-orange-500" />
+            <div className="absolute inset-0 flex items-center justify-center text-xl">
+              🍽️
+            </div>
+          </div>
+          <p className="mt-5 text-xs font-black uppercase tracking-[0.22em] text-neutral-500">
+            Loading menu
+          </p>
         </div>
-        <p className="text-[11px] font-black uppercase tracking-[0.25em] text-neutral-400">
-          Syncing Experience...
-        </p>
-      </div>
+      </main>
     )
   }
 
   if (!restaurant) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-6 text-center">
-        <div>
-          <div className="text-5xl mb-4">🍽️</div>
-          <h1 className="text-2xl font-black">Restaurant Not Found</h1>
-          <p className="text-sm text-neutral-500 mt-2">
-            Please scan a valid table QR code.
+      <main className="flex min-h-[100dvh] w-full items-center justify-center bg-[#f7f6f2] p-6 text-center text-neutral-900">
+        <div className="w-full max-w-sm rounded-[32px] border border-black/5 bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,.08)]">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-orange-50 text-4xl">
+            🍽️
+          </div>
+          <h1 className="mt-5 text-2xl font-black">Restaurant not found</h1>
+          <p className="mt-2 text-sm leading-6 text-neutral-500">
+            Please scan a valid table QR code and try again.
           </p>
         </div>
-      </div>
+      </main>
     )
   }
 
   /*
-   * 1. CINEMATIC 3D WELCOME VISUAL (Triggered directly on QR Scan)
+   * NEW QR ENTRY
+   * The old cinematic welcome/Explore screen has been removed.
+   * Customers now reach guest verification immediately after scanning.
    */
-  if (showPortal) {
+  if (!isVerified) {
     return (
       <>
         <style jsx global>{`
-          @keyframes orb-float-left {
-            0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-            50% { transform: translate3d(35px, -30px, 0) scale(1.18); }
+          html, body {
+            margin: 0;
+            max-width: 100%;
+            overflow-x: hidden;
+            background: #f7f6f2;
           }
-          @keyframes orb-float-right {
-            0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-            50% { transform: translate3d(-35px, 25px, 0) scale(1.22); }
+
+          * {
+            -webkit-tap-highlight-color: transparent;
           }
-          @keyframes holo-orbit {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+
+          .dd-input {
+            color: #171717 !important;
+            -webkit-text-fill-color: #171717 !important;
+            opacity: 1 !important;
           }
-          @keyframes holo-orbit-rev {
-            0% { transform: rotate(360deg); }
-            100% { transform: rotate(0deg); }
-          }
-          @keyframes neon-glow {
-            0%, 100% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.35); }
-            50% { box-shadow: 0 0 45px rgba(249, 115, 22, 0.55); }
-          }
-          .dd-portal-orb-1 {
-            animation: orb-float-left 8s ease-in-out infinite;
-          }
-          .dd-portal-orb-2 {
-            animation: orb-float-right 10s ease-in-out infinite;
-          }
-          .dd-portal-ring-1 {
-            animation: holo-orbit 14s linear infinite;
-          }
-          .dd-portal-ring-2 {
-            animation: holo-orbit-rev 10s linear infinite;
-          }
-          .dd-hologram-btn {
-            animation: neon-glow 3s ease-in-out infinite;
-          }
-          .dd-grid-matrix {
-            background-size: 36px 36px;
-            background-image: 
-              linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-              linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-          }
-          @media (prefers-reduced-motion: reduce) {
-            .dd-portal-orb-1, .dd-portal-orb-2, .dd-portal-ring-1, .dd-portal-ring-2, .dd-hologram-btn {
-              animation: none !important;
-            }
+
+          .dd-input::placeholder {
+            color: #a3a3a3 !important;
+            -webkit-text-fill-color: #a3a3a3 !important;
           }
         `}</style>
 
-        <div
-          onMouseMove={handlePortalMouseMove}
-          onTouchMove={handlePortalTouchMove}
-          onMouseLeave={resetPortalTilt}
-          className={`fixed inset-0 z-[200] flex items-center justify-center p-5 overflow-hidden transition-all duration-500 ${
-            portalExiting ? 'opacity-0 scale-95 blur-md' : 'opacity-100 scale-100'
-          }`}
-          style={{
-            background: 'radial-gradient(circle at 50% 40%, #1a080e 0%, #0c0407 60%, #030102 100%)',
-            perspective: '1300px'
-          }}
-        >
-          {/* Cybernetic grid overlay */}
-          <div className="dd-grid-matrix absolute inset-0 pointer-events-none" />
-
-          {/* Volumetric ambient light orbs */}
-          <div
-            aria-hidden="true"
-            className="dd-portal-orb-1 absolute -top-12 -left-12 w-80 h-80 rounded-full blur-[100px] pointer-events-none"
-            style={{ background: 'radial-gradient(circle, rgba(239,68,68,0.5) 0%, rgba(249,115,22,0.2) 65%, transparent 100%)' }}
-          />
-          <div
-            aria-hidden="true"
-            className="dd-portal-orb-2 absolute -bottom-16 -right-16 w-96 h-96 rounded-full blur-[115px] pointer-events-none"
-            style={{ background: 'radial-gradient(circle, rgba(251,146,60,0.45) 0%, rgba(239,68,68,0.25) 70%, transparent 100%)' }}
-          />
-
-          {/* Holographic 3D Rings */}
-          <div
-            aria-hidden="true"
-            className="dd-portal-ring-1 absolute w-[360px] h-[360px] sm:w-[480px] sm:h-[480px] rounded-full border border-dashed border-red-500/25 pointer-events-none"
-            style={{ boxShadow: '0 0 50px rgba(239, 68, 68, 0.15)' }}
-          />
-          <div
-            aria-hidden="true"
-            className="dd-portal-ring-2 absolute w-[290px] h-[290px] sm:w-[390px] sm:h-[390px] rounded-full border border-dotted border-amber-400/30 pointer-events-none"
-          />
-
-          {/* 3D Dynamic Floating Glass Card */}
-          <div
-            ref={portalCardRef}
-            className="relative w-full max-w-sm sm:max-w-md rounded-[34px] p-8 text-center overflow-hidden border border-white/20 backdrop-blur-2xl shadow-2xl transition-transform duration-150 ease-out"
-            style={{
-              background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 100%)',
-              boxShadow: '0 30px 70px -15px rgba(0, 0, 0, 0.75), 0 0 40px rgba(239, 68, 68, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.4)',
-              transform: `rotateX(${portalTilt.x}deg) rotateY(${portalTilt.y}deg)`,
-              transformStyle: 'preserve-3d'
-            }}
-          >
-            {/* Top Light Ray */}
-            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-32 bg-red-500/20 blur-2xl rounded-full pointer-events-none" />
-
-            {/* Floating Table Chip */}
-            <div
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 backdrop-blur-md mb-6"
-              style={{ transform: 'translateZ(30px)' }}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-neutral-200">
-                Connected • Table {tableNumber}
-              </span>
-            </div>
-
-            {/* 3D Elevated Logo Island */}
-            <div
-              className="relative mx-auto w-24 h-24 mb-6 flex items-center justify-center"
-              style={{ transform: 'translateZ(55px)' }}
-            >
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-red-500 to-amber-400 blur-lg opacity-80 animate-pulse" />
-              <div className="relative w-full h-full rounded-3xl bg-black/40 border border-white/40 backdrop-blur-md p-3 flex items-center justify-center shadow-inner">
-                <RestaurantLogo
-                  restaurant={restaurant}
-                  className="w-full h-full"
-                  imageClassName="w-full h-full object-contain"
+        <main className="dd-mobile-shell bg-[#f7f6f2] text-neutral-900">
+          <div className="dd-mobile-frame min-h-[100dvh] pb-[max(2rem,env(safe-area-inset-bottom))]">
+            <div className="relative h-[205px] min-[390px]:h-[230px] overflow-hidden bg-neutral-900">
+              {restaurant.banner_url ? (
+                <img
+                  src={restaurant.banner_url}
+                  alt={`${restaurant.name || 'Restaurant'} banner`}
+                  className="absolute inset-0 h-full w-full object-cover"
                 />
+              ) : (
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,#fb923c_0%,#f97316_28%,#c2410c_68%,#431407_100%)]" />
+              )}
+
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-black/10" />
+
+              <div className="absolute inset-x-0 top-0 flex items-center justify-between px-5 pt-[max(1rem,env(safe-area-inset-top))]">
+                <span className="rounded-full border border-white/20 bg-black/20 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-white backdrop-blur-md">
+                  Digital Menu
+                </span>
+
+                <span className="rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[10px] font-black text-white backdrop-blur-md">
+                  Table {tableNumber}
+                </span>
+              </div>
+
+              <div className="absolute inset-x-5 bottom-5">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-200">
+                  Scan • Order • Enjoy
+                </p>
+                <h1 className="mt-1 line-clamp-2 text-3xl font-black leading-tight text-white">
+                  {restaurant.name}
+                </h1>
               </div>
             </div>
 
-            {/* Welcoming Text */}
-            <div style={{ transform: 'translateZ(40px)' }}>
-              <p className="text-[11px] font-black uppercase tracking-[0.25em] text-red-400 mb-1.5">
-                Welcome To
-              </p>
-              <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight">
-                {restaurant.name}
-              </h1>
-              <p className="text-xs text-neutral-300 font-medium mt-3 px-3 leading-relaxed">
-                Experience next-generation contactless digital dining right from your seat.
-              </p>
+            <div className="relative -mt-7 px-4">
+              <div className="rounded-[32px] border border-black/5 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,.10)]">
+                <div className="flex items-center gap-3 border-b border-neutral-100 pb-4">
+                  <RestaurantLogo
+                    restaurant={restaurant}
+                    className="h-14 w-14 shrink-0 rounded-2xl border border-neutral-100 bg-white shadow-sm"
+                    imageClassName="h-full w-full object-contain p-1.5"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-500">
+                      Start your order
+                    </p>
+                    <h2 className="mt-1 truncate text-lg font-black">
+                      Tell us who&apos;s ordering
+                    </h2>
+                    <p className="mt-0.5 text-[10px] text-neutral-500">
+                      Used only to show your live order status.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleVerifyGuest} className="mt-5 space-y-4">
+                  <div>
+                    <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                      Your name
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base">
+                        👤
+                      </span>
+                      <input
+                        type="text"
+                        value={customerName}
+                        onChange={e => setCustomerName(e.currentTarget.value)}
+                        placeholder="Enter your name"
+                        autoComplete="name"
+                        autoCorrect="off"
+                        autoCapitalize="words"
+                        spellCheck={false}
+                        required
+                        className="dd-input h-14 w-full rounded-2xl border border-neutral-200 bg-[#fafafa] pl-11 pr-4 text-base font-semibold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-50"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                      Mobile number
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base">
+                        📱
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={10}
+                        value={customerMobile}
+                        onChange={e => {
+                          const nextValue = e.currentTarget.value
+                            .replace(/\D/g, '')
+                            .slice(0, 10)
+                          setCustomerMobile(nextValue)
+                        }}
+                        onInput={e => {
+                          const nextValue = e.currentTarget.value
+                            .replace(/\D/g, '')
+                            .slice(0, 10)
+                          if (nextValue !== e.currentTarget.value) {
+                            e.currentTarget.value = nextValue
+                          }
+                        }}
+                        placeholder="10 digit mobile number"
+                        autoComplete="tel"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        enterKeyHint="done"
+                        required
+                        className="dd-input h-14 w-full rounded-2xl border border-neutral-200 bg-[#fafafa] pl-11 pr-4 text-base font-semibold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-50"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-neutral-950 text-sm font-black text-white shadow-lg shadow-neutral-950/10 transition active:scale-[0.99]"
+                  >
+                    Browse Menu
+                    <span>→</span>
+                  </button>
+                </form>
+
+                <div className="mt-4 flex items-center justify-center gap-4 text-[9px] font-bold text-neutral-400">
+                  <span>✓ Live order status</span>
+                  <span>✓ Secure checkout</span>
+                </div>
+              </div>
             </div>
 
-            {/* Feature Highlights Badges */}
-            <div
-              className="grid grid-cols-3 gap-2 mt-6 pt-5 border-t border-white/10"
-              style={{ transform: 'translateZ(30px)' }}
-            >
-              <div className="bg-white/5 rounded-2xl p-2.5 border border-white/10">
-                <div className="text-base">⚡</div>
-                <div className="text-[9px] font-black text-neutral-200 mt-1 uppercase">Instant</div>
-              </div>
-              <div className="bg-white/5 rounded-2xl p-2.5 border border-white/10">
-                <div className="text-base">✨</div>
-                <div className="text-[9px] font-black text-neutral-200 mt-1 uppercase">Live Menu</div>
-              </div>
-              <div className="bg-white/5 rounded-2xl p-2.5 border border-white/10">
-                <div className="text-base">💳</div>
-                <div className="text-[9px] font-black text-neutral-200 mt-1 uppercase">Easy Pay</div>
-              </div>
-            </div>
-
-            {/* Interactive Enter Button */}
-            <button
-              onClick={handleEnterExperience}
-              className="dd-hologram-btn mt-7 w-full py-4 rounded-2xl bg-gradient-to-r from-red-500 via-rose-500 to-orange-500 text-white font-black text-xs uppercase tracking-widest transition-transform active:scale-[0.98] border border-white/30 flex items-center justify-center gap-2 cursor-pointer shadow-xl"
-              style={{ transform: 'translateZ(45px)' }}
-            >
-              <span>Explore Digital Dining</span>
-              <span className="text-sm">→</span>
-            </button>
-
-            <p className="text-[9px] text-neutral-400 font-bold uppercase tracking-widest mt-4">
-              Powered by Digital Dining
+            <p className="mt-6 text-center text-[9px] font-bold uppercase tracking-[0.16em] text-neutral-400">
+              Powered by <span className="text-orange-500">Digital Dining</span>
             </p>
           </div>
-        </div>
+        </main>
       </>
     )
   }
 
-  /*
-   * 2. GUEST LOGIN (After entering the 3D portal)
-   */
-  if (!isVerified) {
-    return (
-      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4">
-        <div className="bg-white w-full max-w-md rounded-[28px] shadow-xl p-7">
-          <div className="text-center mb-7">
-            <RestaurantLogo
-              restaurant={restaurant}
-              className="w-20 h-20 rounded-3xl bg-neutral-100 mx-auto mb-4 border border-neutral-100"
-              imageClassName="w-full h-full object-contain p-2"
-            />
-            <div className="text-[10px] text-red-500 font-black uppercase tracking-widest mb-2">
-              Digital Dining
-            </div>
-            <h1
-              className="dd-restaurant-name text-2xl font-black"
-              style={{
-                color: '#000000',
-                WebkitTextFillColor: '#000000',
-                opacity: 1
-              }}
-            >
-              {restaurant.name}
-            </h1>
-            <p className="text-xs text-neutral-500 mt-2">
-              Table {tableNumber}
-            </p>
-          </div>
-
-          <form onSubmit={handleVerifyGuest} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-neutral-600 mb-1.5">
-                Your Name
-              </label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={e => setCustomerName(e.currentTarget.value)}
-                placeholder="Enter your name"
-                autoComplete="name"
-                autoCorrect="off"
-                autoCapitalize="words"
-                spellCheck={false}
-                required
-                className="w-full px-4 py-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 focus:border-red-400 focus:outline-none text-sm font-medium !text-black placeholder:!text-neutral-400 caret-black"
-                style={{ color: '#000000', opacity: 1 }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-neutral-600 mb-1.5">
-                Mobile Number
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={10}
-                value={customerMobile}
-                onChange={e => {
-                  const nextValue = e.currentTarget.value
-                    .replace(/\D/g, '')
-                    .slice(0, 10)
-                  setCustomerMobile(nextValue)
-                }}
-                onInput={e => {
-                  const nextValue = e.currentTarget.value
-                    .replace(/\D/g, '')
-                    .slice(0, 10)
-                  if (nextValue !== e.currentTarget.value) {
-                    e.currentTarget.value = nextValue
-                  }
-                }}
-                placeholder="10 digit mobile number"
-                autoComplete="tel"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                enterKeyHint="done"
-                required
-                className="w-full px-4 py-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 focus:border-red-400 focus:outline-none text-sm font-medium !text-black placeholder:!text-neutral-400 caret-black"
-                style={{ color: '#000000', opacity: 1 }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-red-500/20"
-            >
-              View Menu & Order
-            </button>
-          </form>
-
-          <p className="text-center text-[10px] text-neutral-400 mt-6">
-            Powered by{' '}
-            <span className="font-bold text-red-500">Digital Dining</span>
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  /*
-   * 3. ORDER SUCCESS
-   */
   if (orderPlaced) {
     const isCounterOrder = paymentDetails?.method === 'Pay at Counter'
 
     return (
-      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-[28px] w-full max-w-md p-6 shadow-xl">
-          <div className="text-center">
-            <div className="w-20 h-20 bg-green-50 border border-green-200 rounded-full flex items-center justify-center mx-auto">
-              <span className="text-4xl text-green-500">✓</span>
-            </div>
-            <h1 className="text-2xl font-black mt-5">Order Placed!</h1>
-            <p className="text-sm text-neutral-500 mt-2">
-              Thank you,{' '}
-              <strong className="text-neutral-800">{customerName}</strong>
-            </p>
-          </div>
-
-          <div className="mt-6 bg-neutral-50 rounded-2xl p-4">
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-neutral-500">Order Number</span>
-              <span className="text-2xl font-black text-red-500">
-                #{placedOrderNumber}
-              </span>
-            </div>
-            <div className="flex justify-between mt-3 text-xs">
-              <span className="text-neutral-500">Table</span>
-              <span className="font-bold">{tableNumber}</span>
-            </div>
-            <div className="flex justify-between mt-2 text-xs">
-              <span className="text-neutral-500">Order Type</span>
-              <span className="font-bold">
-                {confirmedBillSummary.diningMode}
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-neutral-200 p-4">
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-sm">Payment</span>
-              {isCounterOrder ? (
-                <span className="text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-full">
-                  PAY AT COUNTER
-                </span>
-              ) : (
-                <span className="text-[10px] font-black bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-full">
-                  PAID ONLINE
-                </span>
-              )}
+      <main className="dd-mobile-shell bg-[#f7f6f2] px-3 min-[390px]:px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-neutral-900">
+        <div className="dd-mobile-frame">
+          <div className="rounded-[32px] border border-black/5 bg-white p-5 shadow-[0_22px_60px_rgba(15,23,42,.08)]">
+            <div className="text-center">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-emerald-50 text-4xl text-emerald-600">
+                ✓
+              </div>
+              <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+                Order confirmed
+              </p>
+              <h1 className="mt-1 text-3xl font-black">Thank you, {customerName}</h1>
+              <p className="mt-2 text-sm text-neutral-500">
+                Your order has been sent to the restaurant.
+              </p>
             </div>
 
-            {isCounterOrder && (
-              <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-xs font-bold text-amber-800">
-                  💵 Please pay {money(confirmedBillSummary.totalAmount)} at the counter.
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-neutral-950 p-4 text-white">
+                <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                  Order number
+                </p>
+                <p className="mt-1 text-3xl font-black">#{placedOrderNumber}</p>
+              </div>
+              <div className="rounded-2xl bg-orange-50 p-4">
+                <p className="text-[9px] font-black uppercase tracking-wider text-orange-500">
+                  Table
+                </p>
+                <p className="mt-1 text-2xl font-black text-neutral-900">
+                  {tableNumber}
+                </p>
+                <p className="mt-1 text-[9px] text-neutral-500">
+                  {confirmedBillSummary.diningMode}
                 </p>
               </div>
-            )}
+            </div>
 
-            <div className="border-t border-neutral-100 mt-4 pt-4 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-neutral-500">Subtotal</span>
-                <span className="font-semibold">
-                  {money(confirmedBillSummary.subtotal)}
+            <div className="mt-4 rounded-[24px] border border-neutral-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                    Payment
+                  </p>
+                  <p className="mt-1 text-sm font-black">
+                    {isCounterOrder ? 'Pay at Counter' : 'Paid Online'}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1.5 text-[9px] font-black ${
+                    isCounterOrder
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-emerald-100 text-emerald-700'
+                  }`}
+                >
+                  {isCounterOrder ? 'PAYMENT DUE' : 'PAID'}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-500">SGST</span>
-                <span>{money(confirmedBillSummary.gstAmount / 2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-500">CGST</span>
-                <span>{money(confirmedBillSummary.gstAmount / 2)}</span>
-              </div>
-              {confirmedBillSummary.packingFee > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-neutral-500">Packing</span>
-                  <span>{money(confirmedBillSummary.packingFee)}</span>
+
+              {isCounterOrder && (
+                <div className="mt-4 rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-800">
+                  Please pay {money(confirmedBillSummary.totalAmount)} at the counter.
                 </div>
               )}
-              <div className="border-t border-neutral-200 pt-3 flex justify-between">
-                <span className="font-black">Total</span>
-                <span className="font-black text-red-500 text-lg">
-                  {money(confirmedBillSummary.totalAmount)}
-                </span>
+
+              <div className="mt-4 space-y-2 border-t border-neutral-100 pt-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">Subtotal</span>
+                  <span className="font-semibold">
+                    {money(confirmedBillSummary.subtotal)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">
+                    SGST ({confirmedBillSummary.sgstRate}%)
+                  </span>
+                  <span>{money(confirmedBillSummary.gstAmount / 2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">
+                    CGST ({confirmedBillSummary.cgstRate}%)
+                  </span>
+                  <span>{money(confirmedBillSummary.gstAmount / 2)}</span>
+                </div>
+                {confirmedBillSummary.packingFee > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Packing</span>
+                    <span>{money(confirmedBillSummary.packingFee)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-neutral-200 pt-3">
+                  <span className="font-black">Total</span>
+                  <span className="text-xl font-black text-orange-600">
+                    {money(confirmedBillSummary.totalAmount)}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 mt-5">
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => window.print()}
+                className="h-13 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3.5 text-xs font-black"
+              >
+                🖨 Print Bill
+              </button>
+              <button
+                onClick={() => {
+                  setOrderPlaced(false)
+                  setPaymentDetails(null)
+                  setActiveNav('home')
+                }}
+                className="h-13 rounded-2xl bg-neutral-950 px-3 py-3.5 text-xs font-black text-white"
+              >
+                Order More
+              </button>
+            </div>
+
             <button
-              onClick={() => window.print()}
-              className="py-3.5 rounded-xl bg-neutral-100 text-neutral-800 font-bold text-xs"
+              onClick={openOrders}
+              className="mt-3 w-full rounded-2xl bg-orange-500 py-3.5 text-xs font-black text-white"
             >
-              🖨️ Print Bill
-            </button>
-            <button
-              onClick={() => {
-                setOrderPlaced(false)
-                setPaymentDetails(null)
-                setActiveNav('home')
-              }}
-              className="py-3.5 rounded-xl bg-red-500 text-white font-bold text-xs"
-            >
-              Continue Ordering
+              Track My Order
             </button>
           </div>
-
-          <button
-            onClick={openOrders}
-            className="w-full mt-3 py-3.5 rounded-xl border border-neutral-200 text-neutral-700 font-bold text-xs"
-          >
-            📦 View My Orders
-          </button>
-
-          <p className="text-center text-[10px] text-neutral-400 mt-5">
-            Powered by{' '}
-            <span className="font-bold text-red-500">Digital Dining</span>
-          </p>
         </div>
-      </div>
+      </main>
     )
   }
 
-  /*
-   * 4. MAIN QR MENU
-   */
   return (
     <>
       <style jsx global>{`
-        input, textarea, select {
-          color: #000000 !important;
-          -webkit-text-fill-color: #000000 !important;
-          opacity: 1 !important;
-          caret-color: #000000 !important;
-        }
-        input::placeholder, textarea::placeholder {
-          color: #9ca3af !important;
-          -webkit-text-fill-color: #9ca3af !important;
-          opacity: 1 !important;
-        }
-        input:-webkit-autofill,
-        input:-webkit-autofill:hover,
-        input:-webkit-autofill:focus {
-          -webkit-text-fill-color: #000000 !important;
+        html, body {
+          margin: 0;
+          width: 100%;
+          max-width: 100%;
+          min-height: 100%;
+          overflow-x: hidden;
+          background: #f7f6f2;
+          overscroll-behavior-x: none;
         }
 
-        .dd-restaurant-name {
-          color: #000000 !important;
-          -webkit-text-fill-color: #000000 !important;
-          opacity: 1 !important;
-          visibility: visible !important;
-          text-shadow: none !important;
-          mix-blend-mode: normal !important;
-          filter: none !important;
+        * {
+          box-sizing: border-box;
+          -webkit-tap-highlight-color: transparent;
         }
 
-        .dd-restaurant-name-banner {
-          color: #ffffff !important;
-          -webkit-text-fill-color: #ffffff !important;
-          opacity: 1 !important;
-          visibility: visible !important;
-          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18) !important;
-          mix-blend-mode: normal !important;
-          filter: none !important;
+        .dd-mobile-shell {
+          width: 100svw;
+          max-width: 100svw;
+          min-height: 100dvh;
+          overflow-x: clip;
+          overscroll-behavior-x: none;
         }
 
-        html { scroll-behavior: smooth; }
-        body { background: #f8fafc; }
-        @keyframes dd-float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-4px); }
+        .dd-mobile-frame {
+          width: 100%;
+          max-width: 480px;
+          min-width: 0;
+          margin-inline: auto;
+          overflow-x: clip;
         }
-        @keyframes dd-pulse-soft {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.12); }
-          50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+
+        .dd-mobile-frame img,
+        .dd-mobile-frame video,
+        .dd-mobile-frame canvas,
+        .dd-mobile-frame svg {
+          max-width: 100%;
         }
-        .dd-menu-shell {
+
+        @media (max-width: 639px) {
+          .dd-mobile-frame input,
+          .dd-mobile-frame textarea,
+          .dd-mobile-frame select {
+            font-size: 16px !important;
+          }
+
+          .dd-mobile-frame button,
+          .dd-mobile-frame a {
+            touch-action: manipulation;
+          }
+        }
+
+        @media (max-width: 359px) {
+          .dd-xs-hide {
+            display: none !important;
+          }
+        }
+
+        .dd-app {
           background:
-            radial-gradient(circle at 8% 18%, rgba(251,146,60,.10), transparent 24%),
-            radial-gradient(circle at 92% 42%, rgba(239,68,68,.08), transparent 26%),
-            linear-gradient(180deg, #fff 0%, #fafafa 46%, #f8fafc 100%);
+            radial-gradient(circle at 10% 4%, rgba(249,115,22,.08), transparent 22rem),
+            #f7f6f2;
         }
-        .dd-premium-card {
-          box-shadow: 0 10px 30px rgba(15,23,42,.06), 0 2px 8px rgba(15,23,42,.04);
-          transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+
+        .dd-scrollbar-none {
+          scrollbar-width: none;
         }
-        .dd-premium-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 18px 38px rgba(15,23,42,.10), 0 3px 10px rgba(15,23,42,.05);
+
+        .dd-scrollbar-none::-webkit-scrollbar {
+          display: none;
         }
-        .dd-food-image {
-          transition: transform .35s ease, filter .35s ease;
+
+        .dd-input {
+          color: #171717 !important;
+          -webkit-text-fill-color: #171717 !important;
+          opacity: 1 !important;
         }
-        .dd-premium-card:hover .dd-food-image {
-          transform: scale(1.035);
-          filter: saturate(1.06);
+
+        .dd-input::placeholder {
+          color: #a3a3a3 !important;
+          -webkit-text-fill-color: #a3a3a3 !important;
         }
-        .dd-floating { animation: dd-float 3.2s ease-in-out infinite; }
-        .dd-chip {
-          border: 1px solid rgba(229,231,235,.9);
-          background: rgba(255,255,255,.88);
-          backdrop-filter: blur(10px);
-          box-shadow: 0 5px 18px rgba(15,23,42,.05);
+
+        .dd-card {
+          box-shadow: 0 12px 36px rgba(15,23,42,.055);
         }
-        .dd-category-row::-webkit-scrollbar, .dd-best-row::-webkit-scrollbar { display: none; }
-        .dd-category-row, .dd-best-row { scrollbar-width: none; }
-        .dd-bottom-nav {
-          box-shadow: 0 16px 45px rgba(15,23,42,.16), 0 3px 12px rgba(15,23,42,.08);
+
+        .dd-sheet {
+          animation: dd-sheet-in .22s ease-out;
         }
-        .dd-search {
-          box-shadow: 0 10px 28px rgba(15,23,42,.07);
-          transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
+
+        @keyframes dd-sheet-in {
+          from { transform: translateY(22px); opacity: .75; }
+          to { transform: translateY(0); opacity: 1; }
         }
-        .dd-search:focus-within {
-          transform: translateY(-1px);
-          box-shadow: 0 14px 34px rgba(239,68,68,.11);
-          border-color: #fca5a5 !important;
+
+        @media (prefers-reduced-motion: reduce) {
+          .dd-sheet {
+            animation: none;
+          }
         }
       `}</style>
 
-      <div className="dd-menu-shell min-h-screen bg-white text-neutral-900 pb-32">
-        {/* TOP PROMOTIONAL BANNER */}
-        <section className="px-4 pt-4">
-          <div className="max-w-md mx-auto relative h-52 rounded-[26px] overflow-hidden bg-gradient-to-br from-orange-400 via-red-500 to-red-600 shadow-xl ring-1 ring-black/5">
-            {restaurant.banner_url ? (
-              <img
-                src={restaurant.banner_url}
-                alt="Restaurant Banner"
-                className="absolute inset-0 w-full h-full object-cover"
+      <main className="dd-app dd-mobile-shell pb-[calc(7.5rem+env(safe-area-inset-bottom))] text-neutral-900">
+        <div className="dd-mobile-frame">
+          {/* APP HEADER */}
+          <header className="sticky top-0 z-40 min-h-[72px] border-b border-black/5 bg-[#f7f6f2]/95 px-3 min-[390px]:px-4 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] backdrop-blur-xl">
+            <div className="flex min-w-0 items-center gap-3">
+              <RestaurantLogo
+                restaurant={restaurant}
+                className="h-11 w-11 shrink-0 rounded-2xl border border-black/5 bg-white shadow-sm"
+                imageClassName="h-full w-full object-contain p-1"
               />
-            ) : (
-              <>
-                <div className="absolute -right-16 -top-12 w-64 h-64 bg-white/10 rounded-full" />
-                <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-yellow-300/20 rounded-full" />
-                <div className="absolute right-4 bottom-3 text-7xl">🍽️</div>
-              </>
-            )}
 
-            <div className="absolute inset-0 bg-black/15" />
-
-            <div className="relative z-10 p-5">
-              <div className="flex items-center gap-3">
-                <RestaurantLogo
-                  restaurant={restaurant}
-                  className="w-14 h-14 rounded-2xl bg-white shadow"
-                  imageClassName="w-full h-full object-contain p-1"
-                />
-
-                <div className="text-white">
-                  <p className="text-[9px] font-black uppercase tracking-widest opacity-80">
-                    Digital Menu
-                  </p>
-                  <h1
-                    className="dd-restaurant-name-banner text-xl font-black"
-                    style={{
-                      color: '#ffffff',
-                      WebkitTextFillColor: '#ffffff',
-                      opacity: 1
-                    }}
-                  >
-                    {restaurant.name}
-                  </h1>
-                  <p className="text-[10px] opacity-90">Table {tableNumber}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-base font-black leading-tight">
+                  {restaurant.name}
+                </p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[8px] font-black uppercase tracking-wide text-emerald-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Live menu
+                  </span>
+                  <span className="text-[9px] font-bold text-neutral-500">
+                    Table {tableNumber}
+                  </span>
                 </div>
               </div>
 
-              <div className="mt-8">
-                <p className="text-white/80 text-xs font-bold uppercase tracking-wider">
-                  {getGreeting()}
-                </p>
-                <h2 className="text-2xl font-black text-white">Order Now 🍴</h2>
-              </div>
-            </div>
-
-            <div className="absolute right-4 top-4 flex flex-col gap-2">
               {restaurant.phone && (
                 <a
                   href={`tel:${restaurant.phone}`}
-                  className="bg-white/95 text-neutral-800 px-4 py-2 rounded-full text-xs font-bold shadow"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-black/5 bg-white text-base shadow-sm"
+                  aria-label="Call restaurant"
                 >
-                  ✉️ Contact
+                  ☎
                 </a>
               )}
-              <div className="bg-white/95 text-neutral-800 px-4 py-2 rounded-full text-xs font-bold shadow">
-                🪑 Table {tableNumber}
+            </div>
+          </header>
+
+          {/* HERO */}
+          <section className="px-3 min-[390px]:px-4 pt-4">
+            <div className="relative h-[150px] min-[390px]:h-[164px] overflow-hidden rounded-[26px] min-[390px]:rounded-[30px] bg-neutral-900 shadow-[0_20px_45px_rgba(15,23,42,.14)]">
+              {restaurant.banner_url ? (
+                <img
+                  src={restaurant.banner_url}
+                  alt="Restaurant"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,#fb923c_0%,#f97316_25%,#c2410c_70%,#431407_100%)]" />
+              )}
+
+              <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-black/10" />
+
+              <div className="relative flex h-full flex-col justify-end p-5">
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-200">
+                  {getGreeting()}, {customerName}
+                </p>
+                <h1 className="mt-1 max-w-[82%] text-[1.35rem] min-[390px]:text-2xl font-black leading-tight text-white">
+                  What are you craving today?
+                </h1>
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="rounded-full bg-white/15 px-3 py-1.5 text-[9px] font-black text-white backdrop-blur">
+                    🪑 Table {tableNumber}
+                  </span>
+                  <span className="rounded-full bg-white/15 px-3 py-1.5 text-[9px] font-black text-white backdrop-blur">
+                    ⚡ Quick order
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        {/* RESTAURANT BADGE */}
-        <div className="max-w-md mx-auto px-5 -mt-5 relative z-10">
-          <div className="inline-flex items-center gap-2 bg-white/95 backdrop-blur-xl rounded-2xl px-5 py-3 shadow-xl border border-neutral-100 dd-premium-card">
-            <RestaurantLogo
-              restaurant={restaurant}
-              className="w-9 h-9 rounded-xl bg-white border border-neutral-100"
-              imageClassName="w-full h-full object-contain p-1"
-            />
-            <div>
-              <p
-                className="dd-restaurant-name font-black text-sm"
-                style={{
-                  color: '#000000',
-                  WebkitTextFillColor: '#000000',
-                  opacity: 1
-                }}
+          {/* ORDER MODE */}
+          <section className="px-3 min-[390px]:px-4 pt-4">
+            <div className="grid grid-cols-2 gap-1 rounded-2xl border border-black/5 bg-white p-1.5 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setOrderType('dine-in')}
+                className={`rounded-xl py-3 text-xs font-black transition ${
+                  orderType === 'dine-in'
+                    ? 'bg-neutral-950 text-white shadow'
+                    : 'text-neutral-500'
+                }`}
               >
-                {restaurant.name}
-              </p>
-              <p className="text-[9px] text-neutral-400 font-bold uppercase">
-                Digital Restaurant
-              </p>
+                🍽 Dine-In
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderType('parcel')}
+                className={`rounded-xl py-3 text-xs font-black transition ${
+                  orderType === 'parcel'
+                    ? 'bg-orange-500 text-white shadow'
+                    : 'text-neutral-500'
+                }`}
+              >
+                🥡 Takeaway
+              </button>
             </div>
-            <span className="text-xl">🏅</span>
-          </div>
-        </div>
+          </section>
 
-        {/* VISUAL TRUST CHIPS */}
-        <section className="max-w-md mx-auto px-4 mt-4">
-          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            <div className="dd-chip shrink-0 rounded-full px-3 py-2 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span className="text-[10px] font-black text-neutral-700">
-                Freshly prepared
-              </span>
-            </div>
-            <div className="dd-chip shrink-0 rounded-full px-3 py-2 flex items-center gap-2">
-              <span>⚡</span>
-              <span className="text-[10px] font-black text-neutral-700">
-                Quick ordering
-              </span>
-            </div>
-            <div className="dd-chip shrink-0 rounded-full px-3 py-2 flex items-center gap-2">
-              <span>🛡️</span>
-              <span className="text-[10px] font-black text-neutral-700">
-                Secure checkout
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* OFFERS OF THE DAY */}
-        {dailyOffers.length > 0 && (
-          <section className="max-w-md mx-auto px-4 mt-5">
-            <div className="rounded-[26px] overflow-hidden bg-gradient-to-br from-red-600 via-orange-500 to-amber-400 shadow-xl ring-1 ring-red-200/60">
-              <div className="p-4 flex items-center justify-between">
+          {/* OFFERS */}
+          {dailyOffers.length > 0 && (
+            <section className="mt-6">
+              <div className="flex items-end justify-between px-3 min-[390px]:px-4">
                 <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-white/80">
-                    Limited time today
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-500">
+                    Special today
                   </p>
-                  <h2 className="text-xl font-black text-white mt-1">
-                    🔥 Offers of the Day
-                  </h2>
+                  <h2 className="mt-1 text-xl font-black">Offers for you</h2>
                 </div>
-                <div className="bg-white/20 backdrop-blur-md rounded-full px-3 py-1.5 text-[9px] font-black text-white border border-white/20">
-                  TODAY ONLY
-                </div>
+                <span className="text-[9px] font-black uppercase text-neutral-400">
+                  Tap to add
+                </span>
               </div>
-              <div className="px-3 pb-3 space-y-3">
+
+              <div className="dd-scrollbar-none mt-3 flex snap-x gap-3 overflow-x-auto px-3 min-[390px]:px-4 pb-2">
                 {dailyOffers.map(offer => (
                   <button
                     key={offer.id}
                     type="button"
                     onClick={() => addOfferToCart(offer)}
-                    className="w-full bg-white rounded-[22px] p-3 flex gap-3 items-center shadow-lg text-left cursor-pointer transition active:scale-[0.98] hover:shadow-xl"
-                    aria-label={`Add ${offer.title || 'offer'} to cart`}
+                    className="dd-card min-w-[86%] min-[390px]:min-w-[82%] snap-start overflow-hidden rounded-[24px] min-[390px]:rounded-[28px] border border-black/5 bg-neutral-950 text-left text-white active:scale-[.99]"
                   >
-                    <div className="w-24 h-24 rounded-2xl overflow-hidden shrink-0 bg-neutral-100">
-                      {offer.image_url ? (
-                        <img
-                          src={offer.image_url}
-                          alt={offer.title || 'Offer'}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-4xl">
-                          🎁
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-black text-neutral-900 text-sm leading-tight">
-                          {offer.title}
-                        </h3>
-                        {offer.discount_text && (
-                          <span className="shrink-0 bg-red-100 text-red-600 px-2 py-1 rounded-full text-[9px] font-black">
-                            {offer.discount_text}
-                          </span>
-                        )}
-                      </div>
-                      {offer.description && (
-                        <p className="text-[10px] text-neutral-500 mt-1 line-clamp-2">
-                          {offer.description}
-                        </p>
-                      )}
-                      <div className="flex items-end gap-2 mt-2">
-                        {offer.original_price != null &&
-                          Number(offer.original_price) > 0 && (
-                            <span className="text-[11px] text-neutral-400 line-through">
-                              ₹{Number(offer.original_price).toFixed(2)}
+                    <div className="flex min-h-[150px]">
+                      <div className="flex min-w-0 flex-1 flex-col justify-between p-4">
+                        <div>
+                          {offer.discount_text && (
+                            <span className="inline-flex rounded-full bg-orange-500 px-2.5 py-1 text-[8px] font-black uppercase tracking-wide">
+                              {offer.discount_text}
                             </span>
                           )}
-                        {offer.offer_price != null && (
-                          <span className="text-lg font-black text-red-600">
-                            ₹{Number(offer.offer_price).toFixed(2)}
-                          </span>
+                          <h3 className="mt-3 line-clamp-2 text-lg font-black leading-tight">
+                            {offer.title}
+                          </h3>
+                          {offer.description && (
+                            <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-neutral-400">
+                              {offer.description}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="mt-3 flex items-end gap-2">
+                          {offer.offer_price != null && (
+                            <span className="text-xl font-black text-orange-400">
+                              ₹{Number(offer.offer_price).toFixed(2)}
+                            </span>
+                          )}
+                          {offer.original_price != null &&
+                            Number(offer.original_price) > 0 && (
+                              <span className="pb-1 text-[10px] text-neutral-500 line-through">
+                                ₹{Number(offer.original_price).toFixed(2)}
+                              </span>
+                            )}
+                        </div>
+                      </div>
+
+                      <div className="w-[38%] shrink-0 bg-neutral-900">
+                        {offer.image_url ? (
+                          <img
+                            src={offer.image_url}
+                            alt={offer.title || 'Offer'}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full min-h-[150px] items-center justify-center text-5xl">
+                            🎁
+                          </div>
                         )}
                       </div>
                     </div>
                   </button>
                 ))}
               </div>
+            </section>
+          )}
+
+          {/* SEARCH */}
+          <section className="sticky top-[calc(72px+env(safe-area-inset-top))] z-30 mt-5 border-y border-black/5 bg-[#f7f6f2]/95 px-3 min-[390px]:px-4 py-3 backdrop-blur-xl">
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm">
+                  🔍
+                </span>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search dishes"
+                  className="dd-input h-12 w-full rounded-2xl border border-black/5 bg-white pl-10 pr-10 text-base font-semibold outline-none shadow-sm focus:border-orange-300 focus:ring-4 focus:ring-orange-50"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-neutral-100 text-xs text-neutral-500"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowFilter(current => !current)}
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-base shadow-sm transition ${
+                  showFilter || filterType !== 'all'
+                    ? 'border-orange-500 bg-orange-500 text-white'
+                    : 'border-black/5 bg-white text-neutral-900'
+                }`}
+                aria-label="Food filters"
+              >
+                ⚙
+              </button>
             </div>
-          </section>
-        )}
 
-        {/* SEARCH & FILTER */}
-        <section className="max-w-md mx-auto px-4 mt-6">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl">
-                🔍
-              </span>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search dishes..."
-                className="dd-search w-full h-14 rounded-2xl border border-neutral-200 bg-white shadow-sm pl-12 pr-12 text-sm font-medium focus:outline-none focus:border-red-400 !text-black placeholder:!text-neutral-400 caret-black"
-                style={{ color: '#000000', opacity: 1 }}
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            <button
-              onClick={() => setShowFilter(!showFilter)}
-              className={`w-14 h-14 rounded-2xl border flex items-center justify-center text-xl transition ${
-                showFilter
-                  ? 'bg-red-500 text-white border-red-500'
-                  : 'bg-white border-neutral-200 text-neutral-800'
-              }`}
-            >
-              ⚱️
-            </button>
-          </div>
-
-          {showFilter && (
-            <div className="mt-3 bg-neutral-50 border border-neutral-200 rounded-2xl p-4">
-              <p className="text-xs font-black mb-3">Filter by food type</p>
-              <div className="flex flex-wrap gap-2">
+            {showFilter && (
+              <div className="dd-scrollbar-none mt-3 flex gap-2 overflow-x-auto pb-1">
                 {[
                   ['all', 'All'],
                   ['veg', '🟢 Veg'],
                   ['non-veg', '🔴 Non-Veg'],
                   ['egg', '🥚 Egg'],
-                  ['beverage', '🥤 Beverage'],
+                  ['beverage', '🥤 Drinks'],
                   ['other', '⚪ Other']
                 ].map(([value, label]) => (
                   <button
                     key={value}
+                    type="button"
                     onClick={() => setFilterType(value)}
-                    className={`px-4 py-2 rounded-full text-xs font-bold ${
+                    className={`shrink-0 rounded-full px-4 py-2 text-[10px] font-black ${
                       filterType === value
-                        ? 'bg-red-500 text-white'
-                        : 'bg-white border border-neutral-200 text-neutral-600'
+                        ? 'bg-neutral-950 text-white'
+                        : 'border border-black/5 bg-white text-neutral-600'
                     }`}
                   >
                     {label}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-        </section>
+            )}
+          </section>
 
-        {/* CATEGORY CHIPS */}
-        <section className="max-w-md mx-auto px-4 mt-4">
-          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-            {categories.map((category, index) => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`flex items-center gap-2 px-5 py-3 rounded-full whitespace-nowrap text-sm font-bold border transition ${
-                  selectedCategory === category
-                    ? 'bg-red-500 text-white border-red-500 shadow-md'
-                    : 'bg-white text-neutral-700 border-neutral-200'
-                }`}
-              >
-                {index === 0
-                  ? ''
-                  : category.toLowerCase().includes('bread')
-                  ? '🥐'
-                  : category.toLowerCase().includes('rice')
-                  ? '🍚'
-                  : category.toLowerCase().includes('dessert')
-                  ? '🍰'
-                  : '🍽️'}
-                {category}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* BEST SELLERS */}
-        {bestSellers.length > 0 &&
-          selectedCategory === 'All' &&
-          !searchQuery && (
-            <section className="max-w-md mx-auto mt-5">
-              <div className="px-4 flex items-center justify-between">
-                <h2 className="text-xl font-black flex items-center gap-2">
-                  🏆 Best Sellers
-                  <span className="text-yellow-500">✨</span>
-                </h2>
-                <span className="text-[10px] font-bold text-neutral-400">
-                  TOP PICKS
-                </span>
-              </div>
-
-              <div className="dd-best-row flex gap-4 overflow-x-auto no-scrollbar px-4 py-4">
-                {bestSellers.map((item, index) => (
-                  <div
-                    key={item.id}
-                    className="min-w-[112px] text-center dd-floating"
-                  >
-                    <div className="relative">
-                      <div className="w-24 h-24 rounded-full border-4 border-red-200 p-1 mx-auto bg-white shadow">
-                        {item.image_url ? (
-                          <img
-                            src={item.image_url}
-                            alt={item.name}
-                            className="w-full h-full object-cover rounded-full"
-                          />
-                        ) : (
-                          <div className="w-full h-full rounded-full bg-neutral-100 flex items-center justify-center text-3xl">
-                            🍽️
-                          </div>
-                        )}
-                      </div>
-                      <span className="absolute right-0 top-0 w-7 h-7 rounded-full bg-orange-500 text-white text-xs font-black flex items-center justify-center">
-                        {index + 1}
-                      </span>
-                    </div>
-                    <p className="font-bold text-xs mt-2 line-clamp-2">
-                      {item.name}
-                    </p>
-                    <p className="text-red-500 font-black text-sm mt-1">
-                      {money(item.price)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-        {/* GREETING */}
-        <section className="max-w-md mx-auto px-4 mt-2">
-          <div className="bg-red-50 rounded-2xl p-4 border border-red-100">
-            <p className="text-xs text-red-500 font-medium">
-              Welcome to{' '}
-              <span
-                className="dd-restaurant-name"
-                style={{
-                  color: '#000000',
-                  WebkitTextFillColor: '#000000',
-                  opacity: 1
-                }}
-              >
-                {restaurant.name}
-              </span>
-            </p>
-            <h2 className="text-lg font-black mt-1">
-              {getGreeting()},{' '}
-              {customerName ? `${customerName}!` : 'Guest!'} 👋
-            </h2>
-            <p className="text-[10px] text-neutral-500 mt-1">
-              Choose your favourite dishes and place your order.
-            </p>
-          </div>
-        </section>
-
-        {/* ORDER TYPE */}
-        <section className="max-w-md mx-auto px-4 mt-4">
-          <div className="grid grid-cols-2 bg-neutral-100 rounded-2xl p-1 border border-neutral-200">
-            <button
-              onClick={() => setOrderType('dine-in')}
-              className={`py-3 rounded-xl text-xs font-black ${
-                orderType === 'dine-in'
-                  ? 'bg-white shadow text-neutral-900'
-                  : 'text-neutral-500'
-              }`}
-            >
-              🍽️ Dine-In
-            </button>
-            <button
-              onClick={() => setOrderType('parcel')}
-              className={`py-3 rounded-xl text-xs font-black ${
-                orderType === 'parcel'
-                  ? 'bg-white shadow text-red-500'
-                  : 'text-neutral-500'
-              }`}
-            >
-              🥡 Takeaway
-            </button>
-          </div>
-        </section>
-
-        {/* MENU TITLE */}
-        <section className="max-w-md mx-auto px-4 mt-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-xl font-black">{selectedCategory}</h2>
-              <p className="text-[10px] text-neutral-400 mt-1">
-                {filteredItems.length} dishes available
+          {/* CATEGORIES */}
+          <section className="mt-4">
+            <div className="px-3 min-[390px]:px-4">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-400">
+                Browse by category
               </p>
             </div>
-            {filterType !== 'all' && (
-              <button
-                onClick={() => setFilterType('all')}
-                className="text-[10px] font-bold text-red-500"
-              >
-                Clear Filter
-              </button>
-            )}
-          </div>
+            <div className="dd-scrollbar-none mt-2 flex gap-2 overflow-x-auto px-3 min-[390px]:px-4 pb-2">
+              {categories.map(category => (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setSelectedCategory(category)}
+                  className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-black transition ${
+                    selectedCategory === category
+                      ? 'bg-orange-500 text-white shadow-md shadow-orange-500/15'
+                      : 'border border-black/5 bg-white text-neutral-600 shadow-sm'
+                  }`}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+          </section>
 
-          {/* MENU ITEMS */}
-          <div className="space-y-4">
-            {filteredItems.length === 0 ? (
-              <div className="py-16 text-center">
-                <div className="text-5xl">🍽️</div>
-                <h3 className="font-black mt-4">No dishes found</h3>
-                <p className="text-xs text-neutral-400 mt-1">
-                  Try another search or category.
-                </p>
-              </div>
-            ) : (
-              filteredItems.map(item => {
-                const qty = cart[item.id]?.quantity || 0
-                const foodType = getFoodType(item)
-                const highlyReordered = shouldShowHighlyReordered(item)
+          {/* BEST SELLERS */}
+          {bestSellers.length > 0 &&
+            selectedCategory === 'All' &&
+            !searchQuery && (
+              <section className="mt-5">
+                <div className="flex items-end justify-between px-3 min-[390px]:px-4">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-500">
+                      Customer favourites
+                    </p>
+                    <h2 className="mt-1 text-xl font-black">Popular right now</h2>
+                  </div>
+                  <span className="text-lg">🔥</span>
+                </div>
 
-                return (
-                  <div
-                    key={item.id}
-                    className="dd-premium-card bg-white border border-neutral-200 rounded-[22px] p-3 shadow-sm"
-                  >
-                    <div className="flex gap-3">
-                      {/* ITEM IMAGE */}
-                      <div className="relative w-28 h-28 shrink-0">
+                <div className="dd-scrollbar-none mt-3 flex gap-3 overflow-x-auto px-3 min-[390px]:px-4 pb-2">
+                  {bestSellers.map((item, index) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => updateCart(item, 1)}
+                      className="dd-card min-w-[132px] min-[390px]:min-w-[142px] overflow-hidden rounded-[22px] min-[390px]:rounded-[24px] border border-black/5 bg-white text-left active:scale-[.99]"
+                    >
+                      <div className="relative h-[112px] bg-neutral-100">
                         {item.image_url ? (
                           <img
                             src={item.image_url}
                             alt={item.name}
-                            className="dd-food-image w-full h-full object-cover rounded-2xl"
+                            className="h-full w-full object-cover"
                           />
                         ) : (
-                          <div className="dd-food-image w-full h-full bg-neutral-100 rounded-2xl flex items-center justify-center text-4xl">
+                          <div className="flex h-full items-center justify-center text-4xl">
                             🍽️
                           </div>
                         )}
-                        {highlyReordered && (
-                          <span className="absolute top-2 left-2 bg-yellow-400 text-neutral-900 text-[9px] font-black px-2 py-1 rounded-full">
-                            ★ BEST
-                          </span>
-                        )}
-                        {qty > 0 && (
-                          <span className="absolute top-2 right-2 bg-red-500 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-black">
-                            {qty}
-                          </span>
-                        )}
+                        <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-neutral-950 text-[10px] font-black text-white">
+                          {index + 1}
+                        </span>
+                        <span className="absolute bottom-2 right-2 rounded-full bg-white px-2.5 py-1 text-[9px] font-black text-orange-600 shadow">
+                          + ADD
+                        </span>
                       </div>
+                      <div className="p-3">
+                        <p className="line-clamp-1 text-xs font-black">{item.name}</p>
+                        <p className="mt-1 text-sm font-black text-orange-600">
+                          {money(item.price)}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
-                      {/* DETAILS */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start gap-1">
-                          <span
-                            className={`w-3 h-3 rounded-full mt-1 shrink-0 ${
-                              foodDots[foodType] || foodDots.other
-                            }`}
-                          />
-                          <div className="min-w-0">
-                            <h3 className="font-black text-base leading-tight">
-                              {item.name}
-                            </h3>
-                            <p className="text-[9px] text-neutral-400 font-bold uppercase mt-1">
-                              {foodIcons[foodType]} {foodLabels[foodType]}
-                            </p>
-                          </div>
-                        </div>
+          {/* MENU */}
+          <section className="px-3 min-[390px]:px-4 pb-4 pt-6">
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-400">
+                  {filterType === 'all' ? 'Full menu' : foodLabels[filterType] || 'Filtered'}
+                </p>
+                <h2 className="mt-1 text-2xl font-black">{selectedCategory}</h2>
+              </div>
+              <p className="text-[10px] font-bold text-neutral-400">
+                {filteredItems.length} dishes
+              </p>
+            </div>
 
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-base font-black text-red-500">
-                            {money(item.price)}
-                          </span>
-                          {item.original_price &&
-                            Number(item.original_price) >
-                              Number(item.price) && (
-                              <span className="text-xs text-neutral-400 line-through">
-                                {money(item.original_price)}
+            {filteredItems.length === 0 ? (
+              <div className="mt-4 rounded-[28px] border border-dashed border-neutral-300 bg-white px-5 py-14 text-center">
+                <div className="text-5xl">🍽️</div>
+                <h3 className="mt-4 font-black">No dishes found</h3>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Try another search, category or food filter.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setSelectedCategory('All')
+                    setFilterType('all')
+                  }}
+                  className="mt-4 rounded-full bg-neutral-950 px-5 py-2.5 text-[10px] font-black text-white"
+                >
+                  Reset filters
+                </button>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {filteredItems.map(item => {
+                  const qty = cart[item.id]?.quantity || 0
+                  const foodType = getFoodType(item)
+                  const highlyReordered = shouldShowHighlyReordered(item)
+
+                  return (
+                    <article
+                      key={item.id}
+                      className="dd-card overflow-hidden rounded-[26px] border border-black/5 bg-white"
+                    >
+                      <div className="flex min-h-[150px]">
+                        <div className="flex min-w-0 flex-1 flex-col p-4">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                                foodDots[foodType] || foodDots.other
+                              }`}
+                            />
+                            <span className="text-[8px] font-black uppercase tracking-wider text-neutral-400">
+                              {foodLabels[foodType] || 'Other'}
+                            </span>
+                            {highlyReordered && (
+                              <span className="rounded-full bg-amber-50 px-2 py-1 text-[8px] font-black uppercase text-amber-700">
+                                ★ Highly Reordered
                               </span>
                             )}
+                          </div>
+
+                          <h3 className="mt-2 line-clamp-2 text-base font-black leading-snug">
+                            {item.name}
+                          </h3>
+
+                          <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-neutral-500">
+                            {item.description || 'Freshly prepared specialty dish.'}
+                          </p>
+
+                          <div className="mt-auto flex items-end gap-2 pt-3">
+                            <span className="text-base font-black text-neutral-950">
+                              {money(item.price)}
+                            </span>
+                            {item.original_price &&
+                              Number(item.original_price) > Number(item.price) && (
+                                <span className="pb-0.5 text-[10px] text-neutral-400 line-through">
+                                  {money(item.original_price)}
+                                </span>
+                              )}
+                          </div>
+
+                          {Number(item.order_count || 0) > 0 && (
+                            <p className="mt-1 text-[8px] font-bold text-neutral-400">
+                              Ordered {Number(item.order_count)} times
+                            </p>
+                          )}
                         </div>
 
-                        <p className="text-xs text-neutral-500 mt-1 line-clamp-2 leading-relaxed">
-                          {item.description ||
-                            'Freshly prepared specialty dish.'}
-                        </p>
+                        <div className="relative w-[116px] min-[390px]:w-[132px] shrink-0 p-3 pl-0">
+                          <div className="h-[108px] min-[390px]:h-[118px] overflow-hidden rounded-[18px] min-[390px]:rounded-[20px] bg-neutral-100">
+                            {item.image_url ? (
+                              <img
+                                src={item.image_url}
+                                alt={item.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-4xl">
+                                🍽️
+                              </div>
+                            )}
+                          </div>
 
-                        <div className="flex items-center justify-between mt-3">
-                          {Number(item.order_count || 0) > 0 ? (
-                            <span className="text-[9px] text-neutral-400">
-                              Ordered {Number(item.order_count)} times
-                            </span>
-                          ) : (
-                            <span />
-                          )}
-
-                          {qty === 0 ? (
-                            <button
-                              onClick={() => updateCart(item, 1)}
-                              className="px-6 py-2 rounded-full bg-white border-2 border-red-400 text-red-500 text-xs font-black hover:bg-red-50"
-                            >
-                              ADD
-                            </button>
-                          ) : (
-                            <div className="flex items-center gap-3 bg-red-500 text-white rounded-full px-3 py-2">
+                          <div className="absolute inset-x-2 bottom-2 flex justify-center">
+                            {qty === 0 ? (
                               <button
+                                type="button"
+                                onClick={() => updateCart(item, 1)}
+                                className="min-w-[88px] rounded-xl border border-orange-200 bg-white px-5 py-2.5 text-[10px] font-black text-orange-600 shadow-lg"
+                              >
+                                ADD
+                              </button>
+                            ) : (
+                              <div className="flex min-w-[96px] items-center justify-between rounded-xl bg-orange-500 px-2 py-2 text-white shadow-lg">
+                                <button
+                                  type="button"
+                                  onClick={() => updateCart(item, -1)}
+                                  className="flex h-6 w-6 items-center justify-center text-base font-black"
+                                >
+                                  −
+                                </button>
+                                <span className="text-xs font-black">{qty}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => updateCart(item, 1)}
+                                  className="flex h-6 w-6 items-center justify-center text-base font-black"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* FLOATING CART */}
+          {totalItemsCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveNav('cart')
+                setShowCart(true)
+              }}
+              className="fixed bottom-[calc(5.8rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex w-[calc(100svw-1rem)] max-w-[464px] -translate-x-1/2 items-center gap-2 min-[390px]:gap-3 rounded-[20px] min-[390px]:rounded-[22px] bg-neutral-950 px-3 min-[390px]:px-4 py-3.5 text-white shadow-2xl shadow-neutral-950/20"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-base">
+                🛒
+              </span>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-[8px] font-black uppercase tracking-wider text-neutral-400">
+                  {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'items'} in cart
+                </p>
+                <p className="truncate text-xs font-black">View cart & checkout</p>
+              </div>
+              <span className="text-sm font-black text-orange-400">
+                {money(totalAmount)}
+              </span>
+              <span className="text-neutral-400">→</span>
+            </button>
+          )}
+
+          {/* CART SHEET */}
+          {showCart && (
+            <div className="fixed inset-0 z-[100] flex min-h-[100dvh] items-end justify-center">
+              <button
+                type="button"
+                aria-label="Close cart"
+                className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+                onClick={() => setShowCart(false)}
+              />
+
+              <div className="dd-sheet relative max-h-[92dvh] w-[100svw] max-w-[480px] overflow-x-hidden overflow-y-auto rounded-t-[30px] min-[390px]:rounded-t-[34px] bg-white pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl">
+                <div className="sticky top-0 z-10 border-b border-neutral-100 bg-white/95 px-5 pb-4 pt-3 backdrop-blur-xl">
+                  <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-neutral-200" />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-500">
+                        Your order
+                      </p>
+                      <h2 className="mt-1 text-2xl font-black">Cart</h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCart(false)}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-sm font-black"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-5">
+                  {cartItemsArray.length === 0 ? (
+                    <div className="py-14 text-center">
+                      <div className="text-5xl">🛒</div>
+                      <h3 className="mt-4 text-lg font-black">Your cart is empty</h3>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Add something delicious from the menu.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-3">
+                        {cartItemsArray.map(item => (
+                          <div
+                            key={item.id}
+                            className="flex items-center gap-3 rounded-2xl border border-neutral-100 bg-[#fafafa] p-3"
+                          >
+                            <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-neutral-100">
+                              {item.image_url ? (
+                                <img
+                                  src={item.image_url}
+                                  alt={item.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center text-2xl">
+                                  🍽️
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <h3 className="truncate text-xs font-black">{item.name}</h3>
+                              <p className="mt-1 text-xs font-black text-orange-600">
+                                {money(item.price)}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 rounded-xl border border-orange-100 bg-white px-1.5 py-1.5 text-orange-600">
+                              <button
+                                type="button"
                                 onClick={() => updateCart(item, -1)}
-                                className="w-5 h-5 font-black"
+                                className="flex h-7 w-7 items-center justify-center font-black"
                               >
                                 −
                               </button>
-                              <span className="text-xs font-black">{qty}</span>
+                              <span className="min-w-4 text-center text-xs font-black">
+                                {item.quantity}
+                              </span>
                               <button
+                                type="button"
                                 onClick={() => updateCart(item, 1)}
-                                className="w-5 h-5 font-black"
+                                className="flex h-7 w-7 items-center justify-center font-black"
                               >
                                 +
                               </button>
                             </div>
-                          )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-5">
+                        <p className="mb-2 text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                          Order type
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 rounded-2xl bg-neutral-100 p-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setOrderType('dine-in')}
+                            className={`rounded-xl py-3 text-xs font-black ${
+                              orderType === 'dine-in'
+                                ? 'bg-white text-neutral-950 shadow-sm'
+                                : 'text-neutral-500'
+                            }`}
+                          >
+                            🍽 Dine-In
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOrderType('parcel')}
+                            className={`rounded-xl py-3 text-xs font-black ${
+                              orderType === 'parcel'
+                                ? 'bg-white text-orange-600 shadow-sm'
+                                : 'text-neutral-500'
+                            }`}
+                          >
+                            🥡 Takeaway
+                          </button>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </section>
 
-        {/* FLOATING CART BUTTON */}
-        {totalItemsCount > 0 && (
-          <button
-            onClick={() => setShowCart(true)}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 bg-neutral-900 text-white rounded-full px-5 py-3 shadow-2xl flex items-center gap-3"
-          >
-            <span className="text-xl">🛒</span>
-            <div className="text-left">
-              <p className="text-[9px] text-neutral-400 uppercase font-bold">
-                {totalItemsCount} Items
-              </p>
-              <p className="text-sm font-black">
-                View Cart • {money(totalAmount)}
-              </p>
-            </div>
-            <span className="text-xl">→</span>
-          </button>
-        )}
-
-        {/* CART MODAL */}
-        {showCart && (
-          <div className="fixed inset-0 z-[100]">
-            <div
-              className="absolute inset-0 bg-black/50"
-              onClick={() => setShowCart(false)}
-            />
-            <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[30px] max-h-[90vh] overflow-y-auto">
-              <div className="max-w-md mx-auto p-5">
-                <div className="flex items-center justify-between mb-5">
-                  <div>
-                    <h2 className="text-xl font-black">Your Cart</h2>
-                    <p className="text-xs text-neutral-400">
-                      {totalItemsCount} item(s)
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowCart(false)}
-                    className="w-10 h-10 rounded-full bg-neutral-100 font-bold"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  {cartItemsArray.map(item => (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 border-b border-neutral-100 pb-3"
-                    >
-                      <div className="w-14 h-14 rounded-xl overflow-hidden bg-neutral-100">
-                        {item.image_url ? (
-                          <img
-                            src={item.image_url}
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            🍽️
+                      <div className="mt-5 rounded-[24px] bg-neutral-950 p-4 text-white">
+                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neutral-400">
+                          Bill summary
+                        </p>
+                        <div className="mt-4 space-y-2 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-neutral-400">Subtotal</span>
+                            <span className="font-bold">{money(subtotalAmount)}</span>
                           </div>
+                          <div className="flex justify-between">
+                            <span className="text-neutral-400">
+                              GST ({totalTaxPercent}%)
+                            </span>
+                            <span className="font-bold">{money(gstAmount)}</span>
+                          </div>
+                          {packingFee > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-neutral-400">Packing</span>
+                              <span className="font-bold">{money(packingFee)}</span>
+                            </div>
+                          )}
+                          <div className="mt-3 flex justify-between border-t border-white/10 pt-3">
+                            <span className="font-black">Total</span>
+                            <span className="text-xl font-black text-orange-400">
+                              {money(totalAmount)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {counterPaymentEnabled && (
+                        <div className="mt-5">
+                          <p className="mb-2 text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                            Payment method
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMethod('online')}
+                              className={`rounded-2xl border py-3.5 text-xs font-black ${
+                                paymentMethod === 'online'
+                                  ? 'border-orange-500 bg-orange-50 text-orange-700'
+                                  : 'border-neutral-200 text-neutral-500'
+                              }`}
+                            >
+                              ⚡ Online
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMethod('counter')}
+                              className={`rounded-2xl border py-3.5 text-xs font-black ${
+                                paymentMethod === 'counter'
+                                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                                  : 'border-neutral-200 text-neutral-500'
+                              }`}
+                            >
+                              💵 Counter
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-5">
+                        {paymentMethod === 'online' ? (
+                          <button
+                            type="button"
+                            onClick={handleRazorpayCheckout}
+                            disabled={paymentLoading}
+                            className="w-full rounded-2xl bg-orange-500 py-4 text-sm font-black text-white shadow-lg shadow-orange-500/20 disabled:opacity-50"
+                          >
+                            {paymentLoading
+                              ? 'Connecting...'
+                              : `Pay ${money(totalAmount)} & Place Order`}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handlePayAtCounter}
+                            disabled={paymentLoading}
+                            className="w-full rounded-2xl bg-emerald-600 py-4 text-sm font-black text-white shadow-lg shadow-emerald-600/15 disabled:opacity-50"
+                          >
+                            {paymentLoading
+                              ? 'Placing Order...'
+                              : `Pay ${money(totalAmount)} at Counter`}
+                          </button>
                         )}
                       </div>
 
-                      <div className="flex-1">
-                        <h3 className="text-sm font-bold">{item.name}</h3>
-                        <p className="text-xs text-neutral-500">
-                          {money(item.price)}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 bg-red-50 rounded-full px-2 py-1">
-                        <button
-                          onClick={() => updateCart(item, -1)}
-                          className="w-6 h-6 text-red-500 font-black"
-                        >
-                          −
-                        </button>
-                        <span className="text-xs font-black">
-                          {item.quantity}
-                        </span>
-                        <button
-                          onClick={() => updateCart(item, 1)}
-                          className="w-6 h-6 text-red-500 font-black"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* ORDER TYPE */}
-                <div className="mt-5">
-                  <p className="text-xs font-black mb-2">Order Type</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => setOrderType('dine-in')}
-                      className={`py-3 rounded-xl text-xs font-bold border ${
-                        orderType === 'dine-in'
-                          ? 'bg-red-500 text-white border-red-500'
-                          : 'border-neutral-200'
-                      }`}
-                    >
-                      🍽️ Dine-In
-                    </button>
-                    <button
-                      onClick={() => setOrderType('parcel')}
-                      className={`py-3 rounded-xl text-xs font-bold border ${
-                        orderType === 'parcel'
-                          ? 'bg-red-500 text-white border-red-500'
-                          : 'border-neutral-200'
-                      }`}
-                    >
-                      🥡 Takeaway
-                    </button>
-                  </div>
-                </div>
-
-                {/* BILL */}
-                <div className="mt-5 bg-neutral-50 rounded-2xl p-4 space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-neutral-500">Subtotal</span>
-                    <span className="font-bold">{money(subtotalAmount)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-neutral-500">
-                      GST ({totalTaxPercent}%)
-                    </span>
-                    <span className="font-bold">{money(gstAmount)}</span>
-                  </div>
-                  {packingFee > 0 && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-neutral-500">Packing</span>
-                      <span className="font-bold">{money(packingFee)}</span>
-                    </div>
-                  )}
-                  <div className="border-t border-neutral-200 pt-3 flex justify-between">
-                    <span className="font-black">Total</span>
-                    <span className="text-lg font-black text-red-500">
-                      {money(totalAmount)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* PAYMENT METHODS */}
-                {counterPaymentEnabled && (
-                  <div className="mt-5">
-                    <p className="text-xs font-black mb-2">Payment Method</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setPaymentMethod('online')}
-                        className={`py-3 rounded-xl border text-xs font-black ${
-                          paymentMethod === 'online'
-                            ? 'bg-red-500 text-white border-red-500'
-                            : 'border-neutral-200'
-                        }`}
-                      >
-                        ⚡ Online
-                      </button>
-                      <button
-                        onClick={() => setPaymentMethod('counter')}
-                        className={`py-3 rounded-xl border text-xs font-black ${
-                          paymentMethod === 'counter'
-                            ? 'bg-emerald-600 text-white border-emerald-600'
-                            : 'border-neutral-200'
-                        }`}
-                      >
-                        💵 Counter
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* CHECKOUT BUTTON */}
-                <div className="mt-4">
-                  {paymentMethod === 'online' ? (
-                    <button
-                      onClick={handleRazorpayCheckout}
-                      disabled={paymentLoading}
-                      className="w-full py-4 rounded-2xl bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white font-black text-sm shadow-lg"
-                    >
-                      {paymentLoading
-                        ? 'Connecting...'
-                        : `⚡ Pay ${money(totalAmount)} & Place Order`}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handlePayAtCounter}
-                      disabled={paymentLoading}
-                      className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-black text-sm shadow-lg"
-                    >
-                      {paymentLoading
-                        ? 'Placing Order...'
-                        : `💵 Pay ${money(totalAmount)} at Counter`}
-                    </button>
+                      <p className="mt-4 text-center text-[9px] font-bold text-neutral-400">
+                        Secure ordering by Digital Dining
+                      </p>
+                    </>
                   )}
                 </div>
-
-                <p className="text-center text-[10px] text-neutral-400 mt-4">
-                  Secure ordering by{' '}
-                  <span className="font-bold text-red-500">
-                    Digital Dining
-                  </span>
-                </p>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ORDERS MODAL */}
-        {showOrders && (
-          <div className="fixed inset-0 z-[110]">
-            <div
-              className="absolute inset-0 bg-black/50"
-              onClick={() => setShowOrders(false)}
-            />
-            <div className="absolute inset-x-0 bottom-0 top-10 bg-white rounded-t-[30px] overflow-y-auto">
-              <div className="max-w-md mx-auto p-5">
-                <div className="flex justify-between items-center mb-5">
-                  <div>
-                    <h2 className="text-2xl font-black">Your Orders</h2>
-                    <p className="text-xs text-neutral-400">{customerName}</p>
-                  </div>
-                  <button
-                    onClick={() => setShowOrders(false)}
-                    className="w-10 h-10 rounded-full bg-white shadow border border-neutral-200 text-xl"
-                  >
-                    ×
-                  </button>
-                </div>
-
-                {ordersLoading ? (
-                  <div className="py-20 text-center">
-                    <div className="w-8 h-8 border-4 border-neutral-200 border-t-red-500 rounded-full animate-spin mx-auto" />
-                    <p className="text-xs text-neutral-400 mt-3">
-                      Loading orders...
-                    </p>
-                  </div>
-                ) : customerOrders.length === 0 ? (
-                  <div className="py-20 text-center">
-                    <div className="text-5xl">🧾</div>
-                    <h3 className="font-black mt-4">No orders yet</h3>
-                    <p className="text-xs text-neutral-400 mt-1">
-                      Your orders will appear here.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {customerOrders.map(order => {
-                      const step = getStatusStep(order.status)
-                      return (
-                        <div
-                          key={order.id}
-                          className="border border-neutral-200 rounded-[24px] p-4 shadow-sm"
-                        >
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="text-lg font-black">
-                                #{order.order_number}
-                              </p>
-                              <p className="text-[10px] text-neutral-400 mt-1">
-                                {order.created_at
-                                  ? new Date(order.created_at).toLocaleString()
-                                  : ''}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-lg font-black">
-                                {money(order.total_amount)}
-                              </p>
-                              <span className="inline-block mt-1 bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-3 py-1 text-[9px] font-black uppercase">
-                                {getOrderStatus(order.status)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="mt-6">
-                            <div className="flex justify-between relative">
-                              <div className="absolute top-4 left-5 right-5 h-1 bg-neutral-100" />
-                              <div
-                                className="absolute top-4 left-5 h-1 bg-red-400 transition-all"
-                                style={{
-                                  width: `${Math.min(step * 25, 75)}%`
-                                }}
-                              />
-                              {[
-                                ['🕐', 'Placed'],
-                                ['✓', 'Confirmed'],
-                                ['👨‍🍳', 'Preparing'],
-                                ['📦', 'Ready'],
-                                ['🚚', 'Delivered']
-                              ].map(([icon, label], index) => (
-                                <div
-                                  key={label}
-                                  className="relative z-10 flex flex-col items-center w-1/5"
-                                >
-                                  <div
-                                    className={`w-9 h-9 rounded-full flex items-center justify-center text-sm ${
-                                      index <= step
-                                        ? 'bg-red-100 border-2 border-red-300'
-                                        : 'bg-neutral-50 border border-neutral-100'
-                                    }`}
-                                  >
-                                    {icon}
-                                  </div>
-                                  <span className="text-[8px] mt-2 text-center font-medium">
-                                    {label}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="mt-6 border-t border-neutral-100 pt-4 space-y-2">
-                            {Array.isArray(order.items) &&
-                              order.items.map((item, index) => (
-                                <div
-                                  key={item.id || index}
-                                  className="flex justify-between text-sm"
-                                >
-                                  <span>
-                                    {item.name} × {Number(item.quantity || item.qty || 1)}
-                                  </span>
-                                  <span className="font-bold">
-                                    {money(
-                                      Number(item.price || 0) *
-                                        Number(item.quantity || item.qty || 1)
-                                    )}
-                                  </span>
-                                </div>
-                              ))}
-                          </div>
-
-                          <div className="mt-4 border-t border-neutral-100 pt-4 space-y-2 text-xs">
-                            <div className="flex justify-between">
-                              <span className="text-neutral-500">Subtotal</span>
-                              <span>
-                                {money(
-                                  Number(order.total_amount || 0) -
-                                    Number(order.tax_amount || 0) -
-                                    Number(order.packing_fee || 0)
-                                )}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-neutral-500">GST</span>
-                              <span>{money(order.tax_amount)}</span>
-                            </div>
-                            {Number(order.packing_fee || 0) > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-neutral-500">Packing</span>
-                                <span>{money(order.packing_fee)}</span>
-                              </div>
-                            )}
-                            <div className="border-t border-neutral-200 pt-2 flex justify-between text-sm font-black">
-                              <span>Total</span>
-                              <span className="text-red-500">
-                                {money(order.total_amount)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="mt-4">
-                            {String(order.payment_mode || '')
-                              .toLowerCase()
-                              .includes('counter') ? (
-                              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                                <p className="text-[10px] font-black text-amber-700 uppercase">
-                                  💵 Pay at Counter
-                                </p>
-                                <p className="text-[10px] text-amber-600 mt-1">
-                                  Payment pending at counter.
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-                                <p className="text-[10px] font-black text-green-700 uppercase">
-                                  ✓ Online Payment
-                                </p>
-                                <p className="text-[10px] text-green-600 mt-1">
-                                  Payment recorded online.
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* BOTTOM NAVIGATION */}
-        <nav className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-3">
-          <div className="dd-bottom-nav max-w-md mx-auto bg-white/95 backdrop-blur-xl border border-neutral-200 shadow-2xl rounded-[28px] p-2">
-            <div className="grid grid-cols-4">
+          {/* ORDERS SHEET */}
+          {showOrders && (
+            <div className="fixed inset-0 z-[110] flex min-h-[100dvh] items-end justify-center">
               <button
+                type="button"
+                aria-label="Close orders"
+                className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+                onClick={() => setShowOrders(false)}
+              />
+
+              <div className="dd-sheet relative h-[92dvh] w-[100svw] max-w-[480px] overflow-x-hidden overflow-y-auto rounded-t-[30px] min-[390px]:rounded-t-[34px] bg-white pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl">
+                <div className="sticky top-0 z-10 border-b border-neutral-100 bg-white/95 px-5 pb-4 pt-3 backdrop-blur-xl">
+                  <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-neutral-200" />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-500">
+                        Live tracking
+                      </p>
+                      <h2 className="mt-1 text-2xl font-black">My Orders</h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowOrders(false)}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-sm font-black"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-5">
+                  {ordersLoading ? (
+                    <div className="py-20 text-center">
+                      <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-neutral-100 border-t-orange-500" />
+                      <p className="mt-3 text-xs text-neutral-500">Loading orders...</p>
+                    </div>
+                  ) : customerOrders.length === 0 ? (
+                    <div className="py-20 text-center">
+                      <div className="text-5xl">🧾</div>
+                      <h3 className="mt-4 text-lg font-black">No orders yet</h3>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Your orders will appear here after checkout.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {customerOrders.map(order => {
+                        const step = getStatusStep(order.status)
+
+                        return (
+                          <article
+                            key={order.id}
+                            className="rounded-[28px] border border-black/5 bg-[#fafafa] p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                                  Order
+                                </p>
+                                <p className="mt-1 text-2xl font-black">
+                                  #{order.order_number}
+                                </p>
+                                <p className="mt-1 text-[9px] text-neutral-400">
+                                  {order.created_at
+                                    ? new Date(order.created_at).toLocaleString()
+                                    : ''}
+                                </p>
+                              </div>
+
+                              <div className="text-right">
+                                <p className="text-lg font-black">
+                                  {money(order.total_amount)}
+                                </p>
+                                <span className="mt-1 inline-flex rounded-full bg-orange-100 px-3 py-1.5 text-[8px] font-black uppercase text-orange-700">
+                                  {getOrderStatus(order.status)}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="mt-6">
+                              <div className="relative flex justify-between">
+                                <div className="absolute left-4 right-4 top-4 h-1 rounded-full bg-neutral-200" />
+                                <div
+                                  className="absolute left-4 top-4 h-1 rounded-full bg-orange-500 transition-all"
+                                  style={{ width: `${Math.min(step * 25, 75)}%` }}
+                                />
+
+                                {[
+                                  ['🕐', 'Placed'],
+                                  ['✓', 'Confirmed'],
+                                  ['👨‍🍳', 'Preparing'],
+                                  ['📦', 'Ready'],
+                                  ['🚚', 'Delivered']
+                                ].map(([icon, label], index) => (
+                                  <div
+                                    key={label}
+                                    className="relative z-10 flex w-1/5 flex-col items-center"
+                                  >
+                                    <div
+                                      className={`flex h-9 w-9 items-center justify-center rounded-full text-xs ${
+                                        index <= step
+                                          ? 'border-2 border-orange-300 bg-orange-50'
+                                          : 'border border-neutral-200 bg-white'
+                                      }`}
+                                    >
+                                      {icon}
+                                    </div>
+                                    <span className="mt-2 text-center text-[7px] font-bold text-neutral-500">
+                                      {label}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="mt-6 space-y-2 border-t border-neutral-200 pt-4">
+                              {Array.isArray(order.items) &&
+                                order.items.map((item, index) => (
+                                  <div
+                                    key={item.id || index}
+                                    className="flex justify-between gap-3 text-xs"
+                                  >
+                                    <span className="min-w-0 flex-1 text-neutral-600">
+                                      {item.name} × {Number(item.quantity || item.qty || 1)}
+                                    </span>
+                                    <span className="shrink-0 font-black">
+                                      {money(
+                                        Number(item.price || 0) *
+                                          Number(item.quantity || item.qty || 1)
+                                      )}
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-4 space-y-2 border-t border-neutral-200 pt-4 text-[10px]">
+                              <div className="flex justify-between">
+                                <span className="text-neutral-500">Subtotal</span>
+                                <span>
+                                  {money(
+                                    Number(order.total_amount || 0) -
+                                      Number(order.tax_amount || 0) -
+                                      Number(order.packing_fee || 0)
+                                  )}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-neutral-500">GST</span>
+                                <span>{money(order.tax_amount)}</span>
+                              </div>
+                              {Number(order.packing_fee || 0) > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-neutral-500">Packing</span>
+                                  <span>{money(order.packing_fee)}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="mt-4">
+                              {String(order.payment_mode || '')
+                                .toLowerCase()
+                                .includes('counter') ? (
+                                <div className="rounded-2xl bg-amber-50 p-3">
+                                  <p className="text-[9px] font-black uppercase text-amber-700">
+                                    💵 Pay at Counter
+                                  </p>
+                                  <p className="mt-1 text-[9px] text-amber-600">
+                                    Payment pending at counter.
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="rounded-2xl bg-emerald-50 p-3">
+                                  <p className="text-[9px] font-black uppercase text-emerald-700">
+                                    ✓ Online Payment
+                                  </p>
+                                  <p className="mt-1 text-[9px] text-emerald-600">
+                                    Payment recorded online.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </article>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* BOTTOM NAVIGATION */}
+          <nav className="fixed bottom-0 left-1/2 z-50 w-[100svw] max-w-[480px] -translate-x-1/2 overflow-hidden border-t border-black/5 bg-white/95 px-1.5 min-[390px]:px-2 pt-2 pb-[max(.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
+            <div className="grid grid-cols-4 gap-1">
+              <button
+                type="button"
                 onClick={() => {
                   setActiveNav('home')
                   setShowOrders(false)
                   setShowCart(false)
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
                 }}
-                className={`relative py-3 rounded-2xl flex flex-col items-center gap-1 ${
+                className={`flex flex-col items-center rounded-2xl py-2.5 ${
                   activeNav === 'home'
-                    ? 'bg-red-50 text-red-500'
-                    : 'text-neutral-500'
+                    ? 'bg-orange-50 text-orange-600'
+                    : 'text-neutral-400'
                 }`}
               >
-                <span className="text-xl">⌂</span>
-                <span className="text-[10px] font-bold">Home</span>
+                <span className="text-lg">⌂</span>
+                <span className="mt-1 text-[7px] min-[390px]:text-[8px] font-black uppercase">Home</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   setActiveNav('cart')
                   setShowCart(true)
                 }}
-                className={`relative py-3 rounded-2xl flex flex-col items-center gap-1 ${
+                className={`relative flex flex-col items-center rounded-2xl py-2.5 ${
                   activeNav === 'cart'
-                    ? 'bg-red-50 text-red-500'
-                    : 'text-neutral-500'
+                    ? 'bg-orange-50 text-orange-600'
+                    : 'text-neutral-400'
                 }`}
               >
-                <span className="text-xl">🛒</span>
+                <span className="text-lg">🛒</span>
                 {totalItemsCount > 0 && (
-                  <span className="absolute top-1 right-5 bg-red-500 text-white w-5 h-5 rounded-full text-[9px] font-black flex items-center justify-center">
+                  <span className="absolute right-[21%] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[7px] font-black text-white">
                     {totalItemsCount > 9 ? '9+' : totalItemsCount}
                   </span>
                 )}
-                <span className="text-[10px] font-bold">Cart</span>
+                <span className="mt-1 text-[7px] min-[390px]:text-[8px] font-black uppercase">Cart</span>
               </button>
 
               <button
+                type="button"
                 onClick={openOrders}
-                className={`relative py-3 rounded-2xl flex flex-col items-center gap-1 ${
+                className={`relative flex flex-col items-center rounded-2xl py-2.5 ${
                   activeNav === 'orders'
-                    ? 'bg-red-50 text-red-500'
-                    : 'text-neutral-500'
+                    ? 'bg-orange-50 text-orange-600'
+                    : 'text-neutral-400'
                 }`}
               >
-                <span className="text-xl">🧾</span>
+                <span className="text-lg">🧾</span>
                 {customerOrders.length > 0 && (
-                  <span className="absolute top-1 right-5 bg-red-500 text-white w-5 h-5 rounded-full text-[9px] font-black flex items-center justify-center">
+                  <span className="absolute right-[21%] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-neutral-950 px-1 text-[7px] font-black text-white">
                     {customerOrders.length > 9 ? '9+' : customerOrders.length}
                   </span>
                 )}
-                <span className="text-[10px] font-bold">Orders</span>
+                <span className="mt-1 text-[7px] min-[390px]:text-[8px] font-black uppercase">Orders</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   setActiveNav('signin')
                   setIsVerified(false)
-                  setShowPortal(true)
+                  setShowPortal(false)
                   setCustomerName('')
                   setCustomerMobile('')
                 }}
-                className={`py-3 rounded-2xl flex flex-col items-center gap-1 ${
+                className={`flex flex-col items-center rounded-2xl py-2.5 ${
                   activeNav === 'signin'
-                    ? 'bg-red-50 text-red-500'
-                    : 'text-neutral-500'
+                    ? 'bg-orange-50 text-orange-600'
+                    : 'text-neutral-400'
                 }`}
               >
-                <span className="text-xl">♙</span>
-                <span className="text-[10px] font-bold">Sign In</span>
+                <span className="text-lg">♙</span>
+                <span className="mt-1 text-[7px] min-[390px]:text-[8px] font-black uppercase">Sign In</span>
               </button>
             </div>
-          </div>
-        </nav>
+          </nav>
 
-        {/* FOOTER */}
-        <footer className="text-center py-8 mt-10 text-[10px] text-neutral-400">
-          Proudly powered by{' '}
-          <span className="font-black text-red-500">Digital Dining</span>
-        </footer>
-      </div>
+          <footer className="px-4 pb-3 pt-8 text-center text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400">
+            Powered by <span className="text-orange-500">Digital Dining</span>
+          </footer>
+        </div>
+      </main>
     </>
   )
 }
