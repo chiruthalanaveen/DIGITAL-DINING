@@ -1033,8 +1033,8 @@ export default function RestaurantDashboard() {
   const [savingAlarmSettings, setSavingAlarmSettings] = useState(false)
   const [previewAudio, setPreviewAudio] = useState(null)
 
-  // The dashboard refreshes every 2 seconds. Keep polling from overwriting
-  // Kitchen/Waiter alarm choices while the owner is editing them.
+  // Prevent the 2-second dashboard refresh from overwriting alarm choices
+  // while the owner is editing them.
   const alarmSettingsDirtyRef = useRef(false)
 
   const kitchenAlarmOptions = [
@@ -1042,6 +1042,11 @@ export default function RestaurantDashboard() {
     { value: 'kitchen-1', label: 'Kitchen Sound 1', src: '/sounds/kitchen-1.mp3' },
     { value: 'kitchen-2', label: 'Kitchen Sound 2', src: '/sounds/kitchen-2.mp3' },
     { value: 'kitchen-3', label: 'Kitchen Sound 3', src: '/sounds/kitchen-3.mp3' },
+    { value: 'kitchen-4', label: 'Kitchen Sound 4 — Double Bell', src: '/sounds/kitchen-4.mp3' },
+    { value: 'kitchen-5', label: 'Kitchen Sound 5 — Fast Alert', src: '/sounds/kitchen-5.mp3' },
+    { value: 'kitchen-6', label: 'Kitchen Sound 6 — Service Chime', src: '/sounds/kitchen-6.mp3' },
+    { value: 'kitchen-7', label: 'Kitchen Sound 7 — Urgent Pulse', src: '/sounds/kitchen-7.mp3' },
+    { value: 'kitchen-8', label: 'Kitchen Sound 8 — Triple Ding', src: '/sounds/kitchen-8.mp3' },
   ]
 
   const waiterAlarmOptions = [
@@ -1050,6 +1055,11 @@ export default function RestaurantDashboard() {
     { value: 'waiter-2', label: 'Waiter Sound 2', src: '/sounds/waiter-2.mp3' },
     { value: 'waiter-3', label: 'Waiter Sound 3', src: '/sounds/waiter-3.mp3' },
     { value: 'waiter-4', label: 'Waiter Sound 4', src: '/sounds/waiter-4.mp3' },
+    { value: 'waiter-5', label: 'Waiter Sound 5 — Soft Ding', src: '/sounds/waiter-5.mp3' },
+    { value: 'waiter-6', label: 'Waiter Sound 6 — Double Chime', src: '/sounds/waiter-6.mp3' },
+    { value: 'waiter-7', label: 'Waiter Sound 7 — Ready Bell', src: '/sounds/waiter-7.mp3' },
+    { value: 'waiter-8', label: 'Waiter Sound 8 — Pop Alert', src: '/sounds/waiter-8.mp3' },
+    { value: 'waiter-9', label: 'Waiter Sound 9 — Quick Pulse', src: '/sounds/waiter-9.mp3' },
   ]
 
   // Subscription-wise feature control.
@@ -1240,8 +1250,8 @@ export default function RestaurantDashboard() {
 
       setProfilePhone(String(restData.phone || ''))
 
-      // fetchDashboard runs every 2 seconds. Only sync alarm values from
-      // Supabase while the form has no unsaved owner changes.
+      // The dashboard polls every 2 seconds. Do not overwrite an in-progress
+      // alarm edit with the previously saved database value.
       if (!alarmSettingsDirtyRef.current) {
         setKitchenAlarmSound(restData.kitchen_alarm_sound || 'kitchen-default')
         setWaiterAlarmSound(restData.waiter_alarm_sound || 'waiter-default')
@@ -2593,39 +2603,108 @@ export default function RestaurantDashboard() {
 
     setSavingAlarmSettings(true)
 
-    const { data, error } = await supabase
-      .from('restaurants')
-      .update({
-        kitchen_alarm_sound: kitchenAlarmSound,
-        waiter_alarm_sound: waiterAlarmSound,
-        kitchen_alarm_enabled: kitchenAlarmEnabled,
-        waiter_alarm_enabled: waiterAlarmEnabled,
-        kitchen_alarm_volume: Number(kitchenAlarmVolume),
-        waiter_alarm_volume: Number(waiterAlarmVolume),
-      })
-      .eq('id', restaurantId)
-      .select('*')
-      .maybeSingle()
+    try {
+      const requestedKitchenSound = String(kitchenAlarmSound || 'kitchen-default')
+      const requestedWaiterSound = String(waiterAlarmSound || 'waiter-default')
+      const requestedKitchenVolume = Math.min(
+        1,
+        Math.max(0, Number(kitchenAlarmVolume) || 0)
+      )
+      const requestedWaiterVolume = Math.min(
+        1,
+        Math.max(0, Number(waiterAlarmVolume) || 0)
+      )
 
-    if (error) {
-      console.error('Alarm settings save error:', error)
-      alert(`Failed to save alarm settings: ${error.message}`)
-    } else {
-      if (data) {
-        setRestaurant(data)
-        setKitchenAlarmSound(data.kitchen_alarm_sound || kitchenAlarmSound)
-        setWaiterAlarmSound(data.waiter_alarm_sound || waiterAlarmSound)
-        setKitchenAlarmEnabled(data.kitchen_alarm_enabled ?? kitchenAlarmEnabled)
-        setWaiterAlarmEnabled(data.waiter_alarm_enabled ?? waiterAlarmEnabled)
-        setKitchenAlarmVolume(Number(data.kitchen_alarm_volume ?? kitchenAlarmVolume))
-        setWaiterAlarmVolume(Number(data.waiter_alarm_volume ?? waiterAlarmVolume))
+      const { data, error } = await supabase.rpc(
+        'save_owner_alarm_settings',
+        {
+          p_restaurant_id: restaurantId,
+          p_kitchen_alarm_sound: requestedKitchenSound,
+          p_waiter_alarm_sound: requestedWaiterSound,
+          p_kitchen_alarm_enabled: Boolean(kitchenAlarmEnabled),
+          p_waiter_alarm_enabled: Boolean(waiterAlarmEnabled),
+          p_kitchen_alarm_volume: requestedKitchenVolume,
+          p_waiter_alarm_volume: requestedWaiterVolume,
+        }
+      )
+
+      if (error) throw error
+
+      if (!data?.success) {
+        throw new Error(
+          data?.message || 'Alarm settings were not saved.'
+        )
       }
 
-      alarmSettingsDirtyRef.current = false
-      alert('Alarm settings saved successfully! ✅')
-    }
+      const savedKitchenSound = String(
+        data?.kitchenAlarmSound || ''
+      )
+      const savedWaiterSound = String(
+        data?.waiterAlarmSound || ''
+      )
 
-    setSavingAlarmSettings(false)
+      if (
+        savedKitchenSound !== requestedKitchenSound ||
+        savedWaiterSound !== requestedWaiterSound
+      ) {
+        throw new Error(
+          `Database verification failed. Kitchen saved as "${savedKitchenSound || 'empty'}" and Waiter saved as "${savedWaiterSound || 'empty'}".`
+        )
+      }
+
+      setKitchenAlarmSound(savedKitchenSound)
+      setWaiterAlarmSound(savedWaiterSound)
+      setKitchenAlarmEnabled(
+        data?.kitchenAlarmEnabled ?? Boolean(kitchenAlarmEnabled)
+      )
+      setWaiterAlarmEnabled(
+        data?.waiterAlarmEnabled ?? Boolean(waiterAlarmEnabled)
+      )
+      setKitchenAlarmVolume(
+        Number(data?.kitchenAlarmVolume ?? requestedKitchenVolume)
+      )
+      setWaiterAlarmVolume(
+        Number(data?.waiterAlarmVolume ?? requestedWaiterVolume)
+      )
+
+      setRestaurant((current) =>
+        current
+          ? {
+              ...current,
+              kitchen_alarm_sound: savedKitchenSound,
+              waiter_alarm_sound: savedWaiterSound,
+              kitchen_alarm_enabled:
+                data?.kitchenAlarmEnabled ?? Boolean(kitchenAlarmEnabled),
+              waiter_alarm_enabled:
+                data?.waiterAlarmEnabled ?? Boolean(waiterAlarmEnabled),
+              kitchen_alarm_volume:
+                Number(data?.kitchenAlarmVolume ?? requestedKitchenVolume),
+              waiter_alarm_volume:
+                Number(data?.waiterAlarmVolume ?? requestedWaiterVolume),
+            }
+          : current
+      )
+
+      alarmSettingsDirtyRef.current = false
+
+      alert(
+        `Alarm settings saved ✅\nKitchen: ${savedKitchenSound}\nWaiter: ${savedWaiterSound}`
+      )
+    } catch (error) {
+      console.error('Alarm settings save error:', error)
+
+      // Keep the owner's chosen values on screen after a failed save.
+      // This avoids silently jumping back to Default.
+      alarmSettingsDirtyRef.current = true
+
+      alert(
+        `Failed to save alarm settings: ${
+          error?.message || 'Please try again.'
+        }`
+      )
+    } finally {
+      setSavingAlarmSettings(false)
+    }
   }
 
   const handleTabSwitch = (tabId) => {
