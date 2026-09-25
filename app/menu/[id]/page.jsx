@@ -174,6 +174,15 @@ export default function CustomerMenuPage() {
   const [customerMobile, setCustomerMobile] = useState('')
   const customerMobileRef = useRef('')
 
+  // After guest verification, hold the menu behind a mobile loading screen
+  // until every configured menu image loads successfully or 45 seconds elapse.
+  const [showImageLoadingGate, setShowImageLoadingGate] = useState(false)
+  const [imageLoadingProgress, setImageLoadingProgress] = useState({
+    loaded: 0,
+    total: 0
+  })
+  const [imageLoadingSeconds, setImageLoadingSeconds] = useState(0)
+
   // Keep the latest mobile number available to realtime callbacks without
   // recreating the Supabase channel on every digit typed into the form.
   // Recreating the menu effect on every keystroke can toggle the loading
@@ -490,6 +499,9 @@ export default function CustomerMenuPage() {
       return
     }
 
+    setImageLoadingProgress({ loaded: 0, total: 0 })
+    setImageLoadingSeconds(0)
+    setShowImageLoadingGate(true)
     setIsVerified(true)
     setActiveNav('home')
   }
@@ -823,6 +835,113 @@ export default function CustomerMenuPage() {
     dailyOffers,
     bestSellers,
     menuItems
+  ])
+
+
+  /*
+   * CUSTOMER IMAGE-LOADING GATE
+   *
+   * After guest verification:
+   * - open the menu immediately when ALL configured menu/offer images succeed
+   * - otherwise keep the loading experience for at most 45 seconds
+   * - if one or more remote images fail, the 45-second safety limit guarantees
+   *   the customer is never trapped on the loading screen
+   */
+  useEffect(() => {
+    if (
+      typeof window === 'undefined' ||
+      !isVerified ||
+      !showImageLoadingGate
+    ) {
+      return undefined
+    }
+
+    let cancelled = false
+    let finished = false
+    let successfulLoads = 0
+
+    const uniqueUrls = [
+      ...new Set(
+        [
+          ...dailyOffers.map(offer => offer?.image_url),
+          ...menuItems.map(item => item?.image_url)
+        ]
+          .map(value => String(value || '').trim())
+          .filter(Boolean)
+      )
+    ]
+
+    const totalImages = uniqueUrls.length
+
+    setImageLoadingProgress({
+      loaded: 0,
+      total: totalImages
+    })
+    setImageLoadingSeconds(0)
+
+    const finishGate = () => {
+      if (cancelled || finished) return
+      finished = true
+      setShowImageLoadingGate(false)
+    }
+
+    // If there are no configured food images, do not make the customer wait.
+    if (totalImages === 0) {
+      const emptyTimer = window.setTimeout(finishGate, 350)
+
+      return () => {
+        cancelled = true
+        window.clearTimeout(emptyTimer)
+      }
+    }
+
+    const secondTimer = window.setInterval(() => {
+      if (cancelled || finished) return
+
+      setImageLoadingSeconds(current =>
+        Math.min(45, current + 1)
+      )
+    }, 1000)
+
+    const safetyTimer = window.setTimeout(() => {
+      finishGate()
+    }, 45000)
+
+    uniqueUrls.forEach(async url => {
+      const loadedSuccessfully = await preloadQrImage(url)
+
+      if (cancelled || finished || !loadedSuccessfully) {
+        return
+      }
+
+      successfulLoads += 1
+
+      setImageLoadingProgress({
+        loaded: successfulLoads,
+        total: totalImages
+      })
+
+      // The requested behavior: as soon as every image succeeds,
+      // stop waiting and reveal the menu.
+      if (successfulLoads >= totalImages) {
+        window.clearInterval(secondTimer)
+        window.clearTimeout(safetyTimer)
+
+        // Tiny delay makes 100% visible rather than flashing past instantly.
+        window.setTimeout(finishGate, 250)
+      }
+    })
+
+    return () => {
+      cancelled = true
+      window.clearInterval(secondTimer)
+      window.clearTimeout(safetyTimer)
+    }
+  }, [
+    isVerified,
+    showImageLoadingGate,
+    menuItems,
+    dailyOffers
   ])
 
   const getAutomaticHighlyReorderedIds = items => {
@@ -1407,6 +1526,268 @@ export default function CustomerMenuPage() {
               Powered by <span className="text-orange-500">Digital Dining</span>
             </p>
           </div>
+        </main>
+      </>
+    )
+  }
+
+
+  /*
+   * IMAGE LOADING EXPERIENCE
+   * Mobile-first animated screen shown for a maximum of 45 seconds.
+   */
+  if (isVerified && showImageLoadingGate) {
+    const imagePercent =
+      imageLoadingProgress.total > 0
+        ? Math.min(
+            100,
+            Math.round(
+              (imageLoadingProgress.loaded /
+                imageLoadingProgress.total) *
+                100
+            )
+          )
+        : 0
+
+    const secondsRemaining = Math.max(
+      0,
+      45 - imageLoadingSeconds
+    )
+
+    return (
+      <>
+        <style jsx global>{`
+          html, body {
+            margin: 0;
+            width: 100%;
+            max-width: 100%;
+            min-height: 100%;
+            overflow: hidden;
+            background: #fff8ef;
+          }
+
+          * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          @keyframes dd-loader-cloud-left {
+            0%, 100% { transform: translate3d(0, 0, 0); }
+            50% { transform: translate3d(14px, -5px, 0); }
+          }
+
+          @keyframes dd-loader-cloud-right {
+            0%, 100% { transform: translate3d(0, 0, 0); }
+            50% { transform: translate3d(-12px, 4px, 0); }
+          }
+
+          @keyframes dd-chase-across {
+            0% {
+              left: -42%;
+              transform: translateY(0);
+            }
+            25% {
+              transform: translateY(-3px);
+            }
+            50% {
+              transform: translateY(0);
+            }
+            75% {
+              transform: translateY(-3px);
+            }
+            100% {
+              left: 108%;
+              transform: translateY(0);
+            }
+          }
+
+          @keyframes dd-child-bounce {
+            0%, 100% { transform: translateY(0) rotate(-2deg); }
+            50% { transform: translateY(-5px) rotate(2deg); }
+          }
+
+          @keyframes dd-dog-bounce {
+            0%, 100% { transform: translateY(0) rotate(1deg); }
+            50% { transform: translateY(-7px) rotate(-2deg); }
+          }
+
+          @keyframes dd-loader-pulse {
+            0%, 100% { opacity: .65; transform: scale(.96); }
+            50% { opacity: 1; transform: scale(1); }
+          }
+
+          .dd-loader-cloud-left {
+            animation: dd-loader-cloud-left 5s ease-in-out infinite;
+          }
+
+          .dd-loader-cloud-right {
+            animation: dd-loader-cloud-right 6s ease-in-out infinite;
+          }
+
+          .dd-chase-group {
+            position: absolute;
+            bottom: 8px;
+            left: -42%;
+            display: flex;
+            align-items: flex-end;
+            gap: 14px;
+            white-space: nowrap;
+            animation: dd-chase-across 4.4s linear infinite;
+            will-change: left, transform;
+          }
+
+          .dd-running-child {
+            display: inline-block;
+            font-size: 42px;
+            line-height: 1;
+            animation: dd-child-bounce .34s ease-in-out infinite;
+          }
+
+          .dd-running-dog {
+            display: inline-block;
+            font-size: 40px;
+            line-height: 1;
+            transform: scaleX(-1);
+            animation: dd-dog-bounce .3s ease-in-out infinite;
+          }
+
+          .dd-loader-pulse {
+            animation: dd-loader-pulse 1.5s ease-in-out infinite;
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .dd-loader-cloud-left,
+            .dd-loader-cloud-right,
+            .dd-chase-group,
+            .dd-running-child,
+            .dd-running-dog,
+            .dd-loader-pulse {
+              animation: none !important;
+            }
+
+            .dd-chase-group {
+              left: 50%;
+              transform: translateX(-50%);
+            }
+          }
+        `}</style>
+
+        <main className="relative flex min-h-[100dvh] w-[100svw] items-center justify-center overflow-hidden bg-[#fff8ef] px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] text-neutral-900">
+          {/* Soft decorative background */}
+          <div
+            aria-hidden="true"
+            className="dd-loader-cloud-left absolute -left-20 top-[10%] h-56 w-56 rounded-full bg-orange-200/40 blur-3xl"
+          />
+          <div
+            aria-hidden="true"
+            className="dd-loader-cloud-right absolute -right-20 bottom-[12%] h-64 w-64 rounded-full bg-amber-100/70 blur-3xl"
+          />
+
+          <section className="relative z-10 w-full max-w-[430px] overflow-hidden rounded-[34px] border border-orange-100/80 bg-white p-5 shadow-[0_28px_80px_rgba(124,45,18,.12)]">
+            <div className="flex items-center gap-3">
+              <RestaurantLogo
+                restaurant={restaurant}
+                className="h-12 w-12 shrink-0 rounded-2xl border border-neutral-100 bg-white shadow-sm"
+                imageClassName="h-full w-full object-contain p-1"
+              />
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-base font-black">
+                  {restaurant.name}
+                </p>
+                <p className="mt-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-orange-500">
+                  Preparing Table {tableNumber}
+                </p>
+              </div>
+
+              <span className="rounded-full bg-orange-50 px-3 py-1.5 text-[9px] font-black text-orange-600">
+                {imagePercent}%
+              </span>
+            </div>
+
+            <div className="mt-6 text-center">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-500">
+                Almost ready
+              </p>
+
+              <h1 className="mt-2 text-[28px] font-black leading-[1.08] tracking-tight">
+                Fetching your
+                <br />
+                delicious menu
+              </h1>
+
+              <p className="mx-auto mt-3 max-w-[300px] text-xs leading-5 text-neutral-500">
+                We&apos;re loading the food photos before opening the menu so browsing feels smooth.
+              </p>
+            </div>
+
+            {/* Child running behind a dog */}
+            <div className="relative mt-6 overflow-hidden rounded-[26px] border border-orange-100 bg-gradient-to-b from-sky-50 via-orange-50 to-amber-100">
+              <div className="absolute left-6 top-5 text-2xl opacity-70">
+                ☁️
+              </div>
+              <div className="absolute right-8 top-8 text-xl opacity-60">
+                ☁️
+              </div>
+              <div className="absolute right-5 top-4 text-3xl">
+                ☀️
+              </div>
+
+              <div className="relative h-[150px]">
+                <div className="absolute inset-x-0 bottom-[34px] h-[2px] bg-orange-200" />
+                <div className="absolute inset-x-0 bottom-0 h-[34px] bg-emerald-100/80" />
+
+                <div className="dd-chase-group" aria-label="Child running behind a dog">
+                  <span className="dd-running-child" role="img" aria-label="child">
+                    🧒
+                  </span>
+                  <span className="mb-2 text-sm opacity-60" aria-hidden="true">
+                    💨
+                  </span>
+                  <span className="dd-running-dog" role="img" aria-label="dog">
+                    🐕
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Progress */}
+            <div className="mt-6">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-neutral-400">
+                    Menu photos
+                  </p>
+                  <p className="mt-1 text-sm font-black">
+                    {imageLoadingProgress.loaded} of {imageLoadingProgress.total || 0} loaded
+                  </p>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-neutral-400">
+                    Maximum wait
+                  </p>
+                  <p className="mt-1 text-sm font-black text-orange-600">
+                    {secondsRemaining}s
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 h-3 overflow-hidden rounded-full bg-neutral-100">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-orange-400 via-orange-500 to-amber-400 transition-[width] duration-300 ease-out"
+                  style={{ width: `${imagePercent}%` }}
+                />
+              </div>
+
+              <div className="mt-4 flex items-center justify-center gap-2 rounded-2xl bg-neutral-50 px-3 py-3">
+                <span className="dd-loader-pulse h-2 w-2 rounded-full bg-emerald-500" />
+                <span className="text-[9px] font-bold text-neutral-500">
+                  The menu opens automatically when all photos are ready
+                </span>
+              </div>
+            </div>
+          </section>
         </main>
       </>
     )
@@ -2598,6 +2979,9 @@ export default function CustomerMenuPage() {
                 type="button"
                 onClick={() => {
                   setActiveNav('signin')
+                  setShowImageLoadingGate(false)
+                  setImageLoadingProgress({ loaded: 0, total: 0 })
+                  setImageLoadingSeconds(0)
                   setIsVerified(false)
                   setShowPortal(false)
                   setCustomerName('')

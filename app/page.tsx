@@ -111,65 +111,131 @@ const workflow = [
   },
 ]
 
+const billingOptions = [
+  {
+    key: 'monthly',
+    label: 'Monthly',
+    helper: 'Flexible billing',
+  },
+  {
+    key: 'sixMonths',
+    label: '6 Months',
+    helper: 'Save 10%',
+  },
+  {
+    key: 'yearly',
+    label: '12 Months',
+    helper: 'Save 20%',
+  },
+] as const
+
+type BillingPeriod = (typeof billingOptions)[number]['key']
+
 const plans = [
   {
-    name: 'Standard',
-    eyebrow: 'For small restaurants',
-    price: '₹799',
+    name: 'Restaurant Standard',
+    shortName: 'Standard',
+    eyebrow: 'Restaurant',
+    prices: {
+      monthly: '₹799',
+      sixMonths: '₹4,315',
+      yearly: '₹7,670',
+    },
     description:
-      'A simple starting point for restaurants moving from paper menus to digital ordering.',
+      'A focused digital ordering plan for restaurants moving from paper menus to a complete QR ordering workflow.',
     featured: false,
+    resortEnabled: false,
     features: [
       'Digital restaurant menu',
-      'QR / table-based access',
-      'Menu search & categories',
-      'Food-type filters',
+      'QR / table-based ordering',
+      'Menu search, categories & food filters',
       'Dine-In & Parcel ordering',
       'Cart & quantity management',
-      'GST calculation',
-      'Razorpay online payments',
-      'Digital paid invoice',
-    ],
-  },
-  {
-    name: 'Pro',
-    eyebrow: 'For growing restaurants',
-    price: '₹1,299',
-    description:
-      'A stronger digital ordering experience for restaurants handling more customer activity.',
-    featured: true,
-    features: [
-      'Everything in Standard',
-      'Real-time restaurant/menu updates',
-      'Highly Reordered items',
-      'Customer mobile capture',
-      'Daily order numbering',
-      'Restaurant-specific Razorpay setup',
-      'Smart menu discovery',
-      'Mobile-first ordering experience',
-      'Detailed paid order summary',
-    ],
-  },
-  {
-    name: 'Pro+',
-    eyebrow: 'For high-volume operations',
-    price: '₹1,999',
-    description:
-      'A premium Digital Dining experience built around smoother restaurant operations.',
-    featured: false,
-    features: [
-      'Everything in Pro',
-      'Full digital ordering workflow',
-      'Popular-item discovery',
-      'Dine-In & takeaway support',
-      'Configurable packing charges',
       'GST-ready checkout',
-      'Secure online payment flow',
+      'Razorpay online payments',
+      'Digital paid invoices',
+      'Daily order numbering',
+    ],
+  },
+  {
+    name: 'Restaurant Pro',
+    shortName: 'Pro',
+    eyebrow: 'Restaurant',
+    prices: {
+      monthly: '₹1,299',
+      sixMonths: '₹7,015',
+      yearly: '₹12,470',
+    },
+    description:
+      'For growing restaurants that want stronger real-time operations, staff workflows and customer ordering tools.',
+    featured: true,
+    resortEnabled: false,
+    features: [
+      'Everything in Restaurant Standard',
+      'Real-time restaurant/menu updates',
+      'Highly Reordered item discovery',
+      'Kitchen & waiter workflows',
+      'Manager operational tools',
+      'Restaurant-specific Razorpay setup',
+      'Reports, analytics & order visibility',
+      'Mobile-first restaurant app experience',
+      'Detailed paid order summaries',
+    ],
+  },
+  {
+    name: 'Restaurant + Resort Standard',
+    shortName: 'Resort Standard',
+    eyebrow: 'Restaurant + Resort',
+    prices: {
+      monthly: '₹1,999',
+      sixMonths: '₹10,795',
+      yearly: '₹19,190',
+    },
+    description:
+      'Bring restaurant ordering and resort operations together in one Digital Dining workspace.',
+    featured: false,
+    resortEnabled: true,
+    features: [
+      'Everything in Restaurant Standard',
+      'Restaurant + resort workspace',
+      'Resort management access',
+      'Room booking & inventory tools',
+      'Restaurant QR ordering',
+      'Guest-facing digital workflows',
+      'GST-ready restaurant billing',
       'Digital receipts & invoices',
-      'Restaurant-ready customer experience',
+      'Unified operational experience',
+    ],
+  },
+  {
+    name: 'Restaurant + Resort Pro',
+    shortName: 'Resort Pro',
+    eyebrow: 'Restaurant + Resort',
+    prices: {
+      monthly: '₹2,999',
+      sixMonths: '₹16,195',
+      yearly: '₹28,790',
+    },
+    description:
+      'The complete plan for higher-volume restaurant and resort teams that need connected digital operations.',
+    featured: false,
+    resortEnabled: true,
+    features: [
+      'Everything in Restaurant Pro',
+      'Full resort management access',
+      'Room booking & inventory tools',
+      'Kitchen, waiter & manager workflows',
+      'Advanced reports & analytics',
+      'Smart ordering & popular-item discovery',
+      'Restaurant-specific online payments',
+      'Live operational visibility',
+      'Premium combined business experience',
     ],
   },
 ]
+
+const LIVE_DEMO_URL = '/app'
+
 
 type Accent =
   | 'orange'
@@ -214,6 +280,7 @@ function AccentIcon({
 export default function LandingPage() {
   const [showPrivacyNotice, setShowPrivacyNotice] = useState(false)
   const [privacyReady, setPrivacyReady] = useState(false)
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
 
   const heroPreviewRef = useRef<HTMLDivElement | null>(null)
   const pointerFrameRef = useRef<number | null>(null)
@@ -545,7 +612,7 @@ export default function LandingPage() {
 
       {/* Launch banner */}
       <div className="relative z-50 border-b border-orange-400/20 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500 px-4 py-2.5 text-center text-[10px] font-black uppercase tracking-[0.18em] text-black sm:text-xs">
-        <span>🎁 First-time restaurant partners get 14 Days free</span>
+        <span>🎁 First-time partners get 1 Month Free Subscription</span>
       </div>
 
       {/* Navigation */}
@@ -563,7 +630,7 @@ export default function LandingPage() {
               </div>
 
               <div className="hidden text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500 sm:block">
-                Restaurant SaaS
+                Restaurant + Resort SaaS
               </div>
             </div>
           </a>
@@ -575,6 +642,10 @@ export default function LandingPage() {
 
             <a href="#experience" className="transition hover:text-white">
               Experience
+            </a>
+
+            <a href="#demo" className="transition hover:text-white">
+              Live Demo
             </a>
 
             <a href="#how-it-works" className="transition hover:text-white">
@@ -619,8 +690,8 @@ export default function LandingPage() {
               </h1>
 
               <p className="mt-7 max-w-2xl text-sm leading-7 text-neutral-400 sm:text-base sm:leading-8">
-                Digital Dining brings your restaurant menu, QR ordering,
-                payments, GST billing and customer ordering experience into
+                Digital Dining brings restaurant QR ordering, payments, GST
+                billing, staff operations and optional resort management into
                 one fast, beautifully designed SaaS platform.
               </p>
 
@@ -636,10 +707,10 @@ export default function LandingPage() {
                 </Link>
 
                 <a
-                  href="#features"
+                  href="#demo"
                   className="flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-7 py-4 text-xs font-black uppercase tracking-wider text-neutral-300 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
                 >
-                  Explore platform
+                  View live demo
                 </a>
               </div>
 
@@ -946,6 +1017,105 @@ export default function LandingPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Live website demo */}
+        <section
+          id="demo"
+          className="mx-auto max-w-7xl scroll-mt-20 px-5 py-24 sm:px-6 lg:px-8"
+        >
+          <div className="grid items-center gap-12 lg:grid-cols-[0.8fr_1.2fr]">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Live Digital Dining web app
+              </div>
+
+              <h2 className="mt-5 text-3xl font-black tracking-tight sm:text-5xl">
+                See the product
+                <br />
+                <span className="text-neutral-500">before you subscribe.</span>
+              </h2>
+
+              <p className="mt-6 max-w-xl text-sm leading-7 text-neutral-500">
+                Explore the real Digital Dining web application directly from
+                this page. The preview uses your current web app route, so future
+                product updates automatically appear here too.
+              </p>
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <a
+                  href={LIVE_DEMO_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-3 rounded-2xl bg-emerald-500 px-6 py-3.5 text-[10px] font-black uppercase tracking-wider text-black transition hover:-translate-y-0.5 hover:bg-emerald-400"
+                >
+                  Open full web app
+                  <span>↗</span>
+                </a>
+
+                <a
+                  href="#pricing"
+                  className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-3.5 text-[10px] font-black uppercase tracking-wider text-neutral-300 transition hover:bg-white/[0.06] hover:text-white"
+                >
+                  Compare plans
+                </a>
+              </div>
+
+              <div className="mt-7 grid grid-cols-2 gap-3 sm:max-w-md">
+                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+                  <div className="text-lg font-black text-orange-400">QR</div>
+                  <div className="mt-1 text-[8px] font-bold uppercase tracking-wider text-neutral-600">
+                    Customer ordering
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+                  <div className="text-lg font-black text-emerald-400">LIVE</div>
+                  <div className="mt-1 text-[8px] font-bold uppercase tracking-wider text-neutral-600">
+                    Staff operations
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative [perspective:1200px]">
+              <div className="pointer-events-none absolute -inset-8 rounded-[40px] bg-emerald-500/[0.04] blur-2xl" />
+
+              <div className="dd-glass relative overflow-hidden rounded-[30px] bg-[#0d0d0d] shadow-2xl">
+                <div className="flex items-center gap-3 border-b border-white/[0.07] px-4 py-3 sm:px-5">
+                  <div className="flex gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/70" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-green-400/70" />
+                  </div>
+
+                  <div className="min-w-0 flex-1 truncate rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-center text-[8px] font-bold text-neutral-600">
+                    digitaldine-in.online/app
+                  </div>
+
+                  <a
+                    href={LIVE_DEMO_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg border border-white/[0.07] px-2 py-1 text-[8px] font-black text-neutral-500 transition hover:text-white"
+                    aria-label="Open Digital Dining web app in a new tab"
+                  >
+                    ↗
+                  </a>
+                </div>
+
+                <div className="relative h-[520px] bg-white sm:h-[600px]">
+                  <iframe
+                    src={LIVE_DEMO_URL}
+                    title="Digital Dining live website demo"
+                    loading="lazy"
+                    className="h-full w-full border-0 bg-white"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -1314,87 +1484,152 @@ export default function LandingPage() {
           <div className="mx-auto max-w-7xl px-5 py-24 sm:px-6 lg:px-8">
             <div className="text-center">
               <div className="text-[9px] font-black uppercase tracking-[0.25em] text-emerald-400">
-                Simple SaaS pricing
+                Restaurant + Resort pricing
               </div>
 
               <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">
-                Start small. Grow with Digital Dining.
+                Choose the plan that fits your operation.
               </h2>
 
-              <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-neutral-500">
-                Choose the restaurant tier that fits your operation. First-time
-                partners can claim the current launch offer during registration.
+              <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-neutral-500">
+                Start with restaurant operations or combine restaurant and resort
+                management. All prices below are final customer charges with GST
+                included.
               </p>
+
+              <div className="mx-auto mt-8 grid max-w-2xl grid-cols-3 gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-1.5">
+                {billingOptions.map((option) => {
+                  const active = billingPeriod === option.key
+
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setBillingPeriod(option.key)}
+                      className={`rounded-xl px-2 py-3 text-center transition sm:px-4 ${
+                        active
+                          ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/15'
+                          : 'text-neutral-500 hover:bg-white/[0.04] hover:text-white'
+                      }`}
+                    >
+                      <div className="text-[9px] font-black uppercase tracking-wider sm:text-[10px]">
+                        {option.label}
+                      </div>
+                      <div
+                        className={`mt-1 text-[7px] font-bold sm:text-[8px] ${
+                          active ? 'text-orange-100' : 'text-neutral-700'
+                        }`}
+                      >
+                        {option.helper}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
-            <div className="mt-14 grid gap-5 lg:grid-cols-3">
-              {plans.map((plan) => (
-                <div
-                  key={plan.name}
-                  className={`dd-3d-card relative flex flex-col rounded-[30px] p-7 ${
-                    plan.featured
-                      ? 'border-2 border-orange-500 bg-gradient-to-b from-orange-500/[0.10] to-[#111] shadow-2xl shadow-orange-500/10'
-                      : 'border border-white/[0.07] bg-white/[0.025]'
-                  }`}
-                >
-                  {plan.featured && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-orange-500 px-4 py-1.5 text-[8px] font-black uppercase tracking-[0.18em] text-white">
-                      Most Popular
-                    </div>
-                  )}
+            <div className="mt-14 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+              {plans.map((plan) => {
+                const periodLabel =
+                  billingPeriod === 'monthly'
+                    ? '/ month'
+                    : billingPeriod === 'sixMonths'
+                      ? '/ 6 months'
+                      : '/ 12 months'
 
-                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-600">
-                    {plan.eyebrow}
-                  </div>
-
-                  <div className="mt-3 flex items-end gap-2">
-                    <h3 className="text-2xl font-black">{plan.name}</h3>
-                  </div>
-
-                  <div className="mt-5 flex items-end gap-1">
-                    <span className="text-4xl font-black tracking-tight">
-                      {plan.price}
-                    </span>
-
-                    <span className="pb-1 text-[10px] font-bold text-neutral-600">
-                      / month
-                    </span>
-                  </div>
-
-                  <p className="mt-4 min-h-[48px] text-xs leading-6 text-neutral-500">
-                    {plan.description}
-                  </p>
-
-                  <div className="my-6 h-px bg-white/[0.07]" />
-
-                  <div className="flex-1 space-y-3">
-                    {plan.features.map((feature) => (
-                      <div
-                        key={feature}
-                        className="flex items-start gap-3 text-[10px] font-bold text-neutral-300"
-                      >
-                        <span className="mt-0.5 text-emerald-400">✓</span>
-                        <span>{feature}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <Link
-                    href="/register"
-                    className={`mt-8 flex items-center justify-center rounded-2xl py-3.5 text-[10px] font-black uppercase tracking-wider transition ${
+                return (
+                  <div
+                    key={plan.name}
+                    className={`dd-3d-card relative flex flex-col rounded-[30px] p-6 sm:p-7 ${
                       plan.featured
-                        ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20 hover:bg-orange-400'
-                        : 'border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]'
+                        ? 'border-2 border-orange-500 bg-gradient-to-b from-orange-500/[0.10] to-[#111] shadow-2xl shadow-orange-500/10'
+                        : plan.resortEnabled
+                          ? 'border border-blue-400/15 bg-gradient-to-b from-blue-500/[0.045] to-white/[0.02]'
+                          : 'border border-white/[0.07] bg-white/[0.025]'
                     }`}
                   >
-                    Choose {plan.name}
-                  </Link>
-                </div>
-              ))}
+                    {plan.featured && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-orange-500 px-4 py-1.5 text-[8px] font-black uppercase tracking-[0.18em] text-white">
+                        Most Popular
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-600">
+                        {plan.eyebrow}
+                      </div>
+
+                      {plan.resortEnabled && (
+                        <span className="rounded-full border border-blue-400/15 bg-blue-400/[0.07] px-2 py-1 text-[7px] font-black uppercase tracking-wider text-blue-300">
+                          Resort enabled
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="mt-3 min-h-[52px] text-xl font-black leading-tight">
+                      {plan.name}
+                    </h3>
+
+                    <div className="mt-5">
+                      <div className="flex flex-wrap items-end gap-1">
+                        <span className="text-3xl font-black tracking-tight sm:text-4xl">
+                          {plan.prices[billingPeriod]}
+                        </span>
+
+                        <span className="pb-1 text-[9px] font-bold text-neutral-600">
+                          {periodLabel}
+                        </span>
+                      </div>
+
+                      {billingPeriod !== 'monthly' && (
+                        <div className="mt-2 inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider text-emerald-400">
+                          {billingPeriod === 'sixMonths'
+                            ? '10% plan saving'
+                            : '20% plan saving'}
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="mt-4 min-h-[72px] text-xs leading-6 text-neutral-500">
+                      {plan.description}
+                    </p>
+
+                    <div className="my-6 h-px bg-white/[0.07]" />
+
+                    <div className="flex-1 space-y-3">
+                      {plan.features.map((feature) => (
+                        <div
+                          key={feature}
+                          className="flex items-start gap-3 text-[10px] font-bold text-neutral-300"
+                        >
+                          <span className="mt-0.5 text-emerald-400">✓</span>
+                          <span>{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <Link
+                      href="/register"
+                      className={`mt-8 flex items-center justify-center rounded-2xl py-3.5 text-[10px] font-black uppercase tracking-wider transition ${
+                        plan.featured
+                          ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20 hover:bg-orange-400'
+                          : 'border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]'
+                      }`}
+                    >
+                      Choose {plan.shortName}
+                    </Link>
+                  </div>
+                )
+              })}
             </div>
 
-            <div className="mt-7 text-center text-[9px] font-bold text-neutral-700">
-              Pricing shown for the current Digital Dining launch offering.
+            <div className="mt-8 flex flex-col items-center justify-center gap-2 text-center">
+              <div className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-400">
+                GST included in displayed pricing
+              </div>
+              <div className="text-[9px] font-bold text-neutral-700">
+                First-time partners can claim the current 1 Month Free Subscription offer.
+              </div>
             </div>
           </div>
         </section>
@@ -1515,7 +1750,7 @@ export default function LandingPage() {
               <div className="text-xs font-black">Digital Dining</div>
 
               <div className="mt-0.5 text-[8px] font-bold uppercase tracking-wider text-neutral-700">
-                Restaurant SaaS
+                Restaurant + Resort SaaS
               </div>
             </div>
           </div>
@@ -1523,6 +1758,10 @@ export default function LandingPage() {
           <div className="flex flex-wrap gap-x-6 gap-y-3 text-[9px] font-bold uppercase tracking-wider text-neutral-600">
             <a href="#features" className="transition hover:text-white">
               Features
+            </a>
+
+            <a href="#demo" className="transition hover:text-white">
+              Demo
             </a>
 
             <a href="#pricing" className="transition hover:text-white">
