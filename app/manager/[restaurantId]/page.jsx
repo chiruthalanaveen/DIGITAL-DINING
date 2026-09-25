@@ -1,6 +1,7 @@
 'use client'
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import ThemeToggle from '@/app/components/ThemeToggle'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
 
@@ -790,12 +791,277 @@ function RestaurantChatWidget({ restaurantId }) {
   )
 }
 
+
+function DashboardEntryLoader({
+  portalLabel = 'Digital Dining Portal',
+  detail = 'Preparing your workspace...',
+}) {
+  return (
+    <div className="dd-entry-screen fixed inset-0 z-[99999] flex min-h-screen items-center justify-center overflow-hidden bg-[#f7f7f8] px-5 text-neutral-900">
+      <style jsx global>{`
+        .dd-entry-screen {
+          background:
+            radial-gradient(circle at 50% 30%, rgba(249,115,22,.08), transparent 34%),
+            #f7f7f8;
+        }
+
+        :root[data-theme='dark'] .dd-entry-screen {
+          background:
+            radial-gradient(circle at 50% 30%, rgba(249,115,22,.10), transparent 34%),
+            #09090b;
+          color: #f5f5f5;
+        }
+
+        .dd-entry-child {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: dd-child-chase 1.05s ease-in-out infinite alternate;
+        }
+
+        .dd-entry-arm-front,
+        .dd-entry-leg-back {
+          transform-box: fill-box;
+          transform-origin: top center;
+          animation: dd-limb-forward .34s ease-in-out infinite alternate;
+        }
+
+        .dd-entry-arm-back,
+        .dd-entry-leg-front {
+          transform-box: fill-box;
+          transform-origin: top center;
+          animation: dd-limb-back .34s ease-in-out infinite alternate;
+        }
+
+        .dd-entry-ball {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: dd-ball-bounce .7s ease-in-out infinite;
+        }
+
+        .dd-entry-shadow {
+          animation: dd-shadow-pulse .7s ease-in-out infinite;
+        }
+
+        .dd-entry-progress {
+          animation: dd-progress-4s 4s linear forwards;
+          transform-origin: left center;
+        }
+
+        @keyframes dd-child-chase {
+          from { transform: translate3d(-12px, 0, 0); }
+          to { transform: translate3d(34px, -1px, 0); }
+        }
+
+        @keyframes dd-limb-forward {
+          from { transform: rotate(22deg); }
+          to { transform: rotate(-28deg); }
+        }
+
+        @keyframes dd-limb-back {
+          from { transform: rotate(-24deg); }
+          to { transform: rotate(30deg); }
+        }
+
+        @keyframes dd-ball-bounce {
+          0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+          45% { transform: translate3d(-8px, -22px, 0) rotate(130deg); }
+          70% { transform: translate3d(-13px, -5px, 0) rotate(220deg); }
+        }
+
+        @keyframes dd-shadow-pulse {
+          0%, 100% { transform: scaleX(1); opacity: .18; }
+          45% { transform: scaleX(.72); opacity: .1; }
+        }
+
+        @keyframes dd-progress-4s {
+          from { transform: scaleX(0); }
+          to { transform: scaleX(1); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .dd-entry-child,
+          .dd-entry-arm-front,
+          .dd-entry-arm-back,
+          .dd-entry-leg-front,
+          .dd-entry-leg-back,
+          .dd-entry-ball,
+          .dd-entry-shadow {
+            animation: none !important;
+          }
+
+          .dd-entry-progress {
+            animation-duration: 4s !important;
+          }
+        }
+      `}</style>
+
+      <div className="w-full max-w-md text-center">
+        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-black text-white shadow-lg shadow-orange-500/20">
+          D
+        </div>
+
+        <div className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-orange-500">
+          Digital Dining
+        </div>
+
+        <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
+          Opening {portalLabel}
+        </h1>
+
+        <p className="mt-2 text-xs font-medium text-neutral-500">
+          {detail}
+        </p>
+
+        <div className="relative mx-auto mt-7 h-[150px] w-full max-w-[360px] overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-sm">
+          <svg
+            viewBox="0 0 360 150"
+            className="h-full w-full"
+            role="img"
+            aria-label="A child running after a ball"
+          >
+            <defs>
+              <linearGradient id="ddLoaderSky" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="#fff7ed" />
+                <stop offset="100%" stopColor="#ffffff" />
+              </linearGradient>
+              <linearGradient id="ddLoaderShirt" x1="0" x2="1">
+                <stop offset="0%" stopColor="#fb923c" />
+                <stop offset="100%" stopColor="#ea580c" />
+              </linearGradient>
+            </defs>
+
+            <rect width="360" height="150" fill="url(#ddLoaderSky)" />
+            <path d="M0 116 C70 109 134 121 205 115 C278 109 321 116 360 112 V150 H0 Z" fill="#f3f4f6" />
+            <path d="M0 116 H360" stroke="#d4d4d8" strokeWidth="1" />
+
+            <ellipse
+              className="dd-entry-shadow"
+              cx="154"
+              cy="122"
+              rx="35"
+              ry="6"
+              fill="#111827"
+            />
+
+            <g className="dd-entry-child">
+              <circle cx="122" cy="48" r="13" fill="#b97852" />
+              <path
+                d="M110 43 C113 30 134 29 137 45 C132 39 124 37 116 39 Z"
+                fill="#2b211b"
+              />
+              <path
+                d="M132 45 C137 46 140 49 140 53"
+                stroke="#2b211b"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+              <circle cx="127" cy="47" r="1.2" fill="#1f2937" />
+
+              <rect
+                x="111"
+                y="61"
+                width="28"
+                height="39"
+                rx="11"
+                fill="url(#ddLoaderShirt)"
+              />
+              <path d="M115 98 H138 L134 111 H116 Z" fill="#1f2937" />
+
+              <g className="dd-entry-arm-back">
+                <path
+                  d="M115 70 L94 85 L82 78"
+                  fill="none"
+                  stroke="#b97852"
+                  strokeWidth="7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+
+              <g className="dd-entry-arm-front">
+                <path
+                  d="M136 70 L154 83 L169 75"
+                  fill="none"
+                  stroke="#b97852"
+                  strokeWidth="7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+
+              <g className="dd-entry-leg-back">
+                <path
+                  d="M120 107 L103 123 L89 122"
+                  fill="none"
+                  stroke="#b97852"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M87 122 H101"
+                  stroke="#111827"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                />
+              </g>
+
+              <g className="dd-entry-leg-front">
+                <path
+                  d="M132 107 L147 122 L160 114"
+                  fill="none"
+                  stroke="#b97852"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M157 114 L170 116"
+                  stroke="#111827"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                />
+              </g>
+            </g>
+
+            <g className="dd-entry-ball">
+              <circle cx="265" cy="107" r="15" fill="#ffffff" stroke="#111827" strokeWidth="1.5" />
+              <path
+                d="M265 92 L273 101 L269 111 L257 111 L253 101 Z"
+                fill="#f97316"
+              />
+              <path
+                d="M273 101 L279 96 M269 111 L277 119 M257 111 L251 120 M253 101 L247 96"
+                stroke="#111827"
+                strokeWidth="1.2"
+              />
+            </g>
+          </svg>
+
+          <div className="absolute bottom-3 left-4 right-4">
+            <div className="h-1.5 overflow-hidden rounded-full bg-neutral-200">
+              <div className="dd-entry-progress h-full w-full rounded-full bg-orange-500" />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center justify-center gap-2 text-[10px] font-bold text-neutral-500">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+          Secure workspace is loading · about 4 seconds
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function RestaurantManagerDashboard({ params }) {
   const routeParams = use(params)
   const restaurantId = routeParams?.restaurantId || routeParams?.id
 
   const [authenticated, setAuthenticated] = useState(false)
   const [manager, setManager] = useState(null)
+  const [entryLoading, setEntryLoading] = useState(false)
+  const authenticatedOnceRef = useRef(false)
 
   // Manager Profile
   const [profileOpen, setProfileOpen] = useState(false)
@@ -1700,15 +1966,31 @@ export default function RestaurantManagerDashboard({ params }) {
     setProfileOpen(false)
   }
 
+  useEffect(() => {
+    if (!authenticated) {
+      authenticatedOnceRef.current = false
+      setEntryLoading(false)
+      return undefined
+    }
+
+    if (authenticatedOnceRef.current) return undefined
+
+    authenticatedOnceRef.current = true
+    setEntryLoading(true)
+
+    const timer = window.setTimeout(() => {
+      setEntryLoading(false)
+    }, 4000)
+
+    return () => window.clearTimeout(timer)
+  }, [authenticated])
+
   if (sessionChecking) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-4 text-neutral-100">
-        <div className="w-full max-w-sm rounded-3xl border border-neutral-800 bg-neutral-900 p-8 text-center shadow-2xl">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-neutral-800 border-t-orange-500" />
-          <h1 className="mt-5 text-lg font-black">Opening Manager Dashboard</h1>
-          <p className="mt-2 text-xs text-neutral-500">Checking your Digital Dining staff session...</p>
-        </div>
-      </main>
+      <DashboardEntryLoader
+        portalLabel="Manager Portal"
+        detail="Checking your secure Digital Dining staff session..."
+      />
     )
   }
 
@@ -1732,17 +2014,300 @@ export default function RestaurantManagerDashboard({ params }) {
     )
   }
 
+  if (entryLoading) {
+    return (
+      <DashboardEntryLoader
+        portalLabel="Manager Portal"
+        detail="Preparing live orders, tables, menu and staff tools..."
+      />
+    )
+  }
+
   return (
-    <main className="min-h-screen bg-neutral-950 p-3 text-neutral-100 sm:p-6">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <header className="flex flex-col justify-between gap-4 border-b border-neutral-800 pb-5 lg:flex-row lg:items-center">
+    <main className="dd-light-dashboard dd-manager-dashboard min-h-screen bg-[#f5f6f8] p-3 text-neutral-900 sm:p-6">
+      <style jsx global>{`
+
+                /*
+         * Dashboard shell only.
+         * The existing ThemeToggle writes data-theme="light|dark" on <html>.
+         * These rules keep the new sidebar layout while allowing both themes.
+         */
+        .dd-light-dashboard,
+        .dd-dashboard-header,
+        .dd-dashboard-sidebar {
+          transition:
+            background-color 70ms linear,
+            border-color 70ms linear,
+            color 70ms linear;
+        }
+
+        :root[data-theme='light'] .dd-light-dashboard {
+          background: #f5f6f8 !important;
+          color: #171717 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard {
+          background: #09090b !important;
+          color: #f5f5f5 !important;
+        }
+
+        :root[data-theme='light'] .dd-dashboard-header {
+          background: rgba(255, 255, 255, 0.97) !important;
+          border-color: #e5e7eb !important;
+          box-shadow: 0 1px 0 rgba(17, 24, 39, 0.04) !important;
+        }
+
+        :root[data-theme='dark'] .dd-dashboard-header {
+          background: rgba(17, 17, 19, 0.97) !important;
+          border-color: #2a2a2e !important;
+          box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+        }
+
+        :root[data-theme='light'] .dd-dashboard-header [class~='text-white'] {
+          color: #111827 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='bg-white'] {
+          background-color: #111113 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='bg-neutral-50'] {
+          background-color: #18181b !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='border-neutral-200'],
+        :root[data-theme='dark'] .dd-light-dashboard [class~='border-neutral-300'] {
+          border-color: #2f3035 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-900'],
+        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-800'],
+        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-700'] {
+          color: #f4f4f5 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-600'] {
+          color: #a1a1aa !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard input,
+        :root[data-theme='dark'] .dd-light-dashboard select,
+        :root[data-theme='dark'] .dd-light-dashboard textarea {
+          color: #f4f4f5 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard option {
+          background: #111113;
+          color: #f4f4f5;
+        }
+
+        .dd-light-dashboard .rounded-3xl {
+          border-radius: 18px !important;
+        }
+
+        .dd-light-dashboard .rounded-2xl {
+          border-radius: 14px !important;
+        }
+
+        .dd-dashboard-sidebar {
+          scrollbar-width: none;
+        }
+
+        .dd-dashboard-sidebar::-webkit-scrollbar {
+          display: none;
+        }
+
+        .dd-dashboard-sidebar button {
+          box-shadow: none !important;
+        }
+
+        :root[data-theme='light']
+          .dd-dashboard-sidebar
+          button:not([class*='bg-orange-500']) {
+          background: transparent !important;
+          border-color: transparent !important;
+          color: #525252 !important;
+        }
+
+        :root[data-theme='light']
+          .dd-dashboard-sidebar
+          button[class*='bg-orange-500'] {
+          background: #fff3e8 !important;
+          border-color: transparent !important;
+          color: #ea580c !important;
+        }
+
+        :root[data-theme='dark']
+          .dd-dashboard-sidebar
+          button:not([class*='bg-orange-500']) {
+          background: transparent !important;
+          border-color: transparent !important;
+          color: #a1a1aa !important;
+        }
+
+        :root[data-theme='dark']
+          .dd-dashboard-sidebar
+          button[class*='bg-orange-500'] {
+          background: rgba(249, 115, 22, 0.13) !important;
+          border-color: rgba(249, 115, 22, 0.18) !important;
+          color: #fb923c !important;
+        }
+
+        .dd-dashboard-intro {
+          margin-bottom: 2px;
+        }
+
+        @media (min-width: 1024px) {
+          .dd-owner-dashboard .dd-dashboard-main {
+            max-width: none !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            padding-left: 244px !important;
+            padding-right: 24px !important;
+          }
+
+          .dd-owner-dashboard .dd-dashboard-sidebar {
+            position: fixed;
+            left: 0;
+            top: 82px;
+            bottom: 0;
+            z-index: 20;
+            width: 220px;
+            display: flex !important;
+            flex-direction: column;
+            gap: 4px !important;
+            overflow-y: auto;
+            border-right: 1px solid;
+            border-bottom: 0 !important;
+            padding: 18px 12px;
+          }
+
+          :root[data-theme='light']
+            .dd-owner-dashboard
+            .dd-dashboard-sidebar {
+            background: #ffffff !important;
+            border-right-color: #e5e7eb !important;
+          }
+
+          :root[data-theme='dark']
+            .dd-owner-dashboard
+            .dd-dashboard-sidebar {
+            background: #111113 !important;
+            border-right-color: #2a2a2e !important;
+          }
+
+          .dd-manager-dashboard {
+            padding-left: 240px !important;
+          }
+
+          .dd-manager-dashboard .dd-manager-inner {
+            max-width: none !important;
+            margin: 0 !important;
+          }
+
+          .dd-manager-dashboard .dd-dashboard-header {
+            margin-left: -240px;
+            padding-left: 264px !important;
+            padding-right: 24px !important;
+          }
+
+          .dd-manager-dashboard .dd-dashboard-sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 30;
+            width: 220px;
+            display: flex !important;
+            flex-direction: column;
+            gap: 4px !important;
+            overflow-y: auto;
+            border-right: 1px solid;
+            border-bottom: 0 !important;
+            padding: 84px 12px 18px;
+          }
+
+          :root[data-theme='light']
+            .dd-manager-dashboard
+            .dd-dashboard-sidebar {
+            background: #ffffff !important;
+            border-right-color: #e5e7eb !important;
+          }
+
+          :root[data-theme='dark']
+            .dd-manager-dashboard
+            .dd-dashboard-sidebar {
+            background: #111113 !important;
+            border-right-color: #2a2a2e !important;
+          }
+
+          .dd-manager-dashboard .dd-dashboard-sidebar::before {
+            content: 'Digital Dining';
+            position: absolute;
+            left: 20px;
+            top: 24px;
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: -0.01em;
+          }
+
+          :root[data-theme='light']
+            .dd-manager-dashboard
+            .dd-dashboard-sidebar::before {
+            color: #111827;
+          }
+
+          :root[data-theme='dark']
+            .dd-manager-dashboard
+            .dd-dashboard-sidebar::before {
+            color: #f4f4f5;
+          }
+
+          .dd-dashboard-sidebar button {
+            width: 100%;
+            justify-content: flex-start !important;
+            text-align: left !important;
+            border-radius: 12px !important;
+            padding: 11px 12px !important;
+            font-size: 11px !important;
+            line-height: 1.3 !important;
+            text-transform: none !important;
+            letter-spacing: 0 !important;
+          }
+        }
+
+        @media (max-width: 1023px) {
+          .dd-dashboard-sidebar {
+            display: flex;
+            overflow-x: auto;
+            gap: 8px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid;
+          }
+
+          :root[data-theme='light'] .dd-dashboard-sidebar {
+            border-bottom-color: #e5e7eb !important;
+          }
+
+          :root[data-theme='dark'] .dd-dashboard-sidebar {
+            border-bottom-color: #2a2a2e !important;
+          }
+
+          .dd-dashboard-sidebar button {
+            flex: 0 0 auto;
+          }
+        }
+      `}</style>
+      <div className="dd-manager-inner mx-auto max-w-7xl space-y-5">
+        <header className="dd-dashboard-header flex flex-col justify-between gap-4 border-b border-neutral-200 bg-white px-4 py-4 shadow-sm lg:flex-row lg:items-center sm:px-6">
           <div>
             <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">Restaurant Manager Portal</span>
             <h1 className="mt-3 text-2xl font-black sm:text-3xl">{restaurant?.name || 'Restaurant'} Manager Dashboard</h1>
-            <p className="mt-1 text-xs text-neutral-500">Logged in as {manager?.name || manager?.user_id} · Operational access only</p>
+            <p className="mt-1 text-xs text-neutral-500">Manage live orders, tables, menu and staff operations from one place.</p>
             <p className="mt-2 inline-flex rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black font-mono tracking-widest text-orange-300">Restaurant Code: {restaurant?.restaurant_code || restaurantCode || '-----'}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ThemeToggle />
             <button onClick={handleStoreToggle} className={`rounded-xl px-4 py-2.5 text-xs font-black ${storeOpen ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>{storeOpen ? '🟢 Store Open' : '🔴 Store Closed'}</button>
             <button onClick={fetchDashboard} className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-black">{loading ? 'Refreshing...' : '↻ Refresh'}</button>
             <button
@@ -1861,15 +2426,15 @@ export default function RestaurantManagerDashboard({ params }) {
           <Stat title="Partner Tier" value={currentPlanDisplay} accent="text-amber-400" />
         </div>
 
-        <nav className="flex gap-2 overflow-x-auto border-b border-neutral-800 pb-3">
+        <nav className="dd-dashboard-sidebar flex gap-2 overflow-x-auto border-b border-neutral-200 pb-3">
           {[
-            ['live-orders', `🔴 Live Orders (${activeOrders.length})`],
-            ['tables', `🪑 Tables (${availableTableCount}/${configuredTableNumbers.length})`],
-            ['settlements', '📊 Analytics & Reports'],
-            ['menu', `🍔 Menu Catalog (${menuItems.length})`],
-            ['staff', `👥 Waiter & Kitchen Staff (${staffList.length})`],
-            ['offers', `🔥 Offers of the Day (${dailyOffers.filter((item) => item.is_active !== false).length})`],
-            ['swiggy-sync', '🟠 Menu Import / Sync']
+            ['live-orders', `▣ Live Orders (${activeOrders.length})`],
+            ['tables', `⌁ Tables (${availableTableCount}/${configuredTableNumbers.length})`],
+            ['settlements', '⌂ Dashboard & Reports'],
+            ['menu', `≡ Menu (${menuItems.length})`],
+            ['staff', `◎ Staff (${staffList.length})`],
+            ['offers', `★ Offers (${dailyOffers.filter((item) => item.is_active !== false).length})`],
+            ['swiggy-sync', '↻ Menu Import / Sync']
           ]
             .filter(([id]) => id !== 'settlements' || hasAdvancedAnalytics)
             .map(([id, label]) => (
