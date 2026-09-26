@@ -1,14 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
 export default function DigitalDineApp() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const autoCodeHandledRef = useRef(false)
 
   const [restaurantCode, setRestaurantCode] = useState('')
@@ -106,19 +105,24 @@ export default function DigitalDineApp() {
 
   useEffect(() => {
     if (autoCodeHandledRef.current) return
+    if (typeof window === 'undefined') return
+
+    autoCodeHandledRef.current = true
+
+    const params = new URLSearchParams(
+      window.location.search
+    )
 
     const codeFromUrl = String(
-      searchParams.get('code') || ''
+      params.get('code') || ''
     )
       .replace(/\D/g, '')
       .slice(0, 5)
 
     if (codeFromUrl.length !== 5) {
-      autoCodeHandledRef.current = true
       return
     }
 
-    autoCodeHandledRef.current = true
     setRestaurantCode(codeFromUrl)
     setLoading(true)
     setError('')
@@ -145,7 +149,7 @@ export default function DigitalDineApp() {
       .finally(() => {
         setLoading(false)
       })
-  }, [searchParams])
+  }, [])
 
   const changeRestaurant = () => {
     setRestaurant(null)
