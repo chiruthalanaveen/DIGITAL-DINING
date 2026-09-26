@@ -1,12 +1,23 @@
 'use client'
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
-const ALARM_SOUND_URL =
-  'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'
+const SOUND_MAP = {
+  'waiter-default': '/sounds/waiter-default.mp3',
+  'waiter-1': '/sounds/waiter-1.mp3',
+  'waiter-2': '/sounds/waiter-2.mp3',
+  'waiter-3': '/sounds/waiter-3.mp3',
+  'waiter-4': '/sounds/waiter-4.mp3',
+  'waiter-5': '/sounds/waiter-5.mp3',
+  'waiter-6': '/sounds/waiter-6.mp3',
+  'waiter-7': '/sounds/waiter-7.mp3',
+  'waiter-8': '/sounds/waiter-8.mp3',
+  'waiter-9': '/sounds/waiter-9.mp3',
+}
 
 const money = (value) =>
   `₹${Number(value || 0).toLocaleString('en-IN', {
@@ -14,6 +25,7 @@ const money = (value) =>
   })}`
 
 export default function WaiterMobileApp({ params }) {
+  const router = useRouter()
   const routeParams = use(params)
 
   const restaurantId = String(
@@ -49,6 +61,11 @@ export default function WaiterMobileApp({ params }) {
 
   const [soundEnabled, setSoundEnabled] = useState(false)
   const [alarmActive, setAlarmActive] = useState(false)
+  const [alarmSoundUrl, setAlarmSoundUrl] = useState(
+    SOUND_MAP['waiter-default']
+  )
+  const [alarmSettingEnabled, setAlarmSettingEnabled] = useState(true)
+  const [alarmVolume, setAlarmVolume] = useState(1)
 
   const sessionTokenRef = useRef('')
   const sessionModeRef = useRef(false)
@@ -93,15 +110,31 @@ export default function WaiterMobileApp({ params }) {
     if (typeof window === 'undefined') return null
 
     if (!alarmAudioRef.current) {
-      const audio = new Audio(ALARM_SOUND_URL)
+      const audio = new Audio(alarmSoundUrl)
       audio.preload = 'auto'
       audio.loop = true
-      audio.volume = 1
       alarmAudioRef.current = audio
     }
 
-    return alarmAudioRef.current
-  }, [])
+    const audio = alarmAudioRef.current
+
+    if (audio.src !== new URL(alarmSoundUrl, window.location.href).href) {
+      try {
+        audio.pause()
+        audio.currentTime = 0
+      } catch {}
+
+      audio.src = alarmSoundUrl
+      audio.load()
+    }
+
+    audio.volume = Math.min(
+      1,
+      Math.max(0, Number(alarmVolume) || 0)
+    )
+
+    return audio
+  }, [alarmSoundUrl, alarmVolume])
 
   const stopAlarm = useCallback(() => {
     alarmActiveRef.current = false
@@ -119,14 +152,23 @@ export default function WaiterMobileApp({ params }) {
   }, [])
 
   const startAlarm = useCallback(async () => {
-    if (!soundEnabledRef.current || alarmActiveRef.current) return
+    if (
+      !alarmSettingEnabled ||
+      !soundEnabledRef.current ||
+      alarmActiveRef.current
+    ) {
+      return
+    }
 
     const audio = initializeAlarmAudio()
     if (!audio) return
 
     try {
       audio.loop = true
-      audio.volume = 1
+      audio.volume = Math.min(
+        1,
+        Math.max(0, Number(alarmVolume) || 0)
+      )
       audio.currentTime = 0
       await audio.play()
 
@@ -137,9 +179,14 @@ export default function WaiterMobileApp({ params }) {
       alarmActiveRef.current = false
       setAlarmActive(false)
     }
-  }, [initializeAlarmAudio])
+  }, [initializeAlarmAudio, alarmSettingEnabled, alarmVolume])
 
   const enableAlarmSound = async () => {
+    if (!alarmSettingEnabled) {
+      notify('Waiter alarm is disabled in Owner Alarm Settings.')
+      return
+    }
+
     const audio = initializeAlarmAudio()
     if (!audio) return
 
@@ -154,7 +201,10 @@ export default function WaiterMobileApp({ params }) {
         try {
           audio.pause()
           audio.currentTime = 0
-          audio.volume = 1
+          audio.volume = Math.min(
+            1,
+            Math.max(0, Number(alarmVolume) || 0)
+          )
           audio.loop = true
         } catch {}
       }, 150)
@@ -265,7 +315,33 @@ export default function WaiterMobileApp({ params }) {
         setRestaurantName(String(data.restaurant.name))
       }
 
-      if (nextReadyOrders.length > 0 && soundEnabledRef.current) {
+      const waiterSoundKey =
+        data?.restaurant?.waiter_alarm_sound || 'waiter-default'
+
+      const nextAlarmUrl =
+        SOUND_MAP[waiterSoundKey] || SOUND_MAP['waiter-default']
+
+      const nextAlarmEnabled =
+        data?.restaurant?.waiter_alarm_enabled ?? true
+
+      const nextAlarmVolume = Math.min(
+        1,
+        Math.max(
+          0,
+          Number(data?.restaurant?.waiter_alarm_volume ?? 1)
+        )
+      )
+
+      setAlarmSoundUrl(nextAlarmUrl)
+      setAlarmSettingEnabled(nextAlarmEnabled)
+      setAlarmVolume(nextAlarmVolume)
+
+      if (!nextAlarmEnabled) {
+        stopAlarm()
+      } else if (
+        nextReadyOrders.length > 0 &&
+        soundEnabledRef.current
+      ) {
         startAlarm()
       }
 
@@ -855,9 +931,16 @@ export default function WaiterMobileApp({ params }) {
   const handleLogout = () => {
     stopAlarm()
 
-    if (sessionModeRef.current) {
-      clearSavedWaiterSession()
-    }
+    const returnRestaurantCode = String(
+      restaurantCodeRef.current ||
+        restaurantCode ||
+        ''
+    )
+      .replace(/\D/g, '')
+      .slice(0, 5)
+
+    // Remove the secure staff session created by /app.
+    clearSavedWaiterSession()
 
     sessionTokenRef.current = ''
     sessionModeRef.current = false
@@ -881,6 +964,15 @@ export default function WaiterMobileApp({ params }) {
     setShowCart(false)
     setActiveTab('home')
     setIsAuthenticated(false)
+
+    // Return to /app and automatically reopen the same restaurant.
+    router.replace(
+      returnRestaurantCode
+        ? `/app?code=${encodeURIComponent(
+            returnRestaurantCode
+          )}`
+        : '/app'
+    )
   }
 
   // =========================================================
@@ -1054,7 +1146,11 @@ export default function WaiterMobileApp({ params }) {
           </div>
 
           <div className="mt-3 flex min-w-0 items-center gap-2">
-            {!soundEnabled ? (
+            {!alarmSettingEnabled ? (
+              <div className="min-w-0 flex-1 rounded-2xl border border-neutral-700 bg-neutral-900 px-3 py-2.5 text-center text-[10px] font-black uppercase text-neutral-500">
+                🔕 Alarm disabled by Owner
+              </div>
+            ) : !soundEnabled ? (
               <button
                 type="button"
                 onClick={enableAlarmSound}

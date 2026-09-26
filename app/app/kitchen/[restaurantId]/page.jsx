@@ -1,6 +1,7 @@
 'use client'
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
@@ -62,6 +63,7 @@ function orderNumber(order) {
 }
 
 export default function KitchenMobileApp({ params }) {
+  const router = useRouter()
   const routeParams = use(params)
 
   const restaurantId = String(
@@ -845,9 +847,16 @@ export default function KitchenMobileApp({ params }) {
   }
 
   const handleLogout = () => {
-    if (sessionModeRef.current) {
-      clearSavedSession()
-    }
+    const returnRestaurantCode = String(
+      restaurantCodeRef.current ||
+        restaurantCode ||
+        ''
+    )
+      .replace(/\D/g, '')
+      .slice(0, 5)
+
+    // Remove the secure staff session created by /app.
+    clearSavedSession()
 
     sessionTokenRef.current = ''
     sessionModeRef.current = false
@@ -865,6 +874,15 @@ export default function KitchenMobileApp({ params }) {
     setTodayOrders([])
     setIsAuthenticated(false)
     setActiveTab('queue')
+
+    // Return to /app and automatically reopen the same restaurant.
+    router.replace(
+      returnRestaurantCode
+        ? `/app?code=${encodeURIComponent(
+            returnRestaurantCode
+          )}`
+        : '/app'
+    )
   }
 
   const filteredOrders = useMemo(() => {
