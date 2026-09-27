@@ -1112,6 +1112,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const [swiggyDataInput, setSwiggyDataInput] = useState('')
   const [syncingSwiggy, setSyncingSwiggy] = useState(false)
   const [storeOpen, setStoreOpen] = useState(true)
+  const [savingStoreStatus, setSavingStoreStatus] = useState(false)
 
   const notify = (message) => {
     setNotice(message)
@@ -1741,14 +1742,35 @@ export default function RestaurantManagerDashboard({ params }) {
   }
 
   const handleStoreToggle = async () => {
+    if (savingStoreStatus) return
+
     const next = !storeOpen
+    setSavingStoreStatus(true)
+
     try {
-      await managerRpcAction('toggle_store', { is_open: next })
+      await managerRpcAction('toggle_store', {
+        is_open: next,
+      })
+
       setStoreOpen(next)
-      setRestaurant((value) => ({ ...value, is_open: next }))
-      notify(next ? 'Restaurant is now open.' : 'Restaurant is now closed.')
+      setRestaurant((value) => ({
+        ...value,
+        is_open: next,
+      }))
+
+      notify(
+        next
+          ? 'Restaurant is now open and accepting orders.'
+          : 'Restaurant is now closed. New orders are paused.'
+      )
     } catch (error) {
-      alert(`Unable to update store status: ${error.message}`)
+      alert(
+        `Unable to update restaurant status: ${
+          error?.message || 'Please try again.'
+        }`
+      )
+    } finally {
+      setSavingStoreStatus(false)
     }
   }
 
@@ -2308,7 +2330,42 @@ export default function RestaurantManagerDashboard({ params }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <ThemeToggle />
-            <button onClick={handleStoreToggle} className={`rounded-xl px-4 py-2.5 text-xs font-black ${storeOpen ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>{storeOpen ? '🟢 Store Open' : '🔴 Store Closed'}</button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={storeOpen}
+              disabled={savingStoreStatus}
+              onClick={handleStoreToggle}
+              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black transition disabled:cursor-wait disabled:opacity-60 ${
+                storeOpen
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600'
+                  : 'border-red-500/30 bg-red-500/10 text-red-600'
+              }`}
+            >
+              <span
+                className={`relative h-6 w-11 rounded-full transition ${
+                  storeOpen
+                    ? 'bg-emerald-500'
+                    : 'bg-red-500'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                    storeOpen
+                      ? 'translate-x-6'
+                      : 'translate-x-1'
+                  }`}
+                />
+              </span>
+
+              <span>
+                {savingStoreStatus
+                  ? 'Saving...'
+                  : storeOpen
+                    ? 'Restaurant Open'
+                    : 'Restaurant Closed'}
+              </span>
+            </button>
             <button onClick={fetchDashboard} className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-black">{loading ? 'Refreshing...' : '↻ Refresh'}</button>
             <button
               type="button"

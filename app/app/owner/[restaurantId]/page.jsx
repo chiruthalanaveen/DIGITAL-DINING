@@ -449,7 +449,7 @@ function RestaurantChatWidget({ restaurantId }) {
   const isClosed = status === 'closed'
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 font-sans">
+    <div className="dd-owner-support-offset fixed bottom-6 right-6 z-50 font-sans">
       {!isOpen ? (
         <button
           onClick={handleOpen}
@@ -1017,6 +1017,56 @@ function DashboardEntryLoader({
             animation-duration: 4s !important;
           }
         }
+
+        /* Dedicated Owner mobile-app shell.
+           All owner feature sections stay the same; only the shell/navigation is mobile-first. */
+        .dd-owner-mobile-app {
+          width: 100%;
+          min-height: 100dvh;
+          overflow-x: hidden;
+        }
+
+        .dd-owner-mobile-app .dd-dashboard-main {
+          max-width: 480px !important;
+          margin-left: auto !important;
+          margin-right: auto !important;
+          padding-left: 0.75rem !important;
+          padding-right: 0.75rem !important;
+          padding-bottom: calc(6.5rem + env(safe-area-inset-bottom)) !important;
+        }
+
+        .dd-owner-mobile-app .dd-dashboard-sidebar {
+          display: none !important;
+        }
+
+        .dd-owner-mobile-app .dd-owner-mobile-bottom-nav {
+          display: grid !important;
+          max-width: 480px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        @media (min-width: 1024px) {
+          .dd-owner-mobile-app .dd-dashboard-header > div,
+          .dd-owner-mobile-app .dd-dashboard-main {
+            max-width: 480px !important;
+          }
+
+          .dd-owner-mobile-app .dd-dashboard-header > div {
+            margin-left: auto;
+            margin-right: auto;
+          }
+
+          .dd-owner-mobile-app .dd-dashboard-main {
+            padding-left: 0.75rem !important;
+            padding-right: 0.75rem !important;
+          }
+
+          .dd-owner-mobile-app .dd-dashboard-sidebar {
+            display: none !important;
+          }
+        }
+
       `}</style>
 
       <div className="w-full max-w-md text-center">
@@ -1178,10 +1228,623 @@ function DashboardEntryLoader({
   )
 }
 
+
+function OwnerTableQrSheet({
+  restaurant,
+  restaurantId,
+  onClose,
+}) {
+  const [tableNumber, setTableNumber] = useState(1)
+  const [registeredTables, setRegisteredTables] = useState([])
+  const [loadingTables, setLoadingTables] = useState(true)
+  const [registering, setRegistering] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+
+  // Keep the latest close callback without causing the browser-history
+  // effect to run again on every Owner dashboard re-render.
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  const currentPlan =
+    restaurant?.plan || 'Starter'
+
+  const isStarter =
+    String(currentPlan).toLowerCase() === 'starter'
+
+  const maximumTable =
+    isStarter ? 5 : 1000
+
+  const origin =
+    typeof window !== 'undefined'
+      ? window.location.origin
+      : ''
+
+  const menuUrl =
+    restaurant?.id && origin
+      ? `${origin}/menu/${restaurant.id}?table=${encodeURIComponent(
+          tableNumber
+        )}`
+      : ''
+
+  const qrCodeImageUrl =
+    menuUrl
+      ? 'https://api.qrserver.com/v1/create-qr-code/' +
+        `?size=360x360&margin=14&data=${encodeURIComponent(
+          menuUrl
+        )}`
+      : ''
+
+  const loadRegisteredTables = async () => {
+    if (!restaurantId) {
+      setRegisteredTables([])
+      setLoadingTables(false)
+      return []
+    }
+
+    try {
+      const { data, error } = await supabase.rpc(
+        'get_owner_registered_tables',
+        {
+          p_restaurant_id: String(restaurantId),
+        }
+      )
+
+      if (error) throw error
+
+      const rows = Array.isArray(data)
+        ? data
+        : []
+
+      setRegisteredTables(rows)
+      return rows
+    } catch (error) {
+      console.error(
+        '[OWNER MOBILE QR] Load tables error:',
+        error
+      )
+
+      alert(
+        `Unable to load registered tables: ${
+          error?.message || 'Please try again.'
+        }`
+      )
+
+      return []
+    } finally {
+      setLoadingTables(false)
+    }
+  }
+
+  useEffect(() => {
+    loadRegisteredTables()
+  }, [restaurantId])
+
+  // Treat the QR manager like an app screen even though it is
+  // embedded in the Owner page. Create exactly ONE temporary
+  // history entry while the QR screen is open.
+  //
+  // IMPORTANT:
+  // This effect must NOT depend on the inline onClose callback.
+  // The parent dashboard re-renders often, and the old code could
+  // push multiple QR history entries. That made Back appear stuck
+  // or eventually fall into an older website page.
+  useEffect(() => {
+    if (
+      typeof window === 'undefined' ||
+      !restaurantId
+    ) {
+      return undefined
+    }
+
+    const currentState =
+      window.history.state || {}
+
+    if (
+      !currentState
+        ?.digitalDiningOwnerTableQr
+    ) {
+      window.history.pushState(
+        {
+          ...currentState,
+          digitalDiningOwnerTableQr: true,
+          digitalDiningOwnerRestaurantId:
+            String(restaurantId),
+        },
+        '',
+        window.location.href
+      )
+    }
+
+    const handlePopState = () => {
+      onCloseRef.current?.()
+    }
+
+    window.addEventListener(
+      'popstate',
+      handlePopState
+    )
+
+    return () => {
+      window.removeEventListener(
+        'popstate',
+        handlePopState
+      )
+    }
+  }, [restaurantId])
+
+  const closeQrManager = () => {
+    const finishClose = () => {
+      onCloseRef.current?.()
+    }
+
+    if (
+      typeof window !== 'undefined' &&
+      window.history.state
+        ?.digitalDiningOwnerTableQr
+    ) {
+      // Remove only the temporary QR history entry.
+      // popstate closes the overlay. A short fallback is included
+      // for Android WebViews that occasionally delay popstate.
+      window.history.back()
+
+      window.setTimeout(() => {
+        finishClose()
+      }, 180)
+
+      return
+    }
+
+    finishClose()
+  }
+
+  const handleTableChange = (value) => {
+    let number = Number.parseInt(
+      String(value),
+      10
+    )
+
+    if (!Number.isFinite(number) || number < 1) {
+      number = 1
+    }
+
+    if (isStarter && number > 5) {
+      alert(
+        'The Starter plan supports up to 5 table QR codes.'
+      )
+      number = 5
+    }
+
+    setTableNumber(
+      Math.min(number, maximumTable)
+    )
+  }
+
+  const registerCurrentTable = async () => {
+    const cleanTableNumber =
+      Number(tableNumber)
+
+    if (!restaurantId) {
+      throw new Error(
+        'Restaurant ID is missing.'
+      )
+    }
+
+    if (
+      !Number.isInteger(cleanTableNumber) ||
+      cleanTableNumber < 1
+    ) {
+      throw new Error(
+        'Please enter a valid table number.'
+      )
+    }
+
+    const { data, error } = await supabase.rpc(
+      'register_table_qr',
+      {
+        p_restaurant_id: String(
+          restaurantId
+        ),
+        p_table_number: cleanTableNumber,
+      }
+    )
+
+    if (error) {
+      throw new Error(
+        error.message ||
+          'Unable to register this table.'
+      )
+    }
+
+    await loadRegisteredTables()
+    return data
+  }
+
+  const handleRegister = async () => {
+    if (registering) return
+
+    setRegistering(true)
+
+    try {
+      await registerCurrentTable()
+
+      alert(
+        `Table ${tableNumber} QR is ready. ✅`
+      )
+    } catch (error) {
+      console.error(
+        '[OWNER MOBILE QR] Register error:',
+        error
+      )
+
+      alert(
+        `Unable to register Table ${tableNumber}: ${
+          error?.message || 'Please try again.'
+        }`
+      )
+    } finally {
+      setRegistering(false)
+    }
+  }
+
+  const handleDownload = async () => {
+    if (
+      downloading ||
+      !restaurant ||
+      !qrCodeImageUrl
+    ) {
+      return
+    }
+
+    setDownloading(true)
+
+    try {
+      await registerCurrentTable()
+
+      const response = await fetch(
+        qrCodeImageUrl
+      )
+
+      if (!response.ok) {
+        throw new Error(
+          `QR service returned HTTP ${response.status}.`
+        )
+      }
+
+      const blob = await response.blob()
+
+      if (!blob || blob.size === 0) {
+        throw new Error(
+          'QR image was empty.'
+        )
+      }
+
+      const objectUrl =
+        URL.createObjectURL(blob)
+
+      try {
+        const restaurantName = String(
+          restaurant?.name || 'restaurant'
+        )
+          .replace(/[^a-z0-9]+/gi, '-')
+          .replace(/^-+|-+$/g, '')
+          .toLowerCase()
+
+        const anchor =
+          document.createElement('a')
+
+        anchor.href = objectUrl
+        anchor.download =
+          `${restaurantName || 'restaurant'}` +
+          `-table-${tableNumber}-qr.png`
+
+        document.body.appendChild(anchor)
+        anchor.click()
+        anchor.remove()
+      } finally {
+        window.setTimeout(() => {
+          URL.revokeObjectURL(objectUrl)
+        }, 1000)
+      }
+
+      await loadRegisteredTables()
+    } catch (error) {
+      console.error(
+        '[OWNER MOBILE QR] Download error:',
+        error
+      )
+
+      alert(
+        `Unable to download Table ${tableNumber} QR: ${
+          error?.message || 'Please try again.'
+        }`
+      )
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const handleCopy = async () => {
+    if (!menuUrl) return
+
+    try {
+      await navigator.clipboard.writeText(
+        menuUrl
+      )
+
+      alert(
+        `Table ${tableNumber} menu link copied.`
+      )
+    } catch (error) {
+      console.error(
+        '[OWNER MOBILE QR] Copy error:',
+        error
+      )
+
+      window.prompt(
+        'Copy this Table QR URL:',
+        menuUrl
+      )
+    }
+  }
+
+  const isRegistered =
+    registeredTables.some(
+      (table) =>
+        String(table?.table_number) ===
+        String(tableNumber)
+    )
+
+  return (
+    <div className="fixed inset-0 z-[9990] bg-[#f6f7f2] text-neutral-900">
+      <div className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden bg-[#f6f7f2]">
+        <header className="shrink-0 bg-[#0c831f] px-4 pb-4 pt-[max(0.85rem,env(safe-area-inset-top))] text-white shadow-lg shadow-green-900/10">
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={closeQrManager}
+              className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-lg font-black backdrop-blur"
+              aria-label="Back to Owner"
+            >
+              ←
+            </button>
+
+            <div className="min-w-0 flex-1 text-center">
+              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-white/65">
+                Owner Tools
+              </p>
+
+              <h1 className="mt-0.5 truncate text-[17px] font-black">
+                Table QR Codes
+              </h1>
+
+              <p className="mt-0.5 truncate text-[9px] font-semibold text-white/70">
+                {restaurant?.name || 'Restaurant'}
+              </p>
+            </div>
+
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f8cb46] text-lg text-neutral-900">
+              ▦
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-2xl bg-white/12 p-3 backdrop-blur">
+              <p className="text-[8px] font-black uppercase tracking-wider text-white/60">
+                Registered
+              </p>
+
+              <p className="mt-1 text-xl font-black">
+                {loadingTables
+                  ? '…'
+                  : registeredTables.length}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/12 p-3 backdrop-blur">
+              <p className="text-[8px] font-black uppercase tracking-wider text-white/60">
+                Selected Table
+              </p>
+
+              <p className="mt-1 text-xl font-black">
+                {tableNumber}
+              </p>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
+          {isStarter && (
+            <div className="mb-4 rounded-2xl border border-amber-300 bg-[#fff7d6] p-3 text-[9px] font-bold leading-5 text-amber-800">
+              Starter Plan supports Table 1 through Table 5.
+            </div>
+          )}
+
+          <section className="rounded-[24px] border border-[#e8e9e4] bg-white p-4 shadow-sm">
+            <label className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+              Table Number
+            </label>
+
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  handleTableChange(
+                    Math.max(
+                      1,
+                      Number(tableNumber) - 1
+                    )
+                  )
+                }
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-xl font-black"
+              >
+                −
+              </button>
+
+              <input
+                type="number"
+                min="1"
+                max={maximumTable}
+                value={tableNumber}
+                onChange={(event) =>
+                  handleTableChange(
+                    event.target.value
+                  )
+                }
+                className="h-12 min-w-0 flex-1 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 text-center text-lg font-black outline-none focus:border-[#0c831f]"
+              />
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleTableChange(
+                    Number(tableNumber) + 1
+                  )
+                }
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-xl font-black"
+              >
+                +
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-[22px] bg-neutral-50 p-4">
+              <div className="mx-auto max-w-[270px] rounded-[22px] bg-white p-4 shadow-sm">
+                {qrCodeImageUrl ? (
+                  <img
+                    src={qrCodeImageUrl}
+                    alt={`Table ${tableNumber} QR`}
+                    className="aspect-square w-full object-contain"
+                  />
+                ) : (
+                  <div className="flex aspect-square items-center justify-center text-4xl">
+                    ▦
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 text-center">
+                <div className="flex items-center justify-center gap-2">
+                  <p className="text-sm font-black">
+                    Table {tableNumber}
+                  </p>
+
+                  {isRegistered && (
+                    <span className="rounded-full bg-[#eaf8ed] px-2 py-1 text-[7px] font-black text-[#0c831f]">
+                      REGISTERED
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-1 text-[8px] leading-4 text-neutral-500">
+                  Scanning opens the real customer QR menu for this table.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleRegister}
+                disabled={registering}
+                className="rounded-2xl bg-[#f8cb46] px-3 py-3.5 text-[10px] font-black text-neutral-900 disabled:opacity-50"
+              >
+                {registering
+                  ? 'Saving...'
+                  : isRegistered
+                    ? 'Refresh QR'
+                    : 'Register QR'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={downloading}
+                className="rounded-2xl bg-[#0c831f] px-3 py-3.5 text-[10px] font-black text-white shadow-lg shadow-green-700/15 disabled:opacity-50"
+              >
+                {downloading
+                  ? 'Downloading...'
+                  : 'Download QR'}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="mt-2 w-full rounded-2xl border border-neutral-200 bg-neutral-50 py-3 text-[9px] font-black text-neutral-600"
+            >
+              Copy Table Menu Link
+            </button>
+          </section>
+
+          {registeredTables.length > 0 && (
+            <section className="mt-4 rounded-[24px] border border-[#e8e9e4] bg-white p-4 shadow-sm">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-wider text-[#0c831f]">
+                    Registered Tables
+                  </p>
+
+                  <h2 className="mt-1 text-[16px] font-black">
+                    Your Table QR list
+                  </h2>
+                </div>
+
+                <span className="rounded-full bg-[#eaf8ed] px-2.5 py-1 text-[8px] font-black text-[#0c831f]">
+                  {registeredTables.length}
+                </span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {registeredTables
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      Number(a?.table_number || 0) -
+                      Number(b?.table_number || 0)
+                  )
+                  .map((table) => (
+                    <button
+                      key={
+                        table?.id ||
+                        table?.table_number
+                      }
+                      type="button"
+                      onClick={() =>
+                        handleTableChange(
+                          table.table_number
+                        )
+                      }
+                      className={`rounded-xl border px-3 py-2 text-[9px] font-black ${
+                        String(table?.table_number) ===
+                        String(tableNumber)
+                          ? 'border-[#0c831f] bg-[#eaf8ed] text-[#0c831f]'
+                          : 'border-neutral-200 bg-neutral-50 text-neutral-600'
+                      }`}
+                    >
+                      Table {table.table_number}
+                    </button>
+                  ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function RestaurantDashboard() {
   const params = useParams()
   const restaurantId = String(params.id || params.restaurantId || '').trim()
   const router = useRouter()
+
+  const ownerAppLoginUrl = restaurantId
+    ? `/app/owner?restaurantId=${encodeURIComponent(
+        String(restaurantId)
+      )}`
+    : '/app'
 
   const [restaurant, setRestaurant] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
@@ -1198,11 +1861,23 @@ export default function RestaurantDashboard() {
   const [dailyOffers, setDailyOffers] = useState([])
   const [orders, setOrders] = useState([])
   const [restaurantTables, setRestaurantTables] = useState([])
-  const [activeTab, setActiveTab] = useState('settlements')
+  const [activeTab, setActiveTab] = useState('owner-home')
   const [dashboardMode, setDashboardMode] = useState('restaurant')
   const [isStoreOpen, setIsStoreOpen] = useState(true)
   const [savingStoreStatus, setSavingStoreStatus] = useState(false)
   const [mobileOwnerMenuOpen, setMobileOwnerMenuOpen] = useState(false)
+  const [tableQrOpen, setTableQrOpen] = useState(false)
+
+  // Lifetime order date search.
+  // This is intentionally separate from the normal live `orders` state:
+  // searching an old date queries Supabase directly so owners can retrieve
+  // historical orders even when the regular dashboard list is very large.
+  const [orderHistoryDate, setOrderHistoryDate] = useState('')
+  const [orderHistoryOrders, setOrderHistoryOrders] = useState([])
+  const [orderHistoryLoading, setOrderHistoryLoading] = useState(false)
+  const [orderHistorySearched, setOrderHistorySearched] = useState(false)
+  const [orderHistoryError, setOrderHistoryError] = useState('')
+  const [orderHistoryVisibleCount, setOrderHistoryVisibleCount] = useState(20)
 
   // Add Dish Form States
   const [name, setName] = useState('')
@@ -1407,7 +2082,7 @@ export default function RestaurantDashboard() {
 
     const verifyDashboardAccess = async () => {
       if (!restaurantId) {
-        router.replace('/login')
+        router.replace(ownerAppLoginUrl)
         return
       }
 
@@ -1417,7 +2092,7 @@ export default function RestaurantDashboard() {
       } = await supabase.auth.getUser()
 
       if (error || !user) {
-        if (!cancelled) router.replace('/login')
+        if (!cancelled) router.replace(ownerAppLoginUrl)
         return
       }
 
@@ -1446,7 +2121,7 @@ export default function RestaurantDashboard() {
   })
 
   if (!cancelled) {
-    router.replace('/login')
+    router.replace(ownerAppLoginUrl)
   }
 
   return
@@ -1460,7 +2135,7 @@ export default function RestaurantDashboard() {
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === 'SIGNED_OUT' || !session?.user) {
-          router.replace('/login')
+          router.replace(ownerAppLoginUrl)
         }
       }
     )
@@ -1500,7 +2175,7 @@ export default function RestaurantDashboard() {
       } = await supabase.auth.getUser()
 
       if (authError || !user) {
-        router.replace('/login')
+        router.replace(ownerAppLoginUrl)
         return
       }
 
@@ -1513,7 +2188,7 @@ export default function RestaurantDashboard() {
 
       if (ownershipError || !ownedRestaurant) {
         console.error('Dashboard ownership check failed:', ownershipError)
-        router.replace('/login')
+        router.replace(ownerAppLoginUrl)
         return
       }
 
@@ -1524,7 +2199,7 @@ export default function RestaurantDashboard() {
         .maybeSingle()
 
       if (error || !restData) {
-        router.replace('/login')
+        router.replace(ownerAppLoginUrl)
         return
       }
 
@@ -3152,14 +3827,30 @@ export default function RestaurantDashboard() {
   }
 
   const handleLogout = async () => {
+    const returnCode = String(
+      restaurant?.restaurant_code || ''
+    )
+      .replace(/\D/g, '')
+      .slice(0, 5)
+
     try {
       localStorage.removeItem(
         'digital_dining_restaurant_id'
       )
 
+      try {
+        sessionStorage.removeItem(
+          'digitaldining_owner_login_context'
+        )
+      } catch {}
+
       await supabase.auth.signOut()
     } finally {
-      router.replace('/login')
+      router.replace(
+        returnCode
+          ? `/app?code=${encodeURIComponent(returnCode)}`
+          : '/app'
+      )
     }
   }
 
@@ -3196,6 +3887,195 @@ export default function RestaurantDashboard() {
       .toUpperCase()
 
     return `BILL-${compactId.padStart(8, '0')}`
+  }
+
+  const formatOrderHistoryDate = (dateValue) => {
+    if (!dateValue) return ''
+
+    const [year, month, day] = String(dateValue)
+      .split('-')
+      .map(Number)
+
+    if (!year || !month || !day) {
+      return String(dateValue)
+    }
+
+    const date = new Date(
+      year,
+      month - 1,
+      day
+    )
+
+    if (Number.isNaN(date.getTime())) {
+      return String(dateValue)
+    }
+
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+  }
+
+  const getOrderHistoryDayBounds = (dateValue) => {
+    const [year, month, day] = String(dateValue)
+      .split('-')
+      .map(Number)
+
+    if (!year || !month || !day) {
+      throw new Error(
+        'Please select a valid date.'
+      )
+    }
+
+    const start = new Date(
+      year,
+      month - 1,
+      day,
+      0,
+      0,
+      0,
+      0
+    )
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      start.getFullYear() !== year ||
+      start.getMonth() !== month - 1 ||
+      start.getDate() !== day
+    ) {
+      throw new Error(
+        'Please select a valid date.'
+      )
+    }
+
+    const end = new Date(
+      year,
+      month - 1,
+      day + 1,
+      0,
+      0,
+      0,
+      0
+    )
+
+    return { start, end }
+  }
+
+  const handleLifetimeOrderSearch = async () => {
+    if (orderHistoryLoading) return
+
+    if (!restaurantId) {
+      setOrderHistoryError(
+        'Restaurant ID is missing. Please sign in again.'
+      )
+      return
+    }
+
+    if (!orderHistoryDate) {
+      setOrderHistoryError(
+        'Please select a date to search.'
+      )
+      setOrderHistorySearched(false)
+      return
+    }
+
+    setOrderHistoryLoading(true)
+    setOrderHistoryError('')
+    setOrderHistorySearched(false)
+    setOrderHistoryOrders([])
+    setOrderHistoryVisibleCount(20)
+
+    try {
+      const { start, end } =
+        getOrderHistoryDayBounds(
+          orderHistoryDate
+        )
+
+      /*
+       * Fetch the selected day's orders directly from Supabase in pages.
+       * This avoids depending on the dashboard's normal in-memory order
+       * list and also avoids losing results if Supabase's per-request row
+       * limit is reached.
+       */
+      const PAGE_SIZE = 1000
+      let from = 0
+      const foundOrders = []
+
+      while (true) {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .eq(
+            'restaurant_id',
+            restaurantId
+          )
+          .gte(
+            'created_at',
+            start.toISOString()
+          )
+          .lt(
+            'created_at',
+            end.toISOString()
+          )
+          .order(
+            'created_at',
+            { ascending: true }
+          )
+          .order(
+            'id',
+            { ascending: true }
+          )
+          .range(
+            from,
+            from + PAGE_SIZE - 1
+          )
+
+        if (error) throw error
+
+        const pageRows =
+          Array.isArray(data)
+            ? data
+            : []
+
+        foundOrders.push(...pageRows)
+
+        if (
+          pageRows.length <
+          PAGE_SIZE
+        ) {
+          break
+        }
+
+        from += PAGE_SIZE
+      }
+
+      setOrderHistoryOrders(
+        foundOrders
+      )
+      setOrderHistorySearched(true)
+    } catch (error) {
+      console.error(
+        '[OWNER ORDER HISTORY] Search error:',
+        error
+      )
+
+      setOrderHistoryError(
+        error?.message ||
+          'Unable to search historical orders.'
+      )
+      setOrderHistorySearched(true)
+    } finally {
+      setOrderHistoryLoading(false)
+    }
+  }
+
+  const clearLifetimeOrderSearch = () => {
+    setOrderHistoryDate('')
+    setOrderHistoryOrders([])
+    setOrderHistoryError('')
+    setOrderHistorySearched(false)
+    setOrderHistoryVisibleCount(20)
   }
 
   const getOrderItemQuantity = (item) =>
@@ -3388,10 +4268,75 @@ export default function RestaurantDashboard() {
         )[0] === todayString
     )
 
+  const orderHistoryRevenue =
+    orderHistoryOrders.reduce(
+      (sum, order) =>
+        String(
+          order?.status || ''
+        ).toLowerCase() ===
+        'cancelled'
+          ? sum
+          : sum +
+            Number(
+              order?.total_amount || 0
+            ),
+      0
+    )
+
+  const orderHistoryCancelledCount =
+    orderHistoryOrders.filter(
+      (order) =>
+        String(
+          order?.status || ''
+        ).toLowerCase() ===
+        'cancelled'
+    ).length
+
+  const orderHistoryCompletedCount =
+    orderHistoryOrders.filter(
+      (order) =>
+        [
+          'completed',
+          'delivered',
+          'served',
+        ].includes(
+          String(
+            order?.status || ''
+          ).toLowerCase()
+        )
+    ).length
+
+  const visibleOrderHistory =
+    orderHistoryOrders.slice(
+      0,
+      orderHistoryVisibleCount
+    )
+
   const automaticHighlyReorderedIds =
     getAutomaticHighlyReorderedIds(
       menuItems
     )
+
+  const activeOfferCount = dailyOffers.filter(
+    (offer) => offer.is_active
+  ).length
+
+  const availableMenuCount = menuItems.filter(
+    (item) => item.is_available !== false
+  ).length
+
+  const ownerGreetingHour = new Date().getHours()
+
+  const ownerGreeting =
+    ownerGreetingHour < 12
+      ? 'Good morning'
+      : ownerGreetingHour < 17
+        ? 'Good afternoon'
+        : 'Good evening'
+
+  const ownerDisplayName =
+    String(profileName || '').trim().split(' ')[0] ||
+    'Owner'
 
   if (!authChecked || !restaurant || !entryLoaderDone) {
     return (
@@ -3407,7 +4352,7 @@ export default function RestaurantDashboard() {
   }
 
   return (
-    <div className="dd-light-dashboard dd-owner-dashboard min-h-screen bg-[#f5f6f8] text-neutral-900 font-sans pb-16">
+    <div className="dd-light-dashboard dd-owner-dashboard dd-owner-mobile-app dd-blinkit-owner min-h-[100dvh] bg-[#f5f6f8] text-neutral-900 font-sans">
       <style jsx global>{`
         @media print {
           body * {
@@ -3722,47 +4667,381 @@ export default function RestaurantDashboard() {
           display: none;
         }
 
-        @media (max-width: 1023px) {
-          .dd-owner-dashboard {
-            padding-bottom: calc(6.5rem + env(safe-area-inset-bottom)) !important;
+        /* ======================================================
+           BLINKIT-INSPIRED OWNER MOBILE APP
+           Fast, dense, colorful and action-first.
+           Existing backend/features remain untouched.
+           ====================================================== */
+
+        .dd-blinkit-owner {
+          --dd-green: #0c831f;
+          --dd-green-dark: #086b19;
+          --dd-green-soft: #eaf8ed;
+          --dd-yellow: #f8cb46;
+          --dd-yellow-soft: #fff7d6;
+          --dd-red: #e53935;
+          --dd-blue: #2563eb;
+          --dd-bg: #f6f7f2;
+          --dd-card: #ffffff;
+          --dd-card-2: #fafbf8;
+          --dd-text: #171717;
+          --dd-muted: #6f736d;
+          --dd-line: #e8e9e4;
+          background: var(--dd-bg) !important;
+          color: var(--dd-text) !important;
+          width: 100%;
+          min-height: 100dvh;
+          overflow-x: hidden;
+          padding-bottom: calc(6.4rem + env(safe-area-inset-bottom)) !important;
+        }
+
+        :root[data-theme='dark'] .dd-blinkit-owner {
+          --dd-bg: #0d0f0d;
+          --dd-card: #151815;
+          --dd-card-2: #1b1f1b;
+          --dd-text: #f6f7f2;
+          --dd-muted: #9da39a;
+          --dd-line: #2a2f29;
+          --dd-green-soft: rgba(12, 131, 31, .16);
+          --dd-yellow-soft: rgba(248, 203, 70, .12);
+        }
+
+        .dd-blinkit-owner .dd-dashboard-header {
+          background: transparent !important;
+          border: 0 !important;
+          box-shadow: none !important;
+        }
+
+        .dd-blinkit-owner .dd-bk-shell {
+          width: 100%;
+          max-width: 480px;
+          margin: 0 auto;
+        }
+
+        .dd-blinkit-owner .dd-dashboard-main {
+          width: 100%;
+          max-width: 480px !important;
+          margin: 0 auto !important;
+          padding: 0 12px calc(6.6rem + env(safe-area-inset-bottom)) !important;
+        }
+
+        .dd-blinkit-owner .dd-dashboard-sidebar {
+          display: none !important;
+        }
+
+        .dd-blinkit-owner .dd-dashboard-intro {
+          display: none !important;
+        }
+
+        .dd-blinkit-owner .dd-bk-top {
+          background:
+            radial-gradient(circle at 88% 8%, rgba(248,203,70,.72), transparent 25%),
+            linear-gradient(145deg, #0c831f 0%, #0a741c 58%, #075f16 100%);
+          color: white;
+          border-radius: 0 0 28px 28px;
+          padding:
+            max(14px, env(safe-area-inset-top))
+            14px
+            18px;
+          box-shadow: 0 12px 32px rgba(12,131,31,.18);
+        }
+
+        .dd-blinkit-owner .dd-bk-icon-btn {
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(255,255,255,.18);
+          background: rgba(255,255,255,.12);
+          color: white;
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }
+
+        .dd-blinkit-owner .dd-bk-store-toggle {
+          min-height: 58px;
+          border-radius: 18px;
+          background: rgba(255,255,255,.96);
+          color: #172118;
+          border: 1px solid rgba(255,255,255,.68);
+          box-shadow: 0 10px 24px rgba(0,0,0,.11);
+        }
+
+        .dd-blinkit-owner .dd-bk-scroll {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+        }
+
+        .dd-blinkit-owner .dd-bk-scroll::-webkit-scrollbar {
+          display: none;
+        }
+
+        .dd-blinkit-owner .dd-bk-scroll > * {
+          flex: 0 0 auto;
+        }
+
+        .dd-blinkit-owner .dd-bk-mode-switch {
+          margin-top: 12px;
+          border: 1px solid var(--dd-line) !important;
+          background: var(--dd-card) !important;
+          border-radius: 18px !important;
+          padding: 5px !important;
+          box-shadow: 0 3px 14px rgba(0,0,0,.04);
+        }
+
+        .dd-blinkit-owner .dd-bk-mode-switch button {
+          border-radius: 14px !important;
+          min-height: 42px;
+          text-transform: none !important;
+          letter-spacing: 0 !important;
+          font-size: 11px !important;
+        }
+
+        .dd-blinkit-owner .dd-bk-section-title {
+          color: var(--dd-text);
+          font-size: 16px;
+          line-height: 1.2;
+          font-weight: 900;
+          letter-spacing: -0.02em;
+        }
+
+        .dd-blinkit-owner .dd-bk-section-sub {
+          color: var(--dd-muted);
+          font-size: 10px;
+          line-height: 1.55;
+          font-weight: 600;
+        }
+
+        .dd-blinkit-owner .dd-bk-card {
+          border: 1px solid var(--dd-line) !important;
+          background: var(--dd-card) !important;
+          color: var(--dd-text) !important;
+          border-radius: 22px !important;
+          box-shadow: 0 5px 18px rgba(26,32,24,.045);
+        }
+
+        .dd-blinkit-owner .dd-bk-stat {
+          min-height: 112px;
+          overflow: hidden;
+          position: relative;
+        }
+
+        .dd-blinkit-owner .dd-bk-stat::after {
+          content: '';
+          position: absolute;
+          width: 72px;
+          height: 72px;
+          right: -22px;
+          bottom: -22px;
+          border-radius: 999px;
+          background: currentColor;
+          opacity: .065;
+        }
+
+        .dd-blinkit-owner .dd-bk-action {
+          min-width: 106px;
+          min-height: 104px;
+          border-radius: 20px;
+          border: 1px solid var(--dd-line);
+          background: var(--dd-card);
+          padding: 12px;
+          text-align: left;
+          box-shadow: 0 4px 14px rgba(0,0,0,.035);
+        }
+
+        .dd-blinkit-owner .dd-bk-action-icon {
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 20px;
+          margin-bottom: 10px;
+        }
+
+        .dd-blinkit-owner .dd-bk-live-row {
+          border-top: 1px solid var(--dd-line);
+          padding: 12px 0;
+        }
+
+        .dd-blinkit-owner .dd-bk-live-row:first-child {
+          border-top: 0;
+          padding-top: 0;
+        }
+
+        .dd-blinkit-owner .dd-bk-live-row:last-child {
+          padding-bottom: 0;
+        }
+
+        .dd-blinkit-owner .dd-bk-plan {
+          background:
+            radial-gradient(circle at 88% 18%, rgba(248,203,70,.34), transparent 30%),
+            linear-gradient(145deg, #141b14, #20281f) !important;
+          border-color: rgba(248,203,70,.22) !important;
+          color: white !important;
+        }
+
+        .dd-blinkit-owner .dd-owner-mobile-bottom-nav {
+          display: grid !important;
+          position: fixed;
+          z-index: 90;
+          left: 50% !important;
+          right: auto !important;
+          bottom: 0;
+          transform: translateX(-50%);
+          width: min(100%, 480px);
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 4px;
+          padding:
+            8px
+            10px
+            max(8px, env(safe-area-inset-bottom));
+          background: rgba(255,255,255,.96) !important;
+          border-top: 1px solid #e5e7eb !important;
+          box-shadow: 0 -10px 30px rgba(20,30,18,.10);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+        }
+
+        :root[data-theme='dark'] .dd-blinkit-owner .dd-owner-mobile-bottom-nav {
+          background: rgba(19,22,19,.96) !important;
+          border-top-color: #2a2f29 !important;
+        }
+
+        .dd-blinkit-owner .dd-owner-mobile-bottom-nav button {
+          min-height: 54px;
+          border-radius: 16px !important;
+          transition: transform 90ms ease, background-color 90ms ease !important;
+        }
+
+        .dd-blinkit-owner .dd-owner-mobile-bottom-nav button:active {
+          transform: scale(.96);
+        }
+
+        .dd-blinkit-owner .dd-bk-nav-active {
+          background: var(--dd-green-soft) !important;
+          color: var(--dd-green) !important;
+        }
+
+        .dd-blinkit-owner .dd-bk-more-sheet {
+          width: min(100%, 480px);
+          margin: 0 auto;
+          background: var(--dd-card) !important;
+          color: var(--dd-text) !important;
+          border-color: var(--dd-line) !important;
+          border-radius: 30px 30px 0 0 !important;
+        }
+
+        .dd-blinkit-owner .dd-bk-sheet-action {
+          min-height: 96px;
+          border-radius: 18px;
+          border: 1px solid var(--dd-line);
+          background: var(--dd-card-2);
+          padding: 14px;
+          text-align: left;
+        }
+
+        .dd-blinkit-owner .dd-bk-content-card,
+        .dd-blinkit-owner [class*='bg-neutral-900'][class*='rounded-3xl'] {
+          border-color: var(--dd-line) !important;
+          background: var(--dd-card) !important;
+          color: var(--dd-text) !important;
+          box-shadow: 0 5px 18px rgba(26,32,24,.04);
+        }
+
+        .dd-blinkit-owner [class~='text-white'] {
+          color: var(--dd-text) !important;
+        }
+
+        .dd-blinkit-owner [class~='text-neutral-300'],
+        .dd-blinkit-owner [class~='text-neutral-400'],
+        .dd-blinkit-owner [class~='text-neutral-500'] {
+          color: var(--dd-muted) !important;
+        }
+
+        .dd-blinkit-owner [class*='bg-neutral-950'] {
+          background: var(--dd-card-2) !important;
+        }
+
+        .dd-blinkit-owner [class*='border-neutral-800'],
+        .dd-blinkit-owner [class*='border-neutral-700'] {
+          border-color: var(--dd-line) !important;
+        }
+
+        .dd-blinkit-owner input,
+        .dd-blinkit-owner select,
+        .dd-blinkit-owner textarea {
+          min-height: 46px;
+          border-color: var(--dd-line) !important;
+          background: var(--dd-card-2) !important;
+          color: var(--dd-text) !important;
+          font-size: 16px !important;
+        }
+
+        .dd-blinkit-owner input::placeholder,
+        .dd-blinkit-owner textarea::placeholder {
+          color: #9ca39a !important;
+        }
+
+        .dd-blinkit-owner button,
+        .dd-blinkit-owner a,
+        .dd-blinkit-owner label {
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+        }
+
+        .dd-blinkit-owner .dd-owner-support-offset {
+          bottom: calc(5.8rem + env(safe-area-inset-bottom)) !important;
+          right: 12px !important;
+        }
+
+        .dd-blinkit-owner .dd-owner-support-offset > button {
+          border-radius: 18px !important;
+          padding: 12px 14px !important;
+          background: var(--dd-green) !important;
+        }
+
+        @media (max-width: 640px) {
+          .dd-blinkit-owner [class*='md:grid-cols-'],
+          .dd-blinkit-owner [class*='lg:grid-cols-'],
+          .dd-blinkit-owner form[class*='grid-cols-'] {
+            grid-template-columns: minmax(0, 1fr) !important;
           }
 
-          .dd-owner-dashboard .dd-dashboard-header {
-            padding:
-              max(0.7rem, env(safe-area-inset-top))
-              0.85rem
-              0.75rem !important;
+          .dd-blinkit-owner .dd-keep-two {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           }
 
-          .dd-owner-dashboard .dd-dashboard-header > div {
-            gap: 0.75rem !important;
+          .dd-blinkit-owner [class*='p-8'] {
+            padding: 16px !important;
           }
 
-          .dd-owner-dashboard .dd-dashboard-main {
-            margin-top: 1rem !important;
-            padding-left: 0.75rem !important;
-            padding-right: 0.75rem !important;
+          .dd-blinkit-owner [class*='p-6'] {
+            padding: 15px !important;
           }
 
-          .dd-owner-dashboard .dd-dashboard-sidebar {
-            display: none !important;
+          .dd-blinkit-owner [class*='p-5'] {
+            padding: 14px !important;
           }
 
-          .dd-owner-dashboard .dd-dashboard-intro h2 {
-            font-size: 1.45rem !important;
-            line-height: 1.2 !important;
+          .dd-blinkit-owner table {
+            min-width: 720px;
           }
 
-          .dd-owner-dashboard .rounded-3xl {
-            border-radius: 1.25rem !important;
+          .dd-blinkit-owner .overflow-x-auto {
+            -webkit-overflow-scrolling: touch;
           }
+        }
 
-          .dd-owner-dashboard table {
-            min-width: 680px;
-          }
-
-          .dd-owner-dashboard .dd-owner-mobile-bottom-nav {
-            display: grid;
+        @media (min-width: 641px) {
+          .dd-blinkit-owner {
+            max-width: 480px;
+            margin: 0 auto;
+            box-shadow: 0 0 0 1px rgba(0,0,0,.04), 0 28px 80px rgba(0,0,0,.14);
           }
         }
       `}</style>
@@ -3773,116 +5052,129 @@ export default function RestaurantDashboard() {
         preload="auto"
       />
 
-      {/* Top Partner Header */}
-      <header className="dd-dashboard-header bg-white border-b border-neutral-200 sticky top-0 z-30 px-6 py-4 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      {/* PREMIUM OWNER MOBILE HEADER */}
+      <header className="dd-dashboard-header">
+        <div className="dd-bk-top dd-bk-shell">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/70">
+                Digital Dining · Owner
+              </p>
 
-          <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 rounded-2xl bg-white border border-neutral-700 overflow-hidden flex items-center justify-center font-black text-orange-500 text-xl shadow-lg shadow-orange-500/20">
-              {restaurant.logo_url ? (
-                <img
-                  src={restaurant.logo_url}
-                  alt={`${restaurant.name} logo`}
-                  className="w-full h-full object-contain p-1 opacity-100"
-                />
-              ) : (
-                restaurant.name.charAt(0).toUpperCase()
-              )}
-            </div>
+              <h1 className="mt-1 truncate text-[20px] font-black tracking-tight text-white">
+                {ownerGreeting}, {ownerDisplayName}
+              </h1>
 
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-lg font-black text-white">
+              <div className="mt-1 flex min-w-0 items-center gap-2">
+                <span className="truncate text-[11px] font-bold text-white/85">
                   {restaurant.name}
-                </h1>
+                </span>
 
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={isStoreOpen}
-                  aria-label={
-                    isStoreOpen
-                      ? 'Close restaurant'
-                      : 'Open restaurant'
-                  }
-                  disabled={savingStoreStatus}
-                  onClick={handleOwnerStoreToggle}
-                  className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider transition disabled:cursor-wait disabled:opacity-60 ${
-                    isStoreOpen
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
-                      : 'border-red-500/30 bg-red-500/10 text-red-500'
-                  }`}
-                >
-                  <span
-                    className={`relative h-5 w-9 rounded-full transition ${
-                      isStoreOpen
-                        ? 'bg-emerald-500'
-                        : 'bg-red-500'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                        isStoreOpen
-                          ? 'translate-x-[18px]'
-                          : 'translate-x-0.5'
-                      }`}
-                    />
-                  </span>
-
-                  <span>
-                    {savingStoreStatus
-                      ? 'Saving...'
-                      : isStoreOpen
-                        ? 'Restaurant Open'
-                        : 'Restaurant Closed'}
-                  </span>
-                </button>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                <p className="text-[11px] text-neutral-400 font-mono">
-                  Unique URL ID: {restaurant.id}
-                </p>
                 {restaurant.restaurant_code && (
-                  <span className="text-[11px] font-black font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-300 px-2.5 py-1 rounded-lg">
-                    Restaurant Code: {restaurant.restaurant_code}
+                  <span className="shrink-0 rounded-full bg-white/15 px-2 py-1 text-[8px] font-black tracking-wider text-white">
+                    {restaurant.restaurant_code}
                   </span>
                 )}
               </div>
             </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <ThemeToggle />
+
+              <button
+                type="button"
+                onClick={() => setProfileOpen(true)}
+                className="dd-bk-icon-btn"
+                aria-label="Owner profile"
+              >
+                👤
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <ThemeToggle />
+          <div className="dd-bk-store-toggle mt-4 flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    isStoreOpen
+                      ? 'bg-[#0c831f] animate-pulse'
+                      : 'bg-red-500'
+                  }`}
+                />
+
+                <p className="text-[12px] font-black">
+                  {isStoreOpen
+                    ? 'Restaurant is live'
+                    : 'Restaurant is closed'}
+                </p>
+              </div>
+
+              <p className="mt-1 text-[9px] font-semibold text-neutral-500">
+                {isStoreOpen
+                  ? 'Customers can place new orders now.'
+                  : 'New customer orders are currently paused.'}
+              </p>
+            </div>
 
             <button
-              onClick={() => setProfileOpen(true)}
-              className="border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 font-bold px-4 py-2.5 rounded-xl text-xs transition flex items-center space-x-2 shadow-sm"
               type="button"
+              role="switch"
+              aria-checked={isStoreOpen}
+              disabled={savingStoreStatus}
+              onClick={handleOwnerStoreToggle}
+              className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:opacity-60 ${
+                isStoreOpen
+                  ? 'bg-[#0c831f]'
+                  : 'bg-neutral-300'
+              }`}
             >
-              <span>👤 Profile</span>
+              <span
+                className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow-md transition-transform ${
+                  isStoreOpen
+                    ? 'translate-x-7'
+                    : 'translate-x-1'
+                }`}
+              />
             </button>
+          </div>
 
+          <div className="dd-bk-scroll mt-4 flex gap-2">
             <button
+              type="button"
               onClick={() =>
-                router.push(
-                  `/dashboard/${restaurant.id}/qr`
-                )
+                setTableQrOpen(true)
               }
-              className="bg-neutral-900 hover:bg-black border border-neutral-900 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition flex items-center space-x-2 shadow-sm"
+              className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
             >
-              <span>📷 Table QR Codes</span>
+              ▦ Table QR
             </button>
 
             <button
-              onClick={handleLogout}
-              className="bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow"
+              type="button"
+              onClick={() => openOwnerMobileTab('billing')}
+              className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
             >
-              Log Out ⎋
+              🧾 Billing
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openOwnerMobileTab('settlements')}
+              className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
+            >
+              ↗ Reports
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-2xl bg-red-500/18 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
+            >
+              Log out
             </button>
           </div>
         </div>
-
       </header>
 
       {profileOpen && (
@@ -3989,28 +5281,16 @@ export default function RestaurantDashboard() {
       <main className="dd-dashboard-main max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-6">
 
         <div className="dd-dashboard-intro">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
-            Owner Dashboard
-          </p>
-          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-2xl font-black tracking-tight text-neutral-900 sm:text-3xl">
-                {restaurant.name}
-              </h2>
-              <p className="mt-1 text-xs text-neutral-500">
-                Manage orders, menu, staff, billing and restaurant settings from one place.
-              </p>
-            </div>
-          </div>
+          <h2>{restaurant.name}</h2>
         </div>
 
         {/* Owner workspace switch. Existing restaurant features remain unchanged. */}
-        <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
+        <div className="dd-bk-mode-switch rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
           <div className={`grid gap-2 ${resortModuleEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <button
               type="button"
               onClick={() => setDashboardMode('restaurant')}
-              className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'restaurant' ? 'bg-orange-500 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
+              className={`rounded-2xl px-4 py-3 text-xs font-black transition ${dashboardMode === 'restaurant' ? 'bg-[#0c831f] text-white' : 'bg-transparent text-neutral-500'}`}
             >
               🍽️ Restaurant Dashboard
             </button>
@@ -4018,7 +5298,7 @@ export default function RestaurantDashboard() {
               <button
                 type="button"
                 onClick={() => setDashboardMode('resort')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'resort' ? 'bg-sky-600 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
+                className={`rounded-2xl px-4 py-3 text-xs font-black transition ${dashboardMode === 'resort' ? 'bg-[#2563eb] text-white' : 'bg-transparent text-neutral-500'}`}
               >
                 🏨 Resort Dashboard
               </button>
@@ -4036,89 +5316,626 @@ export default function RestaurantDashboard() {
 
         {dashboardMode === 'restaurant' && (
           <div className="contents">
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* PREMIUM OWNER HOME */}
+        {activeTab === 'owner-home' && (
+          <div className="space-y-5">
+            <section className="pt-1">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <h2 className="dd-bk-section-title">
+                    Today at a glance
+                  </h2>
+                  <p className="dd-bk-section-sub mt-1">
+                    Live restaurant performance and operations.
+                  </p>
+                </div>
 
-          <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-              Total Revenue
-            </p>
+                <button
+                  type="button"
+                  onClick={() => openOwnerMobileTab('settlements')}
+                  className="text-[9px] font-black text-[#0c831f]"
+                >
+                  Full reports →
+                </button>
+              </div>
 
-            <p className="text-2xl font-black text-white mt-1">
-              ₹{totalRevenue}
-            </p>
-          </div>
+              <div className="dd-keep-two mt-3 grid grid-cols-2 gap-3">
+                <div className="dd-bk-card dd-bk-stat p-4 text-[#0c831f]">
+                  <div className="flex items-start justify-between">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#eaf8ed] text-lg">
+                      ₹
+                    </div>
+                    <span className="rounded-full bg-[#eaf8ed] px-2 py-1 text-[7px] font-black text-[#0c831f]">
+                      TODAY
+                    </span>
+                  </div>
 
-          <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-              Orders Today
-            </p>
+                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                    Revenue
+                  </p>
 
-            <p className="text-2xl font-black text-emerald-400 mt-1">
-              {todaysOrders.length}
-            </p>
-          </div>
+                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
+                    ₹{totalRevenue}
+                  </p>
+                </div>
 
-          <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-              Live Kitchen Queue
-            </p>
+                <div className="dd-bk-card dd-bk-stat p-4 text-[#2563eb]">
+                  <div className="flex items-start justify-between">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-lg">
+                      🧾
+                    </div>
+                    <span className="rounded-full bg-blue-50 px-2 py-1 text-[7px] font-black text-blue-600">
+                      LIVE
+                    </span>
+                  </div>
 
-            <p className="text-2xl font-black text-orange-400 mt-1">
-              {activeOrders.length}
-            </p>
-          </div>
+                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                    Orders
+                  </p>
 
-          <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm flex flex-col justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-                Partner Tier
-              </p>
+                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
+                    {todaysOrders.length}
+                  </p>
+                </div>
 
-              <p className="text-xl font-black text-amber-400 mt-0.5">
-                {currentPlanDisplay}
-              </p>
-            </div>
+                <div className="dd-bk-card dd-bk-stat p-4 text-[#f59e0b]">
+                  <div className="flex items-start justify-between">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-lg">
+                      👨‍🍳
+                    </div>
+                    <span className="rounded-full bg-amber-50 px-2 py-1 text-[7px] font-black text-amber-600">
+                      KDS
+                    </span>
+                  </div>
 
-            <p className="text-[10px] text-neutral-500 mt-1">
-              ₹{currentPlanMonthlyPrice.toLocaleString('en-IN')} / month
-            </p>
+                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                    Kitchen Queue
+                  </p>
 
-            <div className="grid grid-cols-1 gap-1.5 pt-3">
-              {Object.values(PLAN_FEATURES)
-                .filter((plan) => plan.code !== currentPlanCode)
-                .map((plan) => (
+                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
+                    {activeOrders.length}
+                  </p>
+                </div>
+
+                <div className="dd-bk-card dd-bk-stat p-4 text-[#8b5cf6]">
+                  <div className="flex items-start justify-between">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-50 text-lg">
+                      🪑
+                    </div>
+                    <span className="rounded-full bg-violet-50 px-2 py-1 text-[7px] font-black text-violet-600">
+                      TABLES
+                    </span>
+                  </div>
+
+                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                    Available
+                  </p>
+
+                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
+                    {availableTableCount}/{configuredTableNumbers.length}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <h2 className="dd-bk-section-title">
+                    Quick actions
+                  </h2>
+                  <p className="dd-bk-section-sub mt-1">
+                    Jump straight into daily operations.
+                  </p>
+                </div>
+              </div>
+
+              <div className="dd-bk-scroll mt-3 flex gap-3 pb-1">
+                {[
+                  ['menu', '🍔', 'Menu', `${availableMenuCount} live`, '#eaf8ed'],
+                  ['tables', '🪑', 'Tables', `${occupiedTableCount} occupied`, '#fff7d6'],
+                  ['billing', '🧾', 'Billing', 'Create bills', '#eef4ff'],
+                  ['offers', '🔥', 'Offers', `${activeOfferCount} active`, '#fff0ec'],
+                  ['staff-access', '▦', 'Staff QR', 'Quick login', '#f5efff'],
+                  ['taxes', '₹', 'Taxes', 'GST & packing', '#eaf8ed'],
+                ].map(([tabId, icon, title, sub, background]) => (
                   <button
-                    key={plan.code}
+                    key={tabId}
                     type="button"
-                    onClick={() => handleUpgradePlan(plan.code)}
-                    className="w-full bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold text-[10px] py-2 px-2 rounded-lg transition text-left"
+                    onClick={() => openOwnerMobileTab(tabId)}
+                    className="dd-bk-action"
                   >
-                    {plan.name} · ₹{plan.monthlyPrice.toLocaleString('en-IN')}/mo
+                    <span
+                      className="dd-bk-action-icon"
+                      style={{ background }}
+                    >
+                      {icon}
+                    </span>
+
+                    <span className="block text-[11px] font-black text-neutral-900">
+                      {title}
+                    </span>
+
+                    <span className="mt-1 block text-[8px] font-bold text-neutral-500">
+                      {sub}
+                    </span>
                   </button>
                 ))}
-            </div>
-          </div>
+              </div>
+            </section>
 
-          <div className="bg-neutral-900 border border-orange-500/20 p-5 rounded-3xl shadow-sm">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-orange-400">
-              Restaurant Code
-            </p>
-            <p className="text-3xl font-black font-mono tracking-[0.2em] text-white mt-1">
-              {restaurant.restaurant_code || '-----'}
-            </p>
-            <p className="text-[10px] text-neutral-500 mt-1">
-              Use this code with the assigned staff username and password.
-            </p>
+            {/* LIFETIME ORDER DATE SEARCH */}
+            <section className="dd-bk-card overflow-hidden">
+              <div className="bg-gradient-to-br from-[#101b12] via-[#142417] to-[#0c831f] p-4 text-white">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#f8cb46] text-lg text-neutral-900">
+                        🔎
+                      </span>
+
+                      <div>
+                        <p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#f8cb46]">
+                          Lifetime Order Search
+                        </p>
+
+                        <h2 className="mt-0.5 text-[16px] font-black tracking-tight">
+                          Find orders from any date
+                        </h2>
+                      </div>
+                    </div>
+
+                    <p className="mt-3 max-w-sm text-[9px] font-semibold leading-5 text-white/65">
+                      Search the restaurant's full order history by date. For example, select 11/12/2000 to retrieve orders saved on that day.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-[18px] bg-white/10 p-3 backdrop-blur">
+                  <label className="block text-[8px] font-black uppercase tracking-wider text-white/65">
+                    Order Date
+                  </label>
+
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="date"
+                      value={orderHistoryDate}
+                      onChange={(event) => {
+                        setOrderHistoryDate(
+                          event.target.value
+                        )
+                        setOrderHistoryError('')
+                      }}
+                      className="min-h-12 flex-1 rounded-2xl border border-white/15 bg-white px-4 text-base font-black text-neutral-900 outline-none"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={handleLifetimeOrderSearch}
+                      disabled={
+                        orderHistoryLoading ||
+                        !orderHistoryDate
+                      }
+                      className="min-h-12 rounded-2xl bg-[#f8cb46] px-5 text-[10px] font-black text-neutral-900 shadow-lg shadow-black/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {orderHistoryLoading
+                        ? 'Searching...'
+                        : 'Search Orders'}
+                    </button>
+                  </div>
+
+                  {orderHistoryDate && (
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="text-[8px] font-bold text-white/60">
+                        Selected: {formatOrderHistoryDate(orderHistoryDate)}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={clearLifetimeOrderSearch}
+                        disabled={orderHistoryLoading}
+                        className="text-[8px] font-black text-[#f8cb46] disabled:opacity-50"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4">
+                {orderHistoryError && (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-[9px] font-bold leading-5 text-red-600">
+                    {orderHistoryError}
+                  </div>
+                )}
+
+                {!orderHistorySearched &&
+                  !orderHistoryLoading &&
+                  !orderHistoryError && (
+                    <div className="py-4 text-center">
+                      <div className="text-3xl">📅</div>
+
+                      <p className="mt-2 text-[11px] font-black text-neutral-900">
+                        Search your complete order history
+                      </p>
+
+                      <p className="mx-auto mt-1 max-w-[290px] text-[8px] font-semibold leading-4 text-neutral-500">
+                        This search reads that specific day directly from Supabase, so it is not limited to only today's or recently loaded orders.
+                      </p>
+                    </div>
+                  )}
+
+                {orderHistoryLoading && (
+                  <div className="flex items-center justify-center gap-3 py-8">
+                    <div className="h-7 w-7 animate-spin rounded-full border-4 border-neutral-200 border-t-[#0c831f]" />
+
+                    <div>
+                      <p className="text-[10px] font-black text-neutral-900">
+                        Searching lifetime history
+                      </p>
+
+                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
+                        Looking for every order on {formatOrderHistoryDate(orderHistoryDate)}...
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {orderHistorySearched &&
+                  !orderHistoryLoading &&
+                  !orderHistoryError && (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-[#0c831f]">
+                            Search Result
+                          </p>
+
+                          <h3 className="mt-1 text-[15px] font-black text-neutral-900">
+                            {formatOrderHistoryDate(orderHistoryDate)}
+                          </h3>
+                        </div>
+
+                        <span className="rounded-full bg-[#eaf8ed] px-3 py-1.5 text-[8px] font-black text-[#0c831f]">
+                          {orderHistoryOrders.length} ORDER{orderHistoryOrders.length === 1 ? '' : 'S'}
+                        </span>
+                      </div>
+
+                      <div className="dd-keep-two mt-4 grid grid-cols-2 gap-2">
+                        <div className="rounded-2xl bg-[#eaf8ed] p-3">
+                          <p className="text-[7px] font-black uppercase tracking-wider text-[#0c831f]/70">
+                            Revenue
+                          </p>
+
+                          <p className="mt-1 text-[16px] font-black text-[#0c831f]">
+                            {formatCurrency(orderHistoryRevenue)}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-blue-50 p-3">
+                          <p className="text-[7px] font-black uppercase tracking-wider text-blue-500">
+                            Completed
+                          </p>
+
+                          <p className="mt-1 text-[16px] font-black text-blue-700">
+                            {orderHistoryCompletedCount}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-amber-50 p-3">
+                          <p className="text-[7px] font-black uppercase tracking-wider text-amber-600">
+                            Total Orders
+                          </p>
+
+                          <p className="mt-1 text-[16px] font-black text-amber-700">
+                            {orderHistoryOrders.length}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-red-50 p-3">
+                          <p className="text-[7px] font-black uppercase tracking-wider text-red-500">
+                            Cancelled
+                          </p>
+
+                          <p className="mt-1 text-[16px] font-black text-red-600">
+                            {orderHistoryCancelledCount}
+                          </p>
+                        </div>
+                      </div>
+
+                      {orderHistoryOrders.length === 0 ? (
+                        <div className="py-8 text-center">
+                          <div className="text-4xl">🧾</div>
+
+                          <p className="mt-3 text-[11px] font-black text-neutral-900">
+                            No orders found
+                          </p>
+
+                          <p className="mt-1 text-[8px] font-semibold text-neutral-500">
+                            There are no saved orders for {formatOrderHistoryDate(orderHistoryDate)}.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mt-4 space-y-2">
+                          {visibleOrderHistory.map((order, index) => {
+                            const status = String(
+                              order?.status || 'pending'
+                            ).toLowerCase()
+
+                            const statusClass =
+                              status === 'cancelled'
+                                ? 'bg-red-50 text-red-600'
+                                : ['completed', 'delivered', 'served'].includes(status)
+                                  ? 'bg-[#eaf8ed] text-[#0c831f]'
+                                  : status === 'ready'
+                                    ? 'bg-blue-50 text-blue-600'
+                                    : 'bg-amber-50 text-amber-700'
+
+                            return (
+                              <div
+                                key={
+                                  order?.id ||
+                                  `${order?.created_at || 'order'}-${index}`
+                                }
+                                className="rounded-[18px] border border-neutral-200 bg-neutral-50 p-3"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="rounded-lg bg-white px-2 py-1 text-[8px] font-black text-neutral-700 shadow-sm">
+                                        {getBillNumber(order)}
+                                      </span>
+
+                                      <span
+                                        className={`rounded-full px-2 py-1 text-[7px] font-black uppercase ${statusClass}`}
+                                      >
+                                        {status}
+                                      </span>
+                                    </div>
+
+                                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] font-semibold text-neutral-500">
+                                      <span>
+                                        🕒 {formatBillTime(order.created_at)}
+                                      </span>
+
+                                      <span>
+                                        🪑 Table {order.table_number || '—'}
+                                      </span>
+
+                                      <span>
+                                        💳 {order.payment_mode || 'Online'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="shrink-0 text-right">
+                                    <p className="text-[7px] font-black uppercase tracking-wider text-neutral-400">
+                                      Total
+                                    </p>
+
+                                    <p className="mt-1 text-[14px] font-black text-[#0c831f]">
+                                      {formatCurrency(order.total_amount)}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 flex items-center justify-between gap-2 border-t border-neutral-200 pt-2.5">
+                                  <p className="truncate text-[7px] font-semibold text-neutral-400">
+                                    Order ID: {String(order?.id || '—')}
+                                  </p>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePrintBill(order)}
+                                    className="shrink-0 rounded-xl bg-white px-3 py-2 text-[8px] font-black text-neutral-700 shadow-sm"
+                                  >
+                                    View Bill
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+
+                          {orderHistoryVisibleCount <
+                            orderHistoryOrders.length && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOrderHistoryVisibleCount(
+                                  (current) =>
+                                    current + 20
+                                )
+                              }
+                              className="w-full rounded-2xl border border-neutral-200 bg-white py-3 text-[9px] font-black text-[#0c831f]"
+                            >
+                              Show 20 More Orders
+                            </button>
+                          )}
+
+                          {orderHistoryOrders.length > 20 && (
+                            <p className="pt-1 text-center text-[7px] font-semibold text-neutral-400">
+                              Showing {Math.min(orderHistoryVisibleCount, orderHistoryOrders.length)} of {orderHistoryOrders.length} orders
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+              </div>
+            </section>
+
+            <section className="dd-bk-card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="dd-bk-section-title">
+                    Live operations
+                  </h2>
+                  <p className="dd-bk-section-sub mt-1">
+                    Everything important right now.
+                  </p>
+                </div>
+
+                <span
+                  className={`rounded-full px-2.5 py-1.5 text-[8px] font-black ${
+                    isStoreOpen
+                      ? 'bg-[#eaf8ed] text-[#0c831f]'
+                      : 'bg-red-50 text-red-600'
+                  }`}
+                >
+                  {isStoreOpen ? '● OPEN' : '● CLOSED'}
+                </span>
+              </div>
+
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => openOwnerMobileTab('tables')}
+                  className="dd-bk-live-row flex w-full items-center justify-between gap-3 text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#eaf8ed] text-lg">
+                      🪑
+                    </span>
+                    <div>
+                      <p className="text-[11px] font-black text-neutral-900">
+                        Table availability
+                      </p>
+                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
+                        {availableTableCount} available · {occupiedTableCount} occupied
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-neutral-400">›</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => openOwnerMobileTab('menu')}
+                  className="dd-bk-live-row flex w-full items-center justify-between gap-3 text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff7d6] text-lg">
+                      🍽️
+                    </span>
+                    <div>
+                      <p className="text-[11px] font-black text-neutral-900">
+                        Menu availability
+                      </p>
+                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
+                        {availableMenuCount} of {menuItems.length} items available
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-neutral-400">›</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => openOwnerMobileTab('offers')}
+                  className="dd-bk-live-row flex w-full items-center justify-between gap-3 text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff0ec] text-lg">
+                      🔥
+                    </span>
+                    <div>
+                      <p className="text-[11px] font-black text-neutral-900">
+                        Offers of the day
+                      </p>
+                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
+                        {activeOfferCount} active customer offer{activeOfferCount === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-neutral-400">›</span>
+                </button>
+              </div>
+            </section>
+
+            <section className="dd-bk-card dd-bk-plan overflow-hidden p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#f8cb46]">
+                    Membership
+                  </p>
+
+                  <h3 className="mt-1 text-lg font-black text-white">
+                    {currentPlanDisplay}
+                  </h3>
+
+                  <p className="mt-1 text-[9px] font-semibold text-white/60">
+                    ₹{currentPlanMonthlyPrice.toLocaleString('en-IN')} / month
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-[#f8cb46] px-3 py-2 text-center text-[#171717]">
+                  <p className="text-[7px] font-black uppercase">
+                    Restaurant Code
+                  </p>
+                  <p className="mt-0.5 font-mono text-sm font-black tracking-[0.18em]">
+                    {restaurant.restaurant_code || '-----'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="dd-bk-scroll mt-4 flex gap-2">
+                {Object.values(PLAN_FEATURES)
+                  .filter((plan) => plan.code !== currentPlanCode)
+                  .map((plan) => (
+                    <button
+                      key={plan.code}
+                      type="button"
+                      onClick={() => handleUpgradePlan(plan.code)}
+                      className="rounded-xl border border-white/10 bg-white/8 px-3 py-2 text-left"
+                    >
+                      <span className="block text-[9px] font-black text-white">
+                        {plan.name}
+                      </span>
+                      <span className="mt-0.5 block text-[8px] font-bold text-white/55">
+                        ₹{plan.monthlyPrice.toLocaleString('en-IN')}/mo
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            </section>
+
+            {resortModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('resort')}
+                className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-xl">
+                    🏨
+                  </span>
+                  <div>
+                    <p className="text-[12px] font-black text-neutral-900">
+                      Resort Management
+                    </p>
+                    <p className="mt-1 text-[9px] font-semibold text-neutral-500">
+                      Rooms, guests and resort operations
+                    </p>
+                  </div>
+                </div>
+
+                <span className="text-lg text-neutral-400">›</span>
+              </button>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Tab Navigation */}
         <nav className="dd-dashboard-sidebar flex space-x-2 border-b border-neutral-200 pb-3 overflow-x-auto">
           {[
             {
+              id: 'owner-home',
+              label: '⌂ Home'
+            },
+            {
               id: 'settlements',
-              label: '⌂ Dashboard & Reports'
+              label: '↗ Reports'
             },
             {
               id: 'menu',
@@ -4207,7 +6024,7 @@ export default function RestaurantDashboard() {
                   <h2 className="text-lg font-black text-white">Restaurant Tables</h2>
                   <p className="text-xs text-neutral-500 mt-1">Only table QR codes registered from your Table QR page are counted.</p>
                 </div>
-                <button type="button" onClick={() => router.push(`/dashboard/${restaurantId}/qr`)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black">📷 Manage Table QR Codes</button>
+                <button type="button" onClick={() => setTableQrOpen(true)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black">📷 Manage Table QR Codes</button>
               </div>
               {configuredTableNumbers.length === 0 ? (
                 <div className="text-center py-10 text-sm text-neutral-500">No table QR codes have been registered yet.</div>
@@ -6768,140 +8585,198 @@ export default function RestaurantDashboard() {
       {/* OWNER MOBILE APP NAVIGATION */}
       {dashboardMode === 'restaurant' && (
         <>
-          <nav className="dd-owner-mobile-bottom-nav fixed bottom-0 left-0 right-0 z-[80] grid-cols-5 border-t border-neutral-200 bg-white/95 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl">
+          <nav className="dd-owner-mobile-bottom-nav">
             <button
               type="button"
-              onClick={() =>
-                window.scrollTo({
-                  top: 0,
-                  behavior: 'smooth',
-                })
-              }
-              className="flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black text-orange-500"
+              onClick={() => openOwnerMobileTab('owner-home')}
+              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black ${
+                activeTab === 'owner-home'
+                  ? 'dd-bk-nav-active'
+                  : 'text-neutral-500'
+              }`}
             >
-              <span className="text-base">⌂</span>
-              <span className="mt-0.5">Home</span>
+              <span className="text-[18px] leading-none">⌂</span>
+              <span className="mt-1">Home</span>
             </button>
 
             <button
               type="button"
               onClick={() => openOwnerMobileTab('menu')}
-              className={`flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black ${
+              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black ${
                 activeTab === 'menu'
-                  ? 'bg-orange-50 text-orange-600'
+                  ? 'dd-bk-nav-active'
                   : 'text-neutral-500'
               }`}
             >
-              <span className="text-base">≡</span>
-              <span className="mt-0.5">Menu</span>
+              <span className="text-[18px] leading-none">🍔</span>
+              <span className="mt-1">Menu</span>
             </button>
 
             <button
               type="button"
               onClick={() => openOwnerMobileTab('tables')}
-              className={`flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black ${
+              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black ${
                 activeTab === 'tables'
-                  ? 'bg-orange-50 text-orange-600'
+                  ? 'dd-bk-nav-active'
                   : 'text-neutral-500'
               }`}
             >
-              <span className="text-base">⌁</span>
-              <span className="mt-0.5">Tables</span>
+              <span className="text-[18px] leading-none">🪑</span>
+              <span className="mt-1">Tables</span>
             </button>
 
             <button
               type="button"
               onClick={() => openOwnerMobileTab('billing')}
-              className={`flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black ${
+              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black ${
                 activeTab === 'billing'
-                  ? 'bg-orange-50 text-orange-600'
+                  ? 'dd-bk-nav-active'
                   : 'text-neutral-500'
               }`}
             >
-              <span className="text-base">▣</span>
-              <span className="mt-0.5">Billing</span>
+              <span className="text-[18px] leading-none">🧾</span>
+              <span className="mt-1">Billing</span>
             </button>
 
             <button
               type="button"
               onClick={() => setMobileOwnerMenuOpen(true)}
-              className="flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black text-neutral-500"
+              className="flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black text-neutral-500"
             >
-              <span className="text-base">•••</span>
-              <span className="mt-0.5">More</span>
+              <span className="text-[18px] leading-none">☷</span>
+              <span className="mt-1">More</span>
             </button>
           </nav>
 
           {mobileOwnerMenuOpen && (
             <div
-              className="fixed inset-0 z-[95] flex items-end bg-black/60 backdrop-blur-sm lg:hidden"
+              className="fixed inset-0 z-[95] flex items-end bg-black/55 backdrop-blur-sm"
               onClick={() => setMobileOwnerMenuOpen(false)}
             >
               <div
-                className="max-h-[78dvh] w-full overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-neutral-900 shadow-2xl"
+                className="dd-bk-more-sheet max-h-[84dvh] overflow-y-auto border p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
                 onClick={(event) => event.stopPropagation()}
               >
                 <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200" />
 
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-500">
-                      Owner Tools
+                    <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#0c831f]">
+                      Owner Control Center
                     </p>
-                    <h3 className="mt-1 text-xl font-black">
-                      More restaurant controls
+
+                    <h3 className="mt-1 text-[20px] font-black tracking-tight text-neutral-900">
+                      Everything else
                     </h3>
+
+                    <p className="mt-1 text-[9px] font-semibold text-neutral-500">
+                      Reports, people, payments, growth and settings.
+                    </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => setMobileOwnerMenuOpen(false)}
-                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-600"
                   >
                     ✕
                   </button>
                 </div>
 
-                <div className="mt-5 grid grid-cols-2 gap-2">
-                  {[
-                    ['settlements', '⌂', 'Reports'],
-                    ['staff', '◎', 'Managers'],
-                    ['staff-access', '▦', 'Staff Login QR'],
-                    ['taxes', '₹', 'Taxes'],
-                    ['offers', '★', 'Offers'],
-                    ['swiggy-sync', '↻', 'Menu Sync'],
-                    ['gateway', '₹', 'Payments'],
-                    ['alarm-settings', '◉', 'Alarms'],
-                  ]
-                    .filter(([tabId]) => {
-                      if (
-                        ['staff', 'swiggy-sync', 'alarm-settings'].includes(
-                          tabId
-                        )
-                      ) {
-                        return planFeatures.advanced
-                      }
+                <div className="mt-5">
+                  <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
+                    Operations
+                  </p>
 
-                      return true
-                    })
-                    .map(([tabId, icon, label]) => (
+                  <div className="dd-keep-two grid grid-cols-2 gap-2">
+                    {[
+                      ['settlements', '📊', 'Reports', 'Sales & analytics'],
+                      ['staff-access', '▦', 'Staff Login QR', 'Manager / waiter / kitchen'],
+                      ['taxes', '₹', 'Taxes', 'GST & packing'],
+                      ['billing', '🧾', 'Billing', 'Bills & signatures'],
+                    ].map(([tabId, icon, label, sub]) => (
                       <button
                         key={tabId}
                         type="button"
                         onClick={() => openOwnerMobileTab(tabId)}
-                        className={`rounded-2xl border p-4 text-left ${
-                          activeTab === tabId
-                            ? 'border-orange-500/30 bg-orange-50 text-orange-700'
-                            : 'border-neutral-200 bg-neutral-50 text-neutral-700'
-                        }`}
+                        className="dd-bk-sheet-action"
                       >
                         <div className="text-xl">{icon}</div>
-                        <div className="mt-2 text-[10px] font-black">
+                        <div className="mt-2 text-[10px] font-black text-neutral-900">
                           {label}
+                        </div>
+                        <div className="mt-1 text-[8px] font-semibold text-neutral-500">
+                          {sub}
                         </div>
                       </button>
                     ))}
+                  </div>
                 </div>
+
+                <div className="mt-5">
+                  <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
+                    Growth & team
+                  </p>
+
+                  <div className="dd-keep-two grid grid-cols-2 gap-2">
+                    {[
+                      ['offers', '🔥', 'Offers', `${activeOfferCount} active`],
+                      ['gateway', '💳', 'Payments', 'Gateway settings'],
+                      ...(planFeatures.advanced
+                        ? [
+                            ['staff', '👥', 'Managers', `${staffList.length} accounts`],
+                            ['swiggy-sync', '↻', 'Menu Sync', 'Import menu data'],
+                          ]
+                        : []),
+                    ].map(([tabId, icon, label, sub]) => (
+                      <button
+                        key={tabId}
+                        type="button"
+                        onClick={() => openOwnerMobileTab(tabId)}
+                        className="dd-bk-sheet-action"
+                      >
+                        <div className="text-xl">{icon}</div>
+                        <div className="mt-2 text-[10px] font-black text-neutral-900">
+                          {label}
+                        </div>
+                        <div className="mt-1 text-[8px] font-semibold text-neutral-500">
+                          {sub}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {planFeatures.advanced && (
+                  <div className="mt-5">
+                    <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
+                      Experience
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => openOwnerMobileTab('alarm-settings')}
+                      className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fff7d6] text-xl">
+                          🔔
+                        </span>
+
+                        <div>
+                          <p className="text-[11px] font-black text-neutral-900">
+                            Alarm Settings
+                          </p>
+                          <p className="mt-1 text-[8px] font-semibold text-neutral-500">
+                            Kitchen & waiter sounds
+                          </p>
+                        </div>
+                      </div>
+
+                      <span className="text-neutral-400">›</span>
+                    </button>
+                  </div>
+                )}
 
                 {resortModuleEnabled && (
                   <button
@@ -6910,15 +8785,46 @@ export default function RestaurantDashboard() {
                       setDashboardMode('resort')
                       setMobileOwnerMenuOpen(false)
                     }}
-                    className="mt-3 w-full rounded-2xl border border-sky-500/20 bg-sky-50 px-4 py-4 text-left text-[10px] font-black text-sky-700"
+                    className="mt-5 flex w-full items-center justify-between rounded-[22px] bg-blue-600 p-4 text-left text-white shadow-lg shadow-blue-600/20"
                   >
-                    🏨 Open Resort Dashboard
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-xl">
+                        🏨
+                      </span>
+
+                      <div>
+                        <p className="text-[11px] font-black">
+                          Resort Management
+                        </p>
+                        <p className="mt-1 text-[8px] font-semibold text-white/70">
+                          Open resort operations
+                        </p>
+                      </div>
+                    </div>
+
+                    <span>›</span>
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="mt-5 w-full rounded-2xl border border-red-500/20 bg-red-500/10 py-3 text-[10px] font-black text-red-500"
+                >
+                  Log out of Owner App
+                </button>
               </div>
             </div>
           )}
         </>
+      )}
+
+      {tableQrOpen && (
+        <OwnerTableQrSheet
+          restaurant={restaurant}
+          restaurantId={restaurantId}
+          onClose={() => setTableQrOpen(false)}
+        />
       )}
 
       {/* Embedded Real-Time Restaurant Chat Widget */}

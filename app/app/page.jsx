@@ -401,10 +401,11 @@ export default function DigitalDineApp() {
       String(restaurant.id)
     )
 
-    // Keep the existing Owner authentication page.
-    // Restaurant context is included for the login page if it chooses to use it.
+    // IMPORTANT:
+    // Owner access from /app must use the dedicated MOBILE owner login.
+    // Do not send app users to the website /login page.
     router.push(
-      `/login?restaurantCode=${code}&restaurantId=${id}&from=/app`
+      `/app/owner?restaurantCode=${code}&restaurantId=${id}`
     )
   }
 

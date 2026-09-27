@@ -18,6 +18,14 @@ export default function RestaurantLogin() {
 
   const [biometricEnabled, setBiometricEnabled] = useState(false)
 
+  // When Owner login is opened from /app, keep that context so
+  // successful authentication returns to the mobile Owner page.
+  const [loginContext, setLoginContext] = useState({
+    fromApp: false,
+    restaurantId: '',
+    restaurantCode: '',
+  })
+
   useEffect(() => {
     try {
       const savedPreference = localStorage.getItem(
@@ -28,6 +36,47 @@ export default function RestaurantLogin() {
     } catch (error) {
       console.error('Could not read biometric preference:', error)
       setBiometricEnabled(false)
+    }
+
+    try {
+      const params = new URLSearchParams(window.location.search)
+
+      const fromApp =
+        String(params.get('from') || '').trim() === '/app'
+
+      const restaurantId = String(
+        params.get('restaurantId') || ''
+      ).trim()
+
+      const restaurantCode = String(
+        params.get('restaurantCode') || ''
+      )
+        .replace(/\D/g, '')
+        .slice(0, 5)
+
+      const nextContext = {
+        fromApp,
+        restaurantId,
+        restaurantCode,
+      }
+
+      setLoginContext(nextContext)
+
+      if (fromApp) {
+        sessionStorage.setItem(
+          'digitaldining_owner_login_context',
+          JSON.stringify(nextContext)
+        )
+      } else {
+        sessionStorage.removeItem(
+          'digitaldining_owner_login_context'
+        )
+      }
+    } catch (error) {
+      console.error(
+        'Could not read owner app login context:',
+        error
+      )
     }
   }, [])
 
@@ -114,6 +163,68 @@ export default function RestaurantLogin() {
     return message || 'Biometric verification could not be completed.'
   }
 
+  const getOwnerDestination = (restaurantId) => {
+    const id = encodeURIComponent(String(restaurantId || '').trim())
+
+    if (loginContext.fromApp) {
+      return `/app/owner/${id}`
+    }
+
+    return `/dashboard/${id}`
+  }
+
+  const verifySelectedAppRestaurant = async (restaurant) => {
+    if (!loginContext.fromApp) return
+
+    const selectedRestaurantId = String(
+      loginContext.restaurantId || ''
+    ).trim()
+
+    if (
+      selectedRestaurantId &&
+      String(restaurant?.id || '') !== selectedRestaurantId
+    ) {
+      try {
+        await supabase.auth.signOut()
+      } catch {}
+
+      throw new Error(
+        'This Owner account does not belong to the restaurant selected in the app.'
+      )
+    }
+  }
+
+  const preserveOAuthAppContext = () => {
+    if (!loginContext.fromApp) return ''
+
+    try {
+      sessionStorage.setItem(
+        'digitaldining_owner_login_context',
+        JSON.stringify(loginContext)
+      )
+    } catch {}
+
+    const params = new URLSearchParams()
+
+    params.set('from', '/app')
+
+    if (loginContext.restaurantId) {
+      params.set(
+        'restaurantId',
+        loginContext.restaurantId
+      )
+    }
+
+    if (loginContext.restaurantCode) {
+      params.set(
+        'restaurantCode',
+        loginContext.restaurantCode
+      )
+    }
+
+    return `?${params.toString()}`
+  }
+
   const handleGoogleLogin = async () => {
     if (loading || biometricLoading || googleLoading) {
       return
@@ -125,7 +236,7 @@ export default function RestaurantLogin() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/google-login`,
+          redirectTo: `${window.location.origin}/auth/google-login${preserveOAuthAppContext()}`,
           queryParams: {
             access_type: 'offline',
             prompt: 'select_account',
@@ -159,7 +270,7 @@ export default function RestaurantLogin() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: {
-          redirectTo: `${window.location.origin}/auth/apple-login`,
+          redirectTo: `${window.location.origin}/auth/apple-login${preserveOAuthAppContext()}`,
         },
       })
 
@@ -261,6 +372,8 @@ export default function RestaurantLogin() {
         )
       }
 
+      await verifySelectedAppRestaurant(restaurant)
+
       console.log('LOGIN: Password authentication successful')
       console.log('LOGIN: Restaurant ID:', restaurant.id)
 
@@ -271,7 +384,7 @@ export default function RestaurantLogin() {
       if (!biometricEnabled) {
         alert('Login Successful! Welcome to Digital Dining.')
 
-        router.replace(`/dashboard/${restaurant.id}`)
+        router.replace(getOwnerDestination(restaurant.id))
         router.refresh()
 
         return
@@ -343,7 +456,7 @@ export default function RestaurantLogin() {
 
       alert('Secure Login Successful! 🔐')
 
-      router.replace(`/dashboard/${restaurant.id}`)
+      router.replace(getOwnerDestination(restaurant.id))
       router.refresh()
     } catch (err) {
       console.error('AUTHENTICATION ERROR:', err)
@@ -384,11 +497,15 @@ export default function RestaurantLogin() {
           </span>
 
           <h1 className="text-2xl font-black text-white">
-            Partner Sign In
+            {loginContext.fromApp
+              ? 'Owner App Sign In'
+              : 'Partner Sign In'}
           </h1>
 
           <p className="text-xs text-neutral-400">
-            Sign in securely to your Digital Dining dashboard.
+            {loginContext.fromApp
+              ? 'Sign in securely to open the mobile Owner workspace.'
+              : 'Sign in securely to your Digital Dining dashboard.'}
           </p>
         </div>
 

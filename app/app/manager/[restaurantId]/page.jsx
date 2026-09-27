@@ -845,6 +845,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const [swiggyDataInput, setSwiggyDataInput] = useState('')
   const [syncingSwiggy, setSyncingSwiggy] = useState(false)
   const [storeOpen, setStoreOpen] = useState(true)
+  const [savingStoreStatus, setSavingStoreStatus] = useState(false)
 
   const notify = (message) => {
     setNotice(message)
@@ -1474,14 +1475,35 @@ export default function RestaurantManagerDashboard({ params }) {
   }
 
   const handleStoreToggle = async () => {
+    if (savingStoreStatus) return
+
     const next = !storeOpen
+    setSavingStoreStatus(true)
+
     try {
-      await managerRpcAction('toggle_store', { is_open: next })
+      await managerRpcAction('toggle_store', {
+        is_open: next,
+      })
+
       setStoreOpen(next)
-      setRestaurant((value) => ({ ...value, is_open: next }))
-      notify(next ? 'Restaurant is now open.' : 'Restaurant is now closed.')
+      setRestaurant((value) => ({
+        ...value,
+        is_open: next,
+      }))
+
+      notify(
+        next
+          ? 'Restaurant is now open and accepting orders.'
+          : 'Restaurant is now closed. New orders are paused.'
+      )
     } catch (error) {
-      alert(`Unable to update store status: ${error.message}`)
+      alert(
+        `Unable to update restaurant status: ${
+          error?.message || 'Please try again.'
+        }`
+      )
+    } finally {
+      setSavingStoreStatus(false)
     }
   }
 
@@ -1855,12 +1877,48 @@ export default function RestaurantManagerDashboard({ params }) {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
+                role="switch"
+                aria-checked={storeOpen}
+                disabled={savingStoreStatus}
                 onClick={handleStoreToggle}
-                className={`flex h-10 w-10 items-center justify-center rounded-2xl border text-sm ${storeOpen ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-red-500/30 bg-red-500/10'}`}
-                aria-label={storeOpen ? 'Close store' : 'Open store'}
-                title={storeOpen ? 'Store open' : 'Store closed'}
+                className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-2xl border px-2.5 text-[8px] font-black transition disabled:cursor-wait disabled:opacity-60 ${
+                  storeOpen
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                    : 'border-red-500/30 bg-red-500/10 text-red-300'
+                }`}
+                aria-label={
+                  storeOpen
+                    ? 'Close restaurant'
+                    : 'Open restaurant'
+                }
+                title={
+                  storeOpen
+                    ? 'Restaurant open'
+                    : 'Restaurant closed'
+                }
               >
-                {storeOpen ? '🟢' : '🔴'}
+                <span
+                  className={`relative h-5 w-9 rounded-full ${
+                    storeOpen
+                      ? 'bg-emerald-500'
+                      : 'bg-red-500'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                      storeOpen
+                        ? 'translate-x-[18px]'
+                        : 'translate-x-0.5'
+                    }`}
+                  />
+                </span>
+                <span className="hidden min-[390px]:inline">
+                  {savingStoreStatus
+                    ? 'Saving'
+                    : storeOpen
+                      ? 'Open'
+                      : 'Closed'}
+                </span>
               </button>
               <button
                 type="button"

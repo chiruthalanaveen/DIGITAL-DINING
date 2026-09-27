@@ -15,6 +15,31 @@ export default function TableQRPage() {
 
   const [restaurant, setRestaurant] = useState(null)
   const [tableNumber, setTableNumber] = useState(1)
+
+  // MOBILE APP NAVIGATION:
+  // Android/browser Back from this QR page must always return
+  // to the mobile Owner portal, never the website dashboard.
+  useEffect(() => {
+    if (!restaurantId || typeof window === 'undefined') {
+      return undefined
+    }
+
+    const mobileOwnerUrl =
+      `/app/owner/${encodeURIComponent(restaurantId)}`
+
+    const handleBrowserBack = () => {
+      router.replace(mobileOwnerUrl)
+    }
+
+    window.addEventListener('popstate', handleBrowserBack)
+
+    return () => {
+      window.removeEventListener(
+        'popstate',
+        handleBrowserBack
+      )
+    }
+  }, [restaurantId, router])
   const [registeredTables, setRegisteredTables] = useState([])
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
@@ -48,7 +73,13 @@ export default function TableQRPage() {
 
     async function fetchRestaurantQRData() {
       if (!restaurantId) {
-        router.replace('/login')
+        router.replace(
+          restaurantId
+            ? `/app/owner?restaurantId=${encodeURIComponent(
+                restaurantId
+              )}`
+            : '/app'
+        )
         return
       }
 
@@ -59,7 +90,13 @@ export default function TableQRPage() {
         } = await supabase.auth.getUser()
 
         if (authError || !user) {
-          router.replace('/login')
+          router.replace(
+          restaurantId
+            ? `/app/owner?restaurantId=${encodeURIComponent(
+                restaurantId
+              )}`
+            : '/app'
+        )
           return
         }
 
@@ -75,7 +112,13 @@ export default function TableQRPage() {
 
           if (!cancelled) {
             alert('Unauthorized or restaurant not found.')
-            router.replace('/login')
+            router.replace(
+          restaurantId
+            ? `/app/owner?restaurantId=${encodeURIComponent(
+                restaurantId
+              )}`
+            : '/app'
+        )
           }
 
           return
@@ -295,7 +338,13 @@ export default function TableQRPage() {
 
           <button
             type="button"
-            onClick={() => router.replace('/login')}
+            onClick={() => router.replace(
+          restaurantId
+            ? `/app/owner?restaurantId=${encodeURIComponent(
+                restaurantId
+              )}`
+            : '/app'
+        )}
             className="mt-4 bg-orange-500 hover:bg-orange-600 px-5 py-3 rounded-xl text-xs font-black"
           >
             Return to Login
@@ -364,13 +413,15 @@ export default function TableQRPage() {
           <button
             type="button"
             onClick={() =>
-              router.push(
-                `/dashboard/${restaurant.id}`
+              router.replace(
+                `/app/owner/${encodeURIComponent(
+                  restaurantId
+                )}`
               )
             }
             className="bg-neutral-800 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-neutral-700 transition border border-neutral-700"
           >
-            ← Back to Dashboard
+            ← Back to Owner App
           </button>
         </div>
 
