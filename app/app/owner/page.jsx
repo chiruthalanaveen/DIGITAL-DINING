@@ -7,6 +7,9 @@ import { supabase } from '@/lib/supabase'
 const OWNER_APP_CONTEXT_KEY =
   'digitaldining_owner_app_context'
 
+const OWNER_GOOGLE_CONTEXT_KEY =
+  'digitaldining_owner_google_context'
+
 export default function OwnerMobileLoginPage() {
   const router = useRouter()
 
@@ -19,9 +22,156 @@ export default function OwnerMobileLoginPage() {
   const [dob, setDob] = useState('')
 
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [biometricLoading, setBiometricLoading] = useState(false)
+  const [biometricEnabled, setBiometricEnabled] = useState(false)
   const [checkingSession, setCheckingSession] =
     useState(true)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    try {
+      const savedPreference = localStorage.getItem(
+        'digitaldining_biometric_enabled'
+      )
+
+      setBiometricEnabled(
+        savedPreference === 'true'
+      )
+    } catch (preferenceError) {
+      console.error(
+        '[OWNER APP LOGIN] Could not read biometric preference:',
+        preferenceError
+      )
+
+      setBiometricEnabled(false)
+    }
+  }, [])
+
+  const toggleBiometric = () => {
+    if (
+      loading ||
+      googleLoading ||
+      biometricLoading ||
+      checkingSession
+    ) {
+      return
+    }
+
+    const nextValue = !biometricEnabled
+
+    setBiometricEnabled(nextValue)
+    setError('')
+
+    try {
+      localStorage.setItem(
+        'digitaldining_biometric_enabled',
+        String(nextValue)
+      )
+    } catch (preferenceError) {
+      console.error(
+        '[OWNER APP LOGIN] Could not save biometric preference:',
+        preferenceError
+      )
+    }
+  }
+
+  const isPasskeySupported = () => {
+    return (
+      typeof window !== 'undefined' &&
+      window.isSecureContext &&
+      typeof window.PublicKeyCredential !==
+        'undefined'
+    )
+  }
+
+  const getPasskeyErrorMessage = (error) => {
+    const code =
+      error?.code ||
+      error?.name ||
+      ''
+
+    const message =
+      error?.message ||
+      ''
+
+    const lowerMessage =
+      String(message).toLowerCase()
+
+    if (
+      code ===
+      'webauthn_credential_not_found'
+    ) {
+      return (
+        'No biometric/passkey was found for this Owner account on this device. ' +
+        'Turn Biometric OFF and use password login, or use a device where the Owner passkey is registered.'
+      )
+    }
+
+    if (
+      code ===
+        'webauthn_verification_failed' ||
+      lowerMessage.includes(
+        'credential verification failed'
+      )
+    ) {
+      return (
+        'Biometric verification failed. Please try again or turn Biometric OFF.'
+      )
+    }
+
+    if (
+      code ===
+        'webauthn_challenge_expired' ||
+      lowerMessage.includes(
+        'challenge expired'
+      )
+    ) {
+      return (
+        'The biometric security request expired. Please try again.'
+      )
+    }
+
+    if (
+      code ===
+        'webauthn_challenge_not_found' ||
+      lowerMessage.includes(
+        'challenge not found'
+      )
+    ) {
+      return (
+        'The biometric security request could not be found. Please try again.'
+      )
+    }
+
+    if (
+      code === 'passkey_disabled' ||
+      lowerMessage.includes(
+        'passkeys are disabled'
+      )
+    ) {
+      return (
+        'Biometric login is currently disabled in the authentication system.'
+      )
+    }
+
+    if (
+      lowerMessage.includes('cancel') ||
+      lowerMessage.includes('abort') ||
+      lowerMessage.includes(
+        'notallowed'
+      )
+    ) {
+      return (
+        'Biometric verification was cancelled. Please try again or turn Biometric OFF.'
+      )
+    }
+
+    return (
+      message ||
+      'Biometric verification could not be completed.'
+    )
+  }
 
   useEffect(() => {
     let active = true
@@ -31,6 +181,14 @@ export default function OwnerMobileLoginPage() {
         const params = new URLSearchParams(
           window.location.search
         )
+
+        const googleError = String(
+          params.get('googleError') || ''
+        ).trim()
+
+        if (googleError && active) {
+          setError(googleError)
+        }
 
         const id = String(
           params.get('restaurantId') || ''
@@ -71,26 +229,58 @@ export default function OwnerMobileLoginPage() {
           )
         }
 
-        // If the owner is already authenticated in Supabase,
-        // verify ownership and open the MOBILE dashboard directly.
+        // If an Owner session already exists — including a session
+        // returned from Google OAuth — verify that it owns the exact
+        // restaurant selected from /app before opening the mobile portal.
         const {
           data: { user },
+          error: userError,
         } = await supabase.auth.getUser()
 
-        if (user) {
-          const { data: ownedRestaurant } =
-            await supabase
-              .from('restaurants')
-              .select('id')
-              .eq('id', id)
-              .eq('owner_id', user.id)
-              .maybeSingle()
+        if (!userError && user) {
+          const {
+            data: ownedRestaurant,
+            error: ownershipError,
+          } = await supabase
+            .from('restaurants')
+            .select('id, owner_id, restaurant_code')
+            .eq('id', id)
+            .eq('owner_id', user.id)
+            .maybeSingle()
 
-          if (ownedRestaurant?.id && active) {
+          if (
+            !ownershipError &&
+            ownedRestaurant?.id &&
+            active
+          ) {
             router.replace(
               `/app/owner/${encodeURIComponent(id)}`
             )
+            router.refresh()
             return
+          }
+
+          // A different Google/Owner account is currently authenticated.
+          // Clear it so the selected restaurant cannot be opened by mistake.
+          try {
+            await supabase.auth.signOut()
+          } catch (signOutError) {
+            console.error(
+              '[OWNER APP LOGIN] Could not clear mismatched session:',
+              signOutError
+            )
+          }
+
+          if (active) {
+            const provider = String(
+              user?.app_metadata?.provider || ''
+            ).toLowerCase()
+
+            setError(
+              provider === 'google'
+                ? 'This Google account is not the Owner account for the selected restaurant. Please choose the correct Google account.'
+                : 'The current Owner session does not belong to the selected restaurant. Please sign in with the correct Owner account.'
+            )
           }
         }
       } catch (startError) {
@@ -119,10 +309,129 @@ export default function OwnerMobileLoginPage() {
     }
   }, [router])
 
+  const handleGoogleLogin = async () => {
+    if (
+      loading ||
+      googleLoading ||
+      biometricLoading ||
+      checkingSession
+    ) {
+      return
+    }
+
+    if (!restaurantId) {
+      setError(
+        'Restaurant information is missing. Please return to the restaurant code page.'
+      )
+      return
+    }
+
+    setGoogleLoading(true)
+    setError('')
+
+    try {
+      const googleContext = {
+        source: 'owner-app',
+        restaurantId: String(
+          restaurantId
+        ),
+        restaurantCode: String(
+          restaurantCode || ''
+        ),
+        createdAt: Date.now(),
+      }
+
+      /*
+       * IMPORTANT:
+       * Keep the selected mobile restaurant outside the OAuth URL.
+       *
+       * The previous version put restaurantId/query parameters
+       * directly inside redirectTo. If that full redirect URL is
+       * not present in Supabase's Redirect URL allow-list,
+       * Supabase falls back to the configured Site URL — which is
+       * why Google was returning to the website landing page.
+       *
+       * /auth/google-login is already the website's working Google
+       * callback. We reuse that exact stable callback and preserve
+       * the mobile Owner context in browser storage.
+       */
+      try {
+        sessionStorage.setItem(
+          OWNER_APP_CONTEXT_KEY,
+          JSON.stringify({
+            restaurantId,
+            restaurantCode,
+          })
+        )
+
+        sessionStorage.setItem(
+          OWNER_GOOGLE_CONTEXT_KEY,
+          JSON.stringify(googleContext)
+        )
+
+        localStorage.setItem(
+          OWNER_GOOGLE_CONTEXT_KEY,
+          JSON.stringify(googleContext)
+        )
+      } catch (storageError) {
+        console.warn(
+          '[OWNER APP GOOGLE] Could not save OAuth context:',
+          storageError
+        )
+      }
+
+      const redirectTo =
+        `${window.location.origin}/auth/google-login`
+
+      const { error: oauthError } =
+        await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'select_account',
+            },
+          },
+        })
+
+      if (oauthError) {
+        throw oauthError
+      }
+    } catch (googleError) {
+      console.error(
+        '[OWNER APP GOOGLE] Login error:',
+        googleError
+      )
+
+      try {
+        sessionStorage.removeItem(
+          OWNER_GOOGLE_CONTEXT_KEY
+        )
+        localStorage.removeItem(
+          OWNER_GOOGLE_CONTEXT_KEY
+        )
+      } catch {}
+
+      setError(
+        googleError?.message ||
+          'Google sign in could not be started.'
+      )
+
+      setGoogleLoading(false)
+    }
+  }
+
   const handleLogin = async (event) => {
     event.preventDefault()
 
-    if (loading) return
+    if (
+      loading ||
+      googleLoading ||
+      biometricLoading
+    ) {
+      return
+    }
 
     const cleanEmail = email.trim().toLowerCase()
     const cleanPassword = password
@@ -223,7 +532,122 @@ export default function OwnerMobileLoginPage() {
         )
       } catch {}
 
-      // MOBILE OWNER PAGE ONLY.
+      // Biometric OFF: password + DOB login continues normally.
+      if (!biometricEnabled) {
+        router.replace(
+          `/app/owner/${encodeURIComponent(
+            restaurantId
+          )}`
+        )
+        router.refresh()
+        return
+      }
+
+      // Biometric ON: same extra passkey verification used by
+      // the existing website Owner login.
+      if (!isPasskeySupported()) {
+        throw new Error(
+          'Biometric login is enabled, but this device/browser does not support passkeys in a secure context. Turn Biometric OFF and use password login.'
+        )
+      }
+
+      if (
+        typeof supabase.auth
+          .signInWithPasskey !== 'function'
+      ) {
+        throw new Error(
+          'Biometric login is not available in the current Supabase configuration. Turn Biometric OFF and use password login.'
+        )
+      }
+
+      await supabase.auth.signOut()
+      browserSessionCreated = false
+
+      setBiometricLoading(true)
+
+      const {
+        data: passkeyAuthData,
+        error: passkeyError,
+      } =
+        await supabase.auth
+          .signInWithPasskey()
+
+      if (
+        passkeyError ||
+        !passkeyAuthData?.user
+      ) {
+        throw new Error(
+          getPasskeyErrorMessage(
+            passkeyError
+          )
+        )
+      }
+
+      const biometricUserId =
+        String(
+          passkeyAuthData.user.id || ''
+        )
+
+      const restaurantOwnerId =
+        String(
+          loggedRestaurant.owner_id || ''
+        )
+
+      if (
+        !restaurantOwnerId ||
+        biometricUserId !==
+          restaurantOwnerId
+      ) {
+        await supabase.auth.signOut()
+
+        throw new Error(
+          'The biometric/passkey account does not match the Owner of the selected restaurant.'
+        )
+      }
+
+      const {
+        data: biometricRestaurant,
+        error: biometricOwnershipError,
+      } = await supabase
+        .from('restaurants')
+        .select(
+          'id, owner_id, restaurant_code'
+        )
+        .eq(
+          'id',
+          restaurantId
+        )
+        .eq(
+          'owner_id',
+          biometricUserId
+        )
+        .maybeSingle()
+
+      if (
+        biometricOwnershipError ||
+        !biometricRestaurant?.id
+      ) {
+        await supabase.auth.signOut()
+
+        throw new Error(
+          'Biometric verification succeeded, but this Owner does not match the selected restaurant.'
+        )
+      }
+
+      try {
+        sessionStorage.setItem(
+          OWNER_APP_CONTEXT_KEY,
+          JSON.stringify({
+            restaurantId,
+            restaurantCode:
+              restaurantCode ||
+              biometricRestaurant
+                .restaurant_code ||
+              '',
+          })
+        )
+      } catch {}
+
       router.replace(
         `/app/owner/${encodeURIComponent(
           restaurantId
@@ -247,11 +671,27 @@ export default function OwnerMobileLoginPage() {
           'Owner login failed.'
       )
     } finally {
+      setBiometricLoading(false)
       setLoading(false)
     }
   }
 
+  const isBusy =
+    loading ||
+    googleLoading ||
+    biometricLoading ||
+    checkingSession
+
   const backToRestaurantRoles = () => {
+    try {
+      sessionStorage.removeItem(
+        OWNER_GOOGLE_CONTEXT_KEY
+      )
+      localStorage.removeItem(
+        OWNER_GOOGLE_CONTEXT_KEY
+      )
+    } catch {}
+
     router.replace(
       restaurantCode
         ? `/app?code=${encodeURIComponent(
@@ -323,6 +763,149 @@ export default function OwnerMobileLoginPage() {
               onSubmit={handleLogin}
               className="space-y-4 p-5"
             >
+              <div className="rounded-[22px] border border-neutral-800 bg-neutral-950 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-xl">
+                      🔐
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-white">
+                        Biometric Login
+                      </p>
+
+                      <p className="mt-1 text-[10px] leading-5 text-neutral-500">
+                        Use Face ID, fingerprint, Touch ID, Windows Hello, device PIN or a registered passkey after password verification.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={biometricEnabled}
+                    aria-label="Toggle biometric Owner login"
+                    disabled={isBusy}
+                    onClick={toggleBiometric}
+                    className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:opacity-50 ${
+                      biometricEnabled
+                        ? 'bg-orange-500'
+                        : 'bg-neutral-700'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow-md transition-transform ${
+                        biometricEnabled
+                          ? 'translate-x-7'
+                          : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      biometricEnabled
+                        ? 'bg-emerald-400'
+                        : 'bg-neutral-600'
+                    }`}
+                  />
+
+                  <p
+                    className={`text-[9px] font-black ${
+                      biometricEnabled
+                        ? 'text-emerald-400'
+                        : 'text-neutral-500'
+                    }`}
+                  >
+                    {biometricEnabled
+                      ? 'ON — Email + Password + DOB + Biometric'
+                      : 'OFF — Email + Password + DOB only'}
+                  </p>
+                </div>
+              </div>
+
+              {biometricEnabled && (
+                <div className="rounded-[22px] border border-orange-500/20 bg-orange-500/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="text-xl">
+                      🛡️
+                    </div>
+
+                    <div>
+                      <p className="text-[11px] font-black text-orange-300">
+                        Extra Owner verification enabled
+                      </p>
+
+                      <p className="mt-1 text-[9px] leading-5 text-neutral-400">
+                        After Email, Password and Date of Birth are verified, this device will request the Owner's registered biometric/passkey.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={
+                  googleLoading ||
+                  loading ||
+                  biometricLoading ||
+                  !restaurantId
+                }
+                className="flex w-full items-center justify-center gap-3 rounded-2xl border border-neutral-700 bg-white px-4 py-4 text-sm font-black text-neutral-900 shadow-lg shadow-black/10 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {googleLoading ? (
+                  <>
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900" />
+                    <span>Opening Google...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fill="#4285F4"
+                        d="M21.6 12.23c0-.71-.06-1.4-.18-2.06H12v3.9h5.38a4.6 4.6 0 0 1-2 3.02v2.52h3.24c1.9-1.75 2.98-4.33 2.98-7.38Z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 22c2.7 0 4.97-.9 6.62-2.39l-3.24-2.52c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.6A10 10 0 0 0 12 22Z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M6.39 13.92A6.03 6.03 0 0 1 6.07 12c0-.67.12-1.32.32-1.92v-2.6H3.04A10 10 0 0 0 2 12c0 1.61.38 3.13 1.04 4.52l3.35-2.6Z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 5.95c1.47 0 2.78.5 3.82 1.49l2.86-2.86A9.6 9.6 0 0 0 12 2 10 10 0 0 0 3.04 7.48l3.35 2.6C7.18 7.71 9.39 5.95 12 5.95Z"
+                      />
+                    </svg>
+
+                    <span>Continue with Google</span>
+                  </>
+                )}
+              </button>
+
+              <p className="px-2 text-center text-[9px] font-semibold leading-4 text-neutral-500">
+                Use the Google account connected to this restaurant Owner account.
+              </p>
+
+              <div className="flex items-center gap-3 py-1">
+                <div className="h-px flex-1 bg-neutral-800" />
+                <span className="text-[8px] font-black uppercase tracking-[0.18em] text-neutral-600">
+                  or use password
+                </span>
+                <div className="h-px flex-1 bg-neutral-800" />
+              </div>
+
               <div>
                 <label className="mb-2 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
                   Owner Email
@@ -339,7 +922,7 @@ export default function OwnerMobileLoginPage() {
                   autoCorrect="off"
                   autoComplete="email"
                   placeholder="owner@restaurant.com"
-                  disabled={loading}
+                  disabled={isBusy}
                   className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 text-base text-white outline-none transition focus:border-orange-500 disabled:opacity-60"
                 />
               </div>
@@ -358,7 +941,7 @@ export default function OwnerMobileLoginPage() {
                   }}
                   autoComplete="current-password"
                   placeholder="Enter Owner password"
-                  disabled={loading}
+                  disabled={isBusy}
                   className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 text-base text-white outline-none transition focus:border-orange-500 disabled:opacity-60"
                 />
               </div>
@@ -375,7 +958,7 @@ export default function OwnerMobileLoginPage() {
                     setDob(event.target.value)
                     setError('')
                   }}
-                  disabled={loading}
+                  disabled={isBusy}
                   className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 text-base text-white outline-none transition focus:border-orange-500 disabled:opacity-60"
                 />
               </div>
@@ -388,18 +971,26 @@ export default function OwnerMobileLoginPage() {
 
               <button
                 type="submit"
-                disabled={loading || !restaurantId}
+                disabled={isBusy || !restaurantId}
                 className="w-full rounded-2xl bg-orange-500 py-4 text-sm font-black text-white shadow-lg shadow-orange-500/20 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading
-                  ? 'Signing In...'
-                  : 'Open Owner Mobile Dashboard'}
+                {biometricLoading
+                  ? 'Verifying Biometric...'
+                  : loading
+                    ? biometricEnabled
+                      ? 'Verifying Credentials...'
+                      : 'Signing In...'
+                    : googleLoading
+                      ? 'Opening Google...'
+                      : biometricEnabled
+                        ? 'Sign In Securely 🔐'
+                        : 'Open Owner Mobile Dashboard'}
               </button>
 
               <button
                 type="button"
                 onClick={backToRestaurantRoles}
-                disabled={loading}
+                disabled={isBusy}
                 className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 py-3 text-[10px] font-black text-neutral-400"
               >
                 ← Back to Owner / Manager / Waiter / Kitchen
@@ -409,8 +1000,8 @@ export default function OwnerMobileLoginPage() {
         </div>
 
         <p className="px-4 text-center text-[9px] leading-5 text-neutral-600">
-          This Owner login opens only the mobile Owner interface.
-          The normal website Owner login remains separate.
+          Google returns through the secure Google callback and then opens this selected mobile Owner restaurant.
+          The Biometric ON/OFF setting applies to Email + Password + DOB login.
         </p>
       </div>
     </main>

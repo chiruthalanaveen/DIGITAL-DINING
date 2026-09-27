@@ -481,7 +481,7 @@ export default function DigitalDineApp() {
                 )
                 setError('')
               }}
-              placeholder="15478"
+              placeholder="14317"
               disabled={loading}
               className="mt-5 w-full rounded-2xl border border-orange-500/30 bg-neutral-950 px-4 py-4 text-center text-2xl font-black tracking-[0.35em] text-white outline-none focus:border-orange-500 disabled:opacity-60"
             />
