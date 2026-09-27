@@ -842,6 +842,18 @@ export default function RestaurantManagerDashboard({ params }) {
   const [savingStaff, setSavingStaff] = useState(false)
 
   const [reportTimeframe, setReportTimeframe] = useState('daily')
+
+  // Lifetime order date search.
+  // The existing secure Manager dashboard RPC already returns this
+  // restaurant's order history, so this feature searches that same
+  // Manager-authorized data without bypassing the existing backend.
+  const [orderHistoryDate, setOrderHistoryDate] = useState('')
+  const [orderHistoryOrders, setOrderHistoryOrders] = useState([])
+  const [orderHistoryLoading, setOrderHistoryLoading] = useState(false)
+  const [orderHistorySearched, setOrderHistorySearched] = useState(false)
+  const [orderHistoryError, setOrderHistoryError] = useState('')
+  const [orderHistoryVisibleCount, setOrderHistoryVisibleCount] = useState(20)
+
   const [swiggyDataInput, setSwiggyDataInput] = useState('')
   const [syncingSwiggy, setSyncingSwiggy] = useState(false)
   const [storeOpen, setStoreOpen] = useState(true)
@@ -1546,6 +1558,229 @@ export default function RestaurantManagerDashboard({ params }) {
     }
   }
 
+  const formatOrderHistoryDate = (dateValue) => {
+    if (!dateValue) return ''
+
+    const [year, month, day] = String(dateValue)
+      .split('-')
+      .map(Number)
+
+    if (!year || !month || !day) {
+      return String(dateValue)
+    }
+
+    const date = new Date(
+      year,
+      month - 1,
+      day
+    )
+
+    if (Number.isNaN(date.getTime())) {
+      return String(dateValue)
+    }
+
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+  }
+
+  const getOrderHistoryDayBounds = (dateValue) => {
+    const [year, month, day] = String(dateValue)
+      .split('-')
+      .map(Number)
+
+    if (!year || !month || !day) {
+      throw new Error(
+        'Please select a valid date.'
+      )
+    }
+
+    const start = new Date(
+      year,
+      month - 1,
+      day,
+      0,
+      0,
+      0,
+      0
+    )
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      start.getFullYear() !== year ||
+      start.getMonth() !== month - 1 ||
+      start.getDate() !== day
+    ) {
+      throw new Error(
+        'Please select a valid date.'
+      )
+    }
+
+    const end = new Date(
+      year,
+      month - 1,
+      day + 1,
+      0,
+      0,
+      0,
+      0
+    )
+
+    return { start, end }
+  }
+
+  const handleLifetimeOrderSearch = async () => {
+    if (orderHistoryLoading) return
+
+    if (!orderHistoryDate) {
+      setOrderHistoryError(
+        'Please select a date to search.'
+      )
+      setOrderHistorySearched(false)
+      return
+    }
+
+    setOrderHistoryLoading(true)
+    setOrderHistoryError('')
+    setOrderHistorySearched(false)
+    setOrderHistoryOrders([])
+    setOrderHistoryVisibleCount(20)
+
+    try {
+      const { start, end } =
+        getOrderHistoryDayBounds(
+          orderHistoryDate
+        )
+
+      /*
+       * IMPORTANT:
+       * Manager authentication is not bypassed here.
+       * `orders` comes from the existing secure Manager dashboard
+       * RPC/session for this restaurant. We only filter that
+       * authorized lifetime data for the selected calendar day.
+       */
+      const foundOrders = orders
+        .filter((order) => {
+          if (!order?.created_at) {
+            return false
+          }
+
+          const createdAt =
+            new Date(order.created_at)
+
+          if (
+            Number.isNaN(
+              createdAt.getTime()
+            )
+          ) {
+            return false
+          }
+
+          return (
+            createdAt >= start &&
+            createdAt < end
+          )
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime()
+        )
+
+      setOrderHistoryOrders(
+        foundOrders
+      )
+      setOrderHistorySearched(true)
+    } catch (error) {
+      console.error(
+        '[MANAGER ORDER HISTORY] Search error:',
+        error
+      )
+
+      setOrderHistoryError(
+        error?.message ||
+          'Unable to search historical orders.'
+      )
+      setOrderHistorySearched(true)
+    } finally {
+      setOrderHistoryLoading(false)
+    }
+  }
+
+  const clearLifetimeOrderSearch = () => {
+    setOrderHistoryDate('')
+    setOrderHistoryOrders([])
+    setOrderHistoryError('')
+    setOrderHistorySearched(false)
+    setOrderHistoryVisibleCount(20)
+  }
+
+  const orderHistoryRevenue = useMemo(
+    () =>
+      orderHistoryOrders.reduce(
+        (sum, order) =>
+          String(
+            order?.status || ''
+          ).toLowerCase() ===
+          'cancelled'
+            ? sum
+            : sum +
+              Number(
+                order?.total_amount ??
+                  order?.total ??
+                  0
+              ),
+        0
+      ),
+    [orderHistoryOrders]
+  )
+
+  const orderHistoryCancelledCount =
+    useMemo(
+      () =>
+        orderHistoryOrders.filter(
+          (order) =>
+            String(
+              order?.status || ''
+            ).toLowerCase() ===
+            'cancelled'
+        ).length,
+      [orderHistoryOrders]
+    )
+
+  const orderHistoryCompletedCount =
+    useMemo(
+      () =>
+        orderHistoryOrders.filter(
+          (order) =>
+            [
+              'completed',
+              'delivered',
+              'served',
+            ].includes(
+              String(
+                order?.status || ''
+              ).toLowerCase()
+            )
+        ).length,
+      [orderHistoryOrders]
+    )
+
+  const visibleOrderHistory =
+    useMemo(
+      () =>
+        orderHistoryOrders.slice(
+          0,
+          orderHistoryVisibleCount
+        ),
+      [
+        orderHistoryOrders,
+        orderHistoryVisibleCount,
+      ]
+    )
+
   const reportOrders = useMemo(() => {
     const now = new Date()
     const start = new Date(now)
@@ -1709,6 +1944,11 @@ export default function RestaurantManagerDashboard({ params }) {
     setAuthenticated(false)
     setManager(null)
     setOrders([])
+    setOrderHistoryDate('')
+    setOrderHistoryOrders([])
+    setOrderHistoryError('')
+    setOrderHistorySearched(false)
+    setOrderHistoryVisibleCount(20)
     setMenuItems([])
     setDailyOffers([])
     setRestaurantTables([])
@@ -1747,7 +1987,11 @@ export default function RestaurantManagerDashboard({ params }) {
     </div>
   )
 
-  const MobileOrderCard = ({ order, compact = false }) => {
+  const MobileOrderCard = ({
+    order,
+    compact = false,
+    readOnly = false,
+  }) => {
     const status = String(order?.status || 'pending').toLowerCase()
     const items = Array.isArray(order?.items) ? order.items : []
     const amount = Number(order?.total_amount ?? order?.total ?? 0)
@@ -1806,22 +2050,41 @@ export default function RestaurantManagerDashboard({ params }) {
               {items.length > 8 && <p className="text-[10px] font-bold text-neutral-600">+{items.length - 8} more items</p>}
             </div>
 
-            <div className="mt-3">
-              <label className="mb-1 block text-[9px] font-black uppercase tracking-wider text-neutral-500">Update status</label>
-              <select
-                value={status}
-                onChange={(event) => updateOrderStatus(order.id, event.target.value)}
-                className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-orange-500"
-              >
-                <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="preparing">Preparing</option>
-                <option value="ready">Ready</option>
-                <option value="completed">Completed</option>
-                <option value="delivered">Delivered</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
+            {!readOnly && (
+              <div className="mt-3">
+                <label className="mb-1 block text-[9px] font-black uppercase tracking-wider text-neutral-500">Update status</label>
+                <select
+                  value={status}
+                  onChange={(event) => updateOrderStatus(order.id, event.target.value)}
+                  className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-orange-500"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="preparing">Preparing</option>
+                  <option value="ready">Ready</option>
+                  <option value="completed">Completed</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+            )}
+
+            {readOnly && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-3 py-2.5">
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
+                    Historical Order
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-bold text-neutral-400">
+                    Read-only result
+                  </p>
+                </div>
+
+                <span className="rounded-full border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-[8px] font-black text-neutral-500">
+                  ARCHIVE
+                </span>
+              </div>
+            )}
           </>
         )}
       </article>
@@ -1974,6 +2237,242 @@ export default function RestaurantManagerDashboard({ params }) {
                     <p className="text-[9px] font-black uppercase text-neutral-600">Tables Free</p>
                     <p className="mt-1 text-xl font-black text-emerald-400">{availableTableCount}</p>
                   </div>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-[30px] border border-violet-500/20 bg-neutral-900 shadow-xl shadow-black/10">
+                <div className="bg-gradient-to-br from-violet-500/15 via-neutral-900 to-neutral-900 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-500/10 text-xl">
+                          🔎
+                        </span>
+
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-300">
+                            Lifetime Order Search
+                          </p>
+
+                          <h3 className="mt-1 text-lg font-black text-white">
+                            Find orders by date
+                          </h3>
+                        </div>
+                      </div>
+
+                      <p className="mt-3 text-[11px] leading-5 text-neutral-500">
+                        Select any calendar date to view the orders recorded for that day from the same secure Manager order history.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-[22px] border border-neutral-800 bg-neutral-950/80 p-3">
+                    <label className="block text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                      Order Date
+                    </label>
+
+                    <div className="mt-2 grid grid-cols-1 gap-2 min-[380px]:grid-cols-[1fr_auto]">
+                      <input
+                        type="date"
+                        value={orderHistoryDate}
+                        onChange={(event) => {
+                          setOrderHistoryDate(
+                            event.target.value
+                          )
+                          setOrderHistoryError('')
+                        }}
+                        className="min-h-12 min-w-0 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 text-base font-black text-white outline-none transition focus:border-violet-500"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleLifetimeOrderSearch}
+                        disabled={
+                          orderHistoryLoading ||
+                          !orderHistoryDate
+                        }
+                        className="min-h-12 rounded-2xl bg-violet-500 px-5 text-[10px] font-black text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {orderHistoryLoading
+                          ? 'Searching...'
+                          : 'Search Orders'}
+                      </button>
+                    </div>
+
+                    {orderHistoryDate && (
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <p className="text-[9px] font-bold text-neutral-600">
+                          Selected: {formatOrderHistoryDate(orderHistoryDate)}
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={clearLifetimeOrderSearch}
+                          disabled={orderHistoryLoading}
+                          className="text-[9px] font-black text-violet-300 disabled:opacity-50"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="border-t border-neutral-800 p-4">
+                  {orderHistoryError && (
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-3 text-[10px] font-bold leading-5 text-red-300">
+                      {orderHistoryError}
+                    </div>
+                  )}
+
+                  {!orderHistorySearched &&
+                    !orderHistoryLoading &&
+                    !orderHistoryError && (
+                      <div className="py-3 text-center">
+                        <div className="text-3xl">
+                          📅
+                        </div>
+
+                        <p className="mt-2 text-xs font-black text-white">
+                          Search historical orders
+                        </p>
+
+                        <p className="mx-auto mt-1 max-w-[310px] text-[10px] leading-5 text-neutral-600">
+                          Example: choose 11/12/2000 if an order exists on that date.
+                        </p>
+                      </div>
+                    )}
+
+                  {orderHistoryLoading && (
+                    <div className="flex items-center justify-center gap-3 py-7">
+                      <div className="h-7 w-7 animate-spin rounded-full border-4 border-neutral-800 border-t-violet-500" />
+
+                      <div>
+                        <p className="text-[10px] font-black text-white">
+                          Searching order history
+                        </p>
+
+                        <p className="mt-0.5 text-[9px] text-neutral-600">
+                          Looking at {formatOrderHistoryDate(orderHistoryDate)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {orderHistorySearched &&
+                    !orderHistoryLoading &&
+                    !orderHistoryError && (
+                      <>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-300">
+                              Search Result
+                            </p>
+
+                            <h4 className="mt-1 text-base font-black text-white">
+                              {formatOrderHistoryDate(orderHistoryDate)}
+                            </h4>
+                          </div>
+
+                          <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-[8px] font-black text-violet-300">
+                            {orderHistoryOrders.length} ORDER{orderHistoryOrders.length === 1 ? '' : 'S'}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+                            <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
+                              Revenue
+                            </p>
+
+                            <p className="mt-1 text-base font-black text-emerald-400">
+                              {money(orderHistoryRevenue)}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-3">
+                            <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
+                              Completed
+                            </p>
+
+                            <p className="mt-1 text-base font-black text-sky-300">
+                              {orderHistoryCompletedCount}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3">
+                            <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
+                              Total Orders
+                            </p>
+
+                            <p className="mt-1 text-base font-black text-amber-300">
+                              {orderHistoryOrders.length}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-3">
+                            <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
+                              Cancelled
+                            </p>
+
+                            <p className="mt-1 text-base font-black text-red-300">
+                              {orderHistoryCancelledCount}
+                            </p>
+                          </div>
+                        </div>
+
+                        {orderHistoryOrders.length === 0 ? (
+                          <div className="py-8 text-center">
+                            <div className="text-4xl">
+                              🧾
+                            </div>
+
+                            <p className="mt-3 text-xs font-black text-white">
+                              No orders found
+                            </p>
+
+                            <p className="mt-1 text-[10px] leading-5 text-neutral-600">
+                              No saved orders were returned for {formatOrderHistoryDate(orderHistoryDate)}.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="mt-4 space-y-3">
+                            {visibleOrderHistory.map(
+                              (order) => (
+                                <MobileOrderCard
+                                  key={order.id}
+                                  order={order}
+                                  readOnly
+                                />
+                              )
+                            )}
+
+                            {orderHistoryVisibleCount <
+                              orderHistoryOrders.length && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOrderHistoryVisibleCount(
+                                    (current) =>
+                                      current + 20
+                                  )
+                                }
+                                className="w-full rounded-2xl border border-violet-500/20 bg-violet-500/5 py-3 text-[10px] font-black text-violet-300"
+                              >
+                                Show 20 More Orders
+                              </button>
+                            )}
+
+                            {orderHistoryOrders.length >
+                              20 && (
+                              <p className="pt-1 text-center text-[8px] font-semibold text-neutral-600">
+                                Showing {Math.min(orderHistoryVisibleCount, orderHistoryOrders.length)} of {orderHistoryOrders.length} orders
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
                 </div>
               </div>
 

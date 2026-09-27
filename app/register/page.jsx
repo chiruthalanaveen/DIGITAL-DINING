@@ -11,11 +11,6 @@ function isPasskeySupportedOnCurrentDomain() {
 
   const hostname = window.location.hostname
 
-  const isLocalhost =
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '[::1]'
-
   const isProductionDomain =
     hostname === 'digitaldine-in.online' ||
     hostname === 'www.digitaldine-in.online'
@@ -24,16 +19,14 @@ function isPasskeySupportedOnCurrentDomain() {
     typeof window.PublicKeyCredential !== 'undefined'
 
   /*
-   * Passkeys require a secure context.
-   *
-   * HTTPS production domains are supported.
-   * Localhost is allowed by browsers for development,
-   * but a production RP ID cannot be used from localhost.
+   * Digital Dining passkeys are enrolled only on the real
+   * production domain. This avoids creating a WebAuthn challenge
+   * on localhost when the production RP ID/origin is configured.
    */
   return (
     hasPublicKeyCredential &&
     window.isSecureContext &&
-    (isLocalhost || isProductionDomain)
+    isProductionDomain
   )
 }
 
@@ -345,10 +338,10 @@ export default function RestaurantRegistration() {
      * registerPasskey() is not available in every version of
      * @supabase/supabase-js.
      */
-    const registerPasskey =
-      supabase?.auth?.registerPasskey
-
-    if (typeof registerPasskey !== 'function') {
+    if (
+      typeof supabase?.auth?.registerPasskey !==
+      'function'
+    ) {
       console.warn(
         'Passkey setup skipped: supabase.auth.registerPasskey() is not available in the installed Supabase client.'
       )
@@ -367,7 +360,14 @@ export default function RestaurantRegistration() {
         'Starting Digital Dining passkey registration...'
       )
 
-      const result = await registerPasskey()
+      /*
+       * IMPORTANT:
+       * Call registerPasskey directly from supabase.auth.
+       * Do not extract it into a standalone variable because
+       * that can lose the auth client's method context.
+       */
+      const result =
+        await supabase.auth.registerPasskey()
 
       const passkeyError = result?.error
       const passkeyData = result?.data
@@ -539,6 +539,13 @@ export default function RestaurantRegistration() {
           'Biometric login disabled by restaurant owner.'
         )
 
+        try {
+          localStorage.setItem(
+            'digitaldining_biometric_enabled',
+            'false'
+          )
+        } catch {}
+
         router.push(
           `/subscribe/${data.restaurantId}`
         )
@@ -554,6 +561,13 @@ export default function RestaurantRegistration() {
         await tryRegisterBiometric()
 
       if (biometricResult.success) {
+        try {
+          localStorage.setItem(
+            'digitaldining_biometric_enabled',
+            'true'
+          )
+        } catch {}
+
         alert(
           'Account Created and Biometric Login Enabled! 🔐'
         )
@@ -572,8 +586,19 @@ export default function RestaurantRegistration() {
           'Your restaurant account was created successfully. Biometric setup is not available in the current authentication configuration. You can continue without it.'
         )
       } else {
+        const biometricReason =
+          String(
+            biometricResult.reason || ''
+          ).trim()
+
         alert(
-          'Your restaurant account was created successfully, but biometric setup could not be completed. You can continue without biometric login and try again later.'
+          'Your restaurant account was created successfully, but biometric setup could not be completed.' +
+            (
+              biometricReason
+                ? `\n\nReason: ${biometricReason}`
+                : ''
+            ) +
+            '\n\nYou can continue without biometric login and repair biometric setup from the Owner mobile login.'
         )
       }
 

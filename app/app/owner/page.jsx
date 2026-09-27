@@ -24,6 +24,7 @@ export default function OwnerMobileLoginPage() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [biometricLoading, setBiometricLoading] = useState(false)
+  const [biometricSetupLoading, setBiometricSetupLoading] = useState(false)
   const [biometricEnabled, setBiometricEnabled] = useState(false)
   const [checkingSession, setCheckingSession] =
     useState(true)
@@ -53,6 +54,7 @@ export default function OwnerMobileLoginPage() {
       loading ||
       googleLoading ||
       biometricLoading ||
+      biometricSetupLoading ||
       checkingSession
     ) {
       return
@@ -171,6 +173,207 @@ export default function OwnerMobileLoginPage() {
       message ||
       'Biometric verification could not be completed.'
     )
+  }
+
+  const handleBiometricSetup = async () => {
+    if (
+      loading ||
+      googleLoading ||
+      biometricLoading ||
+      biometricSetupLoading ||
+      checkingSession
+    ) {
+      return
+    }
+
+    const cleanEmail =
+      email.trim().toLowerCase()
+
+    const cleanPassword = password
+    const cleanDob = dob.trim()
+
+    if (!restaurantId) {
+      setError(
+        'Restaurant information is missing. Please return to the restaurant code page.'
+      )
+      return
+    }
+
+    if (
+      !cleanEmail ||
+      !cleanPassword ||
+      !cleanDob
+    ) {
+      setError(
+        'Enter Owner Email, Password and Date of Birth first, then press Set Up / Repair Biometric.'
+      )
+      return
+    }
+
+    if (!isPasskeySupported()) {
+      setError(
+        'This device/browser does not support secure passkey enrollment on the current page. Open the production HTTPS website on a supported device.'
+      )
+      return
+    }
+
+    if (
+      typeof supabase?.auth
+        ?.registerPasskey !== 'function'
+    ) {
+      setError(
+        'Biometric setup is not available in the current Supabase client configuration.'
+      )
+      return
+    }
+
+    setBiometricSetupLoading(true)
+    setError('')
+
+    let setupSessionCreated = false
+    let setupSucceeded = false
+
+    try {
+      /*
+       * Re-authenticate with the SAME secure Owner endpoint.
+       * This means biometric enrollment cannot be started with
+       * only an email address or an existing stale browser session.
+       */
+      const response =
+        await fetch('/api/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password: cleanPassword,
+            dob: cleanDob,
+          }),
+        })
+
+      const result =
+        await response
+          .json()
+          .catch(() => ({}))
+
+      if (
+        !response.ok ||
+        !result?.success
+      ) {
+        throw new Error(
+          result?.message ||
+            'Owner credentials could not be verified.'
+        )
+      }
+
+      const loggedRestaurant =
+        result?.restaurant
+
+      if (
+        !loggedRestaurant?.id ||
+        String(loggedRestaurant.id) !==
+          String(restaurantId)
+      ) {
+        throw new Error(
+          'This Owner account does not belong to the selected restaurant.'
+        )
+      }
+
+      if (
+        !result?.session?.access_token ||
+        !result?.session?.refresh_token
+      ) {
+        throw new Error(
+          'Secure Owner session was not returned.'
+        )
+      }
+
+      const {
+        error: sessionError,
+      } =
+        await supabase.auth
+          .setSession({
+            access_token:
+              result.session.access_token,
+            refresh_token:
+              result.session.refresh_token,
+          })
+
+      if (sessionError) {
+        throw sessionError
+      }
+
+      setupSessionCreated = true
+
+      /*
+       * IMPORTANT:
+       * Call the method directly from supabase.auth.
+       * Do not detach registerPasskey from the auth client.
+       */
+      const {
+        data: passkeyData,
+        error: passkeyError,
+      } =
+        await supabase.auth
+          .registerPasskey()
+
+      if (passkeyError) {
+        const message =
+          getPasskeyErrorMessage(
+            passkeyError
+          )
+
+        throw new Error(message)
+      }
+
+      if (!passkeyData) {
+        console.warn(
+          '[OWNER APP BIOMETRIC] Passkey setup completed without a data payload.'
+        )
+      }
+
+      try {
+        localStorage.setItem(
+          'digitaldining_biometric_enabled',
+          'true'
+        )
+      } catch {}
+
+      setBiometricEnabled(true)
+      setupSucceeded = true
+
+      alert(
+        'Biometric / passkey setup completed successfully. 🔐'
+      )
+    } catch (setupError) {
+      console.error(
+        '[OWNER APP BIOMETRIC] Setup error:',
+        setupError
+      )
+
+      setError(
+        setupError?.message ||
+          'Biometric setup could not be completed.'
+      )
+    } finally {
+      /*
+       * Keep a successful authenticated Owner session.
+       * On a failed setup, clear the temporary session so the
+       * login page never leaves a partially authenticated state.
+       */
+      if (
+        setupSessionCreated &&
+        !setupSucceeded
+      ) {
+        try {
+          await supabase.auth.signOut()
+        } catch {}
+      }
+
+      setBiometricSetupLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -314,6 +517,7 @@ export default function OwnerMobileLoginPage() {
       loading ||
       googleLoading ||
       biometricLoading ||
+      biometricSetupLoading ||
       checkingSession
     ) {
       return
@@ -428,7 +632,8 @@ export default function OwnerMobileLoginPage() {
     if (
       loading ||
       googleLoading ||
-      biometricLoading
+      biometricLoading ||
+      biometricSetupLoading
     ) {
       return
     }
@@ -680,6 +885,7 @@ export default function OwnerMobileLoginPage() {
     loading ||
     googleLoading ||
     biometricLoading ||
+    biometricSetupLoading ||
     checkingSession
 
   const backToRestaurantRoles = () => {
@@ -963,6 +1169,28 @@ export default function OwnerMobileLoginPage() {
                 />
               </div>
 
+              {biometricEnabled && (
+                <button
+                  type="button"
+                  onClick={handleBiometricSetup}
+                  disabled={
+                    isBusy ||
+                    !restaurantId
+                  }
+                  className="w-full rounded-2xl border border-orange-500/30 bg-orange-500/10 py-3.5 text-[10px] font-black text-orange-300 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {biometricSetupLoading
+                    ? 'Setting Up Biometric...'
+                    : 'Set Up / Repair Biometric 🔐'}
+                </button>
+              )}
+
+              {biometricEnabled && (
+                <p className="-mt-1 px-2 text-center text-[8px] font-semibold leading-4 text-neutral-600">
+                  If registration previously said biometric setup failed, enter your Owner Email, Password and DOB above, then use this button once.
+                </p>
+              )}
+
               {error && (
                 <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-[10px] font-bold leading-5 text-red-300">
                   {error}
@@ -974,7 +1202,9 @@ export default function OwnerMobileLoginPage() {
                 disabled={isBusy || !restaurantId}
                 className="w-full rounded-2xl bg-orange-500 py-4 text-sm font-black text-white shadow-lg shadow-orange-500/20 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {biometricLoading
+                {biometricSetupLoading
+                  ? 'Setting Up Biometric...'
+                  : biometricLoading
                   ? 'Verifying Biometric...'
                   : loading
                     ? biometricEnabled
