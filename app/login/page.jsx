@@ -16,88 +16,8 @@ export default function RestaurantLogin() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [appleLoading, setAppleLoading] = useState(false)
 
-  const [biometricEnabled, setBiometricEnabled] = useState(false)
-
-  // When Owner login is opened from /app, keep that context so
-  // successful authentication returns to the mobile Owner page.
-  const [loginContext, setLoginContext] = useState({
-    fromApp: false,
-    restaurantId: '',
-    restaurantCode: '',
-  })
-
-  useEffect(() => {
-    try {
-      const savedPreference = localStorage.getItem(
-        'digitaldining_biometric_enabled'
-      )
-
-      setBiometricEnabled(savedPreference === 'true')
-    } catch (error) {
-      console.error('Could not read biometric preference:', error)
-      setBiometricEnabled(false)
-    }
-
-    try {
-      const params = new URLSearchParams(window.location.search)
-
-      const fromApp =
-        String(params.get('from') || '').trim() === '/app'
-
-      const restaurantId = String(
-        params.get('restaurantId') || ''
-      ).trim()
-
-      const restaurantCode = String(
-        params.get('restaurantCode') || ''
-      )
-        .replace(/\D/g, '')
-        .slice(0, 5)
-
-      const nextContext = {
-        fromApp,
-        restaurantId,
-        restaurantCode,
-      }
-
-      setLoginContext(nextContext)
-
-      if (fromApp) {
-        sessionStorage.setItem(
-          'digitaldining_owner_login_context',
-          JSON.stringify(nextContext)
-        )
-      } else {
-        sessionStorage.removeItem(
-          'digitaldining_owner_login_context'
-        )
-      }
-    } catch (error) {
-      console.error(
-        'Could not read owner app login context:',
-        error
-      )
-    }
-  }, [])
-
-  const toggleBiometric = () => {
-    if (loading || biometricLoading || googleLoading || appleLoading) {
-      return
-    }
-
-    const newValue = !biometricEnabled
-
-    setBiometricEnabled(newValue)
-
-    try {
-      localStorage.setItem(
-        'digitaldining_biometric_enabled',
-        String(newValue)
-      )
-    } catch (error) {
-      console.error('Could not save biometric preference:', error)
-    }
-  }
+  const [biometricAccountDetected, setBiometricAccountDetected] =
+    useState(false)
 
   const isPasskeySupported = () => {
     return (
@@ -163,68 +83,6 @@ export default function RestaurantLogin() {
     return message || 'Biometric verification could not be completed.'
   }
 
-  const getOwnerDestination = (restaurantId) => {
-    const id = encodeURIComponent(String(restaurantId || '').trim())
-
-    if (loginContext.fromApp) {
-      return `/app/owner/${id}`
-    }
-
-    return `/dashboard/${id}`
-  }
-
-  const verifySelectedAppRestaurant = async (restaurant) => {
-    if (!loginContext.fromApp) return
-
-    const selectedRestaurantId = String(
-      loginContext.restaurantId || ''
-    ).trim()
-
-    if (
-      selectedRestaurantId &&
-      String(restaurant?.id || '') !== selectedRestaurantId
-    ) {
-      try {
-        await supabase.auth.signOut()
-      } catch {}
-
-      throw new Error(
-        'This Owner account does not belong to the restaurant selected in the app.'
-      )
-    }
-  }
-
-  const preserveOAuthAppContext = () => {
-    if (!loginContext.fromApp) return ''
-
-    try {
-      sessionStorage.setItem(
-        'digitaldining_owner_login_context',
-        JSON.stringify(loginContext)
-      )
-    } catch {}
-
-    const params = new URLSearchParams()
-
-    params.set('from', '/app')
-
-    if (loginContext.restaurantId) {
-      params.set(
-        'restaurantId',
-        loginContext.restaurantId
-      )
-    }
-
-    if (loginContext.restaurantCode) {
-      params.set(
-        'restaurantCode',
-        loginContext.restaurantCode
-      )
-    }
-
-    return `?${params.toString()}`
-  }
-
   const handleGoogleLogin = async () => {
     if (loading || biometricLoading || googleLoading) {
       return
@@ -236,7 +94,7 @@ export default function RestaurantLogin() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/google-login${preserveOAuthAppContext()}`,
+          redirectTo: `${window.location.origin}/auth/google-login`,
           queryParams: {
             access_type: 'offline',
             prompt: 'select_account',
@@ -270,7 +128,7 @@ export default function RestaurantLogin() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: {
-          redirectTo: `${window.location.origin}/auth/apple-login${preserveOAuthAppContext()}`,
+          redirectTo: `${window.location.origin}/auth/apple-login`,
         },
       })
 
@@ -290,15 +148,26 @@ export default function RestaurantLogin() {
   const handleLogin = async (e) => {
     e.preventDefault()
 
-    if (loading || biometricLoading || googleLoading) {
+    if (
+      loading ||
+      biometricLoading ||
+      googleLoading ||
+      appleLoading
+    ) {
       return
     }
 
-    const cleanEmail = email.trim().toLowerCase()
+    const cleanEmail =
+      email.trim().toLowerCase()
+
     const cleanPassword = password
     const cleanDob = dob.trim()
 
-    if (!cleanEmail || !cleanPassword || !cleanDob) {
+    if (
+      !cleanEmail ||
+      !cleanPassword ||
+      !cleanDob
+    ) {
       alert(
         'Please fill out your Email, Password, and Date of Birth.'
       )
@@ -306,36 +175,38 @@ export default function RestaurantLogin() {
     }
 
     setLoading(true)
+    setBiometricAccountDetected(false)
 
     let passwordSessionCreated = false
 
     try {
-      console.log('LOGIN: Sending credentials to /api/login')
+      console.log(
+        'LOGIN: Sending credentials to /api/login'
+      )
 
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: cleanEmail,
-          password: cleanPassword,
-          dob: cleanDob,
-        }),
-      })
+      const response =
+        await fetch('/api/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password: cleanPassword,
+            dob: cleanDob,
+          }),
+        })
 
-      let result = null
+      const result =
+        await response
+          .json()
+          .catch(() => ({}))
 
-      try {
-        result = await response.json()
-      } catch (jsonError) {
-        console.error('LOGIN: Invalid API response:', jsonError)
-        throw new Error('The login server returned an invalid response.')
-      }
-
-      console.log('LOGIN: API response status:', response.status)
-
-      if (!response.ok || !result?.success) {
+      if (
+        !response.ok ||
+        !result?.success
+      ) {
         throw new Error(
           result?.message ||
             'Invalid email, password, or Date of Birth.'
@@ -351,20 +222,8 @@ export default function RestaurantLogin() {
         )
       }
 
-      const { error: sessionError } =
-        await supabase.auth.setSession({
-          access_token: result.session.access_token,
-          refresh_token: result.session.refresh_token,
-        })
-
-      if (sessionError) {
-        console.error('LOGIN: Session restoration failed:', sessionError)
-        throw sessionError
-      }
-
-      passwordSessionCreated = true
-
-      const restaurant = result.restaurant
+      const restaurant =
+        result.restaurant
 
       if (!restaurant?.id) {
         throw new Error(
@@ -372,78 +231,133 @@ export default function RestaurantLogin() {
         )
       }
 
-      await verifySelectedAppRestaurant(restaurant)
+      /*
+       * Restore the password-authenticated Owner session first.
+       * Then ask Supabase Auth directly for the signed-in user's
+       * actual registered passkeys.
+       */
+      const {
+        error: sessionError,
+      } =
+        await supabase.auth
+          .setSession({
+            access_token:
+              result.session.access_token,
+            refresh_token:
+              result.session.refresh_token,
+          })
 
-      console.log('LOGIN: Password authentication successful')
-      console.log('LOGIN: Restaurant ID:', restaurant.id)
+      if (sessionError) {
+        throw sessionError
+      }
+
+      passwordSessionCreated = true
+
+      if (
+        typeof supabase?.auth?.passkey
+          ?.list !== 'function'
+      ) {
+        throw new Error(
+          'Passkey account checking is unavailable in the current Supabase client.'
+        )
+      }
+
+      const {
+        data: passkeyList,
+        error: passkeyListError,
+      } =
+        await supabase.auth
+          .passkey.list()
+
+      if (passkeyListError) {
+        throw new Error(
+          passkeyListError?.message ||
+            'Unable to check registered biometric/passkeys for this Owner.'
+        )
+      }
+
+      const registeredPasskeys =
+        Array.isArray(passkeyList)
+          ? passkeyList
+          : []
 
       /*
-       * If biometric login is disabled, continue directly
-       * to the restaurant dashboard.
+       * No registered passkey:
+       * continue with normal website Owner login.
        */
-      if (!biometricEnabled) {
-        alert('Login Successful! Welcome to Digital Dining.')
-
-        router.replace(getOwnerDestination(restaurant.id))
+      if (
+        registeredPasskeys.length === 0
+      ) {
+        router.replace(
+          `/dashboard/${restaurant.id}`
+        )
         router.refresh()
-
         return
       }
 
       /*
-       * Biometric login is enabled.
+       * A real Supabase passkey exists:
+       * require biometric/passkey verification.
        */
+      setBiometricAccountDetected(true)
+
       if (!isPasskeySupported()) {
         throw new Error(
-          'Biometric login is enabled, but this browser or device does not support passkeys. Turn biometric login OFF and use password login.'
+          'This Owner account has a registered biometric/passkey, but this browser or device cannot use passkeys.'
         )
       }
 
       if (
-        typeof supabase.auth.signInWithPasskey !== 'function'
+        typeof supabase?.auth
+          ?.signInWithPasskey !==
+        'function'
       ) {
         throw new Error(
-          'Biometric login is not available in the current Supabase configuration. Turn biometric login OFF and use password login.'
+          'Passkey sign-in is unavailable in the current Supabase client.'
         )
       }
 
       /*
-       * End the password session before starting passkey login.
+       * End the password session before starting the passkey login.
+       * The passkey authentication creates the final secure session.
        */
       await supabase.auth.signOut()
       passwordSessionCreated = false
 
+      setLoading(false)
       setBiometricLoading(true)
-
-      console.log('LOGIN: Starting biometric verification')
 
       const {
         data: passkeyAuthData,
         error: passkeyError,
-      } = await supabase.auth.signInWithPasskey()
+      } =
+        await supabase.auth
+          .signInWithPasskey()
 
-      if (passkeyError || !passkeyAuthData?.user) {
-        console.error(
-          'SUPABASE PASSKEY LOGIN ERROR:',
-          passkeyError
-        )
-
+      if (
+        passkeyError ||
+        !passkeyAuthData?.user
+      ) {
         throw new Error(
-          getPasskeyErrorMessage(passkeyError)
+          getPasskeyErrorMessage(
+            passkeyError
+          )
         )
       }
 
-      /*
-       * The Auth user ID must match restaurants.owner_id.
-       *
-       * Do not compare the Auth user ID with restaurants.id.
-       */
-      const authUserId = passkeyAuthData.user.id
-      const restaurantOwnerId = restaurant.owner_id
+      const authUserId =
+        String(
+          passkeyAuthData.user.id || ''
+        )
+
+      const restaurantOwnerId =
+        String(
+          restaurant.owner_id || ''
+        )
 
       if (
-        restaurantOwnerId &&
-        String(authUserId) !== String(restaurantOwnerId)
+        !restaurantOwnerId ||
+        authUserId !== restaurantOwnerId
       ) {
         await supabase.auth.signOut()
 
@@ -452,14 +366,19 @@ export default function RestaurantLogin() {
         )
       }
 
-      console.log('LOGIN: Biometric authentication successful')
+      alert(
+        'Secure Login Successful! 🔐'
+      )
 
-      alert('Secure Login Successful! 🔐')
-
-      router.replace(getOwnerDestination(restaurant.id))
+      router.replace(
+        `/dashboard/${restaurant.id}`
+      )
       router.refresh()
     } catch (err) {
-      console.error('AUTHENTICATION ERROR:', err)
+      console.error(
+        'AUTHENTICATION ERROR:',
+        err
+      )
 
       if (passwordSessionCreated) {
         try {
@@ -474,7 +393,10 @@ export default function RestaurantLogin() {
 
       alert(
         'Authentication Failed: ' +
-          (err?.message || 'Something went wrong.')
+          (
+            err?.message ||
+            'Something went wrong.'
+          )
       )
     } finally {
       setBiometricLoading(false)
@@ -497,87 +419,41 @@ export default function RestaurantLogin() {
           </span>
 
           <h1 className="text-2xl font-black text-white">
-            {loginContext.fromApp
-              ? 'Owner App Sign In'
-              : 'Partner Sign In'}
+            Partner Sign In
           </h1>
 
           <p className="text-xs text-neutral-400">
-            {loginContext.fromApp
-              ? 'Sign in securely to open the mobile Owner workspace.'
-              : 'Sign in securely to your Digital Dining dashboard.'}
+            Sign in securely to your Digital Dining dashboard.
           </p>
         </div>
 
         <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="text-2xl">🔐</div>
-
-              <div>
-                <p className="text-sm font-black text-white">
-                  Biometric Login
-                </p>
-
-                <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed">
-                  Use Face ID, fingerprint, Windows Hello,
-                  Touch ID, device PIN, or passkey.
-                </p>
-              </div>
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">
+              🔐
             </div>
 
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={toggleBiometric}
-              aria-label="Toggle biometric login"
-              aria-pressed={biometricEnabled}
-              className={
-                'relative flex-shrink-0 w-14 h-8 rounded-full transition ' +
-                (biometricEnabled
-                  ? 'bg-orange-500'
-                  : 'bg-neutral-700')
-              }
-            >
-              <span
-                className={
-                  'absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-all ' +
-                  (biometricEnabled ? 'left-7' : 'left-1')
-                }
-              />
-            </button>
-          </div>
+            <div>
+              <p className="text-sm font-black text-white">
+                Automatic Biometric Protection
+              </p>
 
-          <div className="mt-3">
-            {biometricEnabled ? (
-              <p className="text-[11px] text-green-400 font-bold">
-                ● ON — Biometric verification is required.
+              <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed">
+                After Email + Password + DOB are verified, Digital Dine checks this Owner account's real Supabase passkeys. If a registered passkey exists, fingerprint, Face ID, Windows Hello, device PIN or passkey verification is required automatically.
               </p>
-            ) : (
-              <p className="text-[11px] text-neutral-500 font-bold">
-                ● OFF — Password + DOB login only.
-              </p>
-            )}
+            </div>
           </div>
         </div>
 
-        {biometricEnabled && (
-          <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4">
-            <div className="flex items-start gap-3">
-              <div className="text-2xl">🛡️</div>
+        {biometricAccountDetected && biometricLoading && (
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
+            <p className="text-sm font-black text-emerald-300">
+              Registered biometric account detected 🔐
+            </p>
 
-              <div>
-                <p className="text-sm font-black text-orange-300">
-                  Biometric verification enabled
-                </p>
-
-                <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
-                  After your email, password and DOB are
-                  verified, your device will request your
-                  registered biometric or passkey.
-                </p>
-              </div>
-            </div>
+            <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
+              Complete the biometric / passkey prompt on your device to continue.
+            </p>
           </div>
         )}
 
@@ -635,20 +511,16 @@ export default function RestaurantLogin() {
           <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
             <div className="flex items-center gap-3">
               <div className="text-3xl">
-                {biometricEnabled ? '🔐' : '🔑'}
+                🔐
               </div>
 
               <div>
                 <p className="text-sm font-black text-white">
-                  {biometricEnabled
-                    ? 'Secure multi-factor login'
-                    : 'Standard login'}
+                  Account-aware secure login
                 </p>
 
                 <p className="text-[11px] text-neutral-500 mt-1">
-                  {biometricEnabled
-                    ? 'Email + Password + DOB + Biometric'
-                    : 'Email + Password + DOB'}
+                  Passkey verification is requested only when this Owner has a registered passkey.
                 </p>
               </div>
             </div>
@@ -662,12 +534,8 @@ export default function RestaurantLogin() {
             {biometricLoading
               ? 'Verifying Biometric...'
               : loading
-              ? biometricEnabled
-                ? 'Verifying Credentials...'
-                : 'Signing In...'
-              : biometricEnabled
-              ? 'Sign In Securely 🔐'
-              : 'Sign In'}
+                ? 'Checking Owner Account...'
+                : 'Sign In'}
           </button>
         </form>
 
