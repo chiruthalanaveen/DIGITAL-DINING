@@ -23,6 +23,9 @@ const supabaseAdmin = createClient(
     auth: {
       autoRefreshToken: false,
       persistSession: false,
+      experimental: {
+        passkey: true,
+      },
     },
   }
 )
@@ -131,7 +134,7 @@ export async function POST(request) {
 
     // Check whether this IP is temporarily locked.
     try {
-      const lockStatus = await getLoginLockStatus(email)
+      const lockStatus = await getLoginLockStatus(ipAddress)
 
       if (lockStatus?.locked) {
         return NextResponse.json(
@@ -159,7 +162,7 @@ export async function POST(request) {
 
     if (authError || !authData?.user || !authData?.session) {
       try {
-        await recordFailedLogin(email)
+        await recordFailedLogin(ipAddress)
       } catch (error) {
         console.warn('Failed-login recording skipped:', error)
       }
@@ -213,7 +216,7 @@ export async function POST(request) {
 
     if (!restaurant) {
       try {
-        await recordFailedLogin(email)
+        await recordFailedLogin(ipAddress)
       } catch (error) {
         console.warn('Failed-login recording skipped:', error)
       }
@@ -244,7 +247,7 @@ export async function POST(request) {
 
     if (registeredDob !== dob) {
       try {
-        await recordFailedLogin(email)
+        await recordFailedLogin(ipAddress)
       } catch (error) {
         console.warn('Failed-login recording skipped:', error)
       }
@@ -258,8 +261,78 @@ export async function POST(request) {
       )
     }
 
+    /*
+     * Authoritative biometric/passkey status.
+     *
+     * Do not use localStorage or a manually toggled database flag here.
+     * Supabase Auth itself is the source of truth: if this Auth user has
+     * one or more registered passkeys, biometric verification is required
+     * by the Owner mobile login. If no passkey exists, normal password +
+     * DOB login continues without showing/requesting biometric.
+     */
+    let biometricRegistered = false
+    let biometricPasskeyCount = 0
+    let biometricStatusAvailable = true
+
     try {
-      await clearFailedLoginAttempts(email)
+      const listPasskeys =
+        supabaseAdmin?.auth?.admin?.passkey
+          ?.listPasskeys
+
+      if (
+        typeof listPasskeys !== 'function'
+      ) {
+        biometricStatusAvailable = false
+
+        console.error(
+          'PASSKEY STATUS ERROR: Supabase Admin passkey API is unavailable. ' +
+            'Upgrade @supabase/supabase-js to v2.105.0 or newer.'
+        )
+      } else {
+        const {
+          data: passkeyData,
+          error: passkeyListError,
+        } =
+          await supabaseAdmin.auth.admin
+            .passkey.listPasskeys({
+              userId: authUser.id,
+            })
+
+        if (passkeyListError) {
+          biometricStatusAvailable = false
+
+          console.error(
+            'PASSKEY STATUS LOOKUP ERROR:',
+            passkeyListError
+          )
+        } else {
+          const rows =
+            Array.isArray(passkeyData)
+              ? passkeyData
+              : Array.isArray(
+                    passkeyData?.passkeys
+                  )
+                ? passkeyData.passkeys
+                : []
+
+          biometricPasskeyCount =
+            rows.length
+
+          biometricRegistered =
+            biometricPasskeyCount > 0
+        }
+      }
+    } catch (passkeyStatusError) {
+      biometricStatusAvailable = false
+
+      console.error(
+        'PASSKEY STATUS UNEXPECTED ERROR:',
+        passkeyStatusError
+      )
+    }
+
+    try {
+      await clearFailedLoginAttempts(ipAddress)
     } catch (error) {
       console.warn(
         'Failed-login reset skipped:',
@@ -281,6 +354,11 @@ export async function POST(request) {
         user: {
           id: authUser.id,
           email: authUser.email,
+        },
+        biometric: {
+          registered: biometricRegistered,
+          passkey_count: biometricPasskeyCount,
+          status_available: biometricStatusAvailable,
         },
         restaurant: {
           id: restaurant.id,

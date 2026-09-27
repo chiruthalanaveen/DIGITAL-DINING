@@ -340,16 +340,19 @@ export default function RestaurantRegistration() {
      */
     if (
       typeof supabase?.auth?.registerPasskey !==
-      'function'
+        'function' ||
+      typeof supabase?.auth?.passkey?.list !==
+        'function'
     ) {
       console.warn(
-        'Passkey setup skipped: supabase.auth.registerPasskey() is not available in the installed Supabase client.'
+        'Passkey setup skipped: the installed Supabase client does not expose the complete passkey API.'
       )
 
       return {
         success: false,
         skipped: true,
-        reason: 'supabase_passkey_api_unavailable',
+        reason:
+          'Supabase passkey API is unavailable. Upgrade @supabase/supabase-js to v2.105.0 or newer.',
       }
     }
 
@@ -385,18 +388,70 @@ export default function RestaurantRegistration() {
         }
       }
 
-      /*
-       * Some APIs may not return a data object even after the
-       * browser has completed the passkey operation.
-       */
       console.log(
         'Passkey registration response received:',
         passkeyData
       )
 
+      /*
+       * Do not mark biometric as successful only because
+       * registerPasskey() returned without throwing.
+       *
+       * Ask Supabase Auth for the current user's stored passkeys and
+       * confirm that at least one credential really exists.
+       */
+      const {
+        data: passkeyListData,
+        error: passkeyListError,
+      } =
+        await supabase.auth.passkey.list()
+
+      if (passkeyListError) {
+        console.error(
+          'PASSKEY CONFIRMATION ERROR:',
+          passkeyListError
+        )
+
+        return {
+          success: false,
+          skipped: false,
+          reason:
+            passkeyListError?.message ||
+            passkeyListError?.code ||
+            'Passkey was created but could not be confirmed.',
+        }
+      }
+
+      const registeredPasskeys =
+        Array.isArray(passkeyListData)
+          ? passkeyListData
+          : Array.isArray(
+                passkeyListData?.passkeys
+              )
+            ? passkeyListData.passkeys
+            : []
+
+      if (
+        registeredPasskeys.length === 0
+      ) {
+        return {
+          success: false,
+          skipped: false,
+          reason:
+            'Supabase Auth did not return a registered passkey after enrollment.',
+        }
+      }
+
+      console.log(
+        'Confirmed registered passkeys:',
+        registeredPasskeys.length
+      )
+
       return {
         success: true,
         skipped: false,
+        passkeyCount:
+          registeredPasskeys.length,
       }
     } catch (error) {
       console.error(
@@ -579,11 +634,14 @@ export default function RestaurantRegistration() {
           'Your restaurant account was created successfully. Biometric setup is available after opening the website on the supported HTTPS domain. You can continue without it.'
         )
       } else if (
-        biometricResult.reason ===
-        'supabase_passkey_api_unavailable'
+        String(
+          biometricResult.reason || ''
+        ).includes(
+          'Supabase passkey API is unavailable'
+        )
       ) {
         alert(
-          'Your restaurant account was created successfully. Biometric setup is not available in the current authentication configuration. You can continue without it.'
+          'Your restaurant account was created successfully, but biometric setup cannot run because the installed Supabase JavaScript client is too old or passkey support is unavailable. Upgrade @supabase/supabase-js to v2.105.0 or newer, then enable Passkeys in Supabase Authentication.'
         )
       } else {
         const biometricReason =
