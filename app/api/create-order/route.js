@@ -2,58 +2,63 @@ import Razorpay from 'razorpay'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+export const runtime = 'nodejs'
+
 // ==========================================================
-// DIGITAL DINING SUBSCRIPTION PLANS
-// IMPORTANT:
-// Prices are defined on the SERVER.
-// Never trust a payment amount sent by the browser.
+// DIGITAL DINING - FINAL FIVE SUBSCRIPTION PLANS
+// Prices are authoritative on the SERVER.
+// Never trust a subscription amount supplied by the browser.
 // ==========================================================
 
 const PLANS = {
-  restaurant_standard: {
-    name: 'Restaurant Standard',
-    prices: {
-      '1month': 799,
-      '6months': 4315,
-      '12months': 7670,
-    },
-  },
-
   restaurant_pro: {
-    name: 'Restaurant Pro',
+    name: 'Restaurant',
     prices: {
-      '1month': 1299,
-      '6months': 7015,
-      '12months': 12470,
+      '1month': 1499,
+      '6months': 8095,
+      '12months': 14390,
     },
   },
 
-  restaurant_resort_standard: {
-    name: 'Restaurant + Resort Standard',
+  delivery: {
+    name: 'Delivery',
     prices: {
-      '1month': 1999,
-      '6months': 10795,
-      '12months': 19190,
+      '1month': 1499,
+      '6months': 8095,
+      '12months': 14390,
     },
   },
 
   restaurant_resort_pro: {
-    name: 'Restaurant + Resort Pro',
+    name: 'Restaurant + Resort',
     prices: {
       '1month': 2999,
       '6months': 16195,
       '12months': 28790,
     },
   },
+
+  restaurant_delivery: {
+    name: 'Restaurant + Delivery',
+    prices: {
+      '1month': 2999,
+      '6months': 16195,
+      '12months': 28790,
+    },
+  },
+
+  restaurant_resort_delivery: {
+    name: 'Restaurant + Resort + Delivery',
+    prices: {
+      '1month': 3999,
+      '6months': 21595,
+      '12months': 38390,
+    },
+  },
 }
 
-// ==========================================================
-// GET BEARER TOKEN
-// ==========================================================
-
 function getBearerToken(req) {
-  const authorization =
-    req.headers.get('authorization') || ''
+  const authorization = req.headers.get('authorization') || ''
 
   if (!authorization.startsWith('Bearer ')) {
     return ''
@@ -62,75 +67,60 @@ function getBearerToken(req) {
   return authorization.slice(7).trim()
 }
 
-// ==========================================================
-// CREATE RAZORPAY ORDER
-// ==========================================================
+function getPlatformRazorpayConfig() {
+  const keyId =
+    process.env.PLATFORM_RAZORPAY_KEY_ID ||
+    process.env.RAZORPAY_KEY_ID ||
+    ''
+
+  const keySecret =
+    process.env.PLATFORM_RAZORPAY_KEY_SECRET ||
+    process.env.RAZORPAY_KEY_SECRET ||
+    process.env.RAZORPAY_SECRET ||
+    ''
+
+  return {
+    keyId: String(keyId).trim(),
+    keySecret: String(keySecret).trim(),
+  }
+}
 
 export async function POST(req) {
   try {
-    // ------------------------------------------------------
-    // READ REQUEST
-    // ------------------------------------------------------
+    const body = await req.json().catch(() => ({}))
 
-    const body =
-      await req.json().catch(() => ({}))
-
-    const restaurantId = String(
-      body.restaurantId || ''
-    ).trim()
-
-    const planCode = String(
-      body.plan ||
-      body.planCode ||
-      ''
-    ).trim()
-
-    const billingCycle = String(
-      body.billingCycle || ''
-    ).trim()
-
-    // ------------------------------------------------------
-    // BASIC VALIDATION
-    // ------------------------------------------------------
+    const restaurantId = String(body.restaurantId || '').trim()
+    const planCode = String(body.plan || body.planCode || '')
+      .trim()
+      .toLowerCase()
+    const billingCycle = String(body.billingCycle || '').trim()
 
     if (!restaurantId) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            'Restaurant ID is missing.',
+          message: 'Restaurant ID is missing.',
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       )
     }
 
-    const selectedPlan =
-      PLANS[planCode]
+    const selectedPlan = PLANS[planCode]
 
     if (!selectedPlan) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            'Invalid subscription plan.',
+          message: 'Invalid subscription plan.',
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       )
     }
 
-    const amountInRupees =
-      selectedPlan.prices[
-        billingCycle
-      ]
+    const amountInRupees = selectedPlan.prices[billingCycle]
 
     if (
-      !Number.isFinite(
-        amountInRupees
-      ) ||
+      !Number.isFinite(amountInRupees) ||
       amountInRupees <= 0
     ) {
       return NextResponse.json(
@@ -139,148 +129,92 @@ export async function POST(req) {
           message:
             'Invalid subscription billing cycle or amount.',
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       )
     }
 
-    // ------------------------------------------------------
-    // SERVER ENVIRONMENT VARIABLES
-    // ------------------------------------------------------
-
-    const keyId =
-      process.env
-        .RAZORPAY_KEY_ID
-
-    const keySecret =
-      process.env
-        .RAZORPAY_SECRET
-
     const supabaseUrl =
-      process.env
-        .NEXT_PUBLIC_SUPABASE_URL
-
+      process.env.NEXT_PUBLIC_SUPABASE_URL
     const anonKey =
-      process.env
-        .NEXT_PUBLIC_SUPABASE_ANON_KEY
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    // ------------------------------------------------------
-    // CONFIGURATION CHECK
-    //
-    // This intentionally returns only missing VARIABLE NAMES.
-    // It never exposes secret values.
-    // ------------------------------------------------------
+    const { keyId, keySecret } =
+      getPlatformRazorpayConfig()
 
     const missingConfig = []
 
     if (!keyId) {
       missingConfig.push(
-        'RAZORPAY_KEY_ID'
+        'PLATFORM_RAZORPAY_KEY_ID or RAZORPAY_KEY_ID'
       )
     }
 
     if (!keySecret) {
       missingConfig.push(
-        'RAZORPAY_SECRET'
+        'PLATFORM_RAZORPAY_KEY_SECRET, RAZORPAY_KEY_SECRET or RAZORPAY_SECRET'
       )
     }
 
     if (!supabaseUrl) {
-      missingConfig.push(
-        'NEXT_PUBLIC_SUPABASE_URL'
-      )
+      missingConfig.push('NEXT_PUBLIC_SUPABASE_URL')
     }
 
     if (!anonKey) {
-      missingConfig.push(
-        'NEXT_PUBLIC_SUPABASE_ANON_KEY'
-      )
+      missingConfig.push('NEXT_PUBLIC_SUPABASE_ANON_KEY')
     }
 
-    if (
-      missingConfig.length > 0
-    ) {
+    if (missingConfig.length > 0) {
       console.error(
-        'Payment server configuration missing:',
+        'Subscription payment server configuration missing:',
         missingConfig
       )
 
       return NextResponse.json(
         {
           success: false,
-
           message:
             `Payment server configuration is incomplete. Missing: ${missingConfig.join(', ')}`,
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       )
     }
 
-    // ------------------------------------------------------
-    // GET LOGIN TOKEN
-    // ------------------------------------------------------
-
-    const accessToken =
-      getBearerToken(req)
+    const accessToken = getBearerToken(req)
 
     if (!accessToken) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            'Please sign in again.',
+          message: 'Please sign in again.',
         },
-        {
-          status: 401,
-        }
+        { status: 401 }
       )
     }
 
-    // ------------------------------------------------------
-    // CREATE AUTHENTICATED SUPABASE CLIENT
-    // ------------------------------------------------------
-
-    const supabase =
-      createClient(
-        supabaseUrl,
-        anonKey,
-        {
-          global: {
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
-            },
+    const supabase = createClient(
+      supabaseUrl,
+      anonKey,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
           },
-
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-          },
-        }
-      )
-
-    // ------------------------------------------------------
-    // VERIFY AUTHENTICATED USER
-    // ------------------------------------------------------
+        },
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    )
 
     const {
       data: userData,
       error: userError,
-    } =
-      await supabase.auth.getUser(
-        accessToken
-      )
+    } = await supabase.auth.getUser(accessToken)
 
-    const user =
-      userData?.user
+    const user = userData?.user
 
-    if (
-      userError ||
-      !user
-    ) {
+    if (userError || !user) {
       console.error(
         'Subscription authentication failed:',
         userError?.message
@@ -292,34 +226,19 @@ export async function POST(req) {
           message:
             'Your login session is invalid or expired.',
         },
-        {
-          status: 401,
-        }
+        { status: 401 }
       )
     }
-
-    // ------------------------------------------------------
-    // VERIFY RESTAURANT OWNERSHIP
-    // ------------------------------------------------------
 
     const {
       data: restaurant,
       error: restaurantError,
-    } =
-      await supabase
-        .from('restaurants')
-        .select(
-          'id, owner_id, name'
-        )
-        .eq(
-          'id',
-          restaurantId
-        )
-        .eq(
-          'owner_id',
-          user.id
-        )
-        .maybeSingle()
+    } = await supabase
+      .from('restaurants')
+      .select('id, owner_id, name')
+      .eq('id', restaurantId)
+      .eq('owner_id', user.id)
+      .maybeSingle()
 
     if (restaurantError) {
       console.error(
@@ -333,9 +252,7 @@ export async function POST(req) {
           message:
             'Unable to verify restaurant ownership.',
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       )
     }
 
@@ -346,25 +263,16 @@ export async function POST(req) {
           message:
             'You are not authorized to subscribe for this restaurant.',
         },
-        {
-          status: 403,
-        }
+        { status: 403 }
       )
     }
 
-    // ------------------------------------------------------
-    // CONVERT RUPEES TO PAISE
-    // ------------------------------------------------------
-
-    const amountInPaise =
-      Math.round(
-        amountInRupees * 100
-      )
+    const amountInPaise = Math.round(
+      amountInRupees * 100
+    )
 
     if (
-      !Number.isInteger(
-        amountInPaise
-      ) ||
+      !Number.isInteger(amountInPaise) ||
       amountInPaise <= 0
     ) {
       return NextResponse.json(
@@ -373,108 +281,59 @@ export async function POST(req) {
           message:
             'Calculated Razorpay amount is invalid.',
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       )
     }
 
-    // ------------------------------------------------------
-    // INITIALIZE RAZORPAY
-    // ------------------------------------------------------
+    const razorpay = new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret,
+    })
 
-    const razorpay =
-      new Razorpay({
-        key_id:
-          keyId,
+    const order = await razorpay.orders.create({
+      amount: amountInPaise,
+      currency: 'INR',
+      receipt: `sub_${Date.now()}`,
+      notes: {
+        restaurant_id: restaurantId,
+        restaurant_name: String(
+          restaurant.name || ''
+        ).slice(0, 200),
+        plan_code: planCode,
+        plan_name: selectedPlan.name,
+        billing_cycle: billingCycle,
+        owner_id: user.id,
+        amount_rupees: String(amountInRupees),
+      },
+    })
 
-        key_secret:
-          keySecret,
-      })
-
-    // ------------------------------------------------------
-    // CREATE RAZORPAY ORDER
-    // ------------------------------------------------------
-
-    const order =
-      await razorpay.orders.create({
-        amount:
-          amountInPaise,
-
-        currency:
-          'INR',
-
-        receipt:
-          `sub_${Date.now()}`,
-
-        notes: {
-          restaurant_id:
-            restaurantId,
-
-          restaurant_name:
-            String(
-              restaurant.name || ''
-            ).slice(0, 200),
-
-          plan_code:
-            planCode,
-
-          plan_name:
-            selectedPlan.name,
-
-          billing_cycle:
-            billingCycle,
-
-          owner_id:
-            user.id,
-
-          amount_rupees:
-            String(
-              amountInRupees
-            ),
-        },
-      })
-
-    if (
-      !order ||
-      !order.id
-    ) {
+    if (!order?.id) {
       throw new Error(
         'Razorpay did not return a valid order.'
       )
     }
 
-    // ------------------------------------------------------
-    // SUCCESS
-    // ------------------------------------------------------
-
     return NextResponse.json({
       success: true,
-
       order,
-
-      orderId:
-        order.id,
-
-      amount:
-        order.amount,
-
-      currency:
-        order.currency,
-
-      // Key ID is safe to expose to Razorpay Checkout.
-      // Never return keySecret.
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      // Safe to expose Key ID to Razorpay Checkout.
+      // Never return the secret.
       keyId,
+      planCode,
+      billingCycle,
+      planName: selectedPlan.name,
     })
   } catch (error) {
     console.error(
-      'Razorpay ORDER CREATION FAILED:',
+      'Razorpay subscription order creation failed:',
       error
     )
 
     const razorpayMessage =
-      error?.error
-        ?.description ||
+      error?.error?.description ||
       error?.description ||
       error?.message ||
       'Internal Server Error during order creation.'
@@ -482,12 +341,9 @@ export async function POST(req) {
     return NextResponse.json(
       {
         success: false,
-        message:
-          razorpayMessage,
+        message: razorpayMessage,
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     )
   }
 }

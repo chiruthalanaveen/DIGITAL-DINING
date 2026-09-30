@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "51620318527",
+    "project_id": "digitaldine-in",
+    "storage_bucket": "digitaldine-in.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:51620318527:android:a1033acae7e7f863cf578a",
+        "android_client_info": {
+          "package_name": "com.digitaldining.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPlQ9BUxr6OSTXa9D7k91uOOZL3RunrtM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

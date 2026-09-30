@@ -1,9 +1,12 @@
 'use client'
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
+import ManagerDeliveryManagement from '@/app/components/ManagerDeliveryManagement'
+import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
@@ -1057,6 +1060,7 @@ function DashboardEntryLoader({
 export default function RestaurantManagerDashboard({ params }) {
   const routeParams = use(params)
   const restaurantId = routeParams?.restaurantId || routeParams?.id
+  const searchParams = useSearchParams()
 
   const [authenticated, setAuthenticated] = useState(false)
   const [manager, setManager] = useState(null)
@@ -1465,32 +1469,191 @@ export default function RestaurantManagerDashboard({ params }) {
     return () => window.clearInterval(interval)
   }, [authenticated, fetchDashboard])
 
-  // Subscription-wise feature control. plan_code is primary; legacy plan is fallback.
-  const legacyPlan = String(restaurant?.plan || 'Standard')
+  // Final five-plan module control.
+  // Manager receives operational access only to modules included in plan_code.
+  const legacyPlan = String(restaurant?.plan || 'Pro')
   const legacyPlanCode =
     legacyPlan === 'Pro+'
       ? 'restaurant_resort_pro'
-      : legacyPlan === 'Pro'
-        ? 'restaurant_pro'
-        : 'restaurant_standard'
+      : 'restaurant_pro'
 
-  const currentPlanCode = String(restaurant?.plan_code || legacyPlanCode).toLowerCase()
+  const currentPlanCode = String(
+    restaurant?.plan_code || legacyPlanCode
+  ).toLowerCase()
+
   const PLAN_FEATURES = {
-    restaurant_standard: { name: 'Restaurant Standard', legacyPlan: 'Standard', advanced: false, resort: false, advancedResort: false },
-    restaurant_pro: { name: 'Restaurant Pro', legacyPlan: 'Pro', advanced: true, resort: false, advancedResort: false },
-    restaurant_resort_standard: { name: 'Restaurant + Resort Standard', legacyPlan: 'Standard', advanced: false, resort: true, advancedResort: false },
-    restaurant_resort_pro: { name: 'Restaurant + Resort Pro', legacyPlan: 'Pro+', advanced: true, resort: true, advancedResort: true },
-  }
-  const planFeatures = PLAN_FEATURES[currentPlanCode] || PLAN_FEATURES.restaurant_standard
-  const currentPlan = planFeatures.legacyPlan
-  const currentPlanDisplay = planFeatures.name
-  const hasAdvancedAnalytics = planFeatures.advanced
-  const hasAdvancedMenuControls = planFeatures.advanced
-  const hasResortAccess = Boolean(planFeatures.resort)
-  const hasAdvancedResort = Boolean(planFeatures.advancedResort)
+    restaurant_pro: {
+      name: 'Restaurant',
+      restaurant: true,
+      resort: false,
+      delivery: false,
+      advanced: true,
+      advancedResort: false,
+    },
 
-  const planLimits = { Standard: 20, Pro: 50, 'Pro+': Infinity }
-  const maxMenuAllowed = planLimits[currentPlan] ?? 20
+    delivery: {
+      name: 'Delivery',
+      restaurant: false,
+      resort: false,
+      delivery: true,
+      advanced: false,
+      advancedResort: false,
+    },
+
+    restaurant_resort_pro: {
+      name: 'Restaurant + Resort',
+      restaurant: true,
+      resort: true,
+      delivery: false,
+      advanced: true,
+      advancedResort: true,
+    },
+
+    restaurant_delivery: {
+      name: 'Restaurant + Delivery',
+      restaurant: true,
+      resort: false,
+      delivery: true,
+      advanced: true,
+      advancedResort: false,
+    },
+
+    restaurant_resort_delivery: {
+      name: 'Restaurant + Resort + Delivery',
+      restaurant: true,
+      resort: true,
+      delivery: true,
+      advanced: true,
+      advancedResort: true,
+    },
+
+    // Temporary compatibility only. Phase 1 already migrated these.
+    restaurant_standard: {
+      name: 'Restaurant',
+      restaurant: true,
+      resort: false,
+      delivery: false,
+      advanced: true,
+      advancedResort: false,
+    },
+
+    restaurant_resort_standard: {
+      name: 'Restaurant + Resort',
+      restaurant: true,
+      resort: true,
+      delivery: false,
+      advanced: true,
+      advancedResort: true,
+    },
+  }
+
+  const planFeatures =
+    PLAN_FEATURES[currentPlanCode] ||
+    PLAN_FEATURES.restaurant_pro
+
+  const currentPlan = String(
+    restaurant?.plan || 'Pro'
+  )
+
+  const currentPlanDisplay =
+    planFeatures.name
+
+  const hasAdvancedAnalytics =
+    Boolean(
+      planFeatures.restaurant &&
+      planFeatures.advanced
+    )
+
+  const hasAdvancedMenuControls =
+    Boolean(
+      planFeatures.restaurant &&
+      planFeatures.advanced
+    )
+
+  const restaurantModuleEnabled =
+    Boolean(planFeatures.restaurant)
+
+  const hasResortAccess =
+    Boolean(planFeatures.resort)
+
+  const deliveryModuleEnabled =
+    Boolean(planFeatures.delivery)
+
+  const hasAdvancedResort =
+    Boolean(
+      planFeatures.resort &&
+      planFeatures.advancedResort
+    )
+
+  const maxMenuAllowed = Infinity
+
+  const enabledModuleCount =
+    Number(restaurantModuleEnabled) +
+    Number(hasResortAccess) +
+    Number(deliveryModuleEnabled)
+
+  // Delivery-only Managers should open directly into Delivery.
+  useEffect(() => {
+    if (!restaurant) return
+
+    const allowedModes = []
+
+    if (restaurantModuleEnabled) {
+      allowedModes.push('restaurant')
+    }
+
+    if (hasResortAccess) {
+      allowedModes.push('resort')
+    }
+
+    if (deliveryModuleEnabled) {
+      allowedModes.push('delivery')
+    }
+
+    if (
+      allowedModes.length > 0 &&
+      !allowedModes.includes(dashboardMode)
+    ) {
+      setDashboardMode(allowedModes[0])
+    }
+  }, [
+    restaurant,
+    dashboardMode,
+    restaurantModuleEnabled,
+    hasResortAccess,
+    deliveryModuleEnabled,
+  ])
+
+  // Native push notification tap / deep-link support.
+  useEffect(() => {
+    const requestedModule = String(
+      searchParams?.get('module') || ''
+    )
+      .trim()
+      .toLowerCase()
+
+    if (
+      requestedModule === 'delivery' &&
+      deliveryModuleEnabled
+    ) {
+      setDashboardMode('delivery')
+    } else if (
+      requestedModule === 'resort' &&
+      hasResortAccess
+    ) {
+      setDashboardMode('resort')
+    } else if (
+      requestedModule === 'restaurant' &&
+      restaurantModuleEnabled
+    ) {
+      setDashboardMode('restaurant')
+    }
+  }, [
+    searchParams,
+    restaurantModuleEnabled,
+    hasResortAccess,
+    deliveryModuleEnabled,
+  ])
 
   const getItemOrderCount = useCallback((item) => {
     return orders.reduce((total, order) => {
@@ -2445,22 +2608,72 @@ export default function RestaurantManagerDashboard({ params }) {
 
         {notice && <div className="fixed right-5 top-5 z-50 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice}</div>}
 
+        {deliveryModuleEnabled && authenticated && (
+          <NativeDeliveryPush
+            restaurantId={String(restaurantId || '')}
+            role="manager"
+            enabled={deliveryModuleEnabled}
+            managerSessionToken={
+              sessionMode ? sessionToken : ''
+            }
+            managerCredentials={{
+              restaurantCode,
+              userId: loginUserId,
+              password: loginPassword,
+            }}
+            dashboardPath={`/manager/${restaurantId}?module=delivery`}
+          />
+        )}
+
         <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
-          <div className={`grid gap-2 ${hasResortAccess ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            <button
-              type="button"
-              onClick={() => setDashboardMode('restaurant')}
-              className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'restaurant' ? 'bg-orange-500 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
-            >
-              🍽️ Restaurant Dashboard
-            </button>
+          <div
+            className={`grid gap-2 ${
+              enabledModuleCount >= 3
+                ? 'grid-cols-1 sm:grid-cols-3'
+                : enabledModuleCount === 2
+                  ? 'grid-cols-2'
+                  : 'grid-cols-1'
+            }`}
+          >
+            {restaurantModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('restaurant')}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                  dashboardMode === 'restaurant'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                }`}
+              >
+                🍽️ Restaurant Dashboard
+              </button>
+            )}
+
             {hasResortAccess && (
               <button
                 type="button"
                 onClick={() => setDashboardMode('resort')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'resort' ? 'bg-sky-600 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                  dashboardMode === 'resort'
+                    ? 'bg-sky-600 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                }`}
               >
                 🏨 Resort Dashboard
+              </button>
+            )}
+
+            {deliveryModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('delivery')}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                  dashboardMode === 'delivery'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                }`}
+              >
+                🚚 Delivery Dashboard
               </button>
             )}
           </div>
@@ -2475,7 +2688,19 @@ export default function RestaurantManagerDashboard({ params }) {
           />
         )}
 
-        {dashboardMode === 'restaurant' && (<>
+        {dashboardMode === 'delivery' && deliveryModuleEnabled && (
+          <ManagerDeliveryManagement
+            restaurantId={restaurantId}
+            restaurantCode={restaurantCode}
+            sessionToken={sessionToken}
+            sessionMode={sessionMode}
+            userId={loginUserId}
+            password={loginPassword}
+            restaurant={restaurant}
+          />
+        )}
+
+        {dashboardMode === 'restaurant' && restaurantModuleEnabled && (<>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Stat title="Total Revenue" value={money(totalRevenue)} />
           <Stat title="Orders Today" value={todayOrders.length} accent="text-emerald-400" />
@@ -2846,7 +3071,7 @@ export default function RestaurantManagerDashboard({ params }) {
         </>)}
 
         <footer className="border-t border-neutral-800 pt-5 text-center text-[10px] text-neutral-600">
-          Manager access excludes payment gateway settings, tax settings, subscription, billing, and manager account creation. Those remain Owner-only.
+          Manager can operate the subscribed Restaurant, Resort and Delivery modules. Payment gateway credentials, tax settings, subscription, billing, manager account creation, and Delivery Driver Portal passwords remain Owner-only.
         </footer>
       </div>
       <RestaurantChatWidget restaurantId={restaurantId} />

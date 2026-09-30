@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 const config: CapacitorConfig = {
   appId: 'com.digitaldining.app',
   appName: 'Digital Dine',
-  webDir: 'public',
+  webDir: 'out',
 
   server: {
     url: 'https://www.digitaldine-in.online/app',
@@ -21,6 +21,13 @@ const config: CapacitorConfig = {
       launchFadeOutDuration: 300,
       backgroundColor: '#000000',
       showSpinner: false,
+    },
+
+    PushNotifications: {
+      presentationOptions: [
+        'sound',
+        'alert',
+      ],
     },
   },
 }

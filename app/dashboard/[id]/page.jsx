@@ -1,9 +1,11 @@
 'use client'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
+import DeliveryManagement from '@/app/components/DeliveryManagement'
+import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 
 // Real-Time Restaurant Chat Widget Component
 function RestaurantChatWidget({ restaurantId }) {
@@ -1182,6 +1184,7 @@ export default function RestaurantDashboard() {
   const params = useParams()
   const restaurantId = String(params.id || params.restaurantId || '').trim()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [restaurant, setRestaurant] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
@@ -1330,76 +1333,174 @@ export default function RestaurantDashboard() {
     { value: 'waiter-9', label: 'Waiter Sound 9 — Quick Pulse', src: '/sounds/waiter-9.mp3' },
   ]
 
-  // Subscription-wise feature control.
-  // plan_code is the canonical plan value. Legacy `plan` is used only for old accounts.
-  const legacyPlan = String(restaurant?.plan || 'Standard')
+  // Subscription-wise module control.
+  // Final customer-facing subscriptions:
+  // Restaurant, Delivery, Restaurant + Resort,
+  // Restaurant + Delivery, Restaurant + Resort + Delivery.
+  //
+  // Standard plans were migrated in Phase 1. Legacy values remain only
+  // as a safe fallback for accounts that have not refreshed yet.
+  const legacyPlan = String(restaurant?.plan || 'Pro')
   const legacyPlanCode =
     legacyPlan === 'Pro+'
       ? 'restaurant_resort_pro'
-      : legacyPlan === 'Pro'
-        ? 'restaurant_pro'
-        : 'restaurant_standard'
+      : 'restaurant_pro'
 
-  const currentPlanCode = String(restaurant?.plan_code || legacyPlanCode).toLowerCase()
+  const currentPlanCode = String(
+    restaurant?.plan_code || legacyPlanCode
+  ).toLowerCase()
 
   const PLAN_FEATURES = {
-    restaurant_standard: {
-      code: 'restaurant_standard',
-      name: 'Restaurant Standard',
-      monthlyPrice: 799,
-      advanced: false,
-      resort: false,
-      advancedResort: false,
-      menuLimit: 50,
-    },
     restaurant_pro: {
       code: 'restaurant_pro',
-      name: 'Restaurant Pro',
-      monthlyPrice: 1299,
-      advanced: true,
+      name: 'Restaurant',
+      monthlyPrice: 1499,
+      restaurant: true,
       resort: false,
+      delivery: false,
+      advanced: true,
       advancedResort: false,
       menuLimit: Infinity,
     },
-    restaurant_resort_standard: {
-      code: 'restaurant_resort_standard',
-      name: 'Restaurant + Resort Standard',
-      monthlyPrice: 1999,
-      advanced: false,
-      resort: true,
+
+    delivery: {
+      code: 'delivery',
+      name: 'Delivery',
+      monthlyPrice: 1499,
+      restaurant: false,
+      resort: false,
+      delivery: true,
+      advanced: true,
       advancedResort: false,
-      menuLimit: 50,
+      menuLimit: Infinity,
     },
+
     restaurant_resort_pro: {
       code: 'restaurant_resort_pro',
-      name: 'Restaurant + Resort Pro',
+      name: 'Restaurant + Resort',
       monthlyPrice: 2999,
-      advanced: true,
+      restaurant: true,
       resort: true,
+      delivery: false,
+      advanced: true,
+      advancedResort: true,
+      menuLimit: Infinity,
+    },
+
+    restaurant_delivery: {
+      code: 'restaurant_delivery',
+      name: 'Restaurant + Delivery',
+      monthlyPrice: 2999,
+      restaurant: true,
+      resort: false,
+      delivery: true,
+      advanced: true,
+      advancedResort: false,
+      menuLimit: Infinity,
+    },
+
+    restaurant_resort_delivery: {
+      code: 'restaurant_resort_delivery',
+      name: 'Restaurant + Resort + Delivery',
+      monthlyPrice: 3999,
+      restaurant: true,
+      resort: true,
+      delivery: true,
+      advanced: true,
       advancedResort: true,
       menuLimit: Infinity,
     },
   }
 
-  const planFeatures = PLAN_FEATURES[currentPlanCode] || PLAN_FEATURES.restaurant_standard
+  const planFeatures =
+    PLAN_FEATURES[currentPlanCode] ||
+    PLAN_FEATURES.restaurant_pro
+
   const currentPlanDisplay = planFeatures.name
   const currentPlanMonthlyPrice = planFeatures.monthlyPrice
 
-  // Base restaurant features are available on all four plans.
-  // Pro-only restaurant features:
-  const hasAdvancedAnalytics = planFeatures.advanced
-  const hasManagerManagement = planFeatures.advanced
-  const hasAdvancedMenuControls = planFeatures.advanced
-  const hasRealtimeOrderAlarm = planFeatures.advanced
+  // Every subscribed module receives its complete feature set.
+  const hasAdvancedAnalytics = Boolean(planFeatures.restaurant)
+  const hasManagerManagement = Boolean(planFeatures.restaurant)
+  const hasAdvancedMenuControls = Boolean(planFeatures.restaurant)
+  const hasRealtimeOrderAlarm = Boolean(planFeatures.restaurant)
 
-  // Resort features are available only on Restaurant + Resort plans.
-  // Resort access follows the active subscription plan exactly.
-  // A stale resort_enabled database flag must not unlock resort features on restaurant-only plans.
-  const resortModuleEnabled = planFeatures.resort
-  const hasAdvancedResortFeatures = planFeatures.advancedResort
+  const restaurantModuleEnabled = Boolean(planFeatures.restaurant)
+  const resortModuleEnabled = Boolean(planFeatures.resort)
+  const deliveryModuleEnabled = Boolean(planFeatures.delivery)
+  const hasAdvancedResortFeatures = Boolean(planFeatures.resort)
 
-  // Menu Management is included in all four plans. The feature matrix does not impose a plan-based menu-item limit.
+  // No plan-based menu item limit in the new five-plan structure.
   const maxMenuAllowed = Infinity
+
+  const enabledModuleCount =
+    Number(restaurantModuleEnabled) +
+    Number(resortModuleEnabled) +
+    Number(deliveryModuleEnabled)
+
+  // Delivery-only accounts must open directly into Delivery.
+  // Combined subscriptions keep the user's current module when it is valid.
+  useEffect(() => {
+    if (!restaurant) return
+
+    const allowedModes = []
+
+    if (restaurantModuleEnabled) {
+      allowedModes.push('restaurant')
+    }
+
+    if (resortModuleEnabled) {
+      allowedModes.push('resort')
+    }
+
+    if (deliveryModuleEnabled) {
+      allowedModes.push('delivery')
+    }
+
+    if (
+      allowedModes.length > 0 &&
+      !allowedModes.includes(dashboardMode)
+    ) {
+      setDashboardMode(allowedModes[0])
+    }
+  }, [
+    restaurant,
+    dashboardMode,
+    restaurantModuleEnabled,
+    resortModuleEnabled,
+    deliveryModuleEnabled,
+  ])
+
+  // Native push/deep-link support.
+  useEffect(() => {
+    const requestedModule = String(
+      searchParams?.get('module') || ''
+    )
+      .trim()
+      .toLowerCase()
+
+    if (
+      requestedModule === 'delivery' &&
+      deliveryModuleEnabled
+    ) {
+      setDashboardMode('delivery')
+    } else if (
+      requestedModule === 'resort' &&
+      resortModuleEnabled
+    ) {
+      setDashboardMode('resort')
+    } else if (
+      requestedModule === 'restaurant' &&
+      restaurantModuleEnabled
+    ) {
+      setDashboardMode('restaurant')
+    }
+  }, [
+    searchParams,
+    restaurantModuleEnabled,
+    resortModuleEnabled,
+    deliveryModuleEnabled,
+  ])
 
   // SECURITY: The restaurant ID in the URL is not authentication.
   // The authenticated Supabase user must own the dashboard being opened.
@@ -3112,17 +3213,17 @@ export default function RestaurantDashboard() {
   }
 
   const handleTabSwitch = (tabId) => {
-    const advancedTabs = ['settlements', 'staff', 'swiggy-sync', 'alarm-settings']
-
-    if (advancedTabs.includes(tabId) && !planFeatures.advanced) {
+    if (tabId === 'resort' && !resortModuleEnabled) {
       alert(
-        `🔒 ${currentPlanDisplay} includes Basic Analytics, but this advanced dashboard feature requires Restaurant Pro or Restaurant + Resort Pro.`
+        '🔒 Resort Management is not included in your active subscription.'
       )
       return
     }
 
-    if (tabId === 'resort' && !resortModuleEnabled) {
-      alert('🔒 Resort Management is available only on Restaurant + Resort plans.')
+    if (tabId === 'delivery' && !deliveryModuleEnabled) {
+      alert(
+        '🔒 Delivery Management is not included in your active subscription.'
+      )
       return
     }
 
@@ -4058,29 +4159,71 @@ export default function RestaurantDashboard() {
                 {restaurant.name}
               </h2>
               <p className="mt-1 text-xs text-neutral-500">
-                Manage orders, menu, staff, billing and restaurant settings from one place.
+                Manage the Restaurant, Resort and Delivery modules included in your active subscription from one place.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Owner workspace switch. Existing restaurant features remain unchanged. */}
+        {deliveryModuleEnabled && (
+          <NativeDeliveryPush
+            restaurantId={restaurantId}
+            role="owner"
+            enabled={deliveryModuleEnabled}
+            dashboardPath={`/dashboard/${restaurantId}?module=delivery`}
+          />
+        )}
+
+        {/* Owner workspace switch. Module visibility follows plan_code exactly. */}
         <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
-          <div className={`grid gap-2 ${resortModuleEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            <button
-              type="button"
-              onClick={() => setDashboardMode('restaurant')}
-              className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'restaurant' ? 'bg-orange-500 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
-            >
-              🍽️ Restaurant Dashboard
-            </button>
+          <div
+            className={`grid gap-2 ${
+              enabledModuleCount >= 3
+                ? 'grid-cols-1 sm:grid-cols-3'
+                : enabledModuleCount === 2
+                  ? 'grid-cols-2'
+                  : 'grid-cols-1'
+            }`}
+          >
+            {restaurantModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('restaurant')}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                  dashboardMode === 'restaurant'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                }`}
+              >
+                🍽️ Restaurant Dashboard
+              </button>
+            )}
+
             {resortModuleEnabled && (
               <button
                 type="button"
                 onClick={() => setDashboardMode('resort')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${dashboardMode === 'resort' ? 'bg-sky-600 text-white' : 'bg-neutral-950 text-neutral-400 hover:text-white'}`}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                  dashboardMode === 'resort'
+                    ? 'bg-sky-600 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                }`}
               >
                 🏨 Resort Dashboard
+              </button>
+            )}
+
+            {deliveryModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('delivery')}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                  dashboardMode === 'delivery'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                }`}
+              >
+                🚚 Delivery Dashboard
               </button>
             )}
           </div>
@@ -4094,7 +4237,14 @@ export default function RestaurantDashboard() {
           />
         )}
 
-        {dashboardMode === 'restaurant' && (
+        {dashboardMode === 'delivery' && deliveryModuleEnabled && (
+          <DeliveryManagement
+            restaurant={restaurant}
+            planCode={currentPlanCode}
+          />
+        )}
+
+        {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
           <div className="contents">
         {/* Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -6830,7 +6980,7 @@ export default function RestaurantDashboard() {
 
 
       {/* OWNER MOBILE APP NAVIGATION */}
-      {dashboardMode === 'restaurant' && (
+      {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
         <>
           <nav className="dd-owner-mobile-bottom-nav fixed bottom-0 left-0 right-0 z-[80] grid-cols-5 border-t border-neutral-200 bg-white/95 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl">
             <button
@@ -6977,6 +7127,19 @@ export default function RestaurantDashboard() {
                     className="mt-3 w-full rounded-2xl border border-sky-500/20 bg-sky-50 px-4 py-4 text-left text-[10px] font-black text-sky-700"
                   >
                     🏨 Open Resort Dashboard
+                  </button>
+                )}
+
+                {deliveryModuleEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardMode('delivery')
+                      setMobileOwnerMenuOpen(false)
+                    }}
+                    className="mt-3 w-full rounded-2xl border border-emerald-500/20 bg-emerald-50 px-4 py-4 text-left text-[10px] font-black text-emerald-700"
+                  >
+                    🚚 Open Delivery Dashboard
                   </button>
                 )}
               </div>
