@@ -5,6 +5,361 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
 
+function AppIcon({ name, className = 'h-5 w-5', strokeWidth = 1.8 }) {
+  const common = {
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  }
+
+  const icons = {
+    home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V21h13V9.5" /><path d="M9.5 21v-7h5v7" /></>,
+    orders: <><path d="M6 3.5h12v17H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
+    tables: <><rect x="3.5" y="4" width="17" height="16" rx="2" /><path d="M3.5 10h17M9 4v16M15 4v16" /></>,
+    menu: <><path d="M5 7h14M5 12h14M5 17h14" /></>,
+    more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
+    user: <><circle cx="12" cy="8" r="3.25" /><path d="M5.5 20c.8-4 3-6 6.5-6s5.7 2 6.5 6" /></>,
+    refresh: <><path d="M20 7v5h-5" /><path d="M19 12a7 7 0 1 1-2-5.2L20 9" /></>,
+    chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+    qr: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" /><path d="M14 14h2v2h-2zM18 14h2v6h-2M14 18h2v2h-2" /></>,
+    billing: <><path d="M6 3.5h12v17l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
+    tag: <><path d="M4 4h7l9 9-7 7-9-9z" /><circle cx="8.5" cy="8.5" r="1.2" /></>,
+    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 9h18M7 15h4" /></>,
+    users: <><circle cx="9" cy="8.5" r="3" /><path d="M3.5 19c.6-3.4 2.5-5 5.5-5s4.9 1.6 5.5 5" /><path d="M15.5 6.2a2.7 2.7 0 0 1 0 5.2M17 14.5c2.1.5 3.3 1.9 3.7 4.5" /></>,
+    sync: <><path d="M20 7h-5V2" /><path d="M20 7a8 8 0 0 0-13.6-2.6L4 7" /><path d="M4 17h5v5" /><path d="M4 17a8 8 0 0 0 13.6 2.6L20 17" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2-1.7.7-1.9-.9L1.1 6l.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2h3l.7-2 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z" transform="translate(2.5 0) scale(.8)" /></>,
+    bell: <><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" /><path d="M10 19a2.3 2.3 0 0 0 4 0" /></>,
+    hotel: <><path d="M4 21V6h10v15M14 11h6v10M7 9h1M10 9h1M7 13h1M10 13h1M7 17h1M10 17h1M17 14h1M17 17h1" /></>,
+    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
+    logout: <><path d="M10 5H5v14h5" /><path d="M13 8l4 4-4 4M8 12h9" /></>,
+    kitchen: <><path d="M5 12h14v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3z" /><path d="M7 12V9a5 5 0 0 1 10 0v3M9 6.5V4M15 6.5V4" /></>,
+    palette: <><path d="M12 3a9 9 0 1 0 0 18h1.3a2 2 0 0 0 1.2-3.6c-.7-.5-.4-1.5.4-1.7H17a4 4 0 0 0 4-4A8.7 8.7 0 0 0 12 3Z" /><circle cx="7.5" cy="10" r=".8" fill="currentColor" stroke="none" /><circle cx="10" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="14" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="17" cy="10" r=".8" fill="currentColor" stroke="none" /></>,
+    type: <><path d="M5 6V4h14v2M9 20h6M12 4v16" /></>,
+    moon: <path d="M20 15.2A8 8 0 0 1 8.8 4 8 8 0 1 0 20 15.2Z" />,
+    sun: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
+    volume: <><path d="M5 10v4h4l5 4V6l-5 4z" /><path d="M17 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" /></>,
+    notifications: <><path d="M6 9a6 6 0 0 1 12 0v4l2 3H4l2-3z" /><path d="M10 20h4" /></>,
+    chevron: <path d="m9 18 6-6-6-6" />,
+    close: <path d="M6 6l12 12M18 6 6 18" />,
+    check: <path d="m5 12 4 4L19 6" />,
+    store: <><path d="M4 10v10h16V10" /><path d="M3 10l2-6h14l2 6" /><path d="M8 20v-6h8v6" /></>,
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} {...common}>
+      {icons[name] || icons.more}
+    </svg>
+  )
+}
+
+const MOBILE_EXPERIENCE_KEY = 'digital-dine-mobile-experience-v1'
+
+const DEFAULT_MOBILE_EXPERIENCE = {
+  darkMode: true,
+  theme: 'orange',
+  textSize: 'normal',
+  uiStyle: 'soft',
+  pushNotifications: true,
+  orderMessages: true,
+  promotions: false,
+  sound: true,
+}
+
+function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
+  const [saved, setSaved] = useState(DEFAULT_MOBILE_EXPERIENCE)
+  const [draft, setDraft] = useState(DEFAULT_MOBILE_EXPERIENCE)
+
+  const themeOptions = [
+    { id: 'orange', label: 'Orange', color: '#f97316' },
+    { id: 'emerald', label: 'Green', color: '#059669' },
+    { id: 'ocean', label: 'Blue', color: '#2563eb' },
+    { id: 'violet', label: 'Violet', color: '#7c3aed' },
+    { id: 'rose', label: 'Rose', color: '#e11d48' },
+  ]
+
+  const normalize = (value) => ({
+    ...DEFAULT_MOBILE_EXPERIENCE,
+    ...(value && typeof value === 'object' ? value : {}),
+  })
+
+  const applyExperience = (prefs) => {
+    if (typeof document === 'undefined') return
+    const root = document.documentElement
+    root.dataset.ddAppTheme = prefs.theme
+    root.dataset.ddUiStyle = prefs.uiStyle
+    root.dataset.ddTextSize = prefs.textSize
+    root.dataset.ddDarkMode = prefs.darkMode ? 'true' : 'false'
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const parsed = JSON.parse(localStorage.getItem(MOBILE_EXPERIENCE_KEY) || '{}')
+      const next = normalize(parsed)
+      setSaved(next)
+      setDraft(next)
+      applyExperience(next)
+    } catch {
+      applyExperience(DEFAULT_MOBILE_EXPERIENCE)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    setDraft(saved)
+  }, [open, saved])
+
+  const setPreview = (patch) => {
+    setDraft((current) => {
+      const next = { ...current, ...patch }
+      applyExperience(next)
+      return next
+    })
+  }
+
+  const closeWithoutSaving = () => {
+    setDraft(saved)
+    applyExperience(saved)
+    onClose?.()
+  }
+
+  const save = () => {
+    const next = normalize(draft)
+    setSaved(next)
+    applyExperience(next)
+    try {
+      localStorage.setItem(MOBILE_EXPERIENCE_KEY, JSON.stringify(next))
+    } catch (error) {
+      console.error('Unable to save mobile experience preferences:', error)
+    }
+    onClose?.()
+  }
+
+  if (!open) return null
+
+  const accent = themeOptions.find((item) => item.id === draft.theme)?.color || '#f97316'
+  const surface = draft.darkMode ? 'bg-[#151515] border-white/10 text-white' : 'bg-white border-neutral-200 text-neutral-950'
+  const page = draft.darkMode ? 'bg-[#0d0d0e] text-white' : 'bg-[#f5f5f4] text-neutral-950'
+  const muted = draft.darkMode ? 'text-neutral-400' : 'text-neutral-500'
+
+  const Toggle = ({ value, onChange, label }) => (
+    <button
+      type="button"
+      role="switch"
+      aria-label={label}
+      aria-checked={Boolean(value)}
+      onClick={() => onChange(!value)}
+      className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${
+        value ? 'border-transparent' : draft.darkMode ? 'border-white/10 bg-neutral-800' : 'border-neutral-300 bg-neutral-200'
+      }`}
+      style={value ? { backgroundColor: accent } : undefined}
+    >
+      <span
+        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+          value ? 'translate-x-[23px]' : 'translate-x-[3px]'
+        }`}
+      />
+    </button>
+  )
+
+  return (
+    <div className={`fixed inset-0 z-[120] ${page}`}>
+      <style jsx global>{`
+        html[data-dd-text-size='small'] .dd-mobile-themeable { font-size: 14px; }
+        html[data-dd-text-size='normal'] .dd-mobile-themeable { font-size: 16px; }
+        html[data-dd-text-size='large'] .dd-mobile-themeable { font-size: 18px; }
+        html[data-dd-ui-style='rounded'] .dd-mobile-themeable .dd-experience-surface { border-radius: 20px; }
+        html[data-dd-ui-style='soft'] .dd-mobile-themeable .dd-experience-surface { border-radius: 14px; }
+        html[data-dd-ui-style='crisp'] .dd-mobile-themeable .dd-experience-surface { border-radius: 8px; }
+      `}</style>
+
+      <div className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden">
+        <header className={`shrink-0 border-b px-4 pb-3 pt-[max(0.85rem,env(safe-area-inset-top))] ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]' : 'border-neutral-200 bg-white'}`}>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={closeWithoutSaving}
+              className={`flex h-10 w-10 items-center justify-center rounded-xl border ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
+              aria-label="Back"
+            >
+              <AppIcon name="chevron" className="h-5 w-5 rotate-180" />
+            </button>
+            <div className="min-w-0">
+              <p className={`text-[11px] font-medium ${muted}`}>{portal}</p>
+              <h2 className="text-base font-semibold">App settings</h2>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-4 py-5 pb-28">
+          <section>
+            <div className="mb-2 px-1">
+              <h3 className="text-sm font-semibold">Appearance</h3>
+              <p className={`mt-0.5 text-[11px] ${muted}`}>Choose how this app looks on this device.</p>
+            </div>
+
+            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
+              <div className={`flex items-center justify-between gap-4 p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+                    <AppIcon name={draft.darkMode ? 'moon' : 'sun'} className="h-[18px] w-[18px]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold">Dark mode</p>
+                    <p className={`mt-0.5 text-[10px] ${muted}`}>Use a darker app surface.</p>
+                  </div>
+                </div>
+                <Toggle value={draft.darkMode} onChange={(value) => setPreview({ darkMode: value })} label="Dark mode" />
+              </div>
+
+              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+                    <AppIcon name="palette" className="h-[18px] w-[18px]" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-semibold">Accent color</p>
+                    <p className={`mt-0.5 text-[10px] ${muted}`}>Used for selected controls and switches.</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-5 gap-2">
+                  {themeOptions.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setPreview({ theme: item.id })}
+                      className={`flex min-h-14 flex-col items-center justify-center rounded-xl border px-1 transition ${
+                        draft.theme === item.id
+                          ? draft.darkMode ? 'border-white/30 bg-white/5' : 'border-neutral-300 bg-neutral-50'
+                          : draft.darkMode ? 'border-white/10' : 'border-neutral-200'
+                      }`}
+                      aria-label={`${item.label} accent`}
+                    >
+                      <span className="h-5 w-5 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className={`mt-1.5 text-[8px] font-medium ${muted}`}>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+                    <AppIcon name="type" className="h-[18px] w-[18px]" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-semibold">Text size</p>
+                    <p className={`mt-0.5 text-[10px] ${muted}`}>Adjust the app's reading size.</p>
+                  </div>
+                </div>
+                <div className={`mt-4 grid grid-cols-3 rounded-xl p-1 ${draft.darkMode ? 'bg-neutral-900' : 'bg-neutral-100'}`}>
+                  {['small', 'normal', 'large'].map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setPreview({ textSize: id })}
+                      className={`min-h-10 rounded-lg text-[11px] font-medium capitalize transition ${
+                        draft.textSize === id
+                          ? draft.darkMode ? 'bg-neutral-700 text-white shadow-sm' : 'bg-white text-neutral-950 shadow-sm'
+                          : muted
+                      }`}
+                    >
+                      {id}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
+                <p className="text-[13px] font-semibold">Card corners</p>
+                <p className={`mt-0.5 text-[10px] ${muted}`}>A small visual preference; features stay unchanged.</p>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {[
+                    ['rounded', 'Rounded'],
+                    ['soft', 'Soft'],
+                    ['crisp', 'Compact'],
+                  ].map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setPreview({ uiStyle: id })}
+                      className={`min-h-11 border px-2 text-[10px] font-medium transition ${
+                        id === 'rounded' ? 'rounded-2xl' : id === 'soft' ? 'rounded-xl' : 'rounded-md'
+                      } ${
+                        draft.uiStyle === id
+                          ? 'text-white'
+                          : draft.darkMode ? 'border-white/10 text-neutral-400' : 'border-neutral-200 text-neutral-600'
+                      }`}
+                      style={draft.uiStyle === id ? { backgroundColor: accent, borderColor: accent } : undefined}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6">
+            <div className="mb-2 px-1">
+              <h3 className="text-sm font-semibold">Notifications</h3>
+              <p className={`mt-0.5 text-[11px] ${muted}`}>Control which app alerts are enabled.</p>
+            </div>
+
+            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
+              {[
+                ['pushNotifications', 'notifications', 'Push notifications', 'General app and order alerts'],
+                ['orderMessages', 'orders', 'Order activity', 'New orders and status changes'],
+                ['promotions', 'tag', 'Product updates', 'Plan and feature announcements'],
+                ['sound', 'volume', 'Alert sound', 'Play sound for supported alerts'],
+              ].map(([key, icon, title, subtitle], index) => (
+                <div key={key} className={`flex items-center justify-between gap-4 p-4 ${index ? draft.darkMode ? 'border-t border-white/10' : 'border-t border-neutral-200' : ''}`}>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+                      <AppIcon name={icon} className="h-[18px] w-[18px]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold">{title}</p>
+                      <p className={`mt-0.5 truncate text-[10px] ${muted}`}>{subtitle}</p>
+                    </div>
+                  </div>
+                  <Toggle value={draft[key]} onChange={(value) => setPreview({ [key]: value })} label={title} />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <p className={`mt-4 px-1 text-[10px] leading-5 ${muted}`}>
+            These preferences are stored on this device. Restaurant data, orders, staff, menu, billing and payment settings are unchanged.
+          </p>
+        </div>
+
+        <div className={`absolute bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t px-4 pb-[max(0.8rem,env(safe-area-inset-bottom))] pt-3 ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]/95' : 'border-neutral-200 bg-white/95'} backdrop-blur-xl`}>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={closeWithoutSaving}
+              className={`min-h-11 rounded-xl border text-xs font-semibold ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              className="min-h-11 rounded-xl text-xs font-semibold text-white shadow-sm"
+              style={{ backgroundColor: accent }}
+            >
+              Save changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Real-Time Restaurant Chat Widget Component
 function RestaurantChatWidget({ restaurantId }) {
   const AI_CATEGORIES = [
@@ -1612,7 +1967,7 @@ function OwnerTableQrSheet({
             </button>
 
             <div className="min-w-0 flex-1 text-center">
-              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-white/65">
+              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-neutral-500">
                 Owner Tools
               </p>
 
@@ -1632,7 +1987,7 @@ function OwnerTableQrSheet({
 
           <div className="mt-4 grid grid-cols-2 gap-2">
             <div className="rounded-2xl bg-white/12 p-3 backdrop-blur">
-              <p className="text-[8px] font-black uppercase tracking-wider text-white/60">
+              <p className="text-[8px] font-black uppercase tracking-wider text-neutral-500">
                 Registered
               </p>
 
@@ -1644,7 +1999,7 @@ function OwnerTableQrSheet({
             </div>
 
             <div className="rounded-2xl bg-white/12 p-3 backdrop-blur">
-              <p className="text-[8px] font-black uppercase tracking-wider text-white/60">
+              <p className="text-[8px] font-black uppercase tracking-wider text-neutral-500">
                 Selected Table
               </p>
 
@@ -1731,7 +2086,7 @@ function OwnerTableQrSheet({
                   </p>
 
                   {isRegistered && (
-                    <span className="rounded-full bg-[#eaf8ed] px-2 py-1 text-[7px] font-black text-[#0c831f]">
+                    <span className="rounded-full bg-orange-50 px-2 py-1 text-[8px] font-semibold text-orange-600">
                       REGISTERED
                     </span>
                   )}
@@ -1866,6 +2221,7 @@ export default function RestaurantDashboard() {
   const [isStoreOpen, setIsStoreOpen] = useState(true)
   const [savingStoreStatus, setSavingStoreStatus] = useState(false)
   const [mobileOwnerMenuOpen, setMobileOwnerMenuOpen] = useState(false)
+  const [experienceOpen, setExperienceOpen] = useState(false)
   const [tableQrOpen, setTableQrOpen] = useState(false)
 
   // Lifetime order date search.
@@ -4352,7 +4708,7 @@ export default function RestaurantDashboard() {
   }
 
   return (
-    <div className="dd-light-dashboard dd-owner-dashboard dd-owner-mobile-app dd-blinkit-owner min-h-[100dvh] bg-[#f5f6f8] text-neutral-900 font-sans">
+    <div className="dd-mobile-themeable dd-light-dashboard dd-owner-dashboard dd-owner-mobile-app dd-blinkit-owner dd-human-owner min-h-[100dvh] bg-[#f5f6f8] text-neutral-900 font-sans">
       <style jsx global>{`
         @media print {
           body * {
@@ -5052,13 +5408,78 @@ export default function RestaurantDashboard() {
         preload="auto"
       />
 
-      {/* PREMIUM OWNER MOBILE HEADER */}
+      <style jsx global>{`
+        .dd-human-owner .font-black { font-weight: 700 !important; }
+        .dd-human-owner { --dd-brand: #f97316; --dd-brand-strong: #ea580c; }
+        .dd-human-owner.dd-blinkit-owner {
+          --dd-green: var(--dd-brand);
+          --dd-green-dark: var(--dd-brand-strong);
+          --dd-green-soft: #fff7ed;
+          --dd-yellow: #f59e0b;
+          --dd-yellow-soft: #fffbeb;
+          --dd-bg: #f7f7f6;
+          --dd-card: #ffffff;
+          --dd-card-2: #fafaf9;
+          --dd-text: #18181b;
+          --dd-muted: #71717a;
+          --dd-line: #e7e5e4;
+        }
+        :root[data-theme='dark'] .dd-human-owner.dd-blinkit-owner {
+          --dd-bg: #0f0f10;
+          --dd-card: #171718;
+          --dd-card-2: #1d1d1f;
+          --dd-text: #f5f5f5;
+          --dd-muted: #a1a1aa;
+          --dd-line: #2a2a2d;
+          --dd-green-soft: rgba(249,115,22,.12);
+          --dd-yellow-soft: rgba(245,158,11,.12);
+        }
+        .dd-human-owner .dd-bk-top {
+          background: var(--dd-card) !important;
+          color: var(--dd-text) !important;
+          border-radius: 0 !important;
+          border-bottom: 1px solid var(--dd-line) !important;
+          box-shadow: none !important;
+          padding-bottom: 14px !important;
+        }
+        .dd-human-owner .dd-bk-top [class*='text-white'] { color: var(--dd-text) !important; }
+        .dd-human-owner .dd-bk-top [class*='bg-white/'] { background: var(--dd-card-2) !important; border: 1px solid var(--dd-line) !important; }
+        .dd-human-owner .dd-bk-icon-btn {
+          width: 40px !important; height: 40px !important; border-radius: 12px !important;
+          background: var(--dd-card-2) !important; color: var(--dd-text) !important; border-color: var(--dd-line) !important;
+          backdrop-filter: none !important;
+        }
+        .dd-human-owner .dd-bk-store-toggle {
+          min-height: 56px !important; border-radius: 14px !important; background: var(--dd-card-2) !important;
+          color: var(--dd-text) !important; border: 1px solid var(--dd-line) !important; box-shadow: none !important;
+        }
+        .dd-human-owner .dd-bk-card, .dd-human-owner .dd-bk-action, .dd-human-owner .dd-bk-sheet-action {
+          border-radius: 14px !important; box-shadow: none !important; border-color: var(--dd-line) !important;
+        }
+        .dd-human-owner .dd-bk-action { min-width: 118px !important; }
+        .dd-human-owner .dd-bk-action-icon { border-radius: 10px !important; }
+        .dd-human-owner .dd-bk-stat [class*='rounded-2xl'] { border-radius: 10px !important; }
+        .dd-human-owner [class*='shadow-xl'], .dd-human-owner [class*='shadow-2xl'] { box-shadow: 0 8px 24px rgba(0,0,0,.12) !important; }
+        .dd-human-owner .dd-owner-mobile-bottom-nav {
+          background: rgba(255,255,255,.97) !important; border-color: #e7e5e4 !important; box-shadow: 0 -4px 16px rgba(0,0,0,.05) !important;
+        }
+        :root[data-theme='dark'] .dd-human-owner .dd-owner-mobile-bottom-nav {
+          background: rgba(17,17,18,.97) !important; border-color: #2a2a2d !important; box-shadow: 0 -4px 18px rgba(0,0,0,.2) !important;
+        }
+        .dd-human-owner .dd-owner-mobile-bottom-nav button { border-radius: 10px !important; }
+        .dd-human-owner .dd-bk-nav-active { color: var(--dd-brand) !important; background: transparent !important; }
+        .dd-human-owner .dd-bk-more-sheet { border-radius: 20px 20px 0 0 !important; box-shadow: 0 -10px 36px rgba(0,0,0,.2) !important; }
+        .dd-human-owner [class*='bg-gradient-to-br'] { background-image: none !important; }
+        .dd-human-owner button, .dd-human-owner input, .dd-human-owner select, .dd-human-owner textarea { -webkit-tap-highlight-color: transparent; }
+      `}</style>
+
+      {/* OWNER MOBILE HEADER */}
       <header className="dd-dashboard-header">
         <div className="dd-bk-top dd-bk-shell">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/70">
-                Digital Dining · Owner
+                Owner workspace
               </p>
 
               <h1 className="mt-1 truncate text-[20px] font-black tracking-tight text-white">
@@ -5087,7 +5508,7 @@ export default function RestaurantDashboard() {
                 className="dd-bk-icon-btn"
                 aria-label="Owner profile"
               >
-                👤
+                <AppIcon name="user" className="h-5 w-5" />
               </button>
             </div>
           </div>
@@ -5098,7 +5519,7 @@ export default function RestaurantDashboard() {
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
                     isStoreOpen
-                      ? 'bg-[#0c831f] animate-pulse'
+                      ? 'bg-orange-500'
                       : 'bg-red-500'
                   }`}
                 />
@@ -5125,7 +5546,7 @@ export default function RestaurantDashboard() {
               onClick={handleOwnerStoreToggle}
               className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:opacity-60 ${
                 isStoreOpen
-                  ? 'bg-[#0c831f]'
+                  ? 'bg-orange-500'
                   : 'bg-neutral-300'
               }`}
             >
@@ -5147,7 +5568,7 @@ export default function RestaurantDashboard() {
               }
               className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
             >
-              ▦ Table QR
+              <span className="inline-flex items-center gap-1.5"><AppIcon name="qr" className="h-4 w-4" />Table QR</span>
             </button>
 
             <button
@@ -5155,7 +5576,7 @@ export default function RestaurantDashboard() {
               onClick={() => openOwnerMobileTab('billing')}
               className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
             >
-              🧾 Billing
+              <span className="inline-flex items-center gap-1.5"><AppIcon name="billing" className="h-4 w-4" />Billing</span>
             </button>
 
             <button
@@ -5163,7 +5584,7 @@ export default function RestaurantDashboard() {
               onClick={() => openOwnerMobileTab('settlements')}
               className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
             >
-              ↗ Reports
+              <span className="inline-flex items-center gap-1.5"><AppIcon name="chart" className="h-4 w-4" />Reports</span>
             </button>
 
             <button
@@ -5316,7 +5737,7 @@ export default function RestaurantDashboard() {
 
         {dashboardMode === 'restaurant' && (
           <div className="contents">
-        {/* PREMIUM OWNER HOME */}
+        {/* OWNER MOBILE HOME */}
         {activeTab === 'owner-home' && (
           <div className="space-y-5">
             <section className="pt-1">
@@ -5333,19 +5754,19 @@ export default function RestaurantDashboard() {
                 <button
                   type="button"
                   onClick={() => openOwnerMobileTab('settlements')}
-                  className="text-[9px] font-black text-[#0c831f]"
+                  className="text-[10px] font-semibold text-orange-600"
                 >
                   Full reports →
                 </button>
               </div>
 
               <div className="dd-keep-two mt-3 grid grid-cols-2 gap-3">
-                <div className="dd-bk-card dd-bk-stat p-4 text-[#0c831f]">
+                <div className="dd-bk-card dd-bk-stat p-4 text-orange-600">
                   <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#eaf8ed] text-lg">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-sm font-semibold text-orange-600">
                       ₹
                     </div>
-                    <span className="rounded-full bg-[#eaf8ed] px-2 py-1 text-[7px] font-black text-[#0c831f]">
+                    <span className="rounded-full bg-orange-50 px-2 py-1 text-[8px] font-semibold text-orange-600">
                       TODAY
                     </span>
                   </div>
@@ -5361,8 +5782,8 @@ export default function RestaurantDashboard() {
 
                 <div className="dd-bk-card dd-bk-stat p-4 text-[#2563eb]">
                   <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-lg">
-                      🧾
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                      <AppIcon name="orders" className="h-5 w-5" />
                     </div>
                     <span className="rounded-full bg-blue-50 px-2 py-1 text-[7px] font-black text-blue-600">
                       LIVE
@@ -5380,8 +5801,8 @@ export default function RestaurantDashboard() {
 
                 <div className="dd-bk-card dd-bk-stat p-4 text-[#f59e0b]">
                   <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-lg">
-                      👨‍🍳
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                      <AppIcon name="kitchen" className="h-5 w-5" />
                     </div>
                     <span className="rounded-full bg-amber-50 px-2 py-1 text-[7px] font-black text-amber-600">
                       KDS
@@ -5399,8 +5820,8 @@ export default function RestaurantDashboard() {
 
                 <div className="dd-bk-card dd-bk-stat p-4 text-[#8b5cf6]">
                   <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-50 text-lg">
-                      🪑
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                      <AppIcon name="tables" className="h-5 w-5" />
                     </div>
                     <span className="rounded-full bg-violet-50 px-2 py-1 text-[7px] font-black text-violet-600">
                       TABLES
@@ -5432,12 +5853,12 @@ export default function RestaurantDashboard() {
 
               <div className="dd-bk-scroll mt-3 flex gap-3 pb-1">
                 {[
-                  ['menu', '🍔', 'Menu', `${availableMenuCount} live`, '#eaf8ed'],
-                  ['tables', '🪑', 'Tables', `${occupiedTableCount} occupied`, '#fff7d6'],
-                  ['billing', '🧾', 'Billing', 'Create bills', '#eef4ff'],
-                  ['offers', '🔥', 'Offers', `${activeOfferCount} active`, '#fff0ec'],
-                  ['staff-access', '▦', 'Staff QR', 'Quick login', '#f5efff'],
-                  ['taxes', '₹', 'Taxes', 'GST & packing', '#eaf8ed'],
+                  ['menu', 'menu', 'Menu', `${availableMenuCount} live`, '#fff7ed'],
+                  ['tables', 'tables', 'Tables', `${occupiedTableCount} occupied`, '#fffbeb'],
+                  ['billing', 'billing', 'Billing', 'Create bills', '#eff6ff'],
+                  ['offers', 'tag', 'Offers', `${activeOfferCount} active`, '#fff1f2'],
+                  ['staff-access', 'qr', 'Staff QR', 'Quick login', '#f5f3ff'],
+                  ['taxes', 'card', 'Taxes', 'GST & packing', '#f5f5f4'],
                 ].map(([tabId, icon, title, sub, background]) => (
                   <button
                     key={tabId}
@@ -5449,7 +5870,7 @@ export default function RestaurantDashboard() {
                       className="dd-bk-action-icon"
                       style={{ background }}
                     >
-                      {icon}
+                      <AppIcon name={icon} className="h-5 w-5" />
                     </span>
 
                     <span className="block text-[11px] font-black text-neutral-900">
@@ -5466,16 +5887,16 @@ export default function RestaurantDashboard() {
 
             {/* LIFETIME ORDER DATE SEARCH */}
             <section className="dd-bk-card overflow-hidden">
-              <div className="bg-gradient-to-br from-[#101b12] via-[#142417] to-[#0c831f] p-4 text-white">
+              <div className="border-b border-neutral-200 bg-neutral-50 p-4 text-neutral-900 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#f8cb46] text-lg text-neutral-900">
-                        🔎
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-700">
+                        <AppIcon name="search" className="h-5 w-5" />
                       </span>
 
                       <div>
-                        <p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#f8cb46]">
+                        <p className="text-[8px] font-black uppercase tracking-[0.18em] text-orange-600">
                           Lifetime Order Search
                         </p>
 
@@ -5485,14 +5906,14 @@ export default function RestaurantDashboard() {
                       </div>
                     </div>
 
-                    <p className="mt-3 max-w-sm text-[9px] font-semibold leading-5 text-white/65">
+                    <p className="mt-3 max-w-sm text-[9px] font-semibold leading-5 text-neutral-500">
                       Search the restaurant's full order history by date. For example, select 11/12/2000 to retrieve orders saved on that day.
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-[18px] bg-white/10 p-3 backdrop-blur">
-                  <label className="block text-[8px] font-black uppercase tracking-wider text-white/65">
+                <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950">
+                  <label className="block text-[8px] font-black uppercase tracking-wider text-neutral-500">
                     Order Date
                   </label>
 
@@ -5506,7 +5927,7 @@ export default function RestaurantDashboard() {
                         )
                         setOrderHistoryError('')
                       }}
-                      className="min-h-12 flex-1 rounded-2xl border border-white/15 bg-white px-4 text-base font-black text-neutral-900 outline-none"
+                      className="min-h-12 flex-1 rounded-xl border border-neutral-300 bg-white px-4 text-base font-semibold text-neutral-900 outline-none focus:border-orange-500 dark:border-neutral-700"
                     />
 
                     <button
@@ -5516,7 +5937,7 @@ export default function RestaurantDashboard() {
                         orderHistoryLoading ||
                         !orderHistoryDate
                       }
-                      className="min-h-12 rounded-2xl bg-[#f8cb46] px-5 text-[10px] font-black text-neutral-900 shadow-lg shadow-black/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="min-h-12 rounded-xl bg-orange-500 px-5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {orderHistoryLoading
                         ? 'Searching...'
@@ -5526,7 +5947,7 @@ export default function RestaurantDashboard() {
 
                   {orderHistoryDate && (
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <p className="text-[8px] font-bold text-white/60">
+                      <p className="text-[8px] font-bold text-neutral-500">
                         Selected: {formatOrderHistoryDate(orderHistoryDate)}
                       </p>
 
@@ -5534,7 +5955,7 @@ export default function RestaurantDashboard() {
                         type="button"
                         onClick={clearLifetimeOrderSearch}
                         disabled={orderHistoryLoading}
-                        className="text-[8px] font-black text-[#f8cb46] disabled:opacity-50"
+                        className="text-[8px] font-black text-orange-600 disabled:opacity-50"
                       >
                         Clear
                       </button>
@@ -5806,7 +6227,7 @@ export default function RestaurantDashboard() {
                       </p>
                     </div>
                   </div>
-                  <span className="text-neutral-400">›</span>
+                  <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
                 </button>
 
                 <button
@@ -5827,7 +6248,7 @@ export default function RestaurantDashboard() {
                       </p>
                     </div>
                   </div>
-                  <span className="text-neutral-400">›</span>
+                  <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
                 </button>
 
                 <button
@@ -5848,7 +6269,7 @@ export default function RestaurantDashboard() {
                       </p>
                     </div>
                   </div>
-                  <span className="text-neutral-400">›</span>
+                  <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
                 </button>
               </div>
             </section>
@@ -5856,7 +6277,7 @@ export default function RestaurantDashboard() {
             <section className="dd-bk-card dd-bk-plan overflow-hidden p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#f8cb46]">
+                  <p className="text-[8px] font-black uppercase tracking-[0.18em] text-orange-600">
                     Membership
                   </p>
 
@@ -5864,7 +6285,7 @@ export default function RestaurantDashboard() {
                     {currentPlanDisplay}
                   </h3>
 
-                  <p className="mt-1 text-[9px] font-semibold text-white/60">
+                  <p className="mt-1 text-[9px] font-semibold text-neutral-500">
                     ₹{currentPlanMonthlyPrice.toLocaleString('en-IN')} / month
                   </p>
                 </div>
@@ -8589,61 +9010,61 @@ export default function RestaurantDashboard() {
             <button
               type="button"
               onClick={() => openOwnerMobileTab('owner-home')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black ${
+              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
                 activeTab === 'owner-home'
                   ? 'dd-bk-nav-active'
                   : 'text-neutral-500'
               }`}
             >
-              <span className="text-[18px] leading-none">⌂</span>
+              <AppIcon name="home" className="h-5 w-5" />
               <span className="mt-1">Home</span>
             </button>
 
             <button
               type="button"
               onClick={() => openOwnerMobileTab('menu')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black ${
+              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
                 activeTab === 'menu'
                   ? 'dd-bk-nav-active'
                   : 'text-neutral-500'
               }`}
             >
-              <span className="text-[18px] leading-none">🍔</span>
+              <AppIcon name="menu" className="h-5 w-5" />
               <span className="mt-1">Menu</span>
             </button>
 
             <button
               type="button"
               onClick={() => openOwnerMobileTab('tables')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black ${
+              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
                 activeTab === 'tables'
                   ? 'dd-bk-nav-active'
                   : 'text-neutral-500'
               }`}
             >
-              <span className="text-[18px] leading-none">🪑</span>
+              <AppIcon name="tables" className="h-5 w-5" />
               <span className="mt-1">Tables</span>
             </button>
 
             <button
               type="button"
               onClick={() => openOwnerMobileTab('billing')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black ${
+              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
                 activeTab === 'billing'
                   ? 'dd-bk-nav-active'
                   : 'text-neutral-500'
               }`}
             >
-              <span className="text-[18px] leading-none">🧾</span>
+              <AppIcon name="billing" className="h-5 w-5" />
               <span className="mt-1">Billing</span>
             </button>
 
             <button
               type="button"
               onClick={() => setMobileOwnerMenuOpen(true)}
-              className="flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[8px] font-black text-neutral-500"
+              className="flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium text-neutral-500"
             >
-              <span className="text-[18px] leading-none">☷</span>
+              <AppIcon name="more" className="h-5 w-5" />
               <span className="mt-1">More</span>
             </button>
           </nav>
@@ -8662,24 +9083,24 @@ export default function RestaurantDashboard() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#0c831f]">
-                      Owner Control Center
+                      Owner menu
                     </p>
 
                     <h3 className="mt-1 text-[20px] font-black tracking-tight text-neutral-900">
-                      Everything else
+                      More
                     </h3>
 
                     <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                      Reports, people, payments, growth and settings.
+                      Reports, staff, payments and app settings.
                     </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => setMobileOwnerMenuOpen(false)}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-600"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900"
                   >
-                    ✕
+                    <AppIcon name="close" className="h-4 w-4" />
                   </button>
                 </div>
 
@@ -8690,10 +9111,10 @@ export default function RestaurantDashboard() {
 
                   <div className="dd-keep-two grid grid-cols-2 gap-2">
                     {[
-                      ['settlements', '📊', 'Reports', 'Sales & analytics'],
-                      ['staff-access', '▦', 'Staff Login QR', 'Manager / waiter / kitchen'],
-                      ['taxes', '₹', 'Taxes', 'GST & packing'],
-                      ['billing', '🧾', 'Billing', 'Bills & signatures'],
+                      ['settlements', 'chart', 'Reports', 'Sales & analytics'],
+                      ['staff-access', 'qr', 'Staff Login QR', 'Manager / waiter / kitchen'],
+                      ['taxes', 'card', 'Taxes', 'GST & packing'],
+                      ['billing', 'billing', 'Billing', 'Bills & signatures'],
                     ].map(([tabId, icon, label, sub]) => (
                       <button
                         key={tabId}
@@ -8701,7 +9122,7 @@ export default function RestaurantDashboard() {
                         onClick={() => openOwnerMobileTab(tabId)}
                         className="dd-bk-sheet-action"
                       >
-                        <div className="text-xl">{icon}</div>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"><AppIcon name={icon} className="h-5 w-5" /></div>
                         <div className="mt-2 text-[10px] font-black text-neutral-900">
                           {label}
                         </div>
@@ -8720,12 +9141,12 @@ export default function RestaurantDashboard() {
 
                   <div className="dd-keep-two grid grid-cols-2 gap-2">
                     {[
-                      ['offers', '🔥', 'Offers', `${activeOfferCount} active`],
-                      ['gateway', '💳', 'Payments', 'Gateway settings'],
+                      ['offers', 'tag', 'Offers', `${activeOfferCount} active`],
+                      ['gateway', 'card', 'Payments', 'Gateway settings'],
                       ...(planFeatures.advanced
                         ? [
-                            ['staff', '👥', 'Managers', `${staffList.length} accounts`],
-                            ['swiggy-sync', '↻', 'Menu Sync', 'Import menu data'],
+                            ['staff', 'users', 'Managers', `${staffList.length} accounts`],
+                            ['swiggy-sync', 'sync', 'Menu Sync', 'Import menu data'],
                           ]
                         : []),
                     ].map(([tabId, icon, label, sub]) => (
@@ -8735,7 +9156,7 @@ export default function RestaurantDashboard() {
                         onClick={() => openOwnerMobileTab(tabId)}
                         className="dd-bk-sheet-action"
                       >
-                        <div className="text-xl">{icon}</div>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"><AppIcon name={icon} className="h-5 w-5" /></div>
                         <div className="mt-2 text-[10px] font-black text-neutral-900">
                           {label}
                         </div>
@@ -8745,6 +9166,36 @@ export default function RestaurantDashboard() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="mt-5">
+                  <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
+                    Personalization
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileOwnerMenuOpen(false)
+                      setExperienceOpen(true)
+                    }}
+                    className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
+                        <AppIcon name="settings" className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <p className="text-[11px] font-black text-neutral-900">
+                          App Settings
+                        </p>
+                        <p className="mt-1 text-[8px] font-semibold text-neutral-500">
+                          Appearance, text and notifications
+                        </p>
+                      </div>
+                    </div>
+                    <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
+                  </button>
                 </div>
 
                 {planFeatures.advanced && (
@@ -8759,8 +9210,8 @@ export default function RestaurantDashboard() {
                       className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
                     >
                       <div className="flex items-center gap-3">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fff7d6] text-xl">
-                          🔔
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
+                          <AppIcon name="bell" className="h-5 w-5" />
                         </span>
 
                         <div>
@@ -8773,7 +9224,7 @@ export default function RestaurantDashboard() {
                         </div>
                       </div>
 
-                      <span className="text-neutral-400">›</span>
+                      <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
                     </button>
                   </div>
                 )}
@@ -8788,8 +9239,8 @@ export default function RestaurantDashboard() {
                     className="mt-5 flex w-full items-center justify-between rounded-[22px] bg-blue-600 p-4 text-left text-white shadow-lg shadow-blue-600/20"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-xl">
-                        🏨
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
+                        <AppIcon name="hotel" className="h-5 w-5" />
                       </span>
 
                       <div>
@@ -8802,7 +9253,7 @@ export default function RestaurantDashboard() {
                       </div>
                     </div>
 
-                    <span>›</span>
+                    <AppIcon name="chevron" className="h-4 w-4" />
                   </button>
                 )}
 
@@ -8818,6 +9269,8 @@ export default function RestaurantDashboard() {
           )}
         </>
       )}
+
+      <MobileExperienceSettings open={experienceOpen} onClose={() => setExperienceOpen(false)} portal="Owner" />
 
       {tableQrOpen && (
         <OwnerTableQrSheet

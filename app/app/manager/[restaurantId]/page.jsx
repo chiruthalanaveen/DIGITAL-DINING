@@ -34,6 +34,362 @@ function Input({ label, value, onChange, type = 'text', placeholder = '' }) {
   )
 }
 
+function AppIcon({ name, className = 'h-5 w-5', strokeWidth = 1.8 }) {
+  const common = {
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  }
+
+  const icons = {
+    home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V21h13V9.5" /><path d="M9.5 21v-7h5v7" /></>,
+    orders: <><path d="M6 3.5h12v17H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
+    tables: <><rect x="3.5" y="4" width="17" height="16" rx="2" /><path d="M3.5 10h17M9 4v16M15 4v16" /></>,
+    menu: <><path d="M5 7h14M5 12h14M5 17h14" /></>,
+    more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
+    user: <><circle cx="12" cy="8" r="3.25" /><path d="M5.5 20c.8-4 3-6 6.5-6s5.7 2 6.5 6" /></>,
+    refresh: <><path d="M20 7v5h-5" /><path d="M19 12a7 7 0 1 1-2-5.2L20 9" /></>,
+    chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+    qr: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" /><path d="M14 14h2v2h-2zM18 14h2v6h-2M14 18h2v2h-2" /></>,
+    billing: <><path d="M6 3.5h12v17l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
+    tag: <><path d="M4 4h7l9 9-7 7-9-9z" /><circle cx="8.5" cy="8.5" r="1.2" /></>,
+    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 9h18M7 15h4" /></>,
+    users: <><circle cx="9" cy="8.5" r="3" /><path d="M3.5 19c.6-3.4 2.5-5 5.5-5s4.9 1.6 5.5 5" /><path d="M15.5 6.2a2.7 2.7 0 0 1 0 5.2M17 14.5c2.1.5 3.3 1.9 3.7 4.5" /></>,
+    sync: <><path d="M20 7h-5V2" /><path d="M20 7a8 8 0 0 0-13.6-2.6L4 7" /><path d="M4 17h5v5" /><path d="M4 17a8 8 0 0 0 13.6 2.6L20 17" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2-1.7.7-1.9-.9L1.1 6l.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2h3l.7-2 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z" transform="translate(2.5 0) scale(.8)" /></>,
+    bell: <><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" /><path d="M10 19a2.3 2.3 0 0 0 4 0" /></>,
+    hotel: <><path d="M4 21V6h10v15M14 11h6v10M7 9h1M10 9h1M7 13h1M10 13h1M7 17h1M10 17h1M17 14h1M17 17h1" /></>,
+    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
+    logout: <><path d="M10 5H5v14h5" /><path d="M13 8l4 4-4 4M8 12h9" /></>,
+    kitchen: <><path d="M5 12h14v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3z" /><path d="M7 12V9a5 5 0 0 1 10 0v3M9 6.5V4M15 6.5V4" /></>,
+    palette: <><path d="M12 3a9 9 0 1 0 0 18h1.3a2 2 0 0 0 1.2-3.6c-.7-.5-.4-1.5.4-1.7H17a4 4 0 0 0 4-4A8.7 8.7 0 0 0 12 3Z" /><circle cx="7.5" cy="10" r=".8" fill="currentColor" stroke="none" /><circle cx="10" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="14" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="17" cy="10" r=".8" fill="currentColor" stroke="none" /></>,
+    type: <><path d="M5 6V4h14v2M9 20h6M12 4v16" /></>,
+    moon: <path d="M20 15.2A8 8 0 0 1 8.8 4 8 8 0 1 0 20 15.2Z" />,
+    sun: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
+    volume: <><path d="M5 10v4h4l5 4V6l-5 4z" /><path d="M17 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" /></>,
+    notifications: <><path d="M6 9a6 6 0 0 1 12 0v4l2 3H4l2-3z" /><path d="M10 20h4" /></>,
+    chevron: <path d="m9 18 6-6-6-6" />,
+    close: <path d="M6 6l12 12M18 6 6 18" />,
+    check: <path d="m5 12 4 4L19 6" />,
+    store: <><path d="M4 10v10h16V10" /><path d="M3 10l2-6h14l2 6" /><path d="M8 20v-6h8v6" /></>,
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} {...common}>
+      {icons[name] || icons.more}
+    </svg>
+  )
+}
+
+const MOBILE_EXPERIENCE_KEY = 'digital-dine-mobile-experience-v1'
+
+const DEFAULT_MOBILE_EXPERIENCE = {
+  darkMode: true,
+  theme: 'orange',
+  textSize: 'normal',
+  uiStyle: 'soft',
+  pushNotifications: true,
+  orderMessages: true,
+  promotions: false,
+  sound: true,
+}
+
+function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
+  const [saved, setSaved] = useState(DEFAULT_MOBILE_EXPERIENCE)
+  const [draft, setDraft] = useState(DEFAULT_MOBILE_EXPERIENCE)
+
+  const themeOptions = [
+    { id: 'orange', label: 'Orange', color: '#f97316' },
+    { id: 'emerald', label: 'Green', color: '#059669' },
+    { id: 'ocean', label: 'Blue', color: '#2563eb' },
+    { id: 'violet', label: 'Violet', color: '#7c3aed' },
+    { id: 'rose', label: 'Rose', color: '#e11d48' },
+  ]
+
+  const normalize = (value) => ({
+    ...DEFAULT_MOBILE_EXPERIENCE,
+    ...(value && typeof value === 'object' ? value : {}),
+  })
+
+  const applyExperience = (prefs) => {
+    if (typeof document === 'undefined') return
+    const root = document.documentElement
+    root.dataset.ddAppTheme = prefs.theme
+    root.dataset.ddUiStyle = prefs.uiStyle
+    root.dataset.ddTextSize = prefs.textSize
+    root.dataset.ddDarkMode = prefs.darkMode ? 'true' : 'false'
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const parsed = JSON.parse(localStorage.getItem(MOBILE_EXPERIENCE_KEY) || '{}')
+      const next = normalize(parsed)
+      setSaved(next)
+      setDraft(next)
+      applyExperience(next)
+    } catch {
+      applyExperience(DEFAULT_MOBILE_EXPERIENCE)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    setDraft(saved)
+  }, [open, saved])
+
+  const setPreview = (patch) => {
+    setDraft((current) => {
+      const next = { ...current, ...patch }
+      applyExperience(next)
+      return next
+    })
+  }
+
+  const closeWithoutSaving = () => {
+    setDraft(saved)
+    applyExperience(saved)
+    onClose?.()
+  }
+
+  const save = () => {
+    const next = normalize(draft)
+    setSaved(next)
+    applyExperience(next)
+    try {
+      localStorage.setItem(MOBILE_EXPERIENCE_KEY, JSON.stringify(next))
+    } catch (error) {
+      console.error('Unable to save mobile experience preferences:', error)
+    }
+    onClose?.()
+  }
+
+  if (!open) return null
+
+  const accent = themeOptions.find((item) => item.id === draft.theme)?.color || '#f97316'
+  const surface = draft.darkMode ? 'bg-[#151515] border-white/10 text-white' : 'bg-white border-neutral-200 text-neutral-950'
+  const page = draft.darkMode ? 'bg-[#0d0d0e] text-white' : 'bg-[#f5f5f4] text-neutral-950'
+  const muted = draft.darkMode ? 'text-neutral-400' : 'text-neutral-500'
+
+  const Toggle = ({ value, onChange, label }) => (
+    <button
+      type="button"
+      role="switch"
+      aria-label={label}
+      aria-checked={Boolean(value)}
+      onClick={() => onChange(!value)}
+      className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${
+        value ? 'border-transparent' : draft.darkMode ? 'border-white/10 bg-neutral-800' : 'border-neutral-300 bg-neutral-200'
+      }`}
+      style={value ? { backgroundColor: accent } : undefined}
+    >
+      <span
+        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+          value ? 'translate-x-[23px]' : 'translate-x-[3px]'
+        }`}
+      />
+    </button>
+  )
+
+  return (
+    <div className={`fixed inset-0 z-[120] ${page}`}>
+      <style jsx global>{`
+        html[data-dd-text-size='small'] .dd-mobile-themeable { font-size: 14px; }
+        html[data-dd-text-size='normal'] .dd-mobile-themeable { font-size: 16px; }
+        html[data-dd-text-size='large'] .dd-mobile-themeable { font-size: 18px; }
+        html[data-dd-ui-style='rounded'] .dd-mobile-themeable .dd-experience-surface { border-radius: 20px; }
+        html[data-dd-ui-style='soft'] .dd-mobile-themeable .dd-experience-surface { border-radius: 14px; }
+        html[data-dd-ui-style='crisp'] .dd-mobile-themeable .dd-experience-surface { border-radius: 8px; }
+      `}</style>
+
+      <div className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden">
+        <header className={`shrink-0 border-b px-4 pb-3 pt-[max(0.85rem,env(safe-area-inset-top))] ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]' : 'border-neutral-200 bg-white'}`}>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={closeWithoutSaving}
+              className={`flex h-10 w-10 items-center justify-center rounded-xl border ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
+              aria-label="Back"
+            >
+              <AppIcon name="chevron" className="h-5 w-5 rotate-180" />
+            </button>
+            <div className="min-w-0">
+              <p className={`text-[11px] font-medium ${muted}`}>{portal}</p>
+              <h2 className="text-base font-semibold">App settings</h2>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-4 py-5 pb-28">
+          <section>
+            <div className="mb-2 px-1">
+              <h3 className="text-sm font-semibold">Appearance</h3>
+              <p className={`mt-0.5 text-[11px] ${muted}`}>Choose how this app looks on this device.</p>
+            </div>
+
+            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
+              <div className={`flex items-center justify-between gap-4 p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+                    <AppIcon name={draft.darkMode ? 'moon' : 'sun'} className="h-[18px] w-[18px]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold">Dark mode</p>
+                    <p className={`mt-0.5 text-[10px] ${muted}`}>Use a darker app surface.</p>
+                  </div>
+                </div>
+                <Toggle value={draft.darkMode} onChange={(value) => setPreview({ darkMode: value })} label="Dark mode" />
+              </div>
+
+              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+                    <AppIcon name="palette" className="h-[18px] w-[18px]" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-semibold">Accent color</p>
+                    <p className={`mt-0.5 text-[10px] ${muted}`}>Used for selected controls and switches.</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-5 gap-2">
+                  {themeOptions.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setPreview({ theme: item.id })}
+                      className={`flex min-h-14 flex-col items-center justify-center rounded-xl border px-1 transition ${
+                        draft.theme === item.id
+                          ? draft.darkMode ? 'border-white/30 bg-white/5' : 'border-neutral-300 bg-neutral-50'
+                          : draft.darkMode ? 'border-white/10' : 'border-neutral-200'
+                      }`}
+                      aria-label={`${item.label} accent`}
+                    >
+                      <span className="h-5 w-5 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className={`mt-1.5 text-[8px] font-medium ${muted}`}>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+                    <AppIcon name="type" className="h-[18px] w-[18px]" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-semibold">Text size</p>
+                    <p className={`mt-0.5 text-[10px] ${muted}`}>Adjust the app's reading size.</p>
+                  </div>
+                </div>
+                <div className={`mt-4 grid grid-cols-3 rounded-xl p-1 ${draft.darkMode ? 'bg-neutral-900' : 'bg-neutral-100'}`}>
+                  {['small', 'normal', 'large'].map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setPreview({ textSize: id })}
+                      className={`min-h-10 rounded-lg text-[11px] font-medium capitalize transition ${
+                        draft.textSize === id
+                          ? draft.darkMode ? 'bg-neutral-700 text-white shadow-sm' : 'bg-white text-neutral-950 shadow-sm'
+                          : muted
+                      }`}
+                    >
+                      {id}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
+                <p className="text-[13px] font-semibold">Card corners</p>
+                <p className={`mt-0.5 text-[10px] ${muted}`}>A small visual preference; features stay unchanged.</p>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {[
+                    ['rounded', 'Rounded'],
+                    ['soft', 'Soft'],
+                    ['crisp', 'Compact'],
+                  ].map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setPreview({ uiStyle: id })}
+                      className={`min-h-11 border px-2 text-[10px] font-medium transition ${
+                        id === 'rounded' ? 'rounded-2xl' : id === 'soft' ? 'rounded-xl' : 'rounded-md'
+                      } ${
+                        draft.uiStyle === id
+                          ? 'text-white'
+                          : draft.darkMode ? 'border-white/10 text-neutral-400' : 'border-neutral-200 text-neutral-600'
+                      }`}
+                      style={draft.uiStyle === id ? { backgroundColor: accent, borderColor: accent } : undefined}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6">
+            <div className="mb-2 px-1">
+              <h3 className="text-sm font-semibold">Notifications</h3>
+              <p className={`mt-0.5 text-[11px] ${muted}`}>Control which app alerts are enabled.</p>
+            </div>
+
+            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
+              {[
+                ['pushNotifications', 'notifications', 'Push notifications', 'General app and order alerts'],
+                ['orderMessages', 'orders', 'Order activity', 'New orders and status changes'],
+                ['promotions', 'tag', 'Product updates', 'Plan and feature announcements'],
+                ['sound', 'volume', 'Alert sound', 'Play sound for supported alerts'],
+              ].map(([key, icon, title, subtitle], index) => (
+                <div key={key} className={`flex items-center justify-between gap-4 p-4 ${index ? draft.darkMode ? 'border-t border-white/10' : 'border-t border-neutral-200' : ''}`}>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
+                      <AppIcon name={icon} className="h-[18px] w-[18px]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold">{title}</p>
+                      <p className={`mt-0.5 truncate text-[10px] ${muted}`}>{subtitle}</p>
+                    </div>
+                  </div>
+                  <Toggle value={draft[key]} onChange={(value) => setPreview({ [key]: value })} label={title} />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <p className={`mt-4 px-1 text-[10px] leading-5 ${muted}`}>
+            These preferences are stored on this device. Restaurant data, orders, staff, menu, billing and payment settings are unchanged.
+          </p>
+        </div>
+
+        <div className={`absolute bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t px-4 pb-[max(0.8rem,env(safe-area-inset-bottom))] pt-3 ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]/95' : 'border-neutral-200 bg-white/95'} backdrop-blur-xl`}>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={closeWithoutSaving}
+              className={`min-h-11 rounded-xl border text-xs font-semibold ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              className="min-h-11 rounded-xl text-xs font-semibold text-white shadow-sm"
+              style={{ backgroundColor: accent }}
+            >
+              Save changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 function Stat({ title, value, accent = 'text-white' }) {
   return (
     <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
@@ -664,7 +1020,7 @@ function RestaurantChatWidget({ restaurantId }) {
                       setNewMessage(e.target.value)
                     }
                     disabled={aiLoading || !aiIssueCategory}
-                    className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-violet-500 disabled:opacity-50"
+                    className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500 disabled:opacity-50"
                   />
                   <button
                     type="submit"
@@ -800,6 +1156,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const [profileOpen, setProfileOpen] = useState(false)
   const [profileName, setProfileName] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
+  const [experienceOpen, setExperienceOpen] = useState(false)
   const [restaurantCode, setRestaurantCode] = useState('')
   const [loginUserId, setLoginUserId] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -1969,7 +2326,7 @@ export default function RestaurantManagerDashboard({ params }) {
     if (value === 'ready') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
     if (value === 'completed' || value === 'delivered') return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
     if (value === 'cancelled') return 'border-red-500/30 bg-red-500/10 text-red-300'
-    if (value === 'preparing') return 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+    if (value === 'preparing') return 'border-violet-500/30 bg-violet-500/10 text-orange-300'
     if (value === 'confirmed') return 'border-blue-500/30 bg-blue-500/10 text-blue-300'
     return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
   }
@@ -2128,14 +2485,31 @@ export default function RestaurantManagerDashboard({ params }) {
     // - 100dvh follows the real phone viewport height
     // - 100svw prevents horizontal overflow on small screens
     // - safe-area env() keeps controls clear of Android/iOS system areas
-    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 text-neutral-100">
-      <div className="mx-auto min-h-[100dvh] w-full max-w-[480px] overflow-x-hidden bg-neutral-950 pb-[calc(7.25rem+env(safe-area-inset-bottom))]">
-        <header className="sticky top-0 z-40 w-full border-b border-neutral-800/90 bg-neutral-950/95 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-4">
+    <main className="dd-mobile-themeable dd-human-manager min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#0f0f10] text-neutral-100">
+      <style jsx global>{`
+        .dd-human-manager { background: #0f0f10 !important; }
+        .dd-human-manager .font-black { font-weight: 700 !important; }
+        .dd-human-manager .shadow-xl,
+        .dd-human-manager .shadow-2xl { box-shadow: 0 8px 24px rgba(0,0,0,.18) !important; }
+        .dd-human-manager [class*="rounded-[30px]"],
+        .dd-human-manager [class*="rounded-[28px]"],
+        .dd-human-manager [class*="rounded-[26px]"],
+        .dd-human-manager [class*="rounded-[24px]"],
+        .dd-human-manager [class*="rounded-[22px]"] { border-radius: 16px !important; }
+        .dd-human-manager .dd-human-nav button { border-radius: 10px !important; }
+        .dd-human-manager .dd-human-nav .dd-nav-indicator { transition: opacity .16s ease, transform .16s ease; }
+        .dd-human-manager button, .dd-human-manager input, .dd-human-manager select, .dd-human-manager textarea { -webkit-tap-highlight-color: transparent; }
+        @media (prefers-reduced-motion: reduce) {
+          .dd-human-manager * { scroll-behavior: auto !important; }
+        }
+      `}</style>
+      <div className="mx-auto min-h-[100dvh] w-full max-w-[480px] overflow-x-hidden bg-[#0f0f10] pb-[calc(7rem+env(safe-area-inset-bottom))]">
+        <header className="sticky top-0 z-40 w-full border-b border-neutral-800 bg-[#0f0f10]/96 px-4 pb-3 pt-[max(0.8rem,env(safe-area-inset-top))] backdrop-blur-xl">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-400">Digital Dine · Manager</p>
-              <h1 className="mt-1 truncate text-lg font-black text-white">{restaurant?.name || 'Restaurant'}</h1>
-              <p className="mt-0.5 truncate text-[10px] text-neutral-500">{manager?.name || manager?.user_id} · {currentPlanDisplay}</p>
+              <p className="text-[10px] font-semibold text-orange-400">Manager workspace</p>
+              <h1 className="mt-0.5 truncate text-lg font-semibold text-white">{restaurant?.name || 'Restaurant'}</h1>
+              <p className="mt-0.5 truncate text-[11px] text-neutral-500">{manager?.name || manager?.user_id} · {currentPlanDisplay}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <button
@@ -2186,18 +2560,18 @@ export default function RestaurantManagerDashboard({ params }) {
               <button
                 type="button"
                 onClick={fetchDashboard}
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900 text-sm"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-neutral-300 transition active:bg-neutral-800"
                 aria-label="Refresh"
               >
-                {loading ? '⏳' : '↻'}
+                {loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-600 border-t-white" /> : <AppIcon name="refresh" className="h-5 w-5" />}
               </button>
               <button
                 type="button"
                 onClick={() => setProfileOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900 text-sm"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-neutral-300 transition active:bg-neutral-800"
                 aria-label="Profile"
               >
-                👤
+                <AppIcon name="user" className="h-5 w-5" />
               </button>
             </div>
           </div>
@@ -2212,11 +2586,11 @@ export default function RestaurantManagerDashboard({ params }) {
         <section className="min-w-0 space-y-5 px-3 py-4 sm:px-4">
           {mobileSection === 'home' && (
             <>
-              <div className="overflow-hidden rounded-[30px] border border-orange-500/20 bg-gradient-to-br from-orange-500/20 via-neutral-900 to-neutral-900 p-5 shadow-xl">
+              <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-300">Today's Operations</p>
-                    <h2 className="mt-2 text-2xl font-black text-white">{money(todayOrders.reduce((sum, order) => sum + Number(order.total_amount ?? order.total ?? 0), 0))}</h2>
+                    <p className="text-[10px] font-semibold text-neutral-400">Today</p>
+                    <h2 className="mt-1 text-2xl font-semibold tracking-tight text-white">{money(todayOrders.reduce((sum, order) => sum + Number(order.total_amount ?? order.total ?? 0), 0))}</h2>
                     <p className="mt-1 text-xs text-neutral-400">Revenue from today's non-cancelled orders</p>
                   </div>
                   <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black ${storeOpen ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
@@ -2240,21 +2614,21 @@ export default function RestaurantManagerDashboard({ params }) {
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-[30px] border border-violet-500/20 bg-neutral-900 shadow-xl shadow-black/10">
-                <div className="bg-gradient-to-br from-violet-500/15 via-neutral-900 to-neutral-900 p-5">
+              <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 shadow-sm">
+                <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-3">
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-500/10 text-xl">
-                          🔎
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-500/20 bg-neutral-800 text-orange-300">
+                          <AppIcon name="search" className="h-5 w-5" />
                         </span>
 
                         <div className="min-w-0">
-                          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-300">
+                          <p className="text-[10px] font-semibold text-neutral-400">
                             Lifetime Order Search
                           </p>
 
-                          <h3 className="mt-1 text-lg font-black text-white">
+                          <h3 className="mt-0.5 text-base font-semibold text-white">
                             Find orders by date
                           </h3>
                         </div>
@@ -2281,7 +2655,7 @@ export default function RestaurantManagerDashboard({ params }) {
                           )
                           setOrderHistoryError('')
                         }}
-                        className="min-h-12 min-w-0 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 text-base font-black text-white outline-none transition focus:border-violet-500"
+                        className="min-h-12 min-w-0 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 text-base font-black text-white outline-none transition focus:border-orange-500"
                       />
 
                       <button
@@ -2291,7 +2665,7 @@ export default function RestaurantManagerDashboard({ params }) {
                           orderHistoryLoading ||
                           !orderHistoryDate
                         }
-                        className="min-h-12 rounded-2xl bg-violet-500 px-5 text-[10px] font-black text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="min-h-12 rounded-2xl bg-orange-500 px-5 text-[10px] font-black text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {orderHistoryLoading
                           ? 'Searching...'
@@ -2309,7 +2683,7 @@ export default function RestaurantManagerDashboard({ params }) {
                           type="button"
                           onClick={clearLifetimeOrderSearch}
                           disabled={orderHistoryLoading}
-                          className="text-[9px] font-black text-violet-300 disabled:opacity-50"
+                          className="text-[9px] font-black text-orange-300 disabled:opacity-50"
                         >
                           Clear
                         </button>
@@ -2345,7 +2719,7 @@ export default function RestaurantManagerDashboard({ params }) {
 
                   {orderHistoryLoading && (
                     <div className="flex items-center justify-center gap-3 py-7">
-                      <div className="h-7 w-7 animate-spin rounded-full border-4 border-neutral-800 border-t-violet-500" />
+                      <div className="h-7 w-7 animate-spin rounded-full border-4 border-neutral-800 border-t-orange-500" />
 
                       <div>
                         <p className="text-[10px] font-black text-white">
@@ -2365,7 +2739,7 @@ export default function RestaurantManagerDashboard({ params }) {
                       <>
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-300">
+                            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-300">
                               Search Result
                             </p>
 
@@ -2374,7 +2748,7 @@ export default function RestaurantManagerDashboard({ params }) {
                             </h4>
                           </div>
 
-                          <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-[8px] font-black text-violet-300">
+                          <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[8px] font-black text-orange-300">
                             {orderHistoryOrders.length} ORDER{orderHistoryOrders.length === 1 ? '' : 'S'}
                           </span>
                         </div>
@@ -2457,7 +2831,7 @@ export default function RestaurantManagerDashboard({ params }) {
                                       current + 20
                                   )
                                 }
-                                className="w-full rounded-2xl border border-violet-500/20 bg-violet-500/5 py-3 text-[10px] font-black text-violet-300"
+                                className="w-full rounded-2xl border border-orange-500/20 bg-orange-500/5 py-3 text-[10px] font-black text-orange-300"
                               >
                                 Show 20 More Orders
                               </button>
@@ -2504,7 +2878,7 @@ export default function RestaurantManagerDashboard({ params }) {
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-300">Restaurant + Resort</p>
-                      <h3 className="mt-1 text-lg font-black text-white">🏨 Open Resort Workspace</h3>
+                      <h3 className="mt-0.5 text-base font-semibold text-white">🏨 Open Resort Workspace</h3>
                       <p className="mt-1 text-[11px] text-neutral-500">Separate mobile workspace for resort operations.</p>
                     </div>
                     <span className="text-2xl text-neutral-500">›</span>
@@ -2641,7 +3015,7 @@ export default function RestaurantManagerDashboard({ params }) {
                           <p className="shrink-0 font-black text-emerald-400">{money(item.offer_price ?? item.price)}</p>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {isHighlyReordered(item) && <span className="rounded-full bg-violet-500/10 px-2 py-1 text-[9px] font-black text-violet-300">Highly Reordered</span>}
+                          {isHighlyReordered(item) && <span className="rounded-full bg-violet-500/10 px-2 py-1 text-[9px] font-black text-orange-300">Highly Reordered</span>}
                           <span className={`rounded-full px-2 py-1 text-[9px] font-black ${item.is_available === false ? 'bg-red-500/10 text-red-300' : 'bg-emerald-500/10 text-emerald-300'}`}>{item.is_available === false ? 'Unavailable' : 'Available'}</span>
                         </div>
                       </div>
@@ -2741,10 +3115,10 @@ export default function RestaurantManagerDashboard({ params }) {
                 <div className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4"><p className="text-[9px] font-black uppercase text-neutral-600">Sales</p><p className="mt-2 text-xl font-black text-emerald-400">{money(reportStats.sales)}</p></div>
                 <div className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4"><p className="text-[9px] font-black uppercase text-neutral-600">Orders</p><p className="mt-2 text-xl font-black text-white">{reportStats.orders}</p></div>
                 <div className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4"><p className="text-[9px] font-black uppercase text-neutral-600">Average</p><p className="mt-2 text-xl font-black text-amber-400">{money(reportStats.average)}</p></div>
-                <div className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4"><p className="text-[9px] font-black uppercase text-neutral-600">Peak Hour</p><p className="mt-2 text-xl font-black text-violet-300">{peakHour ? `${String(peakHour.hour).padStart(2, '0')}:00` : '—'}</p></div>
+                <div className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4"><p className="text-[9px] font-black uppercase text-neutral-600">Peak Hour</p><p className="mt-2 text-xl font-black text-orange-300">{peakHour ? `${String(peakHour.hour).padStart(2, '0')}:00` : '—'}</p></div>
               </div>
               <button type="button" onClick={downloadReport} className="w-full rounded-2xl border border-orange-500/20 bg-orange-500/10 py-3 text-xs font-black text-orange-300">Download CSV Report</button>
-              <div className="rounded-[28px] border border-neutral-800 bg-neutral-900 p-4">
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
                 <p className="text-xs font-black uppercase tracking-wider text-neutral-500">Hourly Activity</p>
                 <div className="mt-4 space-y-3">
                   {hourlyData.length === 0 ? <p className="text-xs text-neutral-600">No order activity in this period.</p> : hourlyData.map((item) => (
@@ -2807,24 +3181,25 @@ export default function RestaurantManagerDashboard({ params }) {
 
           {mobileSection === 'more' && (
             <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Manager" title="More Tools" subtitle="All secondary manager tools in one mobile-friendly menu." />
-              <div className="overflow-hidden rounded-[28px] border border-neutral-800 bg-neutral-900">
+              <MobileSectionTitle eyebrow="Manager" title="More" subtitle="Account, staff, reporting and app settings." />
+              <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900">
                 {[
-                  ['👥', 'Staff Accounts', 'Manage waiter and kitchen logins', 'staff'],
-                  ['🔥', 'Offers of the Day', 'QR-menu promotions', 'offers'],
-                  ['📊', 'Analytics & Reports', hasAdvancedAnalytics ? 'Sales and CSV reports' : 'Pro plan feature', 'settlements'],
-                  ['🟠', 'Menu Import', 'Import menu JSON', 'swiggy-sync'],
-                  ...(hasResortAccess ? [['🏨', 'Resort Dashboard', 'Separate resort workspace', 'resort']] : []),
+                  ['users', 'Staff Accounts', 'Manage waiter and kitchen logins', 'staff'],
+                  ['tag', 'Offers of the Day', 'QR-menu promotions', 'offers'],
+                  ['chart', 'Analytics & Reports', hasAdvancedAnalytics ? 'Sales and CSV reports' : 'Pro plan feature', 'settlements'],
+                  ['sync', 'Menu Import', 'Import menu JSON', 'swiggy-sync'],
+                  ['settings', 'App Settings', 'Appearance and notifications', 'experience-settings'],
+                  ...(hasResortAccess ? [['hotel', 'Resort Dashboard', 'Separate resort workspace', 'resort']] : []),
                 ].map(([icon, title, subtitle, target]) => (
-                  <button key={target} type="button" onClick={() => setActiveTab(target)} className="flex w-full items-center gap-3 border-b border-neutral-800 px-4 py-4 text-left last:border-b-0 active:bg-neutral-800">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-xl">{icon}</span>
-                    <span className="min-w-0 flex-1"><span className="block text-sm font-black text-white">{title}</span><span className="mt-0.5 block truncate text-[10px] text-neutral-500">{subtitle}</span></span>
-                    <span className="text-xl text-neutral-700">›</span>
+                  <button key={target} type="button" onClick={() => target === 'experience-settings' ? setExperienceOpen(true) : setActiveTab(target)} className="flex w-full items-center gap-3 border-b border-neutral-800 px-4 py-3.5 text-left last:border-b-0 active:bg-neutral-800/70">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-neutral-300"><AppIcon name={icon} className="h-5 w-5" /></span>
+                    <span className="min-w-0 flex-1"><span className="block text-[13px] font-semibold text-white">{title}</span><span className="mt-0.5 block truncate text-[10px] text-neutral-500">{subtitle}</span></span>
+                    <AppIcon name="chevron" className="h-4 w-4 text-neutral-600" />
                   </button>
                 ))}
               </div>
 
-              <div className="rounded-[28px] border border-neutral-800 bg-neutral-900 p-4">
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
                 <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neutral-600">Restaurant</p>
                 <p className="mt-2 font-black text-white">{restaurant?.name || 'Restaurant'}</p>
                 <p className="mt-1 text-[10px] font-mono text-neutral-500">Code: {restaurant?.restaurant_code || restaurantCode || '-----'}</p>
@@ -2839,11 +3214,11 @@ export default function RestaurantManagerDashboard({ params }) {
 
         {profileOpen && (
           <div className="fixed inset-0 z-[80] flex min-h-[100dvh] w-full items-end justify-center overflow-x-hidden bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-            <div className="max-h-[92dvh] w-full max-w-[480px] overflow-y-auto rounded-t-[32px] border border-neutral-800 bg-neutral-900 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[32px]">
+            <div className="max-h-[92dvh] w-full max-w-[480px] overflow-y-auto rounded-t-2xl border border-neutral-800 bg-neutral-900 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-2xl">
               <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-700 sm:hidden" />
               <div className="flex items-start justify-between gap-4">
                 <div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-400">Manager Profile</p><h2 className="mt-1 text-xl font-black text-white">Account</h2></div>
-                <button type="button" onClick={() => setProfileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-2xl bg-neutral-950 text-neutral-400">✕</button>
+                <button type="button" onClick={() => setProfileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 text-neutral-400"><AppIcon name="close" className="h-4 w-4" /></button>
               </div>
               <form onSubmit={saveManagerProfile} className="mt-5 space-y-4">
                 <Input label="Manager Name" value={profileName} onChange={setProfileName} placeholder="Manager name" />
@@ -2857,14 +3232,16 @@ export default function RestaurantManagerDashboard({ params }) {
           </div>
         )}
 
-        <nav className="fixed bottom-0 left-1/2 z-50 w-[100svw] max-w-[480px] -translate-x-1/2 border-t border-neutral-800 bg-neutral-950/95 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
+        <MobileExperienceSettings open={experienceOpen} onClose={() => setExperienceOpen(false)} portal="Manager" />
+
+        <nav className="dd-human-nav fixed bottom-0 left-1/2 z-50 w-[100svw] max-w-[480px] -translate-x-1/2 border-t border-neutral-800 bg-[#111112]/96 px-2 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
           <div className="grid grid-cols-5 gap-1">
             {[
-              ['home', '⌂', 'Home'],
-              ['live-orders', '▤', 'Orders'],
-              ['tables', '▦', 'Tables'],
-              ['menu', '☷', 'Menu'],
-              ['more', '•••', 'More'],
+              ['home', 'home', 'Home'],
+              ['live-orders', 'orders', 'Orders'],
+              ['tables', 'tables', 'Tables'],
+              ['menu', 'menu', 'Menu'],
+              ['more', 'more', 'More'],
             ].map(([id, icon, label]) => {
               const selected = id === 'more' ? moreSectionActive || mobileSection === 'more' : mobileSection === id
               return (
@@ -2872,10 +3249,11 @@ export default function RestaurantManagerDashboard({ params }) {
                   key={id}
                   type="button"
                   onClick={() => setActiveTab(id)}
-                  className={`flex min-h-[58px] flex-col items-center justify-center rounded-2xl px-1 text-center transition active:scale-95 ${selected ? 'bg-orange-500/10 text-orange-400' : 'text-neutral-600'}`}
+                  className={`relative flex min-h-[58px] flex-col items-center justify-center px-1 text-center transition active:opacity-70 ${selected ? 'text-orange-400' : 'text-neutral-500'}`}
                 >
-                  <span className="text-lg font-black leading-none">{icon}</span>
-                  <span className="mt-1 text-[9px] font-black uppercase tracking-wide">{label}</span>
+                  <span className={`dd-nav-indicator absolute top-0 h-0.5 w-5 rounded-full bg-orange-400 ${selected ? 'opacity-100' : 'opacity-0'}`} />
+                  <AppIcon name={icon} className="h-5 w-5" strokeWidth={selected ? 2.1 : 1.8} />
+                  <span className={`mt-1 text-[10px] ${selected ? 'font-semibold' : 'font-medium'}`}>{label}</span>
                 </button>
               )
             })}
