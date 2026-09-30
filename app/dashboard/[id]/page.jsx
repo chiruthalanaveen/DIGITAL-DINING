@@ -6165,11 +6165,11 @@ export default function RestaurantDashboard() {
               </span>
 
               <h2 className="text-xl font-black text-white">
-                Manage Your Payment Gateways
+                Restaurant / QR Menu Payments
               </h2>
 
               <p className="text-xs text-neutral-400">
-                Configure your individual Razorpay credentials securely.
+                Configure the Razorpay credentials used for restaurant QR-menu orders. Resort room bookings have a separate Razorpay setup inside Resort Management.
               </p>
             </div>
 
