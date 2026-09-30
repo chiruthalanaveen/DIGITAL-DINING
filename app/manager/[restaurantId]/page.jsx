@@ -2471,6 +2471,7 @@ export default function RestaurantManagerDashboard({ params }) {
             restaurant={restaurant}
             planCode={currentPlanCode}
             advancedFeaturesEnabled={hasAdvancedResort}
+            allowPaymentSettings={false}
           />
         )}
 

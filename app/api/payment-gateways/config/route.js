@@ -3,8 +3,16 @@ import { createClient } from '@supabase/supabase-js'
 import { encryptGatewaySecret } from '@/lib/server/paymentGatewayCrypto'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 const VALID_MODULES = new Set(['restaurant', 'resort'])
+
+function json(body, status = 200) {
+  const response = NextResponse.json(body, { status })
+  response.headers.set('Cache-Control', 'no-store, max-age=0')
+  response.headers.set('Pragma', 'no-cache')
+  return response
+}
 
 function serverConfig() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -27,40 +35,80 @@ function getBearerToken(request) {
 
 function getAdminClient() {
   const { url, serviceKey } = serverConfig()
+
   return createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
   })
 }
 
 async function requireOwner(request, restaurantId) {
   const token = getBearerToken(request)
+
   if (!token) {
-    return { error: NextResponse.json({ success: false, message: 'Authentication required.' }, { status: 401 }) }
+    return {
+      error: json(
+        {
+          success: false,
+          message:
+            'Owner authentication is required. Manager and staff accounts cannot manage payment gateway settings.',
+        },
+        401
+      ),
+    }
   }
 
   const { url, anonKey } = serverConfig()
   const authClient = createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
   })
 
-  const { data: authData, error: authError } = await authClient.auth.getUser(token)
+  const { data: authData, error: authError } =
+    await authClient.auth.getUser(token)
+
   const user = authData?.user
 
   if (authError || !user) {
-    return { error: NextResponse.json({ success: false, message: 'Your login session is invalid or expired.' }, { status: 401 }) }
+    return {
+      error: json(
+        {
+          success: false,
+          message:
+            'Your owner login session is invalid or expired. Manager and staff sessions are not accepted here.',
+        },
+        401
+      ),
+    }
   }
 
   const admin = getAdminClient()
+
   const { data: restaurant, error } = await admin
     .from('restaurants')
-    .select('id, owner_id, plan_code, enable_counter_payment')
+    .select(
+      'id, owner_id, plan_code, enable_counter_payment, razorpay_key_id, razorpay_secret'
+    )
     .eq('id', restaurantId)
     .maybeSingle()
 
   if (error) throw error
 
   if (!restaurant || String(restaurant.owner_id) !== String(user.id)) {
-    return { error: NextResponse.json({ success: false, message: 'You do not have permission to manage this restaurant.' }, { status: 403 }) }
+    return {
+      error: json(
+        {
+          success: false,
+          message:
+            'Only the restaurant owner can view or change payment gateway credentials.',
+        },
+        403
+      ),
+    }
   }
 
   return { admin, restaurant, user }
@@ -78,17 +126,115 @@ async function getOfflineSetting(admin, restaurant, moduleName) {
     .maybeSingle()
 
   if (error) throw error
+
   return data?.pay_at_property ?? true
+}
+
+function hasStoredSecret(config) {
+  return Boolean(
+    config?.secret_ciphertext &&
+      config?.secret_iv &&
+      config?.secret_tag
+  )
+}
+
+async function readGatewayConfig(admin, restaurantId, moduleName) {
+  const { data, error } = await admin
+    .from('payment_gateway_configs')
+    .select(
+      'id, key_id, secret_ciphertext, secret_iv, secret_tag, is_enabled'
+    )
+    .eq('restaurant_id', restaurantId)
+    .eq('module', moduleName)
+    .eq('provider', 'razorpay')
+    .maybeSingle()
+
+  if (error) throw error
+  return data || null
+}
+
+async function migrateLegacyRestaurantGateway(
+  admin,
+  restaurant,
+  currentConfig
+) {
+  const legacyKeyId = String(restaurant?.razorpay_key_id || '').trim()
+  const legacySecret = String(restaurant?.razorpay_secret || '').trim()
+
+  const currentKeyId = String(currentConfig?.key_id || '').trim()
+  const currentHasSecret = hasStoredSecret(currentConfig)
+
+  const needsKeyMigration = !currentKeyId && Boolean(legacyKeyId)
+  const needsSecretMigration = !currentHasSecret && Boolean(legacySecret)
+
+  if (!needsKeyMigration && !needsSecretMigration) {
+    return currentConfig
+  }
+
+  const payload = {
+    restaurant_id: restaurant.id,
+    module: 'restaurant',
+    provider: 'razorpay',
+    key_id: currentKeyId || legacyKeyId,
+    is_enabled:
+      currentConfig?.is_enabled ??
+      Boolean((currentKeyId || legacyKeyId) && (currentHasSecret || legacySecret)),
+  }
+
+  if (needsSecretMigration) {
+    const encrypted = encryptGatewaySecret(legacySecret)
+    payload.secret_ciphertext = encrypted.ciphertext
+    payload.secret_iv = encrypted.iv
+    payload.secret_tag = encrypted.tag
+  } else if (currentConfig) {
+    payload.secret_ciphertext = currentConfig.secret_ciphertext
+    payload.secret_iv = currentConfig.secret_iv
+    payload.secret_tag = currentConfig.secret_tag
+  }
+
+  const { error: upsertError } = await admin
+    .from('payment_gateway_configs')
+    .upsert(payload, {
+      onConflict: 'restaurant_id,module,provider',
+    })
+
+  if (upsertError) throw upsertError
+
+  // Keep the public Key ID for compatibility with the current QR checkout,
+  // but remove the plaintext secret from the restaurants table.
+  const { error: cleanupError } = await admin
+    .from('restaurants')
+    .update({
+      razorpay_key_id: payload.key_id,
+      razorpay_secret: '',
+    })
+    .eq('id', restaurant.id)
+
+  if (cleanupError) throw cleanupError
+
+  return readGatewayConfig(admin, restaurant.id, 'restaurant')
 }
 
 export async function GET(request) {
   try {
     const url = new URL(request.url)
-    const restaurantId = String(url.searchParams.get('restaurantId') || '').trim()
-    const moduleName = String(url.searchParams.get('module') || '').trim().toLowerCase()
+    const restaurantId = String(
+      url.searchParams.get('restaurantId') || ''
+    ).trim()
+    const moduleName = String(
+      url.searchParams.get('module') || ''
+    )
+      .trim()
+      .toLowerCase()
 
     if (!restaurantId || !VALID_MODULES.has(moduleName)) {
-      return NextResponse.json({ success: false, message: 'A valid restaurantId and module are required.' }, { status: 400 })
+      return json(
+        {
+          success: false,
+          message: 'A valid restaurantId and module are required.',
+        },
+        400
+      )
     }
 
     const owner = await requireOwner(request, restaurantId)
@@ -96,22 +242,31 @@ export async function GET(request) {
 
     const { admin, restaurant } = owner
 
-    const { data: config, error } = await admin
-      .from('payment_gateway_configs')
-      .select('key_id, secret_ciphertext, secret_iv, secret_tag, is_enabled')
-      .eq('restaurant_id', restaurantId)
-      .eq('module', moduleName)
-      .eq('provider', 'razorpay')
-      .maybeSingle()
-
-    if (error) throw error
-
-    const offlinePaymentEnabled = await getOfflineSetting(admin, restaurant, moduleName)
-    const hasSecret = Boolean(
-      config?.secret_ciphertext && config?.secret_iv && config?.secret_tag
+    let config = await readGatewayConfig(
+      admin,
+      restaurantId,
+      moduleName
     )
 
-    return NextResponse.json({
+    // One-time compatibility migration for existing Restaurant Razorpay
+    // credentials that were previously saved in public.restaurants.
+    if (moduleName === 'restaurant') {
+      config = await migrateLegacyRestaurantGateway(
+        admin,
+        restaurant,
+        config
+      )
+    }
+
+    const offlinePaymentEnabled = await getOfflineSetting(
+      admin,
+      restaurant,
+      moduleName
+    )
+
+    const hasSecret = hasStoredSecret(config)
+
+    return json({
       success: true,
       module: moduleName,
       provider: 'razorpay',
@@ -123,49 +278,86 @@ export async function GET(request) {
     })
   } catch (error) {
     console.error('Payment gateway GET error:', error)
-    return NextResponse.json({ success: false, message: error?.message || 'Unable to load payment gateway settings.' }, { status: 500 })
+
+    return json(
+      {
+        success: false,
+        message:
+          error?.message ||
+          'Unable to load payment gateway settings.',
+      },
+      500
+    )
   }
 }
 
 export async function POST(request) {
   try {
     const body = await request.json()
+
     const restaurantId = String(body?.restaurantId || '').trim()
-    const moduleName = String(body?.module || '').trim().toLowerCase()
+    const moduleName = String(body?.module || '')
+      .trim()
+      .toLowerCase()
     const keyId = String(body?.keyId || '').trim()
     const keySecret = String(body?.keySecret || '').trim()
     const enabled = Boolean(body?.enabled)
-    const offlinePaymentEnabled = Boolean(body?.offlinePaymentEnabled)
+    const offlinePaymentEnabled = Boolean(
+      body?.offlinePaymentEnabled
+    )
 
     if (!restaurantId || !VALID_MODULES.has(moduleName)) {
-      return NextResponse.json({ success: false, message: 'A valid restaurantId and module are required.' }, { status: 400 })
+      return json(
+        {
+          success: false,
+          message: 'A valid restaurantId and module are required.',
+        },
+        400
+      )
     }
 
     const owner = await requireOwner(request, restaurantId)
     if (owner.error) return owner.error
-    const { admin } = owner
 
-    const { data: existing, error: existingError } = await admin
-      .from('payment_gateway_configs')
-      .select('id, key_id, secret_ciphertext, secret_iv, secret_tag')
-      .eq('restaurant_id', restaurantId)
-      .eq('module', moduleName)
-      .eq('provider', 'razorpay')
-      .maybeSingle()
+    const { admin, restaurant } = owner
 
-    if (existingError) throw existingError
-
-    const finalKeyId = keyId || existing?.key_id || ''
-    const hasExistingSecret = Boolean(
-      existing?.secret_ciphertext && existing?.secret_iv && existing?.secret_tag
+    let existing = await readGatewayConfig(
+      admin,
+      restaurantId,
+      moduleName
     )
 
+    if (moduleName === 'restaurant') {
+      existing = await migrateLegacyRestaurantGateway(
+        admin,
+        restaurant,
+        existing
+      )
+    }
+
+    const finalKeyId = keyId || existing?.key_id || ''
+    const hasExistingSecret = hasStoredSecret(existing)
+
     if (enabled && !finalKeyId) {
-      return NextResponse.json({ success: false, message: 'Razorpay Key ID is required before online payments can be enabled.' }, { status: 400 })
+      return json(
+        {
+          success: false,
+          message:
+            'Razorpay Key ID is required before online payments can be enabled.',
+        },
+        400
+      )
     }
 
     if (enabled && !keySecret && !hasExistingSecret) {
-      return NextResponse.json({ success: false, message: 'Razorpay Key Secret is required the first time you configure this gateway.' }, { status: 400 })
+      return json(
+        {
+          success: false,
+          message:
+            'Razorpay Key Secret is required the first time you configure this gateway.',
+        },
+        400
+      )
     }
 
     const payload = {
@@ -189,34 +381,59 @@ export async function POST(request) {
 
     const { error: saveError } = await admin
       .from('payment_gateway_configs')
-      .upsert(payload, { onConflict: 'restaurant_id,module,provider' })
+      .upsert(payload, {
+        onConflict: 'restaurant_id,module,provider',
+      })
 
     if (saveError) throw saveError
 
     if (moduleName === 'restaurant') {
       const { error: offlineError } = await admin
         .from('restaurants')
-        .update({ enable_counter_payment: offlinePaymentEnabled })
+        .update({
+          enable_counter_payment: offlinePaymentEnabled,
+          // Keep Key ID for the current QR-menu Checkout compatibility.
+          razorpay_key_id: finalKeyId,
+          // Never keep the secret in the public restaurants row.
+          razorpay_secret: '',
+        })
         .eq('id', restaurantId)
+
       if (offlineError) throw offlineError
     } else {
       const { error: offlineError } = await admin
         .from('resort_properties')
         .update({ pay_at_property: offlinePaymentEnabled })
         .eq('restaurant_id', restaurantId)
+
       if (offlineError) throw offlineError
     }
 
-    return NextResponse.json({
+    const saved = await readGatewayConfig(
+      admin,
+      restaurantId,
+      moduleName
+    )
+
+    return json({
       success: true,
-      configured: Boolean(finalKeyId && (keySecret || hasExistingSecret)),
-      enabled,
-      keyId: finalKeyId,
-      hasSecret: Boolean(keySecret || hasExistingSecret),
+      configured: Boolean(saved?.key_id && hasStoredSecret(saved)),
+      enabled: Boolean(saved?.is_enabled),
+      keyId: saved?.key_id || '',
+      hasSecret: hasStoredSecret(saved),
       offlinePaymentEnabled,
     })
   } catch (error) {
     console.error('Payment gateway POST error:', error)
-    return NextResponse.json({ success: false, message: error?.message || 'Unable to save payment gateway settings.' }, { status: 500 })
+
+    return json(
+      {
+        success: false,
+        message:
+          error?.message ||
+          'Unable to save payment gateway settings.',
+      },
+      500
+    )
   }
 }

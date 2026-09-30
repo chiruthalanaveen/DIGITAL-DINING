@@ -1250,6 +1250,7 @@ export default function RestaurantDashboard() {
   // Payment Gateway Configuration States & Edit Toggle
   const [razorpayKeyId, setRazorpayKeyId] = useState('')
   const [razorpaySecret, setRazorpaySecret] = useState('')
+  const [razorpayHasSecret, setRazorpayHasSecret] = useState(false)
   const [enableCounterPayment, setEnableCounterPayment] = useState(true)
   const [savingPayment, setSavingPayment] = useState(false)
   const [hasInitializedKeys, setHasInitializedKeys] = useState(false)
@@ -1555,23 +1556,59 @@ export default function RestaurantDashboard() {
       )
 
       if (!hasInitializedKeys && !savingPayment) {
-        const keyId = restData.razorpay_key_id || ''
-        const keySec = restData.razorpay_secret || ''
-
-        setRazorpayKeyId(keyId)
-        setRazorpaySecret(keySec)
-        setEnableCounterPayment(
-          restData.enable_counter_payment ?? true
-        )
         setSgstRate(restData.sgst_rate ?? 2.5)
         setCgstRate(restData.cgst_rate ?? 2.5)
         setPackingCharge(restData.packing_charge ?? 20)
-        setHasInitializedKeys(true)
 
-        if (keyId || keySec) {
+        try {
+          const { data: sessionData, error: sessionError } =
+            await supabase.auth.getSession()
+
+          if (sessionError) throw sessionError
+
+          const accessToken = sessionData?.session?.access_token
+          if (!accessToken) {
+            throw new Error('Your owner session has expired. Please sign in again.')
+          }
+
+          const gatewayResponse = await fetch(
+            `/api/payment-gateways/config?restaurantId=${encodeURIComponent(restaurantId)}&module=restaurant`,
+            {
+              method: 'GET',
+              headers: { Authorization: `Bearer ${accessToken}` },
+              cache: 'no-store'
+            }
+          )
+
+          const gatewayData = await gatewayResponse.json().catch(() => ({}))
+
+          if (!gatewayResponse.ok || !gatewayData?.success) {
+            throw new Error(
+              gatewayData?.message || 'Unable to load restaurant payment settings.'
+            )
+          }
+
+          const keyId = String(gatewayData.keyId || '')
+          const hasSecret = Boolean(gatewayData.hasSecret)
+
+          setRazorpayKeyId(keyId)
+          setRazorpaySecret('')
+          setRazorpayHasSecret(hasSecret)
+          setEnableCounterPayment(
+            gatewayData.offlinePaymentEnabled ?? true
+          )
+          setIsGatewayEditable(!(keyId && hasSecret))
+        } catch (gatewayError) {
+          console.error('Restaurant payment gateway load error:', gatewayError)
+          setRazorpayKeyId('')
+          setRazorpaySecret('')
+          setRazorpayHasSecret(false)
+          setEnableCounterPayment(
+            restData.enable_counter_payment ?? true
+          )
           setIsGatewayEditable(false)
-        } else {
-          setIsGatewayEditable(true)
+        } finally {
+          setHasInitializedKeys(true)
         }
       }
 
@@ -2515,52 +2552,75 @@ export default function RestaurantDashboard() {
     }
   }
 
-  const handleSavePaymentSettings =
-    async (e) => {
-      e.preventDefault()
+  const handleSavePaymentSettings = async (e) => {
+    e.preventDefault()
 
-      setSavingPayment(true)
+    setSavingPayment(true)
 
-      const updatedData = {
-        razorpay_key_id:
-          razorpayKeyId.trim(),
-        razorpay_secret:
-          razorpaySecret.trim(),
+    try {
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession()
+
+      if (sessionError) throw sessionError
+
+      const accessToken = sessionData?.session?.access_token
+      if (!accessToken) {
+        throw new Error('Your owner session has expired. Please sign in again.')
+      }
+
+      const response = await fetch('/api/payment-gateways/config', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          restaurantId,
+          module: 'restaurant',
+          keyId: razorpayKeyId.trim(),
+          keySecret: razorpaySecret.trim(),
+          enabled: Boolean(
+            razorpayKeyId.trim() &&
+            (razorpaySecret.trim() || razorpayHasSecret)
+          ),
+          offlinePaymentEnabled: enableCounterPayment
+        })
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || 'Failed to update payment settings.'
+        )
+      }
+
+      setRazorpayKeyId(String(data.keyId || ''))
+      setRazorpaySecret('')
+      setRazorpayHasSecret(Boolean(data.hasSecret))
+      setEnableCounterPayment(
+        data.offlinePaymentEnabled ?? enableCounterPayment
+      )
+
+      setRestaurant((prev) => ({
+        ...prev,
+        razorpay_key_id: String(data.keyId || ''),
+        razorpay_secret: '',
         enable_counter_payment:
-          enableCounterPayment
-      }
+          data.offlinePaymentEnabled ?? enableCounterPayment
+      }))
 
-      const { error } =
-        await supabase
-          .from('restaurants')
-          .update(updatedData)
-          .eq(
-            'id',
-            restaurantId
-          )
-
-      if (error) {
-        alert(
-          'Failed to update payment settings: ' +
-            error.message
-        )
-      } else {
-        setRestaurant(
-          (prev) => ({
-            ...prev,
-            ...updatedData
-          })
-        )
-
-        setIsGatewayEditable(false)
-
-        alert(
-          'Payment settings saved successfully! ✅'
-        )
-      }
-
+      setIsGatewayEditable(false)
+      alert('Payment settings saved successfully! ✅')
+    } catch (error) {
+      alert(
+        'Failed to update payment settings: ' +
+          (error?.message || 'Please try again.')
+      )
+    } finally {
       setSavingPayment(false)
     }
+  }
 
   const resetOfferForm = () => {
     setOfferTitle('')
@@ -6178,13 +6238,13 @@ export default function RestaurantDashboard() {
 
                 <div
                   className={`flex items-center justify-center space-x-2 font-bold text-xs py-2 rounded-xl border ${
-                    razorpayKeyId.trim() && razorpaySecret.trim()
+                    razorpayKeyId.trim() && razorpayHasSecret
                       ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
                       : 'text-red-400 bg-red-500/10 border-red-500/20'
                   }`}
                 >
                   <span>
-                    {razorpayKeyId.trim() && razorpaySecret.trim()
+                    {razorpayKeyId.trim() && razorpayHasSecret
                       ? '🟢 Razorpay Connected'
                       : '🔴 Razorpay Not Connected'}
                   </span>
@@ -6210,7 +6270,7 @@ export default function RestaurantDashboard() {
                     </label>
 
                     <p className="font-mono text-xs text-white bg-neutral-900 p-2.5 rounded-xl border border-neutral-800">
-                      {razorpaySecret
+                      {razorpayHasSecret
                         ? '••••••••••••••••••••••••'
                         : 'Not Configured'}
                     </p>
@@ -6278,7 +6338,11 @@ export default function RestaurantDashboard() {
 
                   <input
                     type="password"
-                    placeholder="enter_secret_key"
+                    placeholder={
+                      razorpayHasSecret
+                        ? 'Leave blank to keep existing secret'
+                        : 'enter_secret_key'
+                    }
                     value={
                       razorpaySecret
                     }

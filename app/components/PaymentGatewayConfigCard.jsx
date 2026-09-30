@@ -19,9 +19,6 @@ export default function PaymentGatewayConfigCard({
   const [hasSecret, setHasSecret] = useState(false)
   const [offlinePaymentEnabled, setOfflinePaymentEnabled] = useState(true)
   const [editing, setEditing] = useState(false)
-  const [showPasswordModal, setShowPasswordModal] = useState(false)
-  const [password, setPassword] = useState('')
-  const [verifying, setVerifying] = useState(false)
   const [message, setMessage] = useState('')
 
   const getAccessToken = async () => {
@@ -73,44 +70,11 @@ export default function PaymentGatewayConfigCard({
   }, [restaurantId, module])
 
   const requestEdit = () => {
-    setPassword('')
-    setShowPasswordModal(true)
-  }
-
-  const verifyPassword = async (event) => {
-    event.preventDefault()
-    if (!password.trim()) {
-      setMessage('Enter your login password to edit payment credentials.')
-      return
-    }
-
-    setVerifying(true)
+    // Editing is authorized by the existing Supabase owner session.
+    // The server API still verifies restaurant ownership before loading or saving credentials.
     setMessage('')
-
-    try {
-      const { data: userData, error: userError } = await supabase.auth.getUser()
-      const user = userData?.user
-      if (userError || !user?.email) {
-        throw new Error('Your login session has expired. Please sign in again.')
-      }
-
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: password.trim(),
-      })
-
-      if (authError) {
-        throw new Error('Incorrect login password. Payment credentials remain locked.')
-      }
-
-      setPassword('')
-      setShowPasswordModal(false)
-      setEditing(true)
-    } catch (error) {
-      setMessage(error?.message || 'Password verification failed.')
-    } finally {
-      setVerifying(false)
-    }
+    setKeySecret('')
+    setEditing(true)
   }
 
   const saveConfig = async (event) => {
@@ -329,50 +293,6 @@ export default function PaymentGatewayConfigCard({
         )}
       </section>
 
-      {showPasswordModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-white">Verify your password</h3>
-            <p className="mt-2 text-xs leading-5 text-neutral-400">
-              Enter the password used for your owner account before changing payment credentials.
-            </p>
-
-            <form onSubmit={verifyPassword} className="mt-5 space-y-4">
-              <input
-                type="password"
-                autoFocus
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Login password"
-                disabled={verifying}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-orange-500 disabled:opacity-50"
-              />
-
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={verifying}
-                  className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  {verifying ? 'Verifying...' : 'Verify & continue'}
-                </button>
-                <button
-                  type="button"
-                  disabled={verifying}
-                  onClick={() => {
-                    setPassword('')
-                    setShowPasswordModal(false)
-                  }}
-                  className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-semibold text-neutral-200 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   )
 }

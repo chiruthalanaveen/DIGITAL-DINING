@@ -37,7 +37,7 @@ const emptyProperty = {
   check_out_time: '11:00',
 }
 
-export default function ResortManagement({ restaurant }) {
+export default function ResortManagement({ restaurant, allowPaymentSettings = true }) {
   const restaurantId = String(restaurant?.id || '')
   const restaurantCode = String(restaurant?.restaurant_code || '')
 
@@ -128,6 +128,12 @@ export default function ResortManagement({ restaurant }) {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId])
+
+  useEffect(() => {
+    if (!allowPaymentSettings && tab === 'payments') {
+      setTab('overview')
+    }
+  }, [allowPaymentSettings, tab])
 
   const stats = useMemo(
     () => ({
@@ -285,7 +291,7 @@ export default function ResortManagement({ restaurant }) {
     ['rooms', 'Actual Rooms'],
     ['bookings', 'Bookings'],
     ['settings', 'Settings'],
-    ['payments', 'Payments'],
+    ...(allowPaymentSettings ? [['payments', 'Payments']] : []),
     ['qr', 'QR Codes'],
   ]
 
@@ -470,7 +476,7 @@ export default function ResortManagement({ restaurant }) {
         </form>
       )}
 
-      {tab === 'payments' && (
+      {allowPaymentSettings && tab === 'payments' && (
         <PaymentGatewayConfigCard
           restaurantId={restaurantId}
           module="resort"
