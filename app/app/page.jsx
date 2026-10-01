@@ -1,154 +1,484 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
+const SESSION_STORAGE_KEY =
+  'digital-dine-staff-session'
+
+const SUPPORTED_PLAN_CODES = new Set([
+  'restaurant_pro',
+  'delivery',
+  'restaurant_resort_pro',
+  'restaurant_delivery',
+  'restaurant_resort_delivery',
+
+  // Temporary compatibility with accounts not yet refreshed after migration.
+  'restaurant_standard',
+  'restaurant_resort_standard',
+])
+
+const PLAN_LABELS = {
+  restaurant_pro: 'Restaurant',
+  delivery: 'Delivery',
+  restaurant_resort_pro:
+    'Restaurant + Resort',
+  restaurant_delivery:
+    'Restaurant + Delivery',
+  restaurant_resort_delivery:
+    'Restaurant + Resort + Delivery',
+  restaurant_standard:
+    'Restaurant',
+  restaurant_resort_standard:
+    'Restaurant + Resort',
+}
+
+const ROLE_META = {
+  owner: {
+    title: 'Owner',
+    icon: '👑',
+    description:
+      'Secure Owner account, subscription modules and business controls.',
+    card:
+      'border-violet-500/20',
+    iconClass:
+      'bg-violet-500/10',
+    link:
+      'text-violet-400',
+  },
+
+  manager: {
+    title: 'Manager',
+    icon: '👨‍💼',
+    description:
+      'Manage the workspaces included in this restaurant plan.',
+    card:
+      'border-sky-500/20',
+    iconClass:
+      'bg-sky-500/10',
+    link:
+      'text-sky-400',
+  },
+
+  waiter: {
+    title: 'Waiter',
+    icon: '🧑‍🍽️',
+    description:
+      'Take table orders and serve ready dishes.',
+    card:
+      'border-orange-500/20',
+    iconClass:
+      'bg-orange-500/10',
+    link:
+      'text-orange-400',
+  },
+
+  kitchen: {
+    title: 'KDS',
+    icon: '👨‍🍳',
+    description:
+      'Open the kitchen display and update preparation status.',
+    card:
+      'border-red-500/20',
+    iconClass:
+      'bg-red-500/10',
+    link:
+      'text-red-400',
+  },
+
+  packer: {
+    title: 'Packer',
+    icon: '📦',
+    description:
+      'Confirm Delivery orders, pack them and send them out.',
+    card:
+      'border-amber-500/20',
+    iconClass:
+      'bg-amber-500/10',
+    link:
+      'text-amber-400',
+  },
+
+  driver: {
+    title: 'Delivery Boy',
+    icon: '🛵',
+    description:
+      'Open assigned Delivery batches, navigation and proof tools.',
+    card:
+      'border-emerald-500/20',
+    iconClass:
+      'bg-emerald-500/10',
+    link:
+      'text-emerald-400',
+  },
+}
+
+function cleanRestaurantCode(value) {
+  return String(value || '')
+    .replace(/\D/g, '')
+    .slice(0, 5)
+}
+
+function resolvePlanCode(restaurant) {
+  const raw = String(
+    restaurant?.plan_code || ''
+  )
+    .trim()
+    .toLowerCase()
+
+  if (
+    raw &&
+    SUPPORTED_PLAN_CODES.has(raw)
+  ) {
+    return raw
+  }
+
+  // Keep the existing legacy fallback behaviour for old restaurant accounts.
+  const legacy = String(
+    restaurant?.plan || ''
+  )
+    .trim()
+    .toLowerCase()
+
+  if (
+    legacy === 'pro+' ||
+    legacy === 'restaurant + resort'
+  ) {
+    return 'restaurant_resort_pro'
+  }
+
+  return 'restaurant_pro'
+}
+
+function rolesForPlan(planCode) {
+  // Requirement:
+  // Delivery-only -> Packer + Driver + Manager + Owner.
+  if (planCode === 'delivery') {
+    return [
+      'owner',
+      'manager',
+      'packer',
+      'driver',
+    ]
+  }
+
+  // Any plan containing the Restaurant module keeps the existing
+  // Restaurant staff login set. Delivery packer/driver credentials
+  // remain available through the Owner's Delivery workspace, but
+  // they are intentionally not shown on this main role screen.
+  return [
+    'owner',
+    'manager',
+    'waiter',
+    'kitchen',
+  ]
+}
 
 export default function DigitalDineApp() {
   const router = useRouter()
-  const autoCodeHandledRef = useRef(false)
+  const autoCodeHandledRef =
+    useRef(false)
 
-  const [restaurantCode, setRestaurantCode] = useState('')
-  const [restaurant, setRestaurant] = useState(null)
+  const [
+    restaurantCode,
+    setRestaurantCode,
+  ] = useState('')
+  const [
+    restaurant,
+    setRestaurant,
+  ] = useState(null)
 
-  const [role, setRole] = useState('')
-  const [userId, setUserId] = useState('')
-  const [password, setPassword] = useState('')
+  const [role, setRole] =
+    useState('')
+  const [userId, setUserId] =
+    useState('')
+  const [password, setPassword] =
+    useState('')
 
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading] =
+    useState(false)
+  const [error, setError] =
+    useState('')
+
+  const planCode = useMemo(
+    () =>
+      restaurant
+        ? resolvePlanCode(
+            restaurant
+          )
+        : '',
+    [restaurant]
+  )
+
+  const availableRoles = useMemo(
+    () =>
+      restaurant
+        ? rolesForPlan(
+            planCode
+          )
+        : [],
+    [
+      restaurant,
+      planCode,
+    ]
+  )
+
+  const availableRoleSet =
+    useMemo(
+      () =>
+        new Set(
+          availableRoles
+        ),
+      [availableRoles]
+    )
 
   // =========================================================
   // RESTAURANT CODE GATE
   // =========================================================
 
-  const findRestaurant = async (codeValue) => {
-    const code = String(codeValue || '').trim()
+  const findRestaurant = async (
+    codeValue
+  ) => {
+    const code =
+      cleanRestaurantCode(
+        codeValue
+      )
 
-    if (!code) {
-      throw new Error('Enter your Restaurant Code.')
+    if (code.length !== 5) {
+      throw new Error(
+        'Enter your 5-digit Restaurant Code.'
+      )
     }
 
-    const { data, error: restaurantError } = await supabase
-      .from('restaurants')
-      .select(`
-        id,
-        name,
-        restaurant_code,
-        subscription_status,
-        subscription_expires_at
-      `)
-      .eq('restaurant_code', code)
-      .maybeSingle()
+    /*
+     * IMPORTANT SECURITY / RLS FIX:
+     *
+     * The app may already have an authenticated Owner session in the same
+     * Supabase client. Your restaurants RLS allows an authenticated Owner to
+     * SELECT only restaurants owned by that user. Therefore a direct
+     * .from('restaurants') lookup can incorrectly return no row for another
+     * valid Restaurant Code and the UI would show "Invalid Restaurant Code".
+     *
+     * This RPC returns only the same safe app-entry fields needed here and
+     * does not return owner_id, passwords, payment credentials or secrets.
+     * Existing Owner / Staff / Packer / Driver authentication remains
+     * unchanged and is still validated by the existing secure login flows.
+     */
+    const {
+      data: lookup,
+      error: restaurantError,
+    } = await supabase.rpc(
+      'get_app_restaurant_by_code',
+      {
+        p_restaurant_code:
+          code,
+      }
+    )
 
     if (restaurantError) {
       console.error(
-        '[DIGITAL DINE APP] Restaurant lookup error:',
+        '[DIGITAL DINE APP] Restaurant lookup RPC error:',
         restaurantError
       )
 
+      const message =
+        String(
+          restaurantError?.message ||
+            ''
+        ).toLowerCase()
+
+      if (
+        message.includes(
+          'get_app_restaurant_by_code'
+        ) ||
+        message.includes(
+          'could not find the function'
+        )
+      ) {
+        throw new Error(
+          'The app Restaurant Code lookup is not installed yet. Run the latest App Restaurant Code SQL in Supabase.'
+        )
+      }
+
       throw new Error(
-        'Unable to verify restaurant. Please try again.'
+        restaurantError?.message ||
+          'Unable to verify restaurant. Please try again.'
       )
     }
 
-    if (!data?.id) {
-      throw new Error('Invalid Restaurant Code.')
+    if (
+      !lookup?.success ||
+      !lookup?.restaurant?.id
+    ) {
+      throw new Error(
+        lookup?.message ||
+          'Invalid Restaurant Code.'
+      )
     }
 
-    return data
+    const data =
+      lookup.restaurant
+
+    const resolvedPlan =
+      resolvePlanCode(data)
+
+    if (
+      !SUPPORTED_PLAN_CODES.has(
+        resolvedPlan
+      )
+    ) {
+      throw new Error(
+        'This restaurant plan is not supported by this app version.'
+      )
+    }
+
+    return {
+      ...data,
+      app_plan_code:
+        resolvedPlan,
+    }
   }
 
-  const handleRestaurantCode = async (event) => {
-    event.preventDefault()
+  const openRestaurant =
+    async (codeValue) => {
+      const foundRestaurant =
+        await findRestaurant(
+          codeValue
+        )
 
-    if (loading) return
-
-    setError('')
-
-    const cleanCode = String(restaurantCode || '').trim()
-
-    if (!cleanCode) {
-      setError('Enter your Restaurant Code.')
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      const foundRestaurant = await findRestaurant(cleanCode)
-
-      setRestaurant(foundRestaurant)
+      setRestaurant(
+        foundRestaurant
+      )
       setRole('')
       setUserId('')
       setPassword('')
-    } catch (lookupError) {
-      console.error(
-        '[DIGITAL DINE APP] Restaurant code error:',
-        lookupError
-      )
+      setError('')
 
-      setError(
-        lookupError?.message ||
-          'Unable to verify restaurant.'
-      )
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // =========================================================
-  // RETURN TO THE SAME RESTAURANT AFTER STAFF LOGOUT
-  // =========================================================
-
-  useEffect(() => {
-    if (autoCodeHandledRef.current) return
-    if (typeof window === 'undefined') return
-
-    autoCodeHandledRef.current = true
-
-    const params = new URLSearchParams(
-      window.location.search
-    )
-
-    const codeFromUrl = String(
-      params.get('code') || ''
-    )
-      .replace(/\D/g, '')
-      .slice(0, 5)
-
-    if (codeFromUrl.length !== 5) {
-      return
+      return foundRestaurant
     }
 
-    setRestaurantCode(codeFromUrl)
-    setLoading(true)
-    setError('')
+  const handleRestaurantCode =
+    async (event) => {
+      event.preventDefault()
 
-    findRestaurant(codeFromUrl)
-      .then((foundRestaurant) => {
-        setRestaurant(foundRestaurant)
-        setRole('')
-        setUserId('')
-        setPassword('')
-      })
-      .catch((lookupError) => {
+      if (loading) return
+
+      setError('')
+
+      const cleanCode =
+        cleanRestaurantCode(
+          restaurantCode
+        )
+
+      if (
+        cleanCode.length !== 5
+      ) {
+        setError(
+          'Enter your 5-digit Restaurant Code.'
+        )
+        return
+      }
+
+      setLoading(true)
+
+      try {
+        await openRestaurant(
+          cleanCode
+        )
+      } catch (lookupError) {
         console.error(
-          '[DIGITAL DINE APP] Return restaurant lookup error:',
+          '[DIGITAL DINE APP] Restaurant code error:',
           lookupError
         )
 
         setRestaurant(null)
+
         setError(
           lookupError?.message ||
-            'Unable to reopen this restaurant.'
+            'Unable to verify restaurant.'
         )
-      })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+  // =========================================================
+  // RETURN TO SAME RESTAURANT AFTER STAFF LOGOUT
+  // =========================================================
+
+  useEffect(() => {
+    if (
+      autoCodeHandledRef
+        .current
+    ) {
+      return
+    }
+
+    if (
+      typeof window ===
+      'undefined'
+    ) {
+      return
+    }
+
+    autoCodeHandledRef.current =
+      true
+
+    const params =
+      new URLSearchParams(
+        window.location.search
+      )
+
+    const codeFromUrl =
+      cleanRestaurantCode(
+        params.get('code') ||
+          ''
+      )
+
+    if (
+      codeFromUrl.length !==
+      5
+    ) {
+      return
+    }
+
+    setRestaurantCode(
+      codeFromUrl
+    )
+    setLoading(true)
+    setError('')
+
+    openRestaurant(codeFromUrl)
+      .catch(
+        (lookupError) => {
+          console.error(
+            '[DIGITAL DINE APP] Return restaurant lookup error:',
+            lookupError
+          )
+
+          setRestaurant(
+            null
+          )
+
+          setError(
+            lookupError?.message ||
+              'Unable to reopen this restaurant.'
+          )
+        }
+      )
       .finally(() => {
         setLoading(false)
       })
+
+    // openRestaurant intentionally remains outside the dependency list.
+    // This effect must consume the return code only once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const changeRestaurant = () => {
@@ -158,127 +488,210 @@ export default function DigitalDineApp() {
     setUserId('')
     setPassword('')
     setError('')
+
     router.replace('/app')
   }
 
   // =========================================================
-  // CREATE SECURE STAFF SESSION
+  // EXISTING SECURE STAFF SESSION
   // =========================================================
+  // Waiter / Kitchen / Manager intentionally keep using the
+  // same create_staff_app_session RPC and session verification.
+  // Passwords are not added to localStorage.
 
-  const createStaffSession = async () => {
-    if (!restaurant?.id) {
-      throw new Error(
-        'Restaurant session is missing. Enter the Restaurant Code again.'
-      )
-    }
-
-    const cleanRestaurantCode = String(
-      restaurant.restaurant_code || restaurantCode
-    ).trim()
-
-    const cleanUserId = String(userId || '')
-      .trim()
-      .toLowerCase()
-
-    const cleanPassword = String(password || '').trim()
-
-    const { data, error: sessionError } = await supabase.rpc(
-      'create_staff_app_session',
-      {
-        p_restaurant_id: String(restaurant.id),
-        p_restaurant_code: cleanRestaurantCode,
-        p_user_id: cleanUserId,
-        p_password: cleanPassword,
-        p_role: role,
+  const createStaffSession =
+    async () => {
+      if (!restaurant?.id) {
+        throw new Error(
+          'Restaurant session is missing. Enter the Restaurant Code again.'
+        )
       }
-    )
 
-    if (sessionError) {
-      console.error(
-        '[DIGITAL DINE APP] Session RPC error:',
-        sessionError
+      if (
+        ![
+          'waiter',
+          'kitchen',
+          'manager',
+        ].includes(role)
+      ) {
+        throw new Error(
+          'Choose a valid staff login.'
+        )
+      }
+
+      if (
+        !availableRoleSet.has(
+          role
+        )
+      ) {
+        throw new Error(
+          'This login is not available for this restaurant plan.'
+        )
+      }
+
+      const cleanCode =
+        cleanRestaurantCode(
+          restaurant
+            .restaurant_code ||
+            restaurantCode
+        )
+
+      const cleanUserId =
+        String(userId || '')
+          .trim()
+          .toLowerCase()
+
+      const cleanPassword =
+        String(
+          password || ''
+        ).trim()
+
+      const {
+        data,
+        error:
+          sessionError,
+      } = await supabase.rpc(
+        'create_staff_app_session',
+        {
+          p_restaurant_id:
+            String(
+              restaurant.id
+            ),
+          p_restaurant_code:
+            cleanCode,
+          p_user_id:
+            cleanUserId,
+          p_password:
+            cleanPassword,
+          p_role: role,
+        }
       )
 
-      throw new Error(
-        sessionError?.message || 'Unable to sign in.'
-      )
+      if (sessionError) {
+        console.error(
+          '[DIGITAL DINE APP] Session RPC error:',
+          sessionError
+        )
+
+        throw new Error(
+          sessionError?.message ||
+            'Unable to sign in.'
+        )
+      }
+
+      if (!data?.success) {
+        throw new Error(
+          data?.message ||
+            'Invalid login credentials.'
+        )
+      }
+
+      if (
+        !data?.sessionToken
+      ) {
+        throw new Error(
+          'The login server did not return a session.'
+        )
+      }
+
+      if (
+        String(
+          data.restaurantId
+        ) !==
+        String(
+          restaurant.id
+        )
+      ) {
+        throw new Error(
+          'These credentials do not belong to this restaurant.'
+        )
+      }
+
+      if (
+        String(
+          data.role || ''
+        ).toLowerCase() !==
+        String(
+          role
+        ).toLowerCase()
+      ) {
+        throw new Error(
+          'Your account does not have access to this portal.'
+        )
+      }
+
+      return data
     }
 
-    if (!data?.success) {
-      throw new Error(
-        data?.message || 'Invalid login credentials.'
-      )
-    }
-
-    if (!data?.sessionToken) {
-      throw new Error(
-        'The login server did not return a session.'
-      )
-    }
-
+  const saveSession = (
+    sessionData
+  ) => {
     if (
-      String(data.restaurantId) !==
-      String(restaurant.id)
+      typeof window ===
+      'undefined'
     ) {
-      throw new Error(
-        'These credentials do not belong to this restaurant.'
-      )
+      return
     }
-
-    if (
-      String(data.role || '').toLowerCase() !==
-      String(role).toLowerCase()
-    ) {
-      throw new Error(
-        'Your account does not have access to this portal.'
-      )
-    }
-
-    return data
-  }
-
-  // =========================================================
-  // SAVE STAFF SESSION
-  // =========================================================
-
-  const saveSession = (sessionData) => {
-    if (typeof window === 'undefined') return
 
     const session = {
-      sessionId: sessionData.sessionId || null,
-      sessionToken: sessionData.sessionToken,
+      sessionId:
+        sessionData.sessionId ||
+        null,
 
-      restaurantId: String(
-        sessionData.restaurantId || restaurant.id
-      ),
+      sessionToken:
+        sessionData.sessionToken,
 
-      restaurantCode: String(
-        sessionData.restaurantCode ||
-          restaurant.restaurant_code ||
-          restaurantCode
-      ).trim(),
+      restaurantId:
+        String(
+          sessionData
+            .restaurantId ||
+            restaurant.id
+        ),
+
+      restaurantCode:
+        cleanRestaurantCode(
+          sessionData
+            .restaurantCode ||
+            restaurant
+              .restaurant_code ||
+            restaurantCode
+        ),
 
       restaurantName:
-        restaurant.name || 'Digital Dine',
+        restaurant.name ||
+        'Digital Dine',
 
-      userId: String(
-        sessionData.userId || userId
-      )
-        .trim()
-        .toLowerCase(),
+      userId:
+        String(
+          sessionData.userId ||
+            userId
+        )
+          .trim()
+          .toLowerCase(),
 
-      role: String(
-        sessionData.role || role
-      ).toLowerCase(),
+      role:
+        String(
+          sessionData.role ||
+            role
+        ).toLowerCase(),
 
-      staff: sessionData.staff || null,
-      expiresAt: sessionData.expiresAt || null,
-      createdAt: Date.now(),
+      staff:
+        sessionData.staff ||
+        null,
+
+      expiresAt:
+        sessionData.expiresAt ||
+        null,
+
+      createdAt:
+        Date.now(),
     }
 
     localStorage.setItem(
       SESSION_STORAGE_KEY,
-      JSON.stringify(session)
+      JSON.stringify(
+        session
+      )
     )
 
     localStorage.removeItem(
@@ -286,126 +699,324 @@ export default function DigitalDineApp() {
     )
   }
 
-  // =========================================================
-  // STAFF REDIRECT
-  // =========================================================
+  const redirectToPortal = (
+    sessionData
+  ) => {
+    const id =
+      encodeURIComponent(
+        String(
+          sessionData
+            ?.restaurantId ||
+            restaurant.id
+        )
+      )
 
-  const redirectToPortal = (sessionData) => {
-    const id = encodeURIComponent(
+    const sessionRole =
       String(
-        sessionData?.restaurantId ||
-          restaurant.id
+        sessionData?.role ||
+          role
+      ).toLowerCase()
+
+    if (
+      sessionRole ===
+      'waiter'
+    ) {
+      router.replace(
+        `/app/waiter/${id}`
       )
+      return
+    }
+
+    if (
+      sessionRole ===
+      'kitchen'
+    ) {
+      router.replace(
+        `/app/kitchen/${id}`
+      )
+      return
+    }
+
+    if (
+      sessionRole ===
+      'manager'
+    ) {
+      router.replace(
+        `/app/manager/${id}`
+      )
+      return
+    }
+
+    throw new Error(
+      'Unsupported staff role.'
     )
-
-    const sessionRole = String(
-      sessionData?.role || role
-    ).toLowerCase()
-
-    if (sessionRole === 'waiter') {
-      router.replace(`/app/waiter/${id}`)
-      return
-    }
-
-    if (sessionRole === 'kitchen') {
-      router.replace(`/app/kitchen/${id}`)
-      return
-    }
-
-    if (sessionRole === 'manager') {
-      router.replace(`/app/manager/${id}`)
-      return
-    }
-
-    throw new Error('Unsupported staff role.')
   }
 
-  // =========================================================
-  // STAFF LOGIN
-  // =========================================================
+  const handleStaffLogin =
+    async (event) => {
+      event.preventDefault()
 
-  const handleStaffLogin = async (event) => {
-    event.preventDefault()
+      if (loading) return
 
-    if (loading) return
+      setError('')
 
-    setError('')
+      if (!role) {
+        setError(
+          'Choose a staff login.'
+        )
+        return
+      }
 
-    if (!role) {
-      setError('Choose a staff login.')
-      return
+      if (
+        !availableRoleSet.has(
+          role
+        )
+      ) {
+        setError(
+          'This login is not available for this restaurant plan.'
+        )
+        return
+      }
+
+      if (
+        !String(
+          userId || ''
+        ).trim()
+      ) {
+        setError(
+          'Enter your User ID.'
+        )
+        return
+      }
+
+      if (
+        !String(
+          password || ''
+        ).trim()
+      ) {
+        setError(
+          'Enter your password.'
+        )
+        return
+      }
+
+      setLoading(true)
+
+      try {
+        const sessionData =
+          await createStaffSession()
+
+        saveSession(
+          sessionData
+        )
+
+        setPassword('')
+
+        redirectToPortal(
+          sessionData
+        )
+      } catch (loginError) {
+        console.error(
+          '[DIGITAL DINE APP] Staff login failed:',
+          loginError
+        )
+
+        setError(
+          loginError?.message ||
+            'Unable to sign in. Please try again.'
+        )
+      } finally {
+        setLoading(false)
+      }
     }
 
-    if (!String(userId || '').trim()) {
-      setError('Enter your User ID.')
-      return
-    }
-
-    if (!String(password || '').trim()) {
-      setError('Enter your password.')
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      const sessionData =
-        await createStaffSession()
-
-      saveSession(sessionData)
-
-      setPassword('')
-
-      redirectToPortal(sessionData)
-    } catch (loginError) {
-      console.error(
-        '[DIGITAL DINE APP] Staff login failed:',
-        loginError
+  const openStaffLogin = (
+    selectedRole
+  ) => {
+    const normalized =
+      String(
+        selectedRole || ''
       )
+        .trim()
+        .toLowerCase()
 
+    if (
+      ![
+        'waiter',
+        'kitchen',
+        'manager',
+      ].includes(
+        normalized
+      )
+    ) {
       setError(
-        loginError?.message ||
-          'Unable to sign in. Please try again.'
+        'Unsupported staff login.'
       )
-    } finally {
-      setLoading(false)
+      return
     }
-  }
 
-  const openStaffLogin = (selectedRole) => {
-    setRole(selectedRole)
+    if (
+      !availableRoleSet.has(
+        normalized
+      )
+    ) {
+      setError(
+        'This login is not included in the selected restaurant plan.'
+      )
+      return
+    }
+
+    setRole(normalized)
     setUserId('')
     setPassword('')
     setError('')
   }
 
-  const closeStaffLogin = () => {
-    setRole('')
-    setUserId('')
-    setPassword('')
-    setError('')
-  }
+  const closeStaffLogin =
+    () => {
+      setRole('')
+      setUserId('')
+      setPassword('')
+      setError('')
+    }
+
+  // =========================================================
+  // DEDICATED LOGIN PAGES
+  // =========================================================
 
   const openOwnerLogin = () => {
-    if (!restaurant?.id) return
+    if (!restaurant?.id) {
+      return
+    }
 
-    const code = encodeURIComponent(
-      String(
-        restaurant.restaurant_code ||
-          restaurantCode ||
-          ''
-      ).trim()
-    )
+    if (
+      !availableRoleSet.has(
+        'owner'
+      )
+    ) {
+      return
+    }
 
-    const id = encodeURIComponent(
-      String(restaurant.id)
-    )
+    const code =
+      encodeURIComponent(
+        cleanRestaurantCode(
+          restaurant
+            .restaurant_code ||
+            restaurantCode
+        )
+      )
 
-    // IMPORTANT:
-    // Owner access from /app must use the dedicated MOBILE owner login.
-    // Do not send app users to the website /login page.
+    const id =
+      encodeURIComponent(
+        String(
+          restaurant.id
+        )
+      )
+
+    // Existing secure mobile Owner login remains unchanged.
     router.push(
       `/app/owner?restaurantCode=${code}&restaurantId=${id}`
+    )
+  }
+
+  const openPackerLogin = () => {
+    if (
+      !availableRoleSet.has(
+        'packer'
+      )
+    ) {
+      setError(
+        'Packer login is not included in this restaurant plan.'
+      )
+      return
+    }
+
+    const code =
+      encodeURIComponent(
+        cleanRestaurantCode(
+          restaurant
+            ?.restaurant_code ||
+            restaurantCode
+        )
+      )
+
+    // Same Delivery Packer security/RPCs, now inside the application namespace.
+    router.push(
+      `/app/packer/${code}`
+    )
+  }
+
+  const openDriverLogin = () => {
+    if (
+      !availableRoleSet.has(
+        'driver'
+      )
+    ) {
+      setError(
+        'Delivery Boy login is not included in this restaurant plan.'
+      )
+      return
+    }
+
+    const code =
+      encodeURIComponent(
+        cleanRestaurantCode(
+          restaurant
+            ?.restaurant_code ||
+            restaurantCode
+        )
+      )
+
+    // Same Delivery Driver security/RPCs, now inside the application namespace.
+    router.push(
+      `/app/driver/${code}`
+    )
+  }
+
+  const openRole = (
+    selectedRole
+  ) => {
+    const normalized =
+      String(
+        selectedRole || ''
+      ).toLowerCase()
+
+    if (
+      !availableRoleSet.has(
+        normalized
+      )
+    ) {
+      setError(
+        'This login is not available for the selected restaurant plan.'
+      )
+      return
+    }
+
+    if (
+      normalized === 'owner'
+    ) {
+      openOwnerLogin()
+      return
+    }
+
+    if (
+      normalized ===
+      'packer'
+    ) {
+      openPackerLogin()
+      return
+    }
+
+    if (
+      normalized ===
+      'driver'
+    ) {
+      openDriverLogin()
+      return
+    }
+
+    openStaffLogin(
+      normalized
     )
   }
 
@@ -414,18 +1025,14 @@ export default function DigitalDineApp() {
       ? 'Manager Login'
       : role === 'waiter'
         ? 'Waiter Login'
-        : role === 'kitchen'
-          ? 'Kitchen Login'
+        : role ===
+            'kitchen'
+          ? 'KDS Login'
           : 'Staff Login'
 
   const roleIcon =
-    role === 'manager'
-      ? '👨‍💼'
-      : role === 'waiter'
-        ? '🧑‍🍳'
-        : role === 'kitchen'
-          ? '🍳'
-          : '👤'
+    ROLE_META[role]?.icon ||
+    '👤'
 
   // =========================================================
   // STEP 1 — RESTAURANT CODE
@@ -447,16 +1054,18 @@ export default function DigitalDineApp() {
             </h1>
 
             <p className="mt-2 text-sm text-neutral-400">
-              Restaurant Operations App
+              Restaurant & Delivery Operations App
             </p>
           </div>
 
           <form
-            onSubmit={handleRestaurantCode}
+            onSubmit={
+              handleRestaurantCode
+            }
             className="mt-8 rounded-[32px] border border-neutral-800 bg-neutral-900 p-6 shadow-2xl"
           >
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
-              Step 1
+              Secure access
             </p>
 
             <h2 className="mt-2 text-xl font-black">
@@ -464,7 +1073,7 @@ export default function DigitalDineApp() {
             </h2>
 
             <p className="mt-2 text-xs leading-5 text-neutral-500">
-              Enter the restaurant&apos;s 5-digit code to open the staff portal.
+              Enter the 5-digit code. Digital Dine will show only the login types for that restaurant&apos;s current plan.
             </p>
 
             <input
@@ -472,22 +1081,28 @@ export default function DigitalDineApp() {
               inputMode="numeric"
               autoComplete="off"
               maxLength={5}
-              value={restaurantCode}
-              onChange={(event) => {
+              value={
+                restaurantCode
+              }
+              onChange={(
+                event
+              ) => {
                 setRestaurantCode(
-                  event.target.value
-                    .replace(/\D/g, '')
-                    .slice(0, 5)
+                  cleanRestaurantCode(
+                    event.target
+                      .value
+                  )
                 )
+
                 setError('')
               }}
-              placeholder="14317"
+              placeholder="37647"
               disabled={loading}
               className="mt-5 w-full rounded-2xl border border-orange-500/30 bg-neutral-950 px-4 py-4 text-center text-2xl font-black tracking-[0.35em] text-white outline-none focus:border-orange-500 disabled:opacity-60"
             />
 
             {error && (
-              <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-300">
+              <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold leading-5 text-red-300">
                 {error}
               </div>
             )}
@@ -496,7 +1111,8 @@ export default function DigitalDineApp() {
               type="submit"
               disabled={
                 loading ||
-                restaurantCode.length !== 5
+                restaurantCode
+                  .length !== 5
               }
               className="mt-5 w-full rounded-2xl bg-orange-500 py-4 text-sm font-black text-white shadow-lg shadow-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -511,33 +1127,62 @@ export default function DigitalDineApp() {
   }
 
   // =========================================================
-  // STEP 2 — RESTAURANT LOGIN CHOOSER
+  // STEP 2 — PLAN-AWARE LOGIN CHOOSER
   // =========================================================
 
   return (
     <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 text-white">
       <div className="mx-auto min-h-[100dvh] w-full max-w-[480px] overflow-x-hidden bg-neutral-950 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        {/* HEADER */}
-
         <header className="sticky top-0 z-50 border-b border-neutral-800 bg-neutral-950/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl">
           <div className="flex min-w-0 items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-400">
-                Digital Dine
-              </p>
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900">
+                {restaurant
+                  ?.logo_url ? (
+                  <img
+                    src={
+                      restaurant.logo_url
+                    }
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xs font-black text-orange-400">
+                    DD
+                  </span>
+                )}
+              </div>
 
-              <h1 className="mt-1 truncate text-lg font-black">
-                {restaurant.name || 'Restaurant'}
-              </h1>
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-400">
+                  Digital Dine
+                </p>
 
-              <p className="mt-1 text-[10px] font-bold text-neutral-500">
-                Restaurant Code {restaurant.restaurant_code}
-              </p>
+                <h1 className="mt-0.5 truncate text-base font-black">
+                  {restaurant.name ||
+                    'Restaurant'}
+                </h1>
+
+                <p className="mt-1 truncate text-[9px] font-bold text-neutral-500">
+                  Code{' '}
+                  {
+                    restaurant
+                      .restaurant_code
+                  }{' '}
+                  ·{' '}
+                  {PLAN_LABELS[
+                    planCode
+                  ] ||
+                    'Restaurant'}
+                </p>
+              </div>
             </div>
 
             <button
               type="button"
-              onClick={changeRestaurant}
+              onClick={
+                changeRestaurant
+              }
               className="shrink-0 rounded-2xl border border-neutral-800 bg-neutral-900 px-3 py-2.5 text-[10px] font-black text-neutral-300"
             >
               Change
@@ -550,7 +1195,7 @@ export default function DigitalDineApp() {
             <>
               <section className="rounded-[30px] border border-orange-500/20 bg-gradient-to-br from-orange-500/15 via-neutral-900 to-neutral-900 p-5">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-400">
-                  Restaurant Access
+                  Plan-aware access
                 </p>
 
                 <h2 className="mt-2 text-2xl font-black">
@@ -558,120 +1203,87 @@ export default function DigitalDineApp() {
                 </h2>
 
                 <p className="mt-2 text-xs leading-relaxed text-neutral-400">
-                  Restaurant verified. Select Owner, Manager, Waiter or Kitchen.
+                  {planCode ===
+                  'delivery'
+                    ? 'Delivery plan verified. Packer, Delivery Boy, Manager and Owner access are available.'
+                    : 'Restaurant plan verified. Waiter, KDS, Manager and Owner access are available.'}
                 </p>
               </section>
-
-              {/* ALL FOUR RESTAURANT LOGINS */}
 
               <section className="grid grid-cols-2 gap-3">
-                {/* OWNER */}
-                <button
-                  type="button"
-                  onClick={openOwnerLogin}
-                  className="min-h-[176px] rounded-[28px] border border-violet-500/20 bg-neutral-900 p-5 text-left active:scale-[0.98]"
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/10 text-3xl">
-                    👑
-                  </div>
+                {availableRoles.map(
+                  (
+                    roleName
+                  ) => {
+                    const meta =
+                      ROLE_META[
+                        roleName
+                      ]
 
-                  <h3 className="mt-5 text-lg font-black">
-                    Owner
-                  </h3>
+                    if (!meta) {
+                      return null
+                    }
 
-                  <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
-                    Open the restaurant owner account login.
-                  </p>
+                    return (
+                      <button
+                        key={
+                          roleName
+                        }
+                        type="button"
+                        onClick={() =>
+                          openRole(
+                            roleName
+                          )
+                        }
+                        className={`min-h-[176px] rounded-[28px] border bg-neutral-900 p-5 text-left transition active:scale-[0.98] ${meta.card}`}
+                      >
+                        <div
+                          className={`flex h-14 w-14 items-center justify-center rounded-2xl text-3xl ${meta.iconClass}`}
+                        >
+                          {
+                            meta.icon
+                          }
+                        </div>
 
-                  <p className="mt-4 text-xs font-black text-violet-400">
-                    Owner Login →
-                  </p>
-                </button>
+                        <h3 className="mt-5 text-lg font-black">
+                          {
+                            meta.title
+                          }
+                        </h3>
 
-                {/* MANAGER */}
-                <button
-                  type="button"
-                  onClick={() => openStaffLogin('manager')}
-                  className="min-h-[176px] rounded-[28px] border border-sky-500/20 bg-neutral-900 p-5 text-left active:scale-[0.98]"
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500/10 text-3xl">
-                    👨‍💼
-                  </div>
+                        <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
+                          {
+                            meta.description
+                          }
+                        </p>
 
-                  <h3 className="mt-5 text-lg font-black">
-                    Manager
-                  </h3>
-
-                  <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
-                    Manage restaurant operations and staff.
-                  </p>
-
-                  <p className="mt-4 text-xs font-black text-sky-400">
-                    Manager Login →
-                  </p>
-                </button>
-
-                {/* WAITER */}
-                <button
-                  type="button"
-                  onClick={() => openStaffLogin('waiter')}
-                  className="min-h-[176px] rounded-[28px] border border-orange-500/20 bg-neutral-900 p-5 text-left active:scale-[0.98]"
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500/10 text-3xl">
-                    🧑‍🍽️
-                  </div>
-
-                  <h3 className="mt-5 text-lg font-black">
-                    Waiter
-                  </h3>
-
-                  <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
-                    Take table orders and serve ready dishes.
-                  </p>
-
-                  <p className="mt-4 text-xs font-black text-orange-400">
-                    Waiter Login →
-                  </p>
-                </button>
-
-                {/* KITCHEN */}
-                <button
-                  type="button"
-                  onClick={() => openStaffLogin('kitchen')}
-                  className="min-h-[176px] rounded-[28px] border border-red-500/20 bg-neutral-900 p-5 text-left active:scale-[0.98]"
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/10 text-3xl">
-                    👨‍🍳
-                  </div>
-
-                  <h3 className="mt-5 text-lg font-black">
-                    Kitchen
-                  </h3>
-
-                  <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
-                    Open KDS queue and update food preparation.
-                  </p>
-
-                  <p className="mt-4 text-xs font-black text-red-400">
-                    Kitchen Login →
-                  </p>
-                </button>
+                        <p
+                          className={`mt-4 text-xs font-black ${meta.link}`}
+                        >
+                          {
+                            meta.title
+                          }{' '}
+                          Login →
+                        </p>
+                      </button>
+                    )
+                  }
+                )}
               </section>
 
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 px-4 py-3 text-center">
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 px-4 py-3">
                 <p className="text-[10px] leading-relaxed text-neutral-500">
-                  Logging out from Waiter or Kitchen returns here automatically for
-                  <span className="font-black text-white">
-                    {' '}
-                    {restaurant.name}
-                  </span>
-                  .
+                  Login authentication, existing staff sessions and Owner ownership checks remain unchanged. This screen only selects which existing secure login flow is available for the current plan.
                 </p>
               </div>
+
+              {error && (
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold leading-5 text-red-300">
+                  {error}
+                </div>
+              )}
             </>
           )}
-
-          {/* STAFF CREDENTIAL FORM */}
 
           {role && (
             <section className="rounded-[30px] border border-neutral-800 bg-neutral-900 p-5 shadow-xl">
@@ -682,7 +1294,7 @@ export default function DigitalDineApp() {
                   </span>
 
                   <p className="mt-3 text-[10px] font-black uppercase tracking-widest text-orange-400">
-                    Staff Access
+                    Secure staff access
                   </p>
 
                   <h2 className="mt-1 text-xl font-black">
@@ -690,14 +1302,22 @@ export default function DigitalDineApp() {
                   </h2>
 
                   <p className="mt-1 text-[10px] text-neutral-500">
-                    {restaurant.name} · Code{' '}
-                    {restaurant.restaurant_code}
+                    {
+                      restaurant.name
+                    }{' '}
+                    · Code{' '}
+                    {
+                      restaurant
+                        .restaurant_code
+                    }
                   </p>
                 </div>
 
                 <button
                   type="button"
-                  onClick={closeStaffLogin}
+                  onClick={
+                    closeStaffLogin
+                  }
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-950 text-neutral-400"
                   aria-label="Close staff login"
                 >
@@ -706,7 +1326,9 @@ export default function DigitalDineApp() {
               </div>
 
               <form
-                onSubmit={handleStaffLogin}
+                onSubmit={
+                  handleStaffLogin
+                }
                 className="mt-5 space-y-4"
               >
                 <div>
@@ -717,17 +1339,24 @@ export default function DigitalDineApp() {
                   <input
                     type="text"
                     value={userId}
-                    onChange={(event) => {
-                      setUserId(event.target.value)
+                    onChange={(
+                      event
+                    ) => {
+                      setUserId(
+                        event.target
+                          .value
+                      )
                       setError('')
                     }}
                     autoCapitalize="none"
                     autoCorrect="off"
                     autoComplete="username"
                     placeholder={
-                      role === 'manager'
+                      role ===
+                      'manager'
                         ? 'Manager User ID'
-                        : role === 'waiter'
+                        : role ===
+                            'waiter'
                           ? 'Waiter User ID'
                           : 'Kitchen User ID'
                     }
@@ -743,9 +1372,16 @@ export default function DigitalDineApp() {
 
                   <input
                     type="password"
-                    value={password}
-                    onChange={(event) => {
-                      setPassword(event.target.value)
+                    value={
+                      password
+                    }
+                    onChange={(
+                      event
+                    ) => {
+                      setPassword(
+                        event.target
+                          .value
+                      )
                       setError('')
                     }}
                     autoComplete="current-password"
@@ -756,14 +1392,16 @@ export default function DigitalDineApp() {
                 </div>
 
                 {error && (
-                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-300">
+                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold leading-5 text-red-300">
                     {error}
                   </div>
                 )}
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={
+                    loading
+                  }
                   className="w-full rounded-2xl bg-orange-500 py-4 text-sm font-black text-white shadow-lg shadow-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading
@@ -777,10 +1415,12 @@ export default function DigitalDineApp() {
 
               <button
                 type="button"
-                onClick={closeStaffLogin}
+                onClick={
+                  closeStaffLogin
+                }
                 className="mt-3 w-full rounded-2xl border border-neutral-800 bg-neutral-950 py-3 text-[10px] font-black text-neutral-400"
               >
-                ← Back to restaurant logins
+                ← Back to available logins
               </button>
             </section>
           )}

@@ -1017,8 +1017,8 @@ export default function DeliveryStorePage({
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-neutral-50 px-4 py-10 text-neutral-900">
-        <div className="mx-auto max-w-lg rounded-3xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
+      <main className="min-h-screen bg-[#f7f7f5] px-4 py-10 text-neutral-950">
+        <div className="mx-auto max-w-lg rounded-[28px] border border-neutral-200/80 bg-white p-8 text-center shadow-[0_20px_60px_rgba(0,0,0,0.06)]">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-emerald-600" />
           <p className="mt-4 text-sm font-bold text-neutral-600">
             Loading Delivery
@@ -1031,8 +1031,8 @@ export default function DeliveryStorePage({
 
   if (error || !storeData) {
     return (
-      <main className="min-h-screen bg-neutral-50 px-4 py-10 text-neutral-900">
-        <div className="mx-auto max-w-lg rounded-3xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
+      <main className="min-h-screen bg-[#f7f7f5] px-4 py-10 text-neutral-950">
+        <div className="mx-auto max-w-lg rounded-[28px] border border-neutral-200/80 bg-white p-8 text-center shadow-[0_20px_60px_rgba(0,0,0,0.06)]">
           <div className="text-4xl">
             🚚
           </div>
@@ -1059,160 +1059,260 @@ export default function DeliveryStorePage({
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50 pb-28 text-neutral-900">
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto max-w-5xl px-4 py-3">
+    <main className="min-h-screen bg-[#f7f7f5] pb-32 text-neutral-950">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 backdrop-blur-xl">
+        <div className="mx-auto max-w-5xl px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100">
+            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100 shadow-sm">
               {restaurant.logo_url ? (
                 <img
-                  src={
-                    restaurant.logo_url
-                  }
-                  alt={
-                    settings.store_name ||
-                    restaurant.name
-                  }
+                  src={restaurant.logo_url}
+                  alt={settings.store_name || restaurant.name}
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="flex h-full items-center justify-center text-xl">
+                <div className="flex h-full items-center justify-center bg-neutral-950 text-xl text-white">
                   🍽️
                 </div>
               )}
             </div>
 
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-base font-black">
-                {settings.store_name ||
-                  restaurant.name ||
-                  'Delivery'}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-[15px] font-black tracking-tight text-neutral-950">
+                  {settings.store_name || restaurant.name || 'Delivery'}
+                </h1>
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    settings.is_open ? 'bg-emerald-500' : 'bg-red-500'
+                  }`}
+                />
+              </div>
 
-              <p
-                className={`text-[10px] font-black uppercase tracking-wider ${
-                  settings.is_open
-                    ? 'text-emerald-600'
-                    : 'text-red-500'
-                }`}
-              >
+              <p className="mt-0.5 truncate text-[10px] font-semibold text-neutral-500">
                 {settings.is_open
-                  ? `Open · ~${settings.estimated_delivery_minutes || 45} min`
-                  : 'Currently Closed'}
+                  ? `Open now · ${settings.estimated_delivery_minutes || 45} min delivery`
+                  : 'Currently closed'}
               </p>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={
-                  openTracking
-                }
-                className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-[10px] font-black text-neutral-700 shadow-sm"
-              >
-                Track Order
-              </button>
+            <button
+              type="button"
+              onClick={openTracking}
+              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 text-[10px] font-black text-neutral-800 shadow-sm transition active:scale-[0.98]"
+            >
+              <span aria-hidden="true">⌖</span>
+              Track
+            </button>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setCheckoutOpen(
-                    true
-                  )
-                }
-                className="relative rounded-xl bg-neutral-900 px-4 py-2.5 text-xs font-black text-white"
-              >
-                Cart
-                {cartCount > 0 && (
-                  <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[9px] text-white">
-                    {cartCount}
-                  </span>
-                )}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setCheckoutOpen(true)}
+              className="relative flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-neutral-950 px-3.5 text-[10px] font-black text-white shadow-sm transition active:scale-[0.98]"
+            >
+              <span aria-hidden="true">🛒</span>
+              Cart
+              {cartCount > 0 && (
+                <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black text-white ring-2 ring-white">
+                  {cartCount}
+                </span>
+              )}
+            </button>
           </div>
 
-          <div className="mt-3">
+          <div className="relative mt-3">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-neutral-400">
+              ⌕
+            </span>
             <input
               value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value
-                )
-              }
-              placeholder="Search dishes, drinks, categories..."
-              className="w-full rounded-2xl border border-neutral-200 bg-neutral-100 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:bg-white"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search food, drinks or categories"
+              className="h-12 w-full rounded-2xl border border-neutral-200 bg-neutral-100 pl-10 pr-4 text-sm font-medium outline-none transition placeholder:text-neutral-400 focus:border-neutral-400 focus:bg-white focus:ring-4 focus:ring-neutral-100"
             />
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 py-5">
-        {settings.banner_url && (
-          <div className="overflow-hidden rounded-3xl border border-neutral-200 bg-neutral-900 shadow-sm">
-            <img
-              src={
-                settings.banner_url
-              }
-              alt="Delivery banner"
-              className="h-44 w-full object-cover sm:h-56"
-            />
-          </div>
-        )}
+      <div className="mx-auto max-w-5xl px-4 py-4 sm:py-6">
+        <section className="overflow-hidden rounded-[28px] border border-neutral-200/80 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
+          <div className="relative">
+            {settings.banner_url ? (
+              <img
+                src={settings.banner_url}
+                alt="Delivery banner"
+                className="h-40 w-full object-cover sm:h-56"
+              />
+            ) : (
+              <div className="h-28 bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-700 sm:h-36" />
+            )}
 
-        {settings.description && (
-          <p className="mt-4 text-sm leading-6 text-neutral-600">
-            {settings.description}
-          </p>
-        )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
 
-        {offers.length > 0 && (
-          <section className="mt-6">
-            <div className="mb-3 flex items-end justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-orange-500">
-                  Today&apos;s offers
+            <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3 text-white">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/75">
+                  Delivery by Digital Dine
                 </p>
-                <h2 className="mt-1 text-lg font-black">
-                  Special deals
+                <h2 className="mt-1 truncate text-xl font-black tracking-tight sm:text-2xl">
+                  {settings.store_name || restaurant.name || 'Delivery Store'}
                 </h2>
+              </div>
+
+              <span
+                className={`shrink-0 rounded-full px-3 py-1.5 text-[9px] font-black uppercase ${
+                  settings.is_open
+                    ? 'bg-white text-emerald-700'
+                    : 'bg-red-500 text-white'
+                }`}
+              >
+                {settings.is_open ? 'Open' : 'Closed'}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5">
+            {settings.description && (
+              <p className="text-sm leading-6 text-neutral-600">
+                {settings.description}
+              </p>
+            )}
+
+            <div className={`${settings.description ? 'mt-4' : ''} grid grid-cols-2 gap-2 sm:grid-cols-4`}>
+              <div className="rounded-2xl bg-neutral-50 px-3 py-3">
+                <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                  Delivery time
+                </p>
+                <p className="mt-1 text-sm font-black text-neutral-950">
+                  ~{settings.estimated_delivery_minutes || 45} min
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-neutral-50 px-3 py-3">
+                <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                  Delivery fee
+                </p>
+                <p className="mt-1 text-sm font-black text-neutral-950">
+                  {Number(settings.delivery_fee || 0) === 0
+                    ? 'FREE'
+                    : money(settings.delivery_fee)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-neutral-50 px-3 py-3">
+                <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                  Minimum order
+                </p>
+                <p className="mt-1 text-sm font-black text-neutral-950">
+                  {Number(settings.minimum_order_amount || 0) > 0
+                    ? money(settings.minimum_order_amount)
+                    : 'No minimum'}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-neutral-50 px-3 py-3">
+                <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                  Service area
+                </p>
+                <p className="mt-1 text-sm font-black text-neutral-950">
+                  {coverageEnabled && coverageRadiusKm > 0
+                    ? `${coverageRadiusKm.toFixed(1)} km`
+                    : 'Local delivery'}
+                </p>
               </div>
             </div>
 
-            <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2">
-              {offers.map(
-                (offer) => (
-                  <article
-                    key={offer.id}
-                    className="min-w-[260px] max-w-[280px] rounded-3xl border border-orange-100 bg-orange-50 p-4"
-                  >
-                    <p className="text-[10px] font-black uppercase text-orange-600">
-                      {offer.discount_text ||
-                        'Offer'}
-                    </p>
+            {(settings.address || settings.city) && (
+              <p className="mt-3 flex items-start gap-2 text-[11px] leading-5 text-neutral-500">
+                <span className="mt-0.5">⌖</span>
+                <span>
+                  {[settings.address, settings.city, settings.state]
+                    .filter(Boolean)
+                    .join(', ')}
+                </span>
+              </p>
+            )}
+          </div>
+        </section>
 
-                    <h3 className="mt-1 font-black">
-                      {offer.title}
-                    </h3>
+        {offers.length > 0 && (
+          <section className="mt-7">
+            <div className="mb-3 flex items-end justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-500">
+                  Offers for you
+                </p>
+                <h2 className="mt-1 text-lg font-black tracking-tight text-neutral-950">
+                  Save on your order
+                </h2>
+              </div>
+              <span className="text-[10px] font-bold text-neutral-400">
+                Swipe
+              </span>
+            </div>
 
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-neutral-600">
-                      {offer.description}
-                    </p>
+            <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {offers.map((offer) => (
+                <article
+                  key={offer.id}
+                  className="relative min-w-[285px] snap-start overflow-hidden rounded-[24px] border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-4 shadow-sm"
+                >
+                  <div className="absolute -right-7 -top-7 h-24 w-24 rounded-full bg-orange-200/30" />
 
-                    <p className="mt-3 text-sm font-black text-orange-700">
-                      {money(
-                        offer.offer_price
+                  <div className="relative flex items-start gap-3">
+                    {offer.image_url && (
+                      <img
+                        src={offer.image_url}
+                        alt={offer.title || 'Offer'}
+                        className="h-16 w-16 shrink-0 rounded-2xl object-cover"
+                      />
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-orange-600">
+                        {offer.discount_text || 'Special offer'}
+                      </p>
+                      <h3 className="mt-1 line-clamp-1 text-sm font-black text-neutral-950">
+                        {offer.title}
+                      </h3>
+                      {offer.description && (
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-neutral-500">
+                          {offer.description}
+                        </p>
                       )}
+                    </div>
+                  </div>
+
+                  <div className="relative mt-4 flex items-center justify-between">
+                    <p className="text-base font-black text-orange-700">
+                      {money(offer.offer_price)}
                     </p>
-                  </article>
-                )
-              )}
+                    <span className="rounded-full border border-orange-200 bg-white px-3 py-1.5 text-[9px] font-black uppercase text-orange-700">
+                      Limited deal
+                    </span>
+                  </div>
+                </article>
+              ))}
             </div>
           </section>
         )}
 
-        <section className="mt-6">
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2">
+        <section className="mt-7">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-400">
+                Browse menu
+              </p>
+              <h2 className="mt-1 text-lg font-black tracking-tight text-neutral-950">
+                What would you like?
+              </h2>
+            </div>
+            <span className="text-[10px] font-bold text-neutral-400">
+              {filteredItems.length} items
+            </span>
+          </div>
+
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {categories.map(
               (itemCategory) => (
                 <button
@@ -1225,10 +1325,9 @@ export default function DeliveryStorePage({
                       itemCategory
                     )
                   }
-                  className={`whitespace-nowrap rounded-full border px-4 py-2 text-xs font-black ${
-                    category ===
-                    itemCategory
-                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                  className={`whitespace-nowrap rounded-full border px-4 py-2.5 text-[11px] font-black transition active:scale-[0.98] ${
+                    category === itemCategory
+                      ? 'border-neutral-950 bg-neutral-950 text-white shadow-sm'
                       : 'border-neutral-200 bg-white text-neutral-600'
                   }`}
                 >
@@ -1239,7 +1338,7 @@ export default function DeliveryStorePage({
           </div>
         </section>
 
-        <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredItems.map(
             (item) => {
               const quantity =
@@ -1258,9 +1357,9 @@ export default function DeliveryStorePage({
               return (
                 <article
                   key={item.id}
-                  className="overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-sm"
+                  className="group flex min-h-[138px] overflow-hidden rounded-[24px] border border-neutral-200/80 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.07)] sm:block sm:min-h-0"
                 >
-                  <div className="aspect-[16/10] bg-neutral-100">
+                  <div className="h-[138px] w-[128px] shrink-0 bg-neutral-100 sm:aspect-[16/10] sm:h-auto sm:w-full">
                     {item.image_url ? (
                       <img
                         src={
@@ -1278,7 +1377,7 @@ export default function DeliveryStorePage({
                     )}
                   </div>
 
-                  <div className="p-4">
+                  <div className="flex min-w-0 flex-1 flex-col p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p
@@ -1339,12 +1438,12 @@ export default function DeliveryStorePage({
                               1
                             )
                           }
-                          className="w-full rounded-xl border border-emerald-600 bg-emerald-50 py-2.5 text-xs font-black text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="w-full rounded-xl border border-emerald-600 bg-white py-2.5 text-xs font-black text-emerald-700 shadow-sm transition hover:bg-emerald-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           ADD
                         </button>
                       ) : (
-                        <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-emerald-600">
+                        <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-emerald-600 bg-white shadow-sm">
                           <button
                             type="button"
                             onClick={() =>
@@ -1386,53 +1485,49 @@ export default function DeliveryStorePage({
           )}
 
           {!filteredItems.length && (
-            <div className="col-span-full rounded-3xl border border-neutral-200 bg-white py-14 text-center text-sm text-neutral-500">
-              No matching Delivery
-              items.
+            <div className="col-span-full rounded-[28px] border border-dashed border-neutral-300 bg-white px-6 py-16 text-center shadow-sm">
+              <div className="text-4xl">🍽️</div>
+              <p className="mt-3 text-sm font-black text-neutral-800">
+                Nothing matched your search
+              </p>
+              <p className="mt-1 text-xs text-neutral-500">
+                Try another dish or category.
+              </p>
             </div>
           )}
         </section>
       </div>
 
       {cartCount > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white p-3 shadow-[0_-12px_30px_rgba(0,0,0,0.08)]">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
-            <div>
-              <p className="text-[10px] font-bold text-neutral-500">
-                {cartCount}{' '}
-                {cartCount === 1
-                  ? 'item'
-                  : 'items'}
+        <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-2xl items-center gap-3 rounded-[22px] border border-neutral-800 bg-neutral-950 p-2.5 pl-4 text-white shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                {cartCount} {cartCount === 1 ? 'item' : 'items'} in cart
               </p>
-
-              <p className="font-black">
-                {money(
-                  previewTotal
-                )}
-                <span className="ml-1 text-[10px] font-medium text-neutral-400">
-                  approx.
+              <p className="mt-0.5 truncate text-base font-black">
+                {money(previewTotal)}
+                <span className="ml-1 text-[9px] font-medium text-neutral-400">
+                  estimated
                 </span>
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() =>
-                setCheckoutOpen(
-                  true
-                )
-              }
-              className="rounded-xl bg-emerald-600 px-6 py-3 text-xs font-black text-white"
+              onClick={() => setCheckoutOpen(true)}
+              className="flex h-12 shrink-0 items-center gap-2 rounded-2xl bg-emerald-500 px-5 text-xs font-black text-white shadow-sm transition active:scale-[0.98]"
             >
-              View Cart & Checkout
+              View cart
+              <span aria-hidden="true">→</span>
             </button>
           </div>
         </div>
       )}
 
       {trackingOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-neutral-200 bg-white p-5 shadow-2xl sm:rounded-3xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
+          <div className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:rounded-[30px]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">
@@ -1556,8 +1651,8 @@ export default function DeliveryStorePage({
       )}
 
       {checkoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/45 sm:items-center sm:justify-center sm:p-5">
-          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 sm:max-w-2xl sm:rounded-3xl">
+        <div className="fixed inset-0 z-50 flex items-end bg-black/55 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-5">
+          <div className="max-h-[94dvh] w-full overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:max-w-2xl sm:rounded-[30px]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
@@ -1645,7 +1740,7 @@ export default function DeliveryStorePage({
               )}
             </div>
 
-            <div className="mt-5 rounded-2xl bg-neutral-50 p-4 text-xs">
+            <div className="mt-5 rounded-[22px] border border-neutral-200 bg-neutral-50 p-4 text-xs">
               <BillRow
                 label="Subtotal"
                 value={money(
@@ -1996,7 +2091,7 @@ export default function DeliveryStorePage({
                     )
                   }
                   placeholder="Optional instructions"
-                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none focus:border-emerald-500"
+                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3.5 py-3 text-sm font-medium outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-50"
                 />
               </label>
 
@@ -2073,7 +2168,7 @@ export default function DeliveryStorePage({
                   !settings.is_open ||
                   !cartRows.length
                 }
-                className="w-full rounded-xl bg-emerald-600 px-5 py-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-2xl bg-neutral-950 px-5 py-4 text-sm font-black text-white shadow-sm transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {placing
                   ? 'Processing...'
@@ -2112,7 +2207,7 @@ function CheckoutField({
           )
         }
         placeholder={placeholder}
-        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none focus:border-emerald-500"
+        className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3.5 py-3 text-sm font-medium outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-50"
       />
     </label>
   )

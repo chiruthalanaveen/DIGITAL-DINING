@@ -2451,7 +2451,7 @@ export default function RestaurantDashboard() {
 
   // Every enabled Restaurant module gets the complete Restaurant feature set.
   const hasAdvancedAnalytics = Boolean(planFeatures.restaurant)
-  const hasManagerManagement = Boolean(planFeatures.restaurant)
+  const hasManagerManagement = Boolean(planFeatures.restaurant || planFeatures.delivery)
   const hasAdvancedMenuControls = Boolean(planFeatures.restaurant)
   const hasRealtimeOrderAlarm = Boolean(planFeatures.restaurant)
 
@@ -2467,6 +2467,15 @@ export default function RestaurantDashboard() {
     Number(restaurantModuleEnabled) +
     Number(resortModuleEnabled) +
     Number(deliveryModuleEnabled)
+
+  // Delivery-only plans still use the existing staff_users security model
+  // for the Manager account. Keep the Owner's staff form locked to Manager
+  // while this plan is active.
+  useEffect(() => {
+    if (currentPlanCode === 'delivery') {
+      setStaffRole('manager')
+    }
+  }, [currentPlanCode])
 
   // Keep the selected workspace inside the modules included in the plan.
   // Delivery-only subscriptions open directly in Delivery.
@@ -3338,6 +3347,13 @@ export default function RestaurantDashboard() {
   const handleCreateStaff = async (e) => {
     e.preventDefault()
 
+    // Delivery-only subscriptions may create Manager access here,
+    // but must not create Restaurant Waiter/Kitchen accounts.
+    const roleToCreate =
+      currentPlanCode === 'delivery'
+        ? 'manager'
+        : staffRole
+
     if (
       !staffName.trim() ||
       !staffUserId.trim() ||
@@ -3361,7 +3377,7 @@ export default function RestaurantDashboard() {
             .toLowerCase(),
         password:
           staffPassword.trim(),
-        role: staffRole,
+        role: roleToCreate,
         pin:
           staffPassword.trim(),
         is_active: true
@@ -3378,7 +3394,7 @@ export default function RestaurantDashboard() {
       if (error) throw error
 
       alert(
-        `${staffRole === 'waiter' ? 'Waiter' : staffRole === 'kitchen' ? 'Kitchen' : 'Restaurant Manager'} account created successfully! 🎉`
+        `${roleToCreate === 'waiter' ? 'Waiter' : roleToCreate === 'kitchen' ? 'Kitchen' : 'Restaurant Manager'} account created successfully! 🎉`
       )
 
       setStaffName('')
@@ -5964,6 +5980,127 @@ export default function RestaurantDashboard() {
               restaurant={restaurant}
               planCode={currentPlanCode}
             />
+
+            {currentPlanCode === 'delivery' && (
+              <section className="rounded-[24px] border border-sky-500/20 bg-neutral-900 p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-400">
+                      Delivery Manager Access
+                    </p>
+
+                    <h3 className="mt-1 text-base font-black text-white">
+                      Manager Login
+                    </h3>
+
+                    <p className="mt-1 text-[10px] leading-5 text-neutral-500">
+                      Create the Manager credentials used from the Digital Dine app after this restaurant code is entered.
+                    </p>
+                  </div>
+
+                  <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[8px] font-black uppercase text-sky-300">
+                    Owner only
+                  </span>
+                </div>
+
+                <form
+                  onSubmit={handleCreateStaff}
+                  className="mt-4 grid grid-cols-1 gap-3"
+                >
+                  <input
+                    type="text"
+                    value={staffName}
+                    onChange={(event) =>
+                      setStaffName(event.target.value)
+                    }
+                    placeholder="Manager name"
+                    required
+                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
+                  />
+
+                  <input
+                    type="text"
+                    value={staffUserId}
+                    onChange={(event) =>
+                      setStaffUserId(event.target.value)
+                    }
+                    placeholder="Manager User ID"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    autoComplete="username"
+                    required
+                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
+                  />
+
+                  <input
+                    type="password"
+                    value={staffPassword}
+                    onChange={(event) =>
+                      setStaffPassword(event.target.value)
+                    }
+                    placeholder="Manager password / PIN"
+                    autoComplete="new-password"
+                    required
+                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={addingStaff}
+                    className="rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                  >
+                    {addingStaff
+                      ? 'Creating Manager...'
+                      : 'Create Manager Login'}
+                  </button>
+                </form>
+
+                <div className="mt-4 space-y-2">
+                  {staffList
+                    .filter(
+                      (staff) =>
+                        String(staff?.role || '').toLowerCase() === 'manager'
+                    )
+                    .map((staff) => (
+                      <div
+                        key={staff.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-black text-white">
+                            {staff.name || staff.user_id}
+                          </p>
+                          <p className="mt-1 truncate text-[9px] text-neutral-500">
+                            User ID: {staff.user_id}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteStaff(
+                              staff.id,
+                              staff.name || staff.user_id
+                            )
+                          }
+                          className="shrink-0 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[9px] font-black text-red-300"
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    ))}
+
+                  {!staffList.some(
+                    (staff) =>
+                      String(staff?.role || '').toLowerCase() === 'manager'
+                  ) && (
+                    <p className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-[10px] leading-5 text-neutral-500">
+                      No Manager login exists yet. Create one above, then the Manager can enter this restaurant code in the app and sign in.
+                    </p>
+                  )}
+                </div>
+              </section>
+            )}
           </div>
         )}
 

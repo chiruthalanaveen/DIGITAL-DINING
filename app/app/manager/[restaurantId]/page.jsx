@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import ManagerDeliveryManagement from '@/app/components/ManagerDeliveryManagement'
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
@@ -1567,32 +1568,164 @@ export default function RestaurantManagerDashboard({ params }) {
     return () => window.clearInterval(interval)
   }, [authenticated, fetchDashboard])
 
-  // Subscription-wise feature control. plan_code is primary; legacy plan is fallback.
-  const legacyPlan = String(restaurant?.plan || 'Standard')
+  // Subscription-wise module control.
+  // Final plans:
+  // Restaurant, Delivery, Restaurant + Resort,
+  // Restaurant + Delivery, Restaurant + Resort + Delivery.
+  // Existing staff authentication and session verification remain unchanged.
+  const legacyPlan = String(restaurant?.plan || 'Pro')
   const legacyPlanCode =
     legacyPlan === 'Pro+'
       ? 'restaurant_resort_pro'
-      : legacyPlan === 'Pro'
-        ? 'restaurant_pro'
-        : 'restaurant_standard'
+      : 'restaurant_pro'
 
-  const currentPlanCode = String(restaurant?.plan_code || legacyPlanCode).toLowerCase()
+  const currentPlanCode = String(
+    restaurant?.plan_code || legacyPlanCode
+  ).toLowerCase()
+
   const PLAN_FEATURES = {
-    restaurant_standard: { name: 'Restaurant Standard', legacyPlan: 'Standard', advanced: false, resort: false, advancedResort: false },
-    restaurant_pro: { name: 'Restaurant Pro', legacyPlan: 'Pro', advanced: true, resort: false, advancedResort: false },
-    restaurant_resort_standard: { name: 'Restaurant + Resort Standard', legacyPlan: 'Standard', advanced: false, resort: true, advancedResort: false },
-    restaurant_resort_pro: { name: 'Restaurant + Resort Pro', legacyPlan: 'Pro+', advanced: true, resort: true, advancedResort: true },
+    restaurant_pro: {
+      name: 'Restaurant',
+      legacyPlan: 'Pro',
+      restaurant: true,
+      resort: false,
+      delivery: false,
+      advanced: true,
+      advancedResort: false,
+    },
+
+    delivery: {
+      name: 'Delivery',
+      legacyPlan: 'Pro',
+      restaurant: false,
+      resort: false,
+      delivery: true,
+      advanced: false,
+      advancedResort: false,
+    },
+
+    restaurant_resort_pro: {
+      name: 'Restaurant + Resort',
+      legacyPlan: 'Pro+',
+      restaurant: true,
+      resort: true,
+      delivery: false,
+      advanced: true,
+      advancedResort: true,
+    },
+
+    restaurant_delivery: {
+      name: 'Restaurant + Delivery',
+      legacyPlan: 'Pro',
+      restaurant: true,
+      resort: false,
+      delivery: true,
+      advanced: true,
+      advancedResort: false,
+    },
+
+    restaurant_resort_delivery: {
+      name: 'Restaurant + Resort + Delivery',
+      legacyPlan: 'Pro+',
+      restaurant: true,
+      resort: true,
+      delivery: true,
+      advanced: true,
+      advancedResort: true,
+    },
+
+    // Temporary compatibility with accounts not yet refreshed after migration.
+    restaurant_standard: {
+      name: 'Restaurant',
+      legacyPlan: 'Pro',
+      restaurant: true,
+      resort: false,
+      delivery: false,
+      advanced: true,
+      advancedResort: false,
+    },
+
+    restaurant_resort_standard: {
+      name: 'Restaurant + Resort',
+      legacyPlan: 'Pro+',
+      restaurant: true,
+      resort: true,
+      delivery: false,
+      advanced: true,
+      advancedResort: true,
+    },
   }
-  const planFeatures = PLAN_FEATURES[currentPlanCode] || PLAN_FEATURES.restaurant_standard
+
+  const planFeatures =
+    PLAN_FEATURES[currentPlanCode] ||
+    PLAN_FEATURES.restaurant_pro
+
   const currentPlan = planFeatures.legacyPlan
   const currentPlanDisplay = planFeatures.name
-  const hasAdvancedAnalytics = planFeatures.advanced
-  const hasAdvancedMenuControls = planFeatures.advanced
-  const hasResortAccess = Boolean(planFeatures.resort)
-  const hasAdvancedResort = Boolean(planFeatures.advancedResort)
 
-  const planLimits = { Standard: 20, Pro: 50, 'Pro+': Infinity }
-  const maxMenuAllowed = planLimits[currentPlan] ?? 20
+  const restaurantModuleEnabled =
+    Boolean(planFeatures.restaurant)
+
+  const deliveryModuleEnabled =
+    Boolean(planFeatures.delivery)
+
+  const hasAdvancedAnalytics =
+    Boolean(
+      planFeatures.restaurant &&
+      planFeatures.advanced
+    )
+
+  const hasAdvancedMenuControls =
+    Boolean(
+      planFeatures.restaurant &&
+      planFeatures.advanced
+    )
+
+  const hasResortAccess =
+    Boolean(planFeatures.resort)
+
+  const hasAdvancedResort =
+    Boolean(
+      planFeatures.resort &&
+      planFeatures.advancedResort
+    )
+
+  // Final five-plan structure has no Restaurant menu item cap.
+  const maxMenuAllowed = Infinity
+
+  // Delivery-only Managers open directly into Delivery.
+  // Combined plans start in Restaurant and can switch to Delivery.
+  useEffect(() => {
+    if (!restaurant) return
+
+    if (
+      deliveryModuleEnabled &&
+      !restaurantModuleEnabled
+    ) {
+      setDashboardMode('delivery')
+      return
+    }
+
+    if (
+      restaurantModuleEnabled &&
+      dashboardMode !== 'restaurant' &&
+      dashboardMode !== 'delivery'
+    ) {
+      setDashboardMode('restaurant')
+    }
+
+    if (
+      !deliveryModuleEnabled &&
+      dashboardMode === 'delivery'
+    ) {
+      setDashboardMode('restaurant')
+    }
+  }, [
+    restaurant,
+    restaurantModuleEnabled,
+    deliveryModuleEnabled,
+    dashboardMode,
+  ])
 
   const getItemOrderCount = useCallback((item) => {
     return orders.reduce((total, order) => {
@@ -2480,6 +2613,94 @@ export default function RestaurantManagerDashboard({ params }) {
     )
   }
 
+  if (
+    dashboardMode === 'delivery' &&
+    deliveryModuleEnabled
+  ) {
+    return (
+      <main className="min-h-[100dvh] w-full overflow-x-hidden bg-[#0f0f10] text-neutral-100">
+        <div className="mx-auto min-h-[100dvh] w-full max-w-[520px] bg-[#0f0f10] pb-[max(2rem,env(safe-area-inset-bottom))]">
+          <header className="sticky top-0 z-40 border-b border-neutral-800 bg-[#0f0f10]/96 px-4 pb-3 pt-[max(0.8rem,env(safe-area-inset-top))] backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold text-emerald-400">
+                  Manager Delivery workspace
+                </p>
+                <h1 className="mt-0.5 truncate text-lg font-semibold text-white">
+                  {restaurant?.name || 'Delivery'}
+                </h1>
+                <p className="mt-0.5 truncate text-[11px] text-neutral-500">
+                  {manager?.name || manager?.user_id} · {currentPlanDisplay}
+                </p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                {restaurantModuleEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardMode('restaurant')
+                      setActiveTab('home')
+                    }}
+                    className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2.5 text-[9px] font-black text-neutral-300"
+                  >
+                    Restaurant
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-[9px] font-black text-red-300"
+                >
+                  Log Out
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <div className="space-y-4 px-3 py-4 sm:px-4">
+            {restaurantModuleEnabled && (
+              <div className="grid grid-cols-2 gap-2 rounded-2xl border border-neutral-800 bg-neutral-900 p-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDashboardMode('restaurant')
+                    setActiveTab('home')
+                  }}
+                  className="rounded-xl px-3 py-3 text-[10px] font-black text-neutral-500"
+                >
+                  🍽️ Restaurant
+                </button>
+
+                <button
+                  type="button"
+                  className="rounded-xl bg-emerald-600 px-3 py-3 text-[10px] font-black text-white"
+                >
+                  🚚 Delivery
+                </button>
+              </div>
+            )}
+
+            <ManagerDeliveryManagement
+              restaurantId={restaurantId}
+              restaurantCode={restaurantCode}
+              sessionToken={sessionToken}
+              sessionMode={sessionMode}
+              userId={loginUserId}
+              password={loginPassword}
+              restaurant={restaurant}
+            />
+          </div>
+
+          <RestaurantChatWidget
+            restaurantId={restaurantId}
+          />
+        </div>
+      </main>
+    )
+  }
+
   return (
     // Mobile-only shell:
     // - 100dvh follows the real phone viewport height
@@ -2580,6 +2801,29 @@ export default function RestaurantManagerDashboard({ params }) {
         {notice && (
           <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+4.75rem)] z-[70] w-[calc(100svw-1rem)] max-w-[448px] -translate-x-1/2 rounded-2xl border border-emerald-500/20 bg-emerald-600 px-4 py-3 text-center text-xs font-bold text-white shadow-2xl">
             {notice}
+          </div>
+        )}
+
+        {deliveryModuleEnabled && restaurantModuleEnabled && (
+          <div className="px-3 pt-3 sm:px-4">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-neutral-800 bg-neutral-900 p-2">
+              <button
+                type="button"
+                className="rounded-xl bg-orange-500 px-3 py-3 text-[10px] font-black text-white"
+              >
+                🍽️ Restaurant
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setDashboardMode('delivery')
+                }
+                className="rounded-xl px-3 py-3 text-[10px] font-black text-neutral-500 transition active:bg-neutral-800"
+              >
+                🚚 Delivery
+              </button>
+            </div>
           </div>
         )}
 
