@@ -36,6 +36,28 @@ export default function GoogleLoginCallbackPage() {
       } catch {}
     }
 
+    // This component is valid only on /auth/google-login.
+    // If an old client bundle, cached navigation or hosting rewrite ever
+    // mounts it at /app, immediately return to the real application entry.
+    if (typeof window !== 'undefined') {
+      const pathname =
+        window.location.pathname.replace(/\/+$/, '') || '/'
+
+      if (pathname !== '/auth/google-login') {
+        clearGoogleContext()
+
+        try {
+          sessionStorage.removeItem(OWNER_APP_CONTEXT_KEY)
+          localStorage.removeItem(OWNER_APP_CONTEXT_KEY)
+        } catch {}
+
+        window.location.replace('/app')
+        return () => {
+          active = false
+        }
+      }
+    }
+
     const readGoogleContext = () => {
       if (
         typeof window === 'undefined'

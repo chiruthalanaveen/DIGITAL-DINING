@@ -1,9692 +1,1937 @@
 'use client'
-import ThemeToggle from '@/app/components/ThemeToggle'
-import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+
+
+
+import { Suspense, useEffect, useState } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { supabase } from '@/lib/supabase'
-import ResortManagement from '@/app/components/ResortManagement'
-import DeliveryManagement from '@/app/components/DeliveryManagement'
-import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
-import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 
-function AppIcon({ name, className = 'h-5 w-5', strokeWidth = 1.8 }) {
-  const common = {
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-  }
 
-  const icons = {
-    home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V21h13V9.5" /><path d="M9.5 21v-7h5v7" /></>,
-    orders: <><path d="M6 3.5h12v17H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
-    tables: <><rect x="3.5" y="4" width="17" height="16" rx="2" /><path d="M3.5 10h17M9 4v16M15 4v16" /></>,
-    menu: <><path d="M5 7h14M5 12h14M5 17h14" /></>,
-    more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
-    user: <><circle cx="12" cy="8" r="3.25" /><path d="M5.5 20c.8-4 3-6 6.5-6s5.7 2 6.5 6" /></>,
-    refresh: <><path d="M20 7v5h-5" /><path d="M19 12a7 7 0 1 1-2-5.2L20 9" /></>,
-    chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
-    qr: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" /><path d="M14 14h2v2h-2zM18 14h2v6h-2M14 18h2v2h-2" /></>,
-    billing: <><path d="M6 3.5h12v17l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
-    tag: <><path d="M4 4h7l9 9-7 7-9-9z" /><circle cx="8.5" cy="8.5" r="1.2" /></>,
-    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 9h18M7 15h4" /></>,
-    users: <><circle cx="9" cy="8.5" r="3" /><path d="M3.5 19c.6-3.4 2.5-5 5.5-5s4.9 1.6 5.5 5" /><path d="M15.5 6.2a2.7 2.7 0 0 1 0 5.2M17 14.5c2.1.5 3.3 1.9 3.7 4.5" /></>,
-    sync: <><path d="M20 7h-5V2" /><path d="M20 7a8 8 0 0 0-13.6-2.6L4 7" /><path d="M4 17h5v5" /><path d="M4 17a8 8 0 0 0 13.6 2.6L20 17" /></>,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2-1.7.7-1.9-.9L1.1 6l.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2h3l.7-2 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z" transform="translate(2.5 0) scale(.8)" /></>,
-    bell: <><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" /><path d="M10 19a2.3 2.3 0 0 0 4 0" /></>,
-    hotel: <><path d="M4 21V6h10v15M14 11h6v10M7 9h1M10 9h1M7 13h1M10 13h1M7 17h1M10 17h1M17 14h1M17 17h1" /></>,
-    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
-    logout: <><path d="M10 5H5v14h5" /><path d="M13 8l4 4-4 4M8 12h9" /></>,
-    kitchen: <><path d="M5 12h14v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3z" /><path d="M7 12V9a5 5 0 0 1 10 0v3M9 6.5V4M15 6.5V4" /></>,
-    palette: <><path d="M12 3a9 9 0 1 0 0 18h1.3a2 2 0 0 0 1.2-3.6c-.7-.5-.4-1.5.4-1.7H17a4 4 0 0 0 4-4A8.7 8.7 0 0 0 12 3Z" /><circle cx="7.5" cy="10" r=".8" fill="currentColor" stroke="none" /><circle cx="10" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="14" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="17" cy="10" r=".8" fill="currentColor" stroke="none" /></>,
-    type: <><path d="M5 6V4h14v2M9 20h6M12 4v16" /></>,
-    moon: <path d="M20 15.2A8 8 0 0 1 8.8 4 8 8 0 1 0 20 15.2Z" />,
-    sun: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
-    volume: <><path d="M5 10v4h4l5 4V6l-5 4z" /><path d="M17 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" /></>,
-    notifications: <><path d="M6 9a6 6 0 0 1 12 0v4l2 3H4l2-3z" /><path d="M10 20h4" /></>,
-    chevron: <path d="m9 18 6-6-6-6" />,
-    close: <path d="M6 6l12 12M18 6 6 18" />,
-    check: <path d="m5 12 4 4L19 6" />,
-    store: <><path d="M4 10v10h16V10" /><path d="M3 10l2-6h14l2 6" /><path d="M8 20v-6h8v6" /></>,
-  }
 
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} {...common}>
-      {icons[name] || icons.more}
-    </svg>
-  )
-}
+const OWNER_APP_CONTEXT_KEY =
 
-const MOBILE_EXPERIENCE_KEY = 'digital-dine-mobile-experience-v1'
+  'digitaldining_owner_app_context'
 
-const DEFAULT_MOBILE_EXPERIENCE = {
-  darkMode: true,
-  theme: 'orange',
-  textSize: 'normal',
-  uiStyle: 'soft',
-  pushNotifications: true,
-  orderMessages: true,
-  promotions: false,
-  sound: true,
-}
 
-function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
-  const [saved, setSaved] = useState(DEFAULT_MOBILE_EXPERIENCE)
-  const [draft, setDraft] = useState(DEFAULT_MOBILE_EXPERIENCE)
 
-  const themeOptions = [
-    { id: 'orange', label: 'Orange', color: '#f97316' },
-    { id: 'emerald', label: 'Green', color: '#059669' },
-    { id: 'ocean', label: 'Blue', color: '#2563eb' },
-    { id: 'violet', label: 'Violet', color: '#7c3aed' },
-    { id: 'rose', label: 'Rose', color: '#e11d48' },
-  ]
+const OWNER_GOOGLE_CONTEXT_KEY =
 
-  const normalize = (value) => ({
-    ...DEFAULT_MOBILE_EXPERIENCE,
-    ...(value && typeof value === 'object' ? value : {}),
-  })
+  'digitaldining_owner_google_context'
 
-  const applyExperience = (prefs) => {
-    if (typeof document === 'undefined') return
-    const root = document.documentElement
-    root.dataset.ddAppTheme = prefs.theme
-    root.dataset.ddUiStyle = prefs.uiStyle
-    root.dataset.ddTextSize = prefs.textSize
-    root.dataset.ddDarkMode = prefs.darkMode ? 'true' : 'false'
-  }
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const parsed = JSON.parse(localStorage.getItem(MOBILE_EXPERIENCE_KEY) || '{}')
-      const next = normalize(parsed)
-      setSaved(next)
-      setDraft(next)
-      applyExperience(next)
-    } catch {
-      applyExperience(DEFAULT_MOBILE_EXPERIENCE)
-    }
-  }, [])
 
-  useEffect(() => {
-    if (!open) return
-    setDraft(saved)
-  }, [open, saved])
+function OwnerMobileLoginContent() {
 
-  const setPreview = (patch) => {
-    setDraft((current) => {
-      const next = { ...current, ...patch }
-      applyExperience(next)
-      return next
-    })
-  }
-
-  const closeWithoutSaving = () => {
-    setDraft(saved)
-    applyExperience(saved)
-    onClose?.()
-  }
-
-  const save = () => {
-    const next = normalize(draft)
-    setSaved(next)
-    applyExperience(next)
-    try {
-      localStorage.setItem(MOBILE_EXPERIENCE_KEY, JSON.stringify(next))
-    } catch (error) {
-      console.error('Unable to save mobile experience preferences:', error)
-    }
-    onClose?.()
-  }
-
-  if (!open) return null
-
-  const accent = themeOptions.find((item) => item.id === draft.theme)?.color || '#f97316'
-  const surface = draft.darkMode ? 'bg-[#151515] border-white/10 text-white' : 'bg-white border-neutral-200 text-neutral-950'
-  const page = draft.darkMode ? 'bg-[#0d0d0e] text-white' : 'bg-[#f5f5f4] text-neutral-950'
-  const muted = draft.darkMode ? 'text-neutral-400' : 'text-neutral-500'
-
-  const Toggle = ({ value, onChange, label }) => (
-    <button
-      type="button"
-      role="switch"
-      aria-label={label}
-      aria-checked={Boolean(value)}
-      onClick={() => onChange(!value)}
-      className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${
-        value ? 'border-transparent' : draft.darkMode ? 'border-white/10 bg-neutral-800' : 'border-neutral-300 bg-neutral-200'
-      }`}
-      style={value ? { backgroundColor: accent } : undefined}
-    >
-      <span
-        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-          value ? 'translate-x-[23px]' : 'translate-x-[3px]'
-        }`}
-      />
-    </button>
-  )
-
-  return (
-    <div className={`fixed inset-0 z-[120] ${page}`}>
-      <style jsx global>{`
-        html[data-dd-text-size='small'] .dd-mobile-themeable { font-size: 14px; }
-        html[data-dd-text-size='normal'] .dd-mobile-themeable { font-size: 16px; }
-        html[data-dd-text-size='large'] .dd-mobile-themeable { font-size: 18px; }
-        html[data-dd-ui-style='rounded'] .dd-mobile-themeable .dd-experience-surface { border-radius: 20px; }
-        html[data-dd-ui-style='soft'] .dd-mobile-themeable .dd-experience-surface { border-radius: 14px; }
-        html[data-dd-ui-style='crisp'] .dd-mobile-themeable .dd-experience-surface { border-radius: 8px; }
-      `}</style>
-
-      <div className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden">
-        <header className={`shrink-0 border-b px-4 pb-3 pt-[max(0.85rem,env(safe-area-inset-top))] ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]' : 'border-neutral-200 bg-white'}`}>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={closeWithoutSaving}
-              className={`flex h-10 w-10 items-center justify-center rounded-xl border ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
-              aria-label="Back"
-            >
-              <AppIcon name="chevron" className="h-5 w-5 rotate-180" />
-            </button>
-            <div className="min-w-0">
-              <p className={`text-[11px] font-medium ${muted}`}>{portal}</p>
-              <h2 className="text-base font-semibold">App settings</h2>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-4 py-5 pb-28">
-          <section>
-            <div className="mb-2 px-1">
-              <h3 className="text-sm font-semibold">Appearance</h3>
-              <p className={`mt-0.5 text-[11px] ${muted}`}>Choose how this app looks on this device.</p>
-            </div>
-
-            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
-              <div className={`flex items-center justify-between gap-4 p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                    <AppIcon name={draft.darkMode ? 'moon' : 'sun'} className="h-[18px] w-[18px]" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold">Dark mode</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Use a darker app surface.</p>
-                  </div>
-                </div>
-                <Toggle value={draft.darkMode} onChange={(value) => setPreview({ darkMode: value })} label="Dark mode" />
-              </div>
-
-              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                    <AppIcon name="palette" className="h-[18px] w-[18px]" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-semibold">Accent color</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Used for selected controls and switches.</p>
-                  </div>
-                </div>
-                <div className="mt-4 grid grid-cols-5 gap-2">
-                  {themeOptions.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setPreview({ theme: item.id })}
-                      className={`flex min-h-14 flex-col items-center justify-center rounded-xl border px-1 transition ${
-                        draft.theme === item.id
-                          ? draft.darkMode ? 'border-white/30 bg-white/5' : 'border-neutral-300 bg-neutral-50'
-                          : draft.darkMode ? 'border-white/10' : 'border-neutral-200'
-                      }`}
-                      aria-label={`${item.label} accent`}
-                    >
-                      <span className="h-5 w-5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className={`mt-1.5 text-[8px] font-medium ${muted}`}>{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                    <AppIcon name="type" className="h-[18px] w-[18px]" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-semibold">Text size</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Adjust the app's reading size.</p>
-                  </div>
-                </div>
-                <div className={`mt-4 grid grid-cols-3 rounded-xl p-1 ${draft.darkMode ? 'bg-neutral-900' : 'bg-neutral-100'}`}>
-                  {['small', 'normal', 'large'].map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setPreview({ textSize: id })}
-                      className={`min-h-10 rounded-lg text-[11px] font-medium capitalize transition ${
-                        draft.textSize === id
-                          ? draft.darkMode ? 'bg-neutral-700 text-white shadow-sm' : 'bg-white text-neutral-950 shadow-sm'
-                          : muted
-                      }`}
-                    >
-                      {id}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <p className="text-[13px] font-semibold">Card corners</p>
-                <p className={`mt-0.5 text-[10px] ${muted}`}>A small visual preference; features stay unchanged.</p>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {[
-                    ['rounded', 'Rounded'],
-                    ['soft', 'Soft'],
-                    ['crisp', 'Compact'],
-                  ].map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setPreview({ uiStyle: id })}
-                      className={`min-h-11 border px-2 text-[10px] font-medium transition ${
-                        id === 'rounded' ? 'rounded-2xl' : id === 'soft' ? 'rounded-xl' : 'rounded-md'
-                      } ${
-                        draft.uiStyle === id
-                          ? 'text-white'
-                          : draft.darkMode ? 'border-white/10 text-neutral-400' : 'border-neutral-200 text-neutral-600'
-                      }`}
-                      style={draft.uiStyle === id ? { backgroundColor: accent, borderColor: accent } : undefined}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-6">
-            <div className="mb-2 px-1">
-              <h3 className="text-sm font-semibold">Notifications</h3>
-              <p className={`mt-0.5 text-[11px] ${muted}`}>Control which app alerts are enabled.</p>
-            </div>
-
-            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
-              {[
-                ['pushNotifications', 'notifications', 'Push notifications', 'General app and order alerts'],
-                ['orderMessages', 'orders', 'Order activity', 'New orders and status changes'],
-                ['promotions', 'tag', 'Product updates', 'Plan and feature announcements'],
-                ['sound', 'volume', 'Alert sound', 'Play sound for supported alerts'],
-              ].map(([key, icon, title, subtitle], index) => (
-                <div key={key} className={`flex items-center justify-between gap-4 p-4 ${index ? draft.darkMode ? 'border-t border-white/10' : 'border-t border-neutral-200' : ''}`}>
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                      <AppIcon name={icon} className="h-[18px] w-[18px]" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-semibold">{title}</p>
-                      <p className={`mt-0.5 truncate text-[10px] ${muted}`}>{subtitle}</p>
-                    </div>
-                  </div>
-                  <Toggle value={draft[key]} onChange={(value) => setPreview({ [key]: value })} label={title} />
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <p className={`mt-4 px-1 text-[10px] leading-5 ${muted}`}>
-            These preferences are stored on this device. Restaurant data, orders, staff, menu, billing and payment settings are unchanged.
-          </p>
-        </div>
-
-        <div className={`absolute bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t px-4 pb-[max(0.8rem,env(safe-area-inset-bottom))] pt-3 ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]/95' : 'border-neutral-200 bg-white/95'} backdrop-blur-xl`}>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={closeWithoutSaving}
-              className={`min-h-11 rounded-xl border text-xs font-semibold ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              className="min-h-11 rounded-xl text-xs font-semibold text-white shadow-sm"
-              style={{ backgroundColor: accent }}
-            >
-              Save changes
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Real-Time Restaurant Chat Widget Component
-function RestaurantChatWidget({ restaurantId }) {
-  const AI_CATEGORIES = [
-    '🔐 Login / Account',
-    '🍔 Menu / Food Items',
-    '🧾 Billing / GST',
-    '💳 Razorpay / Payment',
-    '📱 QR Menu / Ordering',
-    '👨‍🍳 Kitchen / Orders',
-    '👨‍💼 Waiter',
-    '📦 Delivery',
-    '💰 Subscription',
-    '🐛 Technical Problem',
-    '⚙️ Other',
-  ]
-
-  const [isOpen, setIsOpen] = useState(false)
-  const [supportMode, setSupportMode] = useState('ai')
-  const [session, setSession] = useState(null)
-  const [messages, setMessages] = useState([])
-  const [newMessage, setNewMessage] = useState('')
-  const [aiMessages, setAiMessages] = useState([])
-  const [aiIssueCategory, setAiIssueCategory] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [sending, setSending] = useState(false)
-  const chatEndRef = useRef(null)
-  const aiEndRef = useRef(null)
-  const pollRef = useRef(null)
-  const mountedRef = useRef(false)
-  const sessionIdRef = useRef(null)
-  const aiStartedRef = useRef(false)
-
-  const mergeMessage = (message) => {
-    if (!message?.id) return
-    setMessages((current) => {
-      if (current.some((item) => String(item.id) === String(message.id))) {
-        return current
-      }
-      return [...current, message].sort(
-        (a, b) =>
-          new Date(a.created_at || 0).getTime() -
-          new Date(b.created_at || 0).getTime()
-      )
-    })
-  }
-
-  const mergeAiMessage = (role, text) => {
-    const clean = String(text || '').trim()
-    if (!clean) return
-    setAiMessages((current) => [
-      ...current,
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        role,
-        text: clean,
-      },
-    ])
-  }
-
-  const loadSupportChat = async (createIfMissing = false) => {
-    if (!restaurantId) return
-    if (createIfMissing) setLoading(true)
-
-    try {
-      if (createIfMissing) {
-        const { data: created, error: createError } = await supabase.rpc(
-          'create_support_chat_session',
-          { p_restaurant_id: String(restaurantId) }
-        )
-
-        if (createError) throw createError
-        if (created?.success === false) {
-          throw new Error(
-            created?.message || 'Unable to start support chat.'
-          )
-        }
-
-        if (created?.session) {
-          sessionIdRef.current = String(created.session.id)
-          setSession(created.session)
-        }
-      }
-
-      const { data, error } = await supabase.rpc('get_support_chat_state', {
-        p_restaurant_id: String(restaurantId),
-      })
-
-      if (error) throw error
-      if (data?.success === false) {
-        throw new Error(
-          data?.message || 'Unable to load support chat.'
-        )
-      }
-
-      const nextSession = data?.session || null
-      sessionIdRef.current = nextSession?.id
-        ? String(nextSession.id)
-        : null
-
-      setSession(nextSession)
-      setMessages(Array.isArray(data?.messages) ? data.messages : [])
-
-      if (nextSession?.ai_issue_category && !aiIssueCategory) {
-        setAiIssueCategory(String(nextSession.ai_issue_category))
-      }
-    } catch (error) {
-      console.error('Restaurant support chat error:', error)
-    } finally {
-      if (createIfMissing) setLoading(false)
-    }
-  }
-
-  const startAiChat = () => {
-    if (aiStartedRef.current) return
-
-    aiStartedRef.current = true
-    setAiMessages([
-      {
-        id: `ai-start-${Date.now()}`,
-        role: 'assistant',
-        text:
-          "👋 Hi! I'm Digital Dining AI Support. I'll first understand your problem and try to guide you. Please choose the issue you are facing.",
-      },
-    ])
-  }
-
-  useEffect(() => {
-    if (!isOpen || !restaurantId) return undefined
-
-    mountedRef.current = true
-
-    if (supportMode === 'ai') {
-      startAiChat()
-    }
-
-    if (supportMode === 'human') {
-      loadSupportChat(!sessionIdRef.current)
-    } else if (sessionIdRef.current) {
-      loadSupportChat(false)
-    }
-
-    const channel = supabase
-      .channel(`restaurant-support-chat-${restaurantId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        (payload) => {
-          if (!mountedRef.current) return
-
-          if (
-            payload?.new?.support_session_id &&
-            sessionIdRef.current &&
-            String(payload.new.support_session_id) !==
-              String(sessionIdRef.current)
-          ) {
-            return
-          }
-
-          mergeMessage(payload.new)
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'support_chat_sessions',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        () => {
-          if (sessionIdRef.current) {
-            loadSupportChat(false)
-          }
-        }
-      )
-      .subscribe()
-
-    pollRef.current = window.setInterval(() => {
-      if (
-        document.visibilityState === 'visible' &&
-        sessionIdRef.current
-      ) {
-        loadSupportChat(false)
-      }
-    }, 2000)
-
-    return () => {
-      mountedRef.current = false
-
-      if (pollRef.current) {
-        window.clearInterval(pollRef.current)
-        pollRef.current = null
-      }
-
-      supabase.removeChannel(channel)
-    }
-  }, [isOpen, restaurantId, supportMode])
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  useEffect(() => {
-    aiEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [aiMessages])
-
-  const handleOpen = async () => {
-    setIsOpen(true)
-    setSupportMode(session?.status === 'connected' ? 'human' : 'ai')
-  }
-
-  const askAi = async (conversation, issueCategory, stage = 'conversation') => {
-    setAiLoading(true)
-
-    try {
-      const response = await fetch('/api/ai-support-chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: conversation.slice(-20).map((item) => ({
-            role: item.role === 'assistant' ? 'assistant' : 'user',
-            content: String(item.text || ''),
-          })),
-          issueCategory: String(issueCategory || ''),
-          stage: String(stage || 'conversation'),
-        }),
-      })
-
-      const data = await response.json().catch(() => ({}))
-
-      if (!response.ok) {
-        throw new Error(
-          data?.message || 'AI support is temporarily unavailable.'
-        )
-      }
-
-      const reply = String(data?.reply || '').trim()
-
-      if (!reply) {
-        throw new Error('AI support returned an empty response.')
-      }
-
-      mergeAiMessage('assistant', reply)
-    } catch (error) {
-      console.error('AI support error:', error)
-
-      mergeAiMessage(
-        'assistant',
-        'I could not complete the AI support response right now. You can connect directly to Admin using the button below.'
-      )
-    } finally {
-      setAiLoading(false)
-    }
-  }
-
-  const handleAiCategory = async (category) => {
-    if (aiLoading) return
-
-    setAiIssueCategory(category)
-
-    const nextMessages = [
-      ...aiMessages,
-      {
-        role: 'user',
-        text: category,
-      },
-    ]
-
-    setAiMessages(nextMessages)
-
-    await askAi(nextMessages, category, 'category_selected')
-  }
-
-  const handleAiSend = async (event) => {
-    event.preventDefault()
-
-    const text = newMessage.trim()
-    if (!text || aiLoading) return
-
-    const nextMessages = [
-      ...aiMessages,
-      {
-        role: 'user',
-        text,
-      },
-    ]
-
-    setNewMessage('')
-    setAiMessages(nextMessages)
-
-    await askAi(nextMessages, aiIssueCategory)
-  }
-
-  const connectAiToAdmin = async () => {
-    if (!restaurantId) return
-
-    const transcript = aiMessages
-      .slice(-30)
-      .map((item) => ({
-        role: item.role === 'assistant' ? 'assistant' : 'user',
-        text: String(item.text || '').slice(0, 2000),
-      }))
-
-    const meaningfulUserMessages = transcript
-      .filter((item) => item.role === 'user')
-      .slice(-6)
-      .map((item) => item.text)
-
-    const aiSummary = [
-      aiIssueCategory
-        ? `Issue category: ${aiIssueCategory}`
-        : 'Issue category: General Support',
-      meaningfulUserMessages.length
-        ? `Restaurant messages: ${meaningfulUserMessages.join(' | ')}`
-        : 'The restaurant selected an issue category and requested Admin help.',
-    ].join('\n')
-
-    setLoading(true)
-
-    try {
-      const { data, error } = await supabase.rpc(
-        'create_ai_support_escalation',
-        {
-          p_restaurant_id: String(restaurantId),
-          p_issue_category: String(
-            aiIssueCategory || '🤖 AI Support / General'
-          ),
-          p_ai_summary: aiSummary.slice(0, 4000),
-          p_ai_transcript: transcript,
-        }
-      )
-
-      if (error) throw error
-
-      if (data?.success === false) {
-        throw new Error(
-          data?.message || 'Unable to connect to Admin.'
-        )
-      }
-
-      const nextSession = data?.session || null
-      if (!nextSession?.id) {
-        throw new Error('Admin support session was not created.')
-      }
-
-      sessionIdRef.current = String(nextSession.id)
-      setSession(nextSession)
-      setMessages([])
-      setSupportMode('human')
-
-      await loadSupportChat(false)
-
-      mergeAiMessage(
-        'assistant',
-        nextSession.status === 'connected'
-          ? '🟢 Admin is already connected. You can continue in the Admin chat.'
-          : '✅ Your AI support summary has been sent to Admin. Please wait for Admin to accept the live chat.'
-      )
-    } catch (error) {
-      console.error('AI support escalation error:', error)
-
-      appNotice(
-        `Unable to connect to Admin: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const startHumanSupport = async () => {
-    setSupportMode('human')
-  }
-
-  const handleSendMessage = async (event) => {
-    event.preventDefault()
-
-    const message = newMessage.trim()
-    const sessionId = sessionIdRef.current
-
-    if (!message || !restaurantId || !sessionId) return
-
-    if (
-      String(session?.status || '').toLowerCase() !==
-      'connected'
-    ) {
-      appNotice('Please wait until Admin accepts the support chat.')
-      return
-    }
-
-    setSending(true)
-
-    try {
-      const { data, error } = await supabase.rpc(
-        'support_chat_send_message',
-        {
-          p_restaurant_id: String(restaurantId),
-          p_session_id: String(sessionId),
-          p_sender: 'restaurant',
-          p_message: message,
-        }
-      )
-
-      if (error) throw error
-
-      if (data?.success === false) {
-        throw new Error(
-          data?.message || 'Unable to send message.'
-        )
-      }
-
-      setNewMessage('')
-
-      if (data?.message) {
-        mergeMessage(data.message)
-      }
-    } catch (error) {
-      console.error('Support message send error:', error)
-
-      appNotice(
-        `Unable to send message: ${
-          error.message || 'Please try again.'
-        }`
-      )
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const status = String(session?.status || '').toLowerCase()
-  const isConnected = status === 'connected'
-  const isPending = status === 'pending'
-  const isClosed = status === 'closed'
-
-  return (
-    <div className="dd-owner-support-offset fixed bottom-6 right-6 z-50 font-sans">
-      {!isOpen ? (
-        <button
-          onClick={handleOpen}
-          className="bg-orange-500 hover:bg-orange-600 text-white font-black p-4 rounded-full shadow-2xl flex items-center space-x-2 transition transform hover:scale-105"
-        >
-          <span>💬</span>
-          <span className="text-xs uppercase tracking-wider pr-1">
-            Support Chat
-          </span>
-        </button>
-      ) : (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(390px,calc(100vw-2rem))] h-[560px] shadow-2xl flex flex-col overflow-hidden">
-          <div className="bg-neutral-950 p-4 border-b border-neutral-800">
-            <div className="flex justify-between items-start gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`w-2.5 h-2.5 rounded-full ${
-                      supportMode === 'ai'
-                        ? 'bg-violet-400 animate-pulse'
-                        : isConnected
-                          ? 'bg-emerald-500 animate-pulse'
-                          : isPending
-                            ? 'bg-yellow-400 animate-pulse'
-                            : 'bg-neutral-600'
-                    }`}
-                  />
-                  <h3 className="text-xs font-black text-white uppercase tracking-wider">
-                    Digital Dining Support
-                  </h3>
-                </div>
-
-                <p
-                  className={`text-[10px] mt-1 font-bold ${
-                    supportMode === 'ai'
-                      ? 'text-violet-400'
-                      : isConnected
-                        ? 'text-emerald-400'
-                        : isPending
-                          ? 'text-yellow-400'
-                          : 'text-neutral-500'
-                  }`}
-                >
-                  {supportMode === 'ai'
-                    ? '🤖 AI Support Assistant'
-                    : loading
-                      ? 'Connecting...'
-                      : isConnected
-                        ? '🟢 Live Chat Connected'
-                        : isPending
-                          ? '⏳ Waiting for Admin to Accept'
-                          : isClosed
-                            ? 'Chat closed'
-                            : 'Admin Support'}
-                </p>
-              </div>
-
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-neutral-400 hover:text-white font-bold text-sm px-2 py-1"
-                aria-label="Close support chat"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              <button
-                type="button"
-                onClick={() => setSupportMode('ai')}
-                className={`rounded-xl py-2 text-[10px] font-black uppercase border transition ${
-                  supportMode === 'ai'
-                    ? 'bg-violet-500 text-white border-violet-400'
-                    : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
-                }`}
-              >
-                🤖 AI Assistant
-              </button>
-
-              <button
-                type="button"
-                onClick={startHumanSupport}
-                className={`rounded-xl py-2 text-[10px] font-black uppercase border transition ${
-                  supportMode === 'human'
-                    ? 'bg-orange-500 text-white border-orange-400'
-                    : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
-                }`}
-              >
-                👤 Admin Support
-              </button>
-            </div>
-          </div>
-
-          {supportMode === 'ai' ? (
-            <>
-              <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-neutral-950/50">
-                {aiMessages.length === 0 ? (
-                  <div className="text-center mt-12 text-xs text-neutral-500">
-                    Starting AI support...
-                  </div>
-                ) : (
-                  aiMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${
-                        msg.role === 'user'
-                          ? 'justify-end'
-                          : 'justify-start'
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
-                          msg.role === 'user'
-                            ? 'bg-violet-500 text-white rounded-br-none'
-                            : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
-                        }`}
-                      >
-                        {msg.text}
-                      </div>
-                    </div>
-                  ))
-                )}
-
-                {!aiIssueCategory && (
-                  <div className="space-y-2 pt-2">
-                    <p className="text-[9px] text-neutral-500 uppercase font-black tracking-wider">
-                      Choose the issue you are facing
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {AI_CATEGORIES.map((category) => (
-                        <button
-                          type="button"
-                          key={category}
-                          onClick={() => handleAiCategory(category)}
-                          disabled={aiLoading}
-                          className="text-left bg-neutral-900 border border-neutral-800 hover:border-violet-500/50 text-neutral-300 px-3 py-2 rounded-xl text-[9px] font-bold disabled:opacity-50"
-                        >
-                          {category}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div ref={aiEndRef} />
-              </div>
-
-              <div className="border-t border-neutral-800 bg-neutral-950 p-3 space-y-2">
-                <button
-                  type="button"
-                  onClick={connectAiToAdmin}
-                  disabled={loading}
-                  className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-black py-2.5 rounded-xl text-[10px] uppercase tracking-wider"
-                >
-                  {loading
-                    ? 'Connecting...'
-                    : '🛟 Connect to Admin'}
-                </button>
-
-                <form
-                  onSubmit={handleAiSend}
-                  className="flex space-x-2"
-                >
-                  <input
-                    type="text"
-                    placeholder={
-                      aiLoading
-                        ? 'AI is responding...'
-                        : aiIssueCategory
-                          ? 'Describe the problem...'
-                          : 'Choose an issue first...'
-                    }
-                    value={newMessage}
-                    onChange={(e) =>
-                      setNewMessage(e.target.value)
-                    }
-                    disabled={aiLoading || !aiIssueCategory}
-                    className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-violet-500 disabled:opacity-50"
-                  />
-                  <button
-                    type="submit"
-                    disabled={
-                      aiLoading ||
-                      !aiIssueCategory ||
-                      !newMessage.trim()
-                    }
-                    className="bg-violet-500 hover:bg-violet-600 disabled:opacity-40 text-white font-black px-4 py-2.5 rounded-xl text-xs"
-                  >
-                    {aiLoading ? '...' : 'Send'}
-                  </button>
-                </form>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-neutral-950/50">
-                {!isConnected && messages.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-center px-5">
-                    <div>
-                      <div className="text-4xl mb-3">
-                        {isPending
-                          ? '⏳'
-                          : isClosed
-                            ? '💬'
-                            : '🛎️'}
-                      </div>
-
-                      <p className="text-sm font-black text-white">
-                        {isPending
-                          ? 'Support request sent'
-                          : isClosed
-                            ? 'Support chat is closed'
-                            : 'Admin Support'}
-                      </p>
-
-                      <p className="text-[11px] text-neutral-500 mt-2 leading-relaxed">
-                        {isPending
-                          ? 'Your request is with Admin. The live chat becomes available after Admin accepts it.'
-                          : isClosed
-                            ? 'Open Support Chat again to create another request.'
-                            : 'Opening Admin Support sends a support request to Admin.'}
-                      </p>
-                    </div>
-                  </div>
-                ) : messages.length === 0 ? (
-                  <p className="text-center text-xs text-neutral-500 mt-12">
-                    Live chat connected. Send a message to Admin.
-                  </p>
-                ) : (
-                  messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${
-                        msg.sender === 'restaurant'
-                          ? 'justify-end'
-                          : 'justify-start'
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
-                          msg.sender === 'restaurant'
-                            ? 'bg-orange-500 text-white rounded-br-none'
-                            : 'bg-neutral-800 text-neutral-200 rounded-bl-none border border-neutral-700'
-                        }`}
-                      >
-                        <div>{msg.message}</div>
-                        {msg.created_at && (
-                          <div className="text-[8px] opacity-60 mt-1">
-                            {new Date(
-                              msg.created_at
-                            ).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-                <div ref={chatEndRef} />
-              </div>
-
-              <form
-                onSubmit={handleSendMessage}
-                className="p-3 bg-neutral-950 border-t border-neutral-800 flex space-x-2"
-              >
-                <input
-                  type="text"
-                  placeholder={
-                    isConnected
-                      ? 'Type your message...'
-                      : 'Waiting for Admin acceptance...'
-                  }
-                  value={newMessage}
-                  onChange={(e) =>
-                    setNewMessage(e.target.value)
-                  }
-                  disabled={!isConnected || sending}
-                  className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500 disabled:opacity-50"
-                />
-
-                <button
-                  type="submit"
-                  disabled={
-                    !isConnected ||
-                    sending ||
-                    !newMessage.trim()
-                  }
-                  className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black px-4 py-2.5 rounded-xl text-xs transition"
-                >
-                  {sending ? '...' : 'Send'}
-                </button>
-              </form>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function StaffLoginQrCard({ title, description, url, icon, restaurantCode }) {
-  const qrUrl = `https://quickchart.io/qr?size=320&margin=2&text=${encodeURIComponent(url)}`
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(url)
-      appNotice(`${title} URL copied.`)
-    } catch (error) {
-      console.error('Copy URL error:', error)
-      await appPrompt('Copy this URL:', url)
-    }
-  }
-
-  const handleDownload = async () => {
-    try {
-      const response = await fetch(qrUrl)
-      if (!response.ok) throw new Error('Unable to download QR code.')
-
-      const blob = await response.blob()
-      const objectUrl = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = objectUrl
-      anchor.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-login-qr.png`
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      URL.revokeObjectURL(objectUrl)
-    } catch (error) {
-      console.error('QR download error:', error)
-      window.open(qrUrl, '_blank', 'noopener,noreferrer')
-    }
-  }
-
-  return (
-    <div className="bg-neutral-950 border border-neutral-800 rounded-3xl p-5 space-y-4">
-      <div className="flex items-start gap-3">
-        <div className="text-3xl">{icon}</div>
-        <div className="min-w-0">
-          <h3 className="text-base font-black text-white">{title}</h3>
-          <p className="text-xs text-neutral-400 mt-1">{description}</p>
-        </div>
-      </div>
-
-      {restaurantCode && (
-        <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 text-center">
-          <p className="text-[10px] uppercase tracking-wider text-orange-400 font-black">Restaurant Code</p>
-          <p className="text-2xl font-black font-mono tracking-[0.3em] text-white mt-1">{restaurantCode}</p>
-          <p className="text-[9px] text-neutral-500 mt-1">Staff must enter this code on the login screen.</p>
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl p-3 w-fit mx-auto">
-        <img
-          src={qrUrl}
-          alt={`${title} login QR code`}
-          width="220"
-          height="220"
-          className="block w-[220px] h-[220px]"
-          loading="lazy"
-        />
-      </div>
-
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3">
-        <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black mb-1">
-          Login URL
-        </p>
-        <p className="text-[11px] text-neutral-300 break-all select-all">{url}</p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="bg-orange-500 hover:bg-orange-600 text-white font-black py-3 rounded-xl text-xs transition"
-        >
-          📋 Copy URL
-        </button>
-        <button
-          type="button"
-          onClick={handleDownload}
-          className="bg-neutral-800 hover:bg-neutral-700 text-white font-black py-3 rounded-xl text-xs transition"
-        >
-          ⬇️ Download QR
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function SalesRevenueGraph({ data, formatCurrency, periodLabel }) {
-  const width = 1000
-  const height = 320
-  const padding = { top: 24, right: 24, bottom: 58, left: 78 }
-  const plotWidth = width - padding.left - padding.right
-  const plotHeight = height - padding.top - padding.bottom
-  const safeData = Array.isArray(data) && data.length ? data : [{ label: 'No data', revenue: 0 }]
-  const maxRevenue = Math.max(...safeData.map((item) => Number(item.revenue || 0)), 1)
-  const points = safeData.map((item, index) => {
-    const x = safeData.length === 1
-      ? padding.left + plotWidth / 2
-      : padding.left + (index / (safeData.length - 1)) * plotWidth
-    const y = padding.top + plotHeight - (Number(item.revenue || 0) / maxRevenue) * plotHeight
-    return { ...item, x, y }
-  })
-  const polyline = points.map((point) => `${point.x},${point.y}`).join(' ')
-  const labelStep = Math.max(1, Math.ceil(safeData.length / 8))
-  const yTicks = [0, 0.25, 0.5, 0.75, 1]
-
-  return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 sm:p-6 space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-emerald-400 font-black">Sales Graph</p>
-          <h3 className="text-lg font-black text-white mt-1">Sales Generated</h3>
-          <p className="text-xs text-neutral-500 mt-1">Revenue trend for {periodLabel}.</p>
-        </div>
-        <div className="sm:text-right">
-          <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Period Total</p>
-          <p className="text-xl font-black text-emerald-400">
-            {formatCurrency(safeData.reduce((sum, item) => sum + Number(item.revenue || 0), 0))}
-          </p>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto">
-        <div className="min-w-[720px]">
-          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" role="img" aria-label={`Sales generated graph for ${periodLabel}`}>
-            {yTicks.map((tick) => {
-              const y = padding.top + plotHeight - tick * plotHeight
-              const value = maxRevenue * tick
-              return (
-                <g key={tick}>
-                  <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="currentColor" className="text-neutral-800" strokeWidth="1" />
-                  <text x={padding.left - 12} y={y + 4} textAnchor="end" fill="currentColor" className="text-neutral-500" fontSize="11">
-                    {value >= 100000 ? `₹${(value / 100000).toFixed(1)}L` : value >= 1000 ? `₹${(value / 1000).toFixed(0)}k` : `₹${Math.round(value)}`}
-                  </text>
-                </g>
-              )
-            })}
-
-            <polyline points={polyline} fill="none" stroke="currentColor" className="text-orange-500" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-
-            {points.map((point, index) => (
-              <g key={`${point.label}-${index}`}>
-                <circle cx={point.x} cy={point.y} r="5" fill="currentColor" className="text-orange-400">
-                  <title>{`${point.label}: ${formatCurrency(point.revenue)} · ${point.orders} order${point.orders === 1 ? '' : 's'}`}</title>
-                </circle>
-                {(index % labelStep === 0 || index === points.length - 1) && (
-                  <text x={point.x} y={height - 24} textAnchor="middle" fill="currentColor" className="text-neutral-500" fontSize="10">
-                    {point.label}
-                  </text>
-                )}
-              </g>
-            ))}
-          </svg>
-        </div>
-      </div>
-
-      <p className="text-[10px] text-neutral-500">Hover a point to see sales and order count for that period.</p>
-    </div>
-  )
-}
-
-
-function DashboardEntryLoader({
-  portalLabel = 'Digital Dining Portal',
-  detail = 'Preparing your workspace...',
-}) {
-  return (
-    <div className="dd-entry-screen fixed inset-0 z-[99999] flex min-h-screen items-center justify-center overflow-hidden bg-[#f7f7f8] px-5 text-neutral-900">
-      <style jsx global>{`
-        .dd-entry-screen {
-          background:
-            radial-gradient(circle at 50% 30%, rgba(249,115,22,.08), transparent 34%),
-            #f7f7f8;
-        }
-
-        :root[data-theme='dark'] .dd-entry-screen {
-          background:
-            radial-gradient(circle at 50% 30%, rgba(249,115,22,.10), transparent 34%),
-            #09090b;
-          color: #f5f5f5;
-        }
-
-        .dd-entry-child {
-          transform-box: fill-box;
-          transform-origin: center;
-          animation: dd-child-chase 1.05s ease-in-out infinite alternate;
-        }
-
-        .dd-entry-arm-front,
-        .dd-entry-leg-back {
-          transform-box: fill-box;
-          transform-origin: top center;
-          animation: dd-limb-forward .34s ease-in-out infinite alternate;
-        }
-
-        .dd-entry-arm-back,
-        .dd-entry-leg-front {
-          transform-box: fill-box;
-          transform-origin: top center;
-          animation: dd-limb-back .34s ease-in-out infinite alternate;
-        }
-
-        .dd-entry-ball {
-          transform-box: fill-box;
-          transform-origin: center;
-          animation: dd-ball-bounce .7s ease-in-out infinite;
-        }
-
-        .dd-entry-shadow {
-          animation: dd-shadow-pulse .7s ease-in-out infinite;
-        }
-
-        .dd-entry-progress {
-          animation: dd-progress-4s 4s linear forwards;
-          transform-origin: left center;
-        }
-
-        @keyframes dd-child-chase {
-          from { transform: translate3d(-12px, 0, 0); }
-          to { transform: translate3d(34px, -1px, 0); }
-        }
-
-        @keyframes dd-limb-forward {
-          from { transform: rotate(22deg); }
-          to { transform: rotate(-28deg); }
-        }
-
-        @keyframes dd-limb-back {
-          from { transform: rotate(-24deg); }
-          to { transform: rotate(30deg); }
-        }
-
-        @keyframes dd-ball-bounce {
-          0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
-          45% { transform: translate3d(-8px, -22px, 0) rotate(130deg); }
-          70% { transform: translate3d(-13px, -5px, 0) rotate(220deg); }
-        }
-
-        @keyframes dd-shadow-pulse {
-          0%, 100% { transform: scaleX(1); opacity: .18; }
-          45% { transform: scaleX(.72); opacity: .1; }
-        }
-
-        @keyframes dd-progress-4s {
-          from { transform: scaleX(0); }
-          to { transform: scaleX(1); }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .dd-entry-child,
-          .dd-entry-arm-front,
-          .dd-entry-arm-back,
-          .dd-entry-leg-front,
-          .dd-entry-leg-back,
-          .dd-entry-ball,
-          .dd-entry-shadow {
-            animation: none !important;
-          }
-
-          .dd-entry-progress {
-            animation-duration: 4s !important;
-          }
-        }
-
-        /* Dedicated Owner mobile-app shell.
-           All owner feature sections stay the same; only the shell/navigation is mobile-first. */
-        .dd-owner-mobile-app {
-          width: 100%;
-          min-height: 100dvh;
-          overflow-x: hidden;
-        }
-
-        .dd-owner-mobile-app .dd-dashboard-main {
-          max-width: 480px !important;
-          margin-left: auto !important;
-          margin-right: auto !important;
-          padding-left: 0.75rem !important;
-          padding-right: 0.75rem !important;
-          padding-bottom: calc(6.5rem + env(safe-area-inset-bottom)) !important;
-        }
-
-        .dd-owner-mobile-app .dd-dashboard-sidebar {
-          display: none !important;
-        }
-
-        .dd-owner-mobile-app .dd-owner-mobile-bottom-nav {
-          display: grid !important;
-          max-width: 480px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        @media (min-width: 1024px) {
-          .dd-owner-mobile-app .dd-dashboard-header > div,
-          .dd-owner-mobile-app .dd-dashboard-main {
-            max-width: 480px !important;
-          }
-
-          .dd-owner-mobile-app .dd-dashboard-header > div {
-            margin-left: auto;
-            margin-right: auto;
-          }
-
-          .dd-owner-mobile-app .dd-dashboard-main {
-            padding-left: 0.75rem !important;
-            padding-right: 0.75rem !important;
-          }
-
-          .dd-owner-mobile-app .dd-dashboard-sidebar {
-            display: none !important;
-          }
-        }
-
-      `}</style>
-
-      <div className="w-full max-w-md text-center">
-        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-black text-white shadow-lg shadow-orange-500/20">
-          D
-        </div>
-
-        <div className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-orange-500">
-          Digital Dining
-        </div>
-
-        <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
-          Opening {portalLabel}
-        </h1>
-
-        <p className="mt-2 text-xs font-medium text-neutral-500">
-          {detail}
-        </p>
-
-        <div className="relative mx-auto mt-7 h-[150px] w-full max-w-[360px] overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-sm">
-          <svg
-            viewBox="0 0 360 150"
-            className="h-full w-full"
-            role="img"
-            aria-label="A child running after a ball"
-          >
-            <defs>
-              <linearGradient id="ddLoaderSky" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#fff7ed" />
-                <stop offset="100%" stopColor="#ffffff" />
-              </linearGradient>
-              <linearGradient id="ddLoaderShirt" x1="0" x2="1">
-                <stop offset="0%" stopColor="#fb923c" />
-                <stop offset="100%" stopColor="#ea580c" />
-              </linearGradient>
-            </defs>
-
-            <rect width="360" height="150" fill="url(#ddLoaderSky)" />
-            <path d="M0 116 C70 109 134 121 205 115 C278 109 321 116 360 112 V150 H0 Z" fill="#f3f4f6" />
-            <path d="M0 116 H360" stroke="#d4d4d8" strokeWidth="1" />
-
-            <ellipse
-              className="dd-entry-shadow"
-              cx="154"
-              cy="122"
-              rx="35"
-              ry="6"
-              fill="#111827"
-            />
-
-            <g className="dd-entry-child">
-              <circle cx="122" cy="48" r="13" fill="#b97852" />
-              <path
-                d="M110 43 C113 30 134 29 137 45 C132 39 124 37 116 39 Z"
-                fill="#2b211b"
-              />
-              <path
-                d="M132 45 C137 46 140 49 140 53"
-                stroke="#2b211b"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <circle cx="127" cy="47" r="1.2" fill="#1f2937" />
-
-              <rect
-                x="111"
-                y="61"
-                width="28"
-                height="39"
-                rx="11"
-                fill="url(#ddLoaderShirt)"
-              />
-              <path d="M115 98 H138 L134 111 H116 Z" fill="#1f2937" />
-
-              <g className="dd-entry-arm-back">
-                <path
-                  d="M115 70 L94 85 L82 78"
-                  fill="none"
-                  stroke="#b97852"
-                  strokeWidth="7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </g>
-
-              <g className="dd-entry-arm-front">
-                <path
-                  d="M136 70 L154 83 L169 75"
-                  fill="none"
-                  stroke="#b97852"
-                  strokeWidth="7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </g>
-
-              <g className="dd-entry-leg-back">
-                <path
-                  d="M120 107 L103 123 L89 122"
-                  fill="none"
-                  stroke="#b97852"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M87 122 H101"
-                  stroke="#111827"
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                />
-              </g>
-
-              <g className="dd-entry-leg-front">
-                <path
-                  d="M132 107 L147 122 L160 114"
-                  fill="none"
-                  stroke="#b97852"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M157 114 L170 116"
-                  stroke="#111827"
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                />
-              </g>
-            </g>
-
-            <g className="dd-entry-ball">
-              <circle cx="265" cy="107" r="15" fill="#ffffff" stroke="#111827" strokeWidth="1.5" />
-              <path
-                d="M265 92 L273 101 L269 111 L257 111 L253 101 Z"
-                fill="#f97316"
-              />
-              <path
-                d="M273 101 L279 96 M269 111 L277 119 M257 111 L251 120 M253 101 L247 96"
-                stroke="#111827"
-                strokeWidth="1.2"
-              />
-            </g>
-          </svg>
-
-          <div className="absolute bottom-3 left-4 right-4">
-            <div className="h-1.5 overflow-hidden rounded-full bg-neutral-200">
-              <div className="dd-entry-progress h-full w-full rounded-full bg-orange-500" />
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 flex items-center justify-center gap-2 text-[10px] font-bold text-neutral-500">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-          Secure workspace is loading · about 4 seconds
-        </div>
-      </div>
-    </div>
-  )
-}
-
-
-function OwnerTableQrSheet({
-  restaurant,
-  restaurantId,
-  onClose,
-}) {
-  const [tableNumber, setTableNumber] = useState(1)
-  const [registeredTables, setRegisteredTables] = useState([])
-  const [loadingTables, setLoadingTables] = useState(true)
-  const [registering, setRegistering] = useState(false)
-  const [downloading, setDownloading] = useState(false)
-
-  // Keep the latest close callback without causing the browser-history
-  // effect to run again on every Owner dashboard re-render.
-  const onCloseRef = useRef(onClose)
-
-  useEffect(() => {
-    onCloseRef.current = onClose
-  }, [onClose])
-
-  const currentPlan =
-    restaurant?.plan || 'Starter'
-
-  const isStarter =
-    String(currentPlan).toLowerCase() === 'starter'
-
-  const maximumTable =
-    isStarter ? 5 : 1000
-
-  const origin =
-    typeof window !== 'undefined'
-      ? window.location.origin
-      : ''
-
-  const menuUrl =
-    restaurant?.id && origin
-      ? `${origin}/menu/${restaurant.id}?table=${encodeURIComponent(
-          tableNumber
-        )}`
-      : ''
-
-  const qrCodeImageUrl =
-    menuUrl
-      ? 'https://api.qrserver.com/v1/create-qr-code/' +
-        `?size=360x360&margin=14&data=${encodeURIComponent(
-          menuUrl
-        )}`
-      : ''
-
-  const loadRegisteredTables = async () => {
-    if (!restaurantId) {
-      setRegisteredTables([])
-      setLoadingTables(false)
-      return []
-    }
-
-    try {
-      const { data, error } = await supabase.rpc(
-        'get_owner_registered_tables',
-        {
-          p_restaurant_id: String(restaurantId),
-        }
-      )
-
-      if (error) throw error
-
-      const rows = Array.isArray(data)
-        ? data
-        : []
-
-      setRegisteredTables(rows)
-      return rows
-    } catch (error) {
-      console.error(
-        '[OWNER MOBILE QR] Load tables error:',
-        error
-      )
-
-      appNotice(
-        `Unable to load registered tables: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-
-      return []
-    } finally {
-      setLoadingTables(false)
-    }
-  }
-
-  useEffect(() => {
-    loadRegisteredTables()
-  }, [restaurantId])
-
-  // Treat the QR manager like an app screen even though it is
-  // embedded in the Owner page. Create exactly ONE temporary
-  // history entry while the QR screen is open.
-  //
-  // IMPORTANT:
-  // This effect must NOT depend on the inline onClose callback.
-  // The parent dashboard re-renders often, and the old code could
-  // push multiple QR history entries. That made Back appear stuck
-  // or eventually fall into an older website page.
-  useEffect(() => {
-    if (
-      typeof window === 'undefined' ||
-      !restaurantId
-    ) {
-      return undefined
-    }
-
-    const currentState =
-      window.history.state || {}
-
-    if (
-      !currentState
-        ?.digitalDiningOwnerTableQr
-    ) {
-      window.history.pushState(
-        {
-          ...currentState,
-          digitalDiningOwnerTableQr: true,
-          digitalDiningOwnerRestaurantId:
-            String(restaurantId),
-        },
-        '',
-        window.location.href
-      )
-    }
-
-    const handlePopState = () => {
-      onCloseRef.current?.()
-    }
-
-    window.addEventListener(
-      'popstate',
-      handlePopState
-    )
-
-    return () => {
-      window.removeEventListener(
-        'popstate',
-        handlePopState
-      )
-    }
-  }, [restaurantId])
-
-  const closeQrManager = () => {
-    const finishClose = () => {
-      onCloseRef.current?.()
-    }
-
-    if (
-      typeof window !== 'undefined' &&
-      window.history.state
-        ?.digitalDiningOwnerTableQr
-    ) {
-      // Remove only the temporary QR history entry.
-      // popstate closes the overlay. A short fallback is included
-      // for Android WebViews that occasionally delay popstate.
-      window.history.back()
-
-      window.setTimeout(() => {
-        finishClose()
-      }, 180)
-
-      return
-    }
-
-    finishClose()
-  }
-
-  const handleTableChange = (value) => {
-    let number = Number.parseInt(
-      String(value),
-      10
-    )
-
-    if (!Number.isFinite(number) || number < 1) {
-      number = 1
-    }
-
-    if (isStarter && number > 5) {
-      appNotice(
-        'The Starter plan supports up to 5 table QR codes.'
-      )
-      number = 5
-    }
-
-    setTableNumber(
-      Math.min(number, maximumTable)
-    )
-  }
-
-  const registerCurrentTable = async () => {
-    const cleanTableNumber =
-      Number(tableNumber)
-
-    if (!restaurantId) {
-      throw new Error(
-        'Restaurant ID is missing.'
-      )
-    }
-
-    if (
-      !Number.isInteger(cleanTableNumber) ||
-      cleanTableNumber < 1
-    ) {
-      throw new Error(
-        'Please enter a valid table number.'
-      )
-    }
-
-    const { data, error } = await supabase.rpc(
-      'register_table_qr',
-      {
-        p_restaurant_id: String(
-          restaurantId
-        ),
-        p_table_number: cleanTableNumber,
-      }
-    )
-
-    if (error) {
-      throw new Error(
-        error.message ||
-          'Unable to register this table.'
-      )
-    }
-
-    await loadRegisteredTables()
-    return data
-  }
-
-  const handleRegister = async () => {
-    if (registering) return
-
-    setRegistering(true)
-
-    try {
-      await registerCurrentTable()
-
-      appNotice(
-        `Table ${tableNumber} QR is ready. ✅`
-      )
-    } catch (error) {
-      console.error(
-        '[OWNER MOBILE QR] Register error:',
-        error
-      )
-
-      appNotice(
-        `Unable to register Table ${tableNumber}: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-    } finally {
-      setRegistering(false)
-    }
-  }
-
-  const handleDownload = async () => {
-    if (
-      downloading ||
-      !restaurant ||
-      !qrCodeImageUrl
-    ) {
-      return
-    }
-
-    setDownloading(true)
-
-    try {
-      await registerCurrentTable()
-
-      const response = await fetch(
-        qrCodeImageUrl
-      )
-
-      if (!response.ok) {
-        throw new Error(
-          `QR service returned HTTP ${response.status}.`
-        )
-      }
-
-      const blob = await response.blob()
-
-      if (!blob || blob.size === 0) {
-        throw new Error(
-          'QR image was empty.'
-        )
-      }
-
-      const objectUrl =
-        URL.createObjectURL(blob)
-
-      try {
-        const restaurantName = String(
-          restaurant?.name || 'restaurant'
-        )
-          .replace(/[^a-z0-9]+/gi, '-')
-          .replace(/^-+|-+$/g, '')
-          .toLowerCase()
-
-        const anchor =
-          document.createElement('a')
-
-        anchor.href = objectUrl
-        anchor.download =
-          `${restaurantName || 'restaurant'}` +
-          `-table-${tableNumber}-qr.png`
-
-        document.body.appendChild(anchor)
-        anchor.click()
-        anchor.remove()
-      } finally {
-        window.setTimeout(() => {
-          URL.revokeObjectURL(objectUrl)
-        }, 1000)
-      }
-
-      await loadRegisteredTables()
-    } catch (error) {
-      console.error(
-        '[OWNER MOBILE QR] Download error:',
-        error
-      )
-
-      appNotice(
-        `Unable to download Table ${tableNumber} QR: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-    } finally {
-      setDownloading(false)
-    }
-  }
-
-  const handleCopy = async () => {
-    if (!menuUrl) return
-
-    try {
-      await navigator.clipboard.writeText(
-        menuUrl
-      )
-
-      appNotice(
-        `Table ${tableNumber} menu link copied.`
-      )
-    } catch (error) {
-      console.error(
-        '[OWNER MOBILE QR] Copy error:',
-        error
-      )
-
-      await appPrompt(
-        'Copy this Table QR URL:',
-        menuUrl
-      )
-    }
-  }
-
-  const isRegistered =
-    registeredTables.some(
-      (table) =>
-        String(table?.table_number) ===
-        String(tableNumber)
-    )
-
-  return (
-    <div className="fixed inset-0 z-[9990] bg-[#f6f7f2] text-neutral-900">
-      <div className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden bg-[#f6f7f2]">
-        <header className="shrink-0 bg-[#0c831f] px-4 pb-4 pt-[max(0.85rem,env(safe-area-inset-top))] text-white shadow-lg shadow-green-900/10">
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={closeQrManager}
-              className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-lg font-black backdrop-blur"
-              aria-label="Back to Owner"
-            >
-              ←
-            </button>
-
-            <div className="min-w-0 flex-1 text-center">
-              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-neutral-500">
-                Owner Tools
-              </p>
-
-              <h1 className="mt-0.5 truncate text-[17px] font-black">
-                Table QR Codes
-              </h1>
-
-              <p className="mt-0.5 truncate text-[9px] font-semibold text-white/70">
-                {restaurant?.name || 'Restaurant'}
-              </p>
-            </div>
-
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f8cb46] text-lg text-neutral-900">
-              ▦
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl bg-white/12 p-3 backdrop-blur">
-              <p className="text-[8px] font-black uppercase tracking-wider text-neutral-500">
-                Registered
-              </p>
-
-              <p className="mt-1 text-xl font-black">
-                {loadingTables
-                  ? '…'
-                  : registeredTables.length}
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-white/12 p-3 backdrop-blur">
-              <p className="text-[8px] font-black uppercase tracking-wider text-neutral-500">
-                Selected Table
-              </p>
-
-              <p className="mt-1 text-xl font-black">
-                {tableNumber}
-              </p>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
-          {isStarter && (
-            <div className="mb-4 rounded-2xl border border-amber-300 bg-[#fff7d6] p-3 text-[9px] font-bold leading-5 text-amber-800">
-              Starter Plan supports Table 1 through Table 5.
-            </div>
-          )}
-
-          <section className="rounded-[24px] border border-[#e8e9e4] bg-white p-4 shadow-sm">
-            <label className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
-              Table Number
-            </label>
-
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  handleTableChange(
-                    Math.max(
-                      1,
-                      Number(tableNumber) - 1
-                    )
-                  )
-                }
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-xl font-black"
-              >
-                −
-              </button>
-
-              <input
-                type="number"
-                min="1"
-                max={maximumTable}
-                value={tableNumber}
-                onChange={(event) =>
-                  handleTableChange(
-                    event.target.value
-                  )
-                }
-                className="h-12 min-w-0 flex-1 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 text-center text-lg font-black outline-none focus:border-[#0c831f]"
-              />
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleTableChange(
-                    Number(tableNumber) + 1
-                  )
-                }
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-xl font-black"
-              >
-                +
-              </button>
-            </div>
-
-            <div className="mt-4 rounded-[22px] bg-neutral-50 p-4">
-              <div className="mx-auto max-w-[270px] rounded-[22px] bg-white p-4 shadow-sm">
-                {qrCodeImageUrl ? (
-                  <img
-                    src={qrCodeImageUrl}
-                    alt={`Table ${tableNumber} QR`}
-                    className="aspect-square w-full object-contain"
-                  />
-                ) : (
-                  <div className="flex aspect-square items-center justify-center text-4xl">
-                    ▦
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-3 text-center">
-                <div className="flex items-center justify-center gap-2">
-                  <p className="text-sm font-black">
-                    Table {tableNumber}
-                  </p>
-
-                  {isRegistered && (
-                    <span className="rounded-full bg-orange-50 px-2 py-1 text-[8px] font-semibold text-orange-600">
-                      REGISTERED
-                    </span>
-                  )}
-                </div>
-
-                <p className="mt-1 text-[8px] leading-4 text-neutral-500">
-                  Scanning opens the real customer QR menu for this table.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={handleRegister}
-                disabled={registering}
-                className="rounded-2xl bg-[#f8cb46] px-3 py-3.5 text-[10px] font-black text-neutral-900 disabled:opacity-50"
-              >
-                {registering
-                  ? 'Saving...'
-                  : isRegistered
-                    ? 'Refresh QR'
-                    : 'Register QR'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDownload}
-                disabled={downloading}
-                className="rounded-2xl bg-[#0c831f] px-3 py-3.5 text-[10px] font-black text-white shadow-lg shadow-green-700/15 disabled:opacity-50"
-              >
-                {downloading
-                  ? 'Downloading...'
-                  : 'Download QR'}
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="mt-2 w-full rounded-2xl border border-neutral-200 bg-neutral-50 py-3 text-[9px] font-black text-neutral-600"
-            >
-              Copy Table Menu Link
-            </button>
-          </section>
-
-          {registeredTables.length > 0 && (
-            <section className="mt-4 rounded-[24px] border border-[#e8e9e4] bg-white p-4 shadow-sm">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-wider text-[#0c831f]">
-                    Registered Tables
-                  </p>
-
-                  <h2 className="mt-1 text-[16px] font-black">
-                    Your Table QR list
-                  </h2>
-                </div>
-
-                <span className="rounded-full bg-[#eaf8ed] px-2.5 py-1 text-[8px] font-black text-[#0c831f]">
-                  {registeredTables.length}
-                </span>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {registeredTables
-                  .slice()
-                  .sort(
-                    (a, b) =>
-                      Number(a?.table_number || 0) -
-                      Number(b?.table_number || 0)
-                  )
-                  .map((table) => (
-                    <button
-                      key={
-                        table?.id ||
-                        table?.table_number
-                      }
-                      type="button"
-                      onClick={() =>
-                        handleTableChange(
-                          table.table_number
-                        )
-                      }
-                      className={`rounded-xl border px-3 py-2 text-[9px] font-black ${
-                        String(table?.table_number) ===
-                        String(tableNumber)
-                          ? 'border-[#0c831f] bg-[#eaf8ed] text-[#0c831f]'
-                          : 'border-neutral-200 bg-neutral-50 text-neutral-600'
-                      }`}
-                    >
-                      Table {table.table_number}
-                    </button>
-                  ))}
-              </div>
-            </section>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export default function RestaurantDashboard() {
-  useMobileViewportLock()
-  const params = useParams()
-  const restaurantId = String(params.id || params.restaurantId || '').trim()
   const router = useRouter()
-  const ownerAppLoginUrl = restaurantId
-    ? `/app/owner?restaurantId=${encodeURIComponent(
-        String(restaurantId)
-      )}`
-    : '/app'
 
-  const [restaurant, setRestaurant] = useState(null)
-  const [authChecked, setAuthChecked] = useState(false)
-  const [entryLoaderDone, setEntryLoaderDone] = useState(false)
-  const entryLoaderStartedAtRef = useRef(Date.now())
+  useMobileViewportLock()
 
-  // Owner Profile
-  const [profileOpen, setProfileOpen] = useState(false)
-  const [profileName, setProfileName] = useState('')
-  const [profileEmail, setProfileEmail] = useState('')
-  const [profilePhone, setProfilePhone] = useState('')
-  const [profileSaving, setProfileSaving] = useState(false)
-  const [menuItems, setMenuItems] = useState([])
-  const [dailyOffers, setDailyOffers] = useState([])
-  const [orders, setOrders] = useState([])
-  const [restaurantTables, setRestaurantTables] = useState([])
-  const [activeTab, setActiveTab] = useState('owner-home')
-  const [dashboardMode, setDashboardMode] = useState('restaurant')
-  const [isStoreOpen, setIsStoreOpen] = useState(true)
-  const [savingStoreStatus, setSavingStoreStatus] = useState(false)
-  const [mobileOwnerMenuOpen, setMobileOwnerMenuOpen] = useState(false)
-  const [experienceOpen, setExperienceOpen] = useState(false)
-  const [tableQrOpen, setTableQrOpen] = useState(false)
 
-  // Lifetime order date search.
-  // This is intentionally separate from the normal live `orders` state:
-  // searching an old date queries Supabase directly so owners can retrieve
-  // historical orders even when the regular dashboard list is very large.
-  const [orderHistoryDate, setOrderHistoryDate] = useState('')
-  const [orderHistoryOrders, setOrderHistoryOrders] = useState([])
-  const [orderHistoryLoading, setOrderHistoryLoading] = useState(false)
-  const [orderHistorySearched, setOrderHistorySearched] = useState(false)
-  const [orderHistoryError, setOrderHistoryError] = useState('')
-  const [orderHistoryVisibleCount, setOrderHistoryVisibleCount] = useState(20)
 
-  // Add Dish Form States
-  const [name, setName] = useState('')
-  const [price, setPrice] = useState('')
-  const [category, setCategory] = useState('')
-  const [imageUrl, setImageUrl] = useState('')
-  const [description, setDescription] = useState('')
-  const [foodType, setFoodType] = useState('veg')
-  const [reorderMode, setReorderMode] = useState('auto')
-  const [addons, setAddons] = useState([''])
+  const [restaurantId, setRestaurantId] = useState('')
+
+  const [restaurantCode, setRestaurantCode] = useState('')
+
+  const [contextReady, setContextReady] = useState(false)
+
+
+
+  const [email, setEmail] = useState('')
+
+  const [password, setPassword] = useState('')
+
+  const [dob, setDob] = useState('')
+
+
+
   const [loading, setLoading] = useState(false)
 
-  // Full menu item editing states
-  const [editingMenuItemId, setEditingMenuItemId] = useState(null)
-  const [editItemName, setEditItemName] = useState('')
-  const [editItemPrice, setEditItemPrice] = useState('')
-  const [editItemOriginalPrice, setEditItemOriginalPrice] = useState('')
-  const [editItemOfferPrice, setEditItemOfferPrice] = useState('')
-  const [editItemCategory, setEditItemCategory] = useState('')
-  const [editItemDescription, setEditItemDescription] = useState('')
-  const [editItemImageUrl, setEditItemImageUrl] = useState('')
-  const [editItemFoodType, setEditItemFoodType] = useState('veg')
-  const [editItemReorderMode, setEditItemReorderMode] = useState('auto')
-  const [editItemAddons, setEditItemAddons] = useState([''])
-  const [savingMenuItem, setSavingMenuItem] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
-  // Staff Management States
-  const [staffList, setStaffList] = useState([])
-  const [staffName, setStaffName] = useState('')
-  const [staffUserId, setStaffUserId] = useState('')
-  const [staffPassword, setStaffPassword] = useState('')
-  const [staffRole, setStaffRole] = useState('waiter')
-  const [addingStaff, setAddingStaff] = useState(false)
+  const [biometricLoading, setBiometricLoading] = useState(false)
 
-  // Tax & Packing Charge Configuration States
-  const [sgstRate, setSgstRate] = useState(2.5)
-  const [cgstRate, setCgstRate] = useState(2.5)
-  const [packingCharge, setPackingCharge] = useState(20)
-  const [savingTaxes, setSavingTaxes] = useState(false)
+  const [biometricAccountDetected, setBiometricAccountDetected] =
 
-  // Inline Price Editing State (Pro+ Only)
-  const [editingItemId, setEditingItemId] = useState(null)
-  const [editPriceValue, setEditPriceValue] = useState('')
+    useState(false)
 
-  // Payment Gateway Configuration States & Edit Toggle
-  const [razorpayKeyId, setRazorpayKeyId] = useState('')
-  const [razorpaySecret, setRazorpaySecret] = useState('')
-  const [razorpayHasSecret, setRazorpayHasSecret] = useState(false)
-  const [enableCounterPayment, setEnableCounterPayment] = useState(true)
-  const [savingPayment, setSavingPayment] = useState(false)
-  const [hasInitializedKeys, setHasInitializedKeys] = useState(false)
-  const [isGatewayEditable, setIsGatewayEditable] = useState(false)
-  const [showGatewayPasswordModal, setShowGatewayPasswordModal] = useState(false)
-  const [gatewayPassword, setGatewayPassword] = useState('')
-  const [verifyingGatewayPassword, setVerifyingGatewayPassword] = useState(false)
+  const [checkingSession, setCheckingSession] =
 
-  // Swiggy Sync States (Pro & Pro+ Only)
-  const [swiggyDataInput, setSwiggyDataInput] = useState('')
-  const [syncingSwiggy, setSyncingSwiggy] = useState(false)
+    useState(true)
 
-  // Reports Timeframe State
-  const [reportTimeframe, setReportTimeframe] = useState('daily')
+  const [error, setError] = useState('')
 
-  // Billing & Bill Settings States
-  const [selectedBillOrder, setSelectedBillOrder] = useState(null)
-  const [billSearch, setBillSearch] = useState('')
-  const [billDateFilter, setBillDateFilter] = useState('')
-  const [billingRestaurantName, setBillingRestaurantName] = useState('')
-  const [managerSignature, setManagerSignature] = useState('')
-  const [restaurantLogo, setRestaurantLogo] = useState('')
-  const [editingBillSettings, setEditingBillSettings] = useState(false)
-  const [savingBillSettings, setSavingBillSettings] = useState(false)
 
-  // Offers of the Day — restaurant dashboard only
-  const [offerTitle, setOfferTitle] = useState('')
-  const [offerDescription, setOfferDescription] = useState('')
-  const [offerDiscountText, setOfferDiscountText] = useState('')
-  const [offerOriginalPrice, setOfferOriginalPrice] = useState('')
-  const [offerPrice, setOfferPrice] = useState('')
-  const [offerDate, setOfferDate] = useState(new Date().toLocaleDateString('en-CA'))
-  const [offerImageUrl, setOfferImageUrl] = useState('')
-  const [savingOffer, setSavingOffer] = useState(false)
-  const [editingOfferId, setEditingOfferId] = useState(null)
 
-  // Audio Alarm Reference for Pro+ real-time order sound
-  const audioRef = useRef(null)
-  const prevOrdersLengthRef = useRef(0)
+  const isPasskeySupported = () => {
 
-  // Kitchen and waiter alarm settings
-  const [kitchenAlarmSound, setKitchenAlarmSound] = useState('kitchen-default')
-  const [waiterAlarmSound, setWaiterAlarmSound] = useState('waiter-default')
-  const [kitchenAlarmEnabled, setKitchenAlarmEnabled] = useState(true)
-  const [waiterAlarmEnabled, setWaiterAlarmEnabled] = useState(true)
-  const [kitchenAlarmVolume, setKitchenAlarmVolume] = useState(1)
-  const [waiterAlarmVolume, setWaiterAlarmVolume] = useState(1)
-  const [savingAlarmSettings, setSavingAlarmSettings] = useState(false)
-  const [previewAudio, setPreviewAudio] = useState(null)
+    return (
 
-  // Prevent the 2-second dashboard refresh from overwriting alarm choices
-  // while the owner is editing them.
-  const alarmSettingsDirtyRef = useRef(false)
+      typeof window !== 'undefined' &&
 
-  const kitchenAlarmOptions = [
-    { value: 'kitchen-default', label: 'Kitchen Default', src: '/sounds/kitchen-default.mp3' },
-    { value: 'kitchen-1', label: 'Kitchen Sound 1', src: '/sounds/kitchen-1.mp3' },
-    { value: 'kitchen-2', label: 'Kitchen Sound 2', src: '/sounds/kitchen-2.mp3' },
-    { value: 'kitchen-3', label: 'Kitchen Sound 3', src: '/sounds/kitchen-3.mp3' },
-    { value: 'kitchen-4', label: 'Kitchen Sound 4 — Double Bell', src: '/sounds/kitchen-4.mp3' },
-    { value: 'kitchen-5', label: 'Kitchen Sound 5 — Fast Alert', src: '/sounds/kitchen-5.mp3' },
-    { value: 'kitchen-6', label: 'Kitchen Sound 6 — Service Chime', src: '/sounds/kitchen-6.mp3' },
-    { value: 'kitchen-7', label: 'Kitchen Sound 7 — Urgent Pulse', src: '/sounds/kitchen-7.mp3' },
-    { value: 'kitchen-8', label: 'Kitchen Sound 8 — Triple Ding', src: '/sounds/kitchen-8.mp3' },
-  ]
+      window.isSecureContext &&
 
-  const waiterAlarmOptions = [
-    { value: 'waiter-default', label: 'Waiter Default', src: '/sounds/waiter-default.mp3' },
-    { value: 'waiter-1', label: 'Waiter Sound 1', src: '/sounds/waiter-1.mp3' },
-    { value: 'waiter-2', label: 'Waiter Sound 2', src: '/sounds/waiter-2.mp3' },
-    { value: 'waiter-3', label: 'Waiter Sound 3', src: '/sounds/waiter-3.mp3' },
-    { value: 'waiter-4', label: 'Waiter Sound 4', src: '/sounds/waiter-4.mp3' },
-    { value: 'waiter-5', label: 'Waiter Sound 5 — Soft Ding', src: '/sounds/waiter-5.mp3' },
-    { value: 'waiter-6', label: 'Waiter Sound 6 — Double Chime', src: '/sounds/waiter-6.mp3' },
-    { value: 'waiter-7', label: 'Waiter Sound 7 — Ready Bell', src: '/sounds/waiter-7.mp3' },
-    { value: 'waiter-8', label: 'Waiter Sound 8 — Pop Alert', src: '/sounds/waiter-8.mp3' },
-    { value: 'waiter-9', label: 'Waiter Sound 9 — Quick Pulse', src: '/sounds/waiter-9.mp3' },
-  ]
+      typeof window.PublicKeyCredential !==
 
-  // Subscription-wise module control.
-  // Final plans:
-  // Restaurant, Delivery, Restaurant + Resort,
-  // Restaurant + Delivery, Restaurant + Resort + Delivery.
-  //
-  // Legacy Standard values were migrated to the full Restaurant plan.
-  const legacyPlan = String(restaurant?.plan || 'Pro')
-  const legacyPlanCode =
-    legacyPlan === 'Pro+'
-      ? 'restaurant_resort_pro'
-      : 'restaurant_pro'
+        'undefined'
 
-  const currentPlanCode = String(
-    restaurant?.plan_code || legacyPlanCode
-  ).toLowerCase()
+    )
 
-  const PLAN_FEATURES = {
-    restaurant_pro: {
-      code: 'restaurant_pro',
-      name: 'Restaurant',
-      monthlyPrice: 1499,
-      restaurant: true,
-      resort: false,
-      delivery: false,
-      advanced: true,
-      advancedResort: false,
-      menuLimit: Infinity,
-    },
-
-    delivery: {
-      code: 'delivery',
-      name: 'Delivery',
-      monthlyPrice: 1499,
-      restaurant: false,
-      resort: false,
-      delivery: true,
-      advanced: true,
-      advancedResort: false,
-      menuLimit: Infinity,
-    },
-
-    restaurant_resort_pro: {
-      code: 'restaurant_resort_pro',
-      name: 'Restaurant + Resort',
-      monthlyPrice: 2999,
-      restaurant: true,
-      resort: true,
-      delivery: false,
-      advanced: true,
-      advancedResort: true,
-      menuLimit: Infinity,
-    },
-
-    restaurant_delivery: {
-      code: 'restaurant_delivery',
-      name: 'Restaurant + Delivery',
-      monthlyPrice: 2999,
-      restaurant: true,
-      resort: false,
-      delivery: true,
-      advanced: true,
-      advancedResort: false,
-      menuLimit: Infinity,
-    },
-
-    restaurant_resort_delivery: {
-      code: 'restaurant_resort_delivery',
-      name: 'Restaurant + Resort + Delivery',
-      monthlyPrice: 3999,
-      restaurant: true,
-      resort: true,
-      delivery: true,
-      advanced: true,
-      advancedResort: true,
-      menuLimit: Infinity,
-    },
   }
 
-  const planFeatures =
-    PLAN_FEATURES[currentPlanCode] ||
-    PLAN_FEATURES.restaurant_pro
 
-  const currentPlanDisplay = planFeatures.name
-  const currentPlanMonthlyPrice = planFeatures.monthlyPrice
 
-  // Every enabled Restaurant module gets the complete Restaurant feature set.
-  const hasAdvancedAnalytics = Boolean(planFeatures.restaurant)
-  const hasManagerManagement = Boolean(planFeatures.restaurant || planFeatures.delivery)
-  const hasAdvancedMenuControls = Boolean(planFeatures.restaurant)
-  const hasRealtimeOrderAlarm = Boolean(planFeatures.restaurant)
+  const getPasskeyErrorMessage = (error) => {
 
-  const restaurantModuleEnabled = Boolean(planFeatures.restaurant)
-  const resortModuleEnabled = Boolean(planFeatures.resort)
-  const deliveryModuleEnabled = Boolean(planFeatures.delivery)
-  const hasAdvancedResortFeatures = Boolean(planFeatures.resort)
+    const code =
 
-  // No plan-based menu item limit in the final five-plan structure.
-  const maxMenuAllowed = Infinity
+      error?.code ||
 
-  const enabledModuleCount =
-    Number(restaurantModuleEnabled) +
-    Number(resortModuleEnabled) +
-    Number(deliveryModuleEnabled)
+      error?.name ||
 
-  // Delivery-only plans still use the existing staff_users security model
-  // for the Manager account. Keep the Owner's staff form locked to Manager
-  // while this plan is active.
-  useEffect(() => {
-    if (currentPlanCode === 'delivery') {
-      setStaffRole('manager')
-    }
-  }, [currentPlanCode])
+      ''
 
-  // Keep the selected workspace inside the modules included in the plan.
-  // Delivery-only subscriptions open directly in Delivery.
-  useEffect(() => {
-    if (!restaurant) return
 
-    const allowedModes = []
 
-    if (restaurantModuleEnabled) {
-      allowedModes.push('restaurant')
-    }
+    const message =
 
-    if (resortModuleEnabled) {
-      allowedModes.push('resort')
-    }
+      error?.message ||
 
-    if (deliveryModuleEnabled) {
-      allowedModes.push('delivery')
-    }
+      ''
+
+
+
+    const lowerMessage =
+
+      String(message).toLowerCase()
+
+
 
     if (
-      allowedModes.length > 0 &&
-      !allowedModes.includes(dashboardMode)
+
+      code ===
+
+      'webauthn_credential_not_found'
+
     ) {
-      setDashboardMode(allowedModes[0])
-    }
-  }, [
-    restaurant,
-    dashboardMode,
-    restaurantModuleEnabled,
-    resortModuleEnabled,
-    deliveryModuleEnabled,
-  ])
-
-  // Native notification taps can deep-link directly into a module.
-  useEffect(() => {
-    const requestedModule = String(
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('module') || ''
-        : ''
-    )
-      .trim()
-      .toLowerCase()
-
-    if (
-      requestedModule === 'delivery' &&
-      deliveryModuleEnabled
-    ) {
-      setDashboardMode('delivery')
-    } else if (
-      requestedModule === 'resort' &&
-      resortModuleEnabled
-    ) {
-      setDashboardMode('resort')
-    } else if (
-      requestedModule === 'restaurant' &&
-      restaurantModuleEnabled
-    ) {
-      setDashboardMode('restaurant')
-    }
-  }, [
-restaurantModuleEnabled,
-    resortModuleEnabled,
-    deliveryModuleEnabled,
-  ])
-
-  // SECURITY: The restaurant ID in the URL is not authentication.
-  // The authenticated Supabase user must own the dashboard being opened.
-  useEffect(() => {
-    let cancelled = false
-
-    const verifyDashboardAccess = async () => {
-      if (!restaurantId) {
-        router.replace(ownerAppLoginUrl)
-        return
-      }
-
-      const {
-        data: { user },
-        error
-      } = await supabase.auth.getUser()
-
-      if (error || !user) {
-        if (!cancelled) router.replace(ownerAppLoginUrl)
-        return
-      }
-
-      if (!cancelled) {
-        setProfileName(
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          ''
-        )
-        setProfileEmail(user.email || '')
-      }
-
-      const { data: ownedRestaurant, error: ownershipError } = await supabase
-        .from('restaurants')
-        .select('id, owner_id')
-        .eq('id', restaurantId)
-        .eq('owner_id', user.id)
-        .maybeSingle()
-
-     if (ownershipError || !ownedRestaurant) {
-  console.error('Dashboard ownership verification failed:', {
-    restaurantId,
-    userId: user?.id,
-    ownershipError,
-    ownedRestaurant,
-  })
-
-  if (!cancelled) {
-    router.replace(ownerAppLoginUrl)
-  }
-
-  return
-}
-
-      if (!cancelled) setAuthChecked(true)
-    }
-
-    verifyDashboardAccess()
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (event === 'SIGNED_OUT' || !session?.user) {
-          router.replace(ownerAppLoginUrl)
-        }
-      }
-    )
-
-    return () => {
-      cancelled = true
-      authListener?.subscription?.unsubscribe()
-    }
-  }, [restaurantId, router])
-
-  useEffect(() => {
-    alarmSettingsDirtyRef.current = false
-  }, [restaurantId])
-
-  // Keep the opening experience visible for a minimum of 4 seconds.
-  // Authentication and dashboard loading continue normally in the background.
-  useEffect(() => {
-    if (!authChecked || !restaurant || entryLoaderDone) return undefined
-
-    const elapsed = Date.now() - entryLoaderStartedAtRef.current
-    const remaining = Math.max(0, 4000 - elapsed)
-
-    const timer = window.setTimeout(() => {
-      setEntryLoaderDone(true)
-    }, remaining)
-
-    return () => window.clearTimeout(timer)
-  }, [authChecked, restaurant, entryLoaderDone])
-
-  useEffect(() => {
-    async function fetchDashboard() {
-      if (!authChecked || !restaurantId) return
-
-      const {
-        data: { user },
-        error: authError
-      } = await supabase.auth.getUser()
-
-      if (authError || !user) {
-        router.replace(ownerAppLoginUrl)
-        return
-      }
-
-      const { data: ownedRestaurant, error: ownershipError } = await supabase
-        .from('restaurants')
-        .select('id, owner_id')
-        .eq('id', restaurantId)
-        .eq('owner_id', user.id)
-        .maybeSingle()
-
-      if (ownershipError || !ownedRestaurant) {
-        console.error('Dashboard ownership check failed:', ownershipError)
-        router.replace(ownerAppLoginUrl)
-        return
-      }
-
-      const { data: restData, error } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('id', restaurantId)
-        .maybeSingle()
-
-      if (error || !restData) {
-        router.replace(ownerAppLoginUrl)
-        return
-      }
-
-      setRestaurant(restData)
-      setIsStoreOpen(restData.is_open ?? true)
-
-      setProfilePhone(String(restData.phone || ''))
-
-      // The dashboard polls every 2 seconds. Do not overwrite an in-progress
-      // alarm edit with the previously saved database value.
-      if (!alarmSettingsDirtyRef.current) {
-        setKitchenAlarmSound(restData.kitchen_alarm_sound || 'kitchen-default')
-        setWaiterAlarmSound(restData.waiter_alarm_sound || 'waiter-default')
-        setKitchenAlarmEnabled(restData.kitchen_alarm_enabled ?? true)
-        setWaiterAlarmEnabled(restData.waiter_alarm_enabled ?? true)
-        setKitchenAlarmVolume(Number(restData.kitchen_alarm_volume ?? 1))
-        setWaiterAlarmVolume(Number(restData.waiter_alarm_volume ?? 1))
-      }
-
-      setBillingRestaurantName((prev) =>
-        prev || restData.billing_restaurant_name || restData.name || ''
-      )
-      setManagerSignature((prev) =>
-        prev || restData.manager_signature || ''
-      )
-      setRestaurantLogo((prev) =>
-        prev || restData.logo_url || ''
-      )
-
-      if (!hasInitializedKeys && !savingPayment) {
-        setSgstRate(restData.sgst_rate ?? 2.5)
-        setCgstRate(restData.cgst_rate ?? 2.5)
-        setPackingCharge(restData.packing_charge ?? 20)
-
-        try {
-          const { data: sessionData, error: sessionError } =
-            await supabase.auth.getSession()
-
-          if (sessionError) throw sessionError
-
-          const accessToken = sessionData?.session?.access_token
-
-          if (!accessToken) {
-            throw new Error(
-              'Your owner session has expired. Please sign in again.'
-            )
-          }
-
-          const gatewayResponse = await fetch(
-            `/api/payment-gateways/config?restaurantId=${encodeURIComponent(
-              restaurantId
-            )}&module=restaurant`,
-            {
-              method: 'GET',
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-              },
-              cache: 'no-store',
-            }
-          )
-
-          const gatewayData =
-            await gatewayResponse.json().catch(() => ({}))
-
-          if (!gatewayResponse.ok || !gatewayData?.success) {
-            throw new Error(
-              gatewayData?.message ||
-                'Unable to load restaurant payment settings.'
-            )
-          }
-
-          const keyId = String(gatewayData.keyId || '')
-          const hasSecret = Boolean(gatewayData.hasSecret)
-
-          setRazorpayKeyId(keyId)
-          setRazorpaySecret('')
-          setRazorpayHasSecret(hasSecret)
-          setEnableCounterPayment(
-            gatewayData.offlinePaymentEnabled ?? true
-          )
-
-          setIsGatewayEditable(!(keyId && hasSecret))
-        } catch (gatewayError) {
-          console.error(
-            'Restaurant payment gateway load error:',
-            gatewayError
-          )
-
-          setRazorpayKeyId('')
-          setRazorpaySecret('')
-          setRazorpayHasSecret(false)
-          setEnableCounterPayment(
-            restData.enable_counter_payment ?? true
-          )
-          setIsGatewayEditable(false)
-        } finally {
-          setHasInitializedKeys(true)
-        }
-      }
-
-      const { data: menuData } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-
-      if (menuData) setMenuItems(menuData)
-
-      const { data: staffData } = await supabase
-        .from('staff_users')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false })
-
-      if (staffData) setStaffList(staffData)
-
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false })
-
-      const { data: tableData, error: tableError } = await supabase
-        .from('tables')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('table_number', { ascending: true })
-
-      if (tableError) {
-        console.error('Table inventory loading error:', tableError)
-      } else {
-        setRestaurantTables(Array.isArray(tableData) ? tableData : [])
-      }
-
-      if (orderData) {
-        if (
-          hasRealtimeOrderAlarm &&
-          orderData.length > prevOrdersLengthRef.current &&
-          prevOrdersLengthRef.current > 0
-        ) {
-          if (audioRef.current) {
-            audioRef.current
-              .play()
-              .catch((e) =>
-                console.log('Audio play blocked:', e)
-              )
-          }
-        }
-
-        prevOrdersLengthRef.current = orderData.length
-        setOrders(orderData)
-      }
-    }
-
-    fetchDashboard()
-
-    const interval = setInterval(fetchDashboard, 2000)
-
-    return () => clearInterval(interval)
-  }, [
-    authChecked,
-    restaurantId,
-    router,
-    currentPlanCode,
-    hasInitializedKeys,
-    savingPayment
-  ])
-
-  const configuredTableNumbers = [...new Set(
-    restaurantTables
-      .map((table, index) => String(table?.table_number ?? table?.number ?? table?.table_no ?? table?.name ?? (index + 1)).trim())
-      .filter(Boolean)
-  )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-
-  const activeTableOrders = orders.filter((order) => {
-    const status = String(order?.status || '').trim().toLowerCase()
-    if (['completed', 'cancelled', 'delivered'].includes(status)) return false
-    const tableNumber = String(order?.table_number ?? '').trim()
-    if (!tableNumber) return false
-    const diningMode = String(order?.dining_mode ?? order?.order_type ?? 'dine-in').trim().toLowerCase()
-    return !['parcel', 'takeaway', 'take-away', 'delivery'].some((mode) => diningMode.includes(mode))
-  })
-
-  const occupiedTableNumbers = new Set(activeTableOrders.map((order) => String(order.table_number).trim()))
-  const occupiedTableCount = configuredTableNumbers.filter((number) => occupiedTableNumbers.has(number)).length
-  const availableTableCount = Math.max(0, configuredTableNumbers.length - occupiedTableCount)
-
-  const updateOrderStatus = async (orderId, newStatus) => {
-    setOrders(
-      orders.map((o) =>
-        o.id === orderId
-          ? { ...o, status: newStatus }
-          : o
-      )
-    )
-
-    await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', orderId)
-  }
-
-  const toggleItemAvailability = async (
-    itemId,
-    currentAvailability
-  ) => {
-    if (!hasAdvancedMenuControls) {
-      appNotice(
-        '🔒 Advanced menu controls are available on Restaurant Pro and Restaurant + Resort Pro.'
-      )
-      return
-    }
-
-    const updatedStatus = !currentAvailability
-
-    setMenuItems(
-      menuItems.map((item) =>
-        item.id === itemId
-          ? { ...item, is_available: updatedStatus }
-          : item
-      )
-    )
-
-    const { error } = await supabase
-      .from('menu_items')
-      .update({ is_available: updatedStatus })
-      .eq('id', itemId)
-
-    if (error) {
-      appNotice(
-        'Failed to update availability: ' + error.message
-      )
-    }
-  }
-
-  const handleSaveItemPrice = async (itemId) => {
-    if (!hasAdvancedMenuControls) {
-      appNotice(
-        '🔒 Advanced menu pricing is available on Restaurant Pro and Restaurant + Resort Pro.'
-      )
-      setEditingItemId(null)
-      return
-    }
-
-    const newPrice = parseFloat(editPriceValue)
-
-    if (isNaN(newPrice) || newPrice <= 0) {
-      appNotice('Please enter a valid price.')
-      return
-    }
-
-    setMenuItems(
-      menuItems.map((item) =>
-        item.id === itemId
-          ? { ...item, price: newPrice }
-          : item
-      )
-    )
-
-    setEditingItemId(null)
-
-    const { error } = await supabase
-      .from('menu_items')
-      .update({ price: newPrice })
-      .eq('id', itemId)
-
-    if (error) {
-      appNotice('Failed to update price: ' + error.message)
-    } else {
-      appNotice('Dish price modified successfully! ✅')
-    }
-  }
-
-  // Calculates how many units of a menu item appear in orders.
-  // Supports item.id, item.menu_item_id and item.name matching.
-  const getItemOrderCount = (menuItem, orderList = orders) => {
-    if (!menuItem || !Array.isArray(orderList)) return 0
-
-    return orderList.reduce((total, order) => {
-      if (
-        order?.status === 'cancelled' ||
-        !Array.isArray(order?.items)
-      ) {
-        return total
-      }
 
       return (
-        total +
-        order.items.reduce((itemTotal, orderedItem) => {
-          const sameId =
-            orderedItem?.id &&
-            menuItem?.id &&
-            String(orderedItem.id) ===
-              String(menuItem.id)
 
-          const sameMenuItemId =
-            orderedItem?.menu_item_id &&
-            menuItem?.id &&
-            String(orderedItem.menu_item_id) ===
-              String(menuItem.id)
+        'No biometric/passkey was found for this Owner account on this device. ' +
 
-          const sameName =
-            orderedItem?.name &&
-            menuItem?.name &&
-            String(orderedItem.name)
-              .trim()
-              .toLowerCase() ===
-              String(menuItem.name)
-                .trim()
-                .toLowerCase()
+        'Turn Biometric OFF and use password login, or use a device where the Owner passkey is registered.'
 
-          if (sameId || sameMenuItemId || sameName) {
-            return (
-              itemTotal +
-              Number(
-                orderedItem?.qty ||
-                  orderedItem?.quantity ||
-                  1
-              )
-            )
+      )
+
+    }
+
+
+
+    if (
+
+      code ===
+
+        'webauthn_verification_failed' ||
+
+      lowerMessage.includes(
+
+        'credential verification failed'
+
+      )
+
+    ) {
+
+      return (
+
+        'Biometric verification failed. Please try again or turn Biometric OFF.'
+
+      )
+
+    }
+
+
+
+    if (
+
+      code ===
+
+        'webauthn_challenge_expired' ||
+
+      lowerMessage.includes(
+
+        'challenge expired'
+
+      )
+
+    ) {
+
+      return (
+
+        'The biometric security request expired. Please try again.'
+
+      )
+
+    }
+
+
+
+    if (
+
+      code ===
+
+        'webauthn_challenge_not_found' ||
+
+      lowerMessage.includes(
+
+        'challenge not found'
+
+      )
+
+    ) {
+
+      return (
+
+        'The biometric security request could not be found. Please try again.'
+
+      )
+
+    }
+
+
+
+    if (
+
+      code === 'passkey_disabled' ||
+
+      lowerMessage.includes(
+
+        'passkeys are disabled'
+
+      )
+
+    ) {
+
+      return (
+
+        'Biometric login is currently disabled in the authentication system.'
+
+      )
+
+    }
+
+
+
+    if (
+
+      lowerMessage.includes('cancel') ||
+
+      lowerMessage.includes('abort') ||
+
+      lowerMessage.includes(
+
+        'notallowed'
+
+      )
+
+    ) {
+
+      return (
+
+        'Biometric verification was cancelled. Please try again or turn Biometric OFF.'
+
+      )
+
+    }
+
+
+
+    return (
+
+      message ||
+
+      'Biometric verification could not be completed.'
+
+    )
+
+  }
+
+
+
+  useEffect(() => {
+
+    let active = true
+
+
+
+    const start = async () => {
+
+      try {
+
+        const params = new URLSearchParams(
+
+          window.location.search
+
+        )
+
+
+
+        const googleError = String(
+
+          params.get('googleError') || ''
+
+        ).trim()
+
+
+
+        if (googleError && active) {
+
+          setError(googleError)
+
+        }
+
+
+
+        let savedContext = {}
+
+        try {
+          const savedRaw =
+            sessionStorage.getItem(OWNER_APP_CONTEXT_KEY) ||
+            localStorage.getItem(OWNER_APP_CONTEXT_KEY) ||
+            ''
+
+          savedContext = savedRaw
+            ? JSON.parse(savedRaw)
+            : {}
+        } catch (storageError) {
+          console.warn(
+            '[OWNER APP LOGIN] Could not read saved restaurant context:',
+            storageError
+          )
+        }
+
+        const id = String(
+          params.get('restaurantId') ||
+            savedContext?.restaurantId ||
+            ''
+        ).trim()
+
+        const code = String(
+          params.get('restaurantCode') ||
+            savedContext?.restaurantCode ||
+            ''
+        )
+          .replace(/\D/g, '')
+          .slice(0, 5)
+
+
+
+        if (!active) return
+
+
+
+        setRestaurantId(id)
+
+        setRestaurantCode(code)
+
+        setContextReady(true)
+
+
+
+        if (!id) {
+
+          setCheckingSession(false)
+
+          setError(
+
+            'Restaurant information is missing. Please return to the restaurant code page.'
+
+          )
+
+          return
+
+        }
+
+
+
+        try {
+
+          const ownerContext = {
+            restaurantId: id,
+            restaurantCode: code,
           }
 
-          return itemTotal
-        }, 0)
-      )
-    }, 0)
-  }
+          sessionStorage.setItem(
+            OWNER_APP_CONTEXT_KEY,
+            JSON.stringify(ownerContext)
+          )
 
-  // Automatic badge:
-  // - Looks at actual non-cancelled orders
-  // - Considers the top 25% of ordered items
-  // - Requires at least 5 units ordered
-  const getAutomaticHighlyReorderedIds = (
-    items = menuItems
-  ) => {
-    const ranked = items
-      .map((item) => ({
-        id: item.id,
-        count: getItemOrderCount(item)
-      }))
-      .filter((item) => item.count > 0)
-      .sort((a, b) => b.count - a.count)
+          localStorage.setItem(
+            OWNER_APP_CONTEXT_KEY,
+            JSON.stringify(ownerContext)
+          )
 
-    if (ranked.length === 0) return new Set()
+        } catch (storageError) {
 
-    const topCount = Math.max(
-      1,
-      Math.ceil(ranked.length * 0.25)
-    )
+          console.warn(
 
-    const threshold =
-      ranked[topCount - 1]?.count || 0
+            '[OWNER APP LOGIN] Could not save app context:',
 
-    return new Set(
-      ranked
-        .filter(
-          (item) =>
-            item.count >= Math.max(5, threshold)
+            storageError
+
+          )
+
+        }
+
+
+
+        // If an Owner session already exists — including a session
+
+        // returned from Google OAuth — verify that it owns the exact
+
+        // restaurant selected from /app before opening the mobile portal.
+
+        const {
+
+          data: { user },
+
+          error: userError,
+
+        } = await supabase.auth.getUser()
+
+
+
+        if (!userError && user) {
+
+          const {
+
+            data: ownedRestaurant,
+
+            error: ownershipError,
+
+          } = await supabase
+
+            .from('restaurants')
+
+            .select('id, owner_id, restaurant_code')
+
+            .eq('id', id)
+
+            .eq('owner_id', user.id)
+
+            .maybeSingle()
+
+
+
+          if (
+
+            !ownershipError &&
+
+            ownedRestaurant?.id &&
+
+            active
+
+          ) {
+
+            router.replace(
+
+              `/app/owner/${encodeURIComponent(id)}`
+
+            )
+
+            router.refresh()
+
+            return
+
+          }
+
+
+
+          // A different Google/Owner account is currently authenticated.
+
+          // Clear it so the selected restaurant cannot be opened by mistake.
+
+          try {
+
+            await supabase.auth.signOut()
+
+          } catch (signOutError) {
+
+            console.error(
+
+              '[OWNER APP LOGIN] Could not clear mismatched session:',
+
+              signOutError
+
+            )
+
+          }
+
+
+
+          if (active) {
+
+            const provider = String(
+
+              user?.app_metadata?.provider || ''
+
+            ).toLowerCase()
+
+
+
+            setError(
+
+              provider === 'google'
+
+                ? 'This Google account is not the Owner account for the selected restaurant. Please choose the correct Google account.'
+
+                : 'The current Owner session does not belong to the selected restaurant. Please sign in with the correct Owner account.'
+
+            )
+
+          }
+
+        }
+
+      } catch (startError) {
+
+        console.error(
+
+          '[OWNER APP LOGIN] Start error:',
+
+          startError
+
         )
-        .map((item) => item.id)
-    )
-  }
 
-  const isItemHighlyReordered = (
-    item,
-    automaticIds
-  ) => {
-    if (!item) return false
 
-    const mode = item.reorder_mode || 'auto'
 
-    if (mode === 'on') return true
+        if (active) {
 
-    if (mode === 'off') return false
+          setError(
 
-    return automaticIds.has(item.id)
-  }
+            startError?.message ||
 
-  const getFoodTypeLabel = (type) => {
-    const labels = {
-      veg: 'Veg',
-      'non-veg': 'Non-Veg',
-      egg: 'Egg',
-      beverage: 'Beverage',
-      other: 'Other'
-    }
+              'Unable to prepare Owner login.'
 
-    return labels[type] || 'Other'
-  }
+          )
 
-  const getFoodTypeClasses = (type) => {
-    const classes = {
-      veg: 'bg-emerald-500',
-      'non-veg': 'bg-red-500',
-      egg: 'bg-amber-400',
-      beverage: 'bg-sky-400',
-      other: 'bg-neutral-400'
-    }
+        }
 
-    return classes[type] || classes.other
-  }
+      } finally {
 
-  const startEditingMenuItem = (item) => {
-    setEditingMenuItemId(item.id)
+        if (active) {
 
-    setEditItemName(item.name || '')
-    setEditItemPrice(item.price ?? '')
-    setEditItemOriginalPrice(item.original_price ?? '')
-    setEditItemOfferPrice(item.offer_price ?? '')
-    setEditItemCategory(item.category || '')
-    setEditItemDescription(item.description || '')
-    setEditItemImageUrl(item.image_url || '')
+          setCheckingSession(false)
 
-    setEditItemFoodType(
-      item.food_type ||
-        (item.is_veg ? 'veg' : 'non-veg')
-    )
+        }
 
-    setEditItemReorderMode(
-      item.reorder_mode || 'auto'
-    )
-
-    setEditItemAddons(
-      Array.isArray(item.addons) &&
-        item.addons.length > 0
-        ? item.addons
-        : ['']
-    )
-  }
-
-  const cancelEditingMenuItem = () => {
-    setEditingMenuItemId(null)
-    setEditItemName('')
-    setEditItemPrice('')
-    setEditItemOriginalPrice('')
-    setEditItemOfferPrice('')
-    setEditItemCategory('')
-    setEditItemDescription('')
-    setEditItemImageUrl('')
-    setEditItemFoodType('veg')
-    setEditItemReorderMode('auto')
-    setEditItemAddons([''])
-  }
-
-  const handleSaveMenuItem = async (itemId) => {
-    if (savingMenuItem) return
-
-    if (!editItemName.trim()) {
-      appNotice('Please enter an item name.')
-      return
-    }
-
-    const parsedPrice = parseFloat(editItemPrice)
-    const parsedOriginalPrice =
-      editItemOriginalPrice === ''
-        ? null
-        : parseFloat(editItemOriginalPrice)
-    const parsedOfferPrice =
-      editItemOfferPrice === ''
-        ? null
-        : parseFloat(editItemOfferPrice)
-
-    if (
-      isNaN(parsedPrice) ||
-      parsedPrice <= 0
-    ) {
-      appNotice('Please enter a valid price.')
-      return
-    }
-
-    if (
-      parsedOriginalPrice !== null &&
-      (isNaN(parsedOriginalPrice) || parsedOriginalPrice <= 0)
-    ) {
-      appNotice('Please enter a valid original price.')
-      return
-    }
-
-    if (
-      parsedOfferPrice !== null &&
-      (isNaN(parsedOfferPrice) || parsedOfferPrice <= 0)
-    ) {
-      appNotice('Please enter a valid offer price.')
-      return
-    }
-
-    if (
-      parsedOriginalPrice !== null &&
-      parsedOfferPrice !== null &&
-      parsedOfferPrice >= parsedOriginalPrice
-    ) {
-      appNotice('Offer price must be lower than the original price.')
-      return
-    }
-
-    // The existing Pro+ price protection remains in place.
-    // An offer also changes the effective customer price, so offer pricing
-    // follows the same protection and does not bypass the existing plan rule.
-    if (!hasAdvancedMenuControls) {
-      const currentItem = menuItems.find(
-        (item) => item.id === itemId
-      )
-
-      const currentOriginal =
-        currentItem?.original_price == null
-          ? null
-          : Number(currentItem.original_price)
-      const currentOffer =
-        currentItem?.offer_price == null
-          ? null
-          : Number(currentItem.offer_price)
-
-      const pricingChanged =
-        currentItem &&
-        (Number(currentItem.price) !== parsedPrice ||
-          currentOriginal !== parsedOriginalPrice ||
-          currentOffer !== parsedOfferPrice)
-
-      if (pricingChanged) {
-        appNotice(
-          '🔒 Advanced price and offer modification is available on Restaurant Pro and Restaurant + Resort Pro.'
-        )
-        return
       }
+
     }
 
-    // When an offer price is entered, that becomes the live menu price.
-    // Otherwise the existing Price field remains the live customer price.
-    const livePrice =
-      parsedOfferPrice !== null
-        ? parsedOfferPrice
-        : parsedPrice
 
-    setSavingMenuItem(true)
 
-    const validEditAddons =
-      editItemAddons.filter(
-        (a) => a.trim() !== ''
-      )
+    start()
 
-    const updatedData = {
-      name: editItemName.trim(),
-      price: livePrice,
-      original_price: parsedOriginalPrice,
-      offer_price: parsedOfferPrice,
-      category: editItemCategory.trim(),
-      description:
-        editItemDescription.trim(),
-      image_url:
-        editItemImageUrl.trim(),
-      is_veg:
-        editItemFoodType === 'veg',
-      food_type:
-        editItemFoodType,
-      reorder_mode:
-        editItemReorderMode,
-      addons: validEditAddons
+
+
+    return () => {
+
+      active = false
+
     }
 
-    const { data, error } = await supabase
-      .from('menu_items')
-      .update(updatedData)
-      .eq('id', itemId)
-      .select()
-      .single()
+  }, [router])
 
-    if (error) {
-      appNotice(
-        'Failed to update menu item: ' +
-          error.message
-      )
-    } else {
-      setMenuItems((prev) =>
-        prev.map((item) =>
-          item.id === itemId
-            ? data
-            : item
-        )
-      )
 
-      appNotice(
-        'Menu item updated successfully! ✅'
-      )
 
-      cancelEditingMenuItem()
-    }
-
-    setSavingMenuItem(false)
-  }
-
-  const handleAddDish = async (e) => {
-    e.preventDefault()
-
-    if (!restaurant) return
-
-    if (menuItems.length >= maxMenuAllowed) {
-      appNotice(
-        'Menu item limit reached.'
-      )
-      return
-    }
-
-    if (!name.trim()) {
-      appNotice('Please enter the item name.')
-      return
-    }
-
-    const parsedPrice = parseFloat(price)
+  const handleGoogleLogin = async () => {
 
     if (
-      isNaN(parsedPrice) ||
-      parsedPrice <= 0
+
+      loading ||
+
+      googleLoading ||
+
+      biometricLoading ||
+
+      checkingSession
+
     ) {
-      appNotice('Please enter a valid price.')
+
       return
+
     }
 
-    if (!category.trim()) {
-      appNotice('Please enter a category.')
+
+
+    if (!restaurantId) {
+
+      setError(
+
+        'Restaurant information is missing. Please return to the restaurant code page.'
+
+      )
+
       return
+
     }
+
+
+
+    setGoogleLoading(true)
+
+    setError('')
+
+
+
+    try {
+
+      const googleContext = {
+
+        source: 'owner-app',
+
+        restaurantId: String(
+
+          restaurantId
+
+        ),
+
+        restaurantCode: String(
+
+          restaurantCode || ''
+
+        ),
+
+        createdAt: Date.now(),
+
+      }
+
+
+
+      /*
+
+       * IMPORTANT:
+
+       * Keep the selected mobile restaurant outside the OAuth URL.
+
+       *
+
+       * The previous version put restaurantId/query parameters
+
+       * directly inside redirectTo. If that full redirect URL is
+
+       * not present in Supabase's Redirect URL allow-list,
+
+       * Supabase falls back to the configured Site URL — which is
+
+       * why Google was returning to the website landing page.
+
+       *
+
+       * /auth/google-login is already the website's working Google
+
+       * callback. We reuse that exact stable callback and preserve
+
+       * the mobile Owner context in browser storage.
+
+       */
+
+      try {
+
+        sessionStorage.setItem(
+
+          OWNER_APP_CONTEXT_KEY,
+
+          JSON.stringify({
+
+            restaurantId,
+
+            restaurantCode,
+
+          })
+
+        )
+
+
+
+        sessionStorage.setItem(
+
+          OWNER_GOOGLE_CONTEXT_KEY,
+
+          JSON.stringify(googleContext)
+
+        )
+
+
+
+        localStorage.setItem(
+
+          OWNER_GOOGLE_CONTEXT_KEY,
+
+          JSON.stringify(googleContext)
+
+        )
+
+      } catch (storageError) {
+
+        console.warn(
+
+          '[OWNER APP GOOGLE] Could not save OAuth context:',
+
+          storageError
+
+        )
+
+      }
+
+
+
+      const redirectTo =
+
+        `${window.location.origin}/auth/google-login`
+
+
+
+      const { error: oauthError } =
+
+        await supabase.auth.signInWithOAuth({
+
+          provider: 'google',
+
+          options: {
+
+            redirectTo,
+
+            queryParams: {
+
+              access_type: 'offline',
+
+              prompt: 'select_account',
+
+            },
+
+          },
+
+        })
+
+
+
+      if (oauthError) {
+
+        throw oauthError
+
+      }
+
+    } catch (googleError) {
+
+      console.error(
+
+        '[OWNER APP GOOGLE] Login error:',
+
+        googleError
+
+      )
+
+
+
+      try {
+
+        sessionStorage.removeItem(
+
+          OWNER_GOOGLE_CONTEXT_KEY
+
+        )
+
+        localStorage.removeItem(
+
+          OWNER_GOOGLE_CONTEXT_KEY
+
+        )
+
+      } catch {}
+
+
+
+      setError(
+
+        googleError?.message ||
+
+          'Google sign in could not be started.'
+
+      )
+
+
+
+      setGoogleLoading(false)
+
+    }
+
+  }
+
+
+
+  const handleLogin = async (event) => {
+
+    event.preventDefault()
+
+
+
+    if (
+
+      loading ||
+
+      googleLoading ||
+
+      biometricLoading
+
+    ) {
+
+      return
+
+    }
+
+
+
+    const cleanEmail =
+
+      email.trim().toLowerCase()
+
+
+
+    const cleanPassword = password
+
+    const cleanDob = dob.trim()
+
+
+
+    if (!restaurantId) {
+
+      setError(
+
+        'Restaurant information is missing. Please return to the restaurant code page.'
+
+      )
+
+      return
+
+    }
+
+
+
+    if (
+
+      !cleanEmail ||
+
+      !cleanPassword ||
+
+      !cleanDob
+
+    ) {
+
+      setError(
+
+        'Please enter Email, Password and Date of Birth.'
+
+      )
+
+      return
+
+    }
+
+
 
     setLoading(true)
 
-    const validAddons =
-      addons.filter((a) => a.trim() !== '')
+    setError('')
 
-    const newItem = {
-      restaurant_id: restaurant.id,
-      name: name.trim(),
-      price: parsedPrice,
-      category: category.trim(),
-      image_url: imageUrl.trim(),
-      description: description.trim(),
-      is_veg: foodType === 'veg',
-      food_type: foodType,
-      reorder_mode: reorderMode,
-      addons: validAddons,
-      is_available: true
-    }
+    setBiometricAccountDetected(false)
 
-    const {
-      data,
-      error
-    } = await supabase
-      .from('menu_items')
-      .insert([newItem])
-      .select()
 
-    if (error) {
-      appNotice(
-        'Error adding item: ' +
-          error.message
-      )
-    } else {
-      appNotice(
-        'Dish added to your live menu!'
-      )
 
-      setName('')
-      setPrice('')
-      setCategory('')
-      setImageUrl('')
-      setDescription('')
-      setFoodType('veg')
-      setReorderMode('auto')
-      setAddons([''])
+    let browserSessionCreated = false
 
-      if (data) {
-        setMenuItems((prev) => [
-          ...data,
-          ...prev
-        ])
-      }
-    }
 
-    setLoading(false)
-  }
-
-  const handleCreateStaff = async (e) => {
-    e.preventDefault()
-
-    // Delivery-only subscriptions may create Manager access here,
-    // but must not create Restaurant Waiter/Kitchen accounts.
-    const roleToCreate =
-      currentPlanCode === 'delivery'
-        ? 'manager'
-        : staffRole
-
-    if (
-      !staffName.trim() ||
-      !staffUserId.trim() ||
-      !staffPassword.trim()
-    ) {
-      appNotice(
-        'Please fill out all staff credentials.'
-      )
-      return
-    }
-
-    setAddingStaff(true)
 
     try {
-      const newStaff = {
-        restaurant_id: restaurantId,
-        name: staffName.trim(),
-        user_id:
-          staffUserId
-            .trim()
-            .toLowerCase(),
-        password:
-          staffPassword.trim(),
-        role: roleToCreate,
-        pin:
-          staffPassword.trim(),
-        is_active: true
-      }
 
-      const {
-        data,
-        error
-      } = await supabase
-        .from('staff_users')
-        .insert([newStaff])
-        .select()
+      const response =
 
-      if (error) throw error
+        await fetch('/api/login', {
 
-      appNotice(
-        `${roleToCreate === 'waiter' ? 'Waiter' : roleToCreate === 'kitchen' ? 'Kitchen' : 'Restaurant Manager'} account created successfully! 🎉`
-      )
+          method: 'POST',
 
-      setStaffName('')
-      setStaffUserId('')
-      setStaffPassword('')
+          headers: {
 
-      if (data) {
-        setStaffList((prev) => [
-          ...data,
-          ...prev
-        ])
-      }
-    } catch (err) {
-      appNotice(
-        'Error creating staff account: ' +
-          err.message
-      )
-    } finally {
-      setAddingStaff(false)
-    }
-  }
+            'Content-Type':
 
-  const handleDeleteStaff = async (
-    staffId,
-    name
-  ) => {
-    if (
-      !await appConfirm(
-        `Are you sure you want to remove staff member "${name}"?`
-      )
-    ) {
-      return
-    }
+              'application/json',
 
-    setStaffList((prev) =>
-      prev.filter(
-        (s) => s.id !== staffId
-      )
-    )
+          },
 
-    try {
-      const { error } =
-        await supabase
-          .from('staff_users')
-          .delete()
-          .eq('id', staffId)
+          body: JSON.stringify({
 
-      if (error) throw error
+            email: cleanEmail,
 
-      appNotice(
-        'Staff account revoked.'
-      )
-    } catch (err) {
-      appNotice(
-        'Failed to delete staff: ' +
-          err.message
-      )
-    }
-  }
+            password: cleanPassword,
 
-  const handleSaveTaxSettings =
-    async (e) => {
-      e.preventDefault()
+            dob: cleanDob,
 
-      setSavingTaxes(true)
+          }),
 
-      const taxData = {
-        sgst_rate:
-          parseFloat(sgstRate),
-        cgst_rate:
-          parseFloat(cgstRate),
-        packing_charge:
-          parseFloat(packingCharge)
-      }
+        })
 
-      const { error } =
-        await supabase
-          .from('restaurants')
-          .update(taxData)
-          .eq(
-            'id',
-            restaurantId
-          )
 
-      if (error) {
-        appNotice(
-          'Failed to save tax settings: ' +
-            error.message
-        )
-      } else {
-        setRestaurant((prev) => ({
-          ...prev,
-          ...taxData
-        }))
 
-        appNotice(
-          'Tax & packing charges updated successfully! ✅'
-        )
-      }
+      const result =
 
-      setSavingTaxes(false)
-    }
+        await response
 
+          .json()
 
-  const handleOwnerStoreToggle = async () => {
-    if (!restaurantId || savingStoreStatus) return
+          .catch(() => ({}))
 
-    const nextStatus = !isStoreOpen
-    setSavingStoreStatus(true)
 
-    try {
-      const {
-        data: { user },
-        error: authError
-      } = await supabase.auth.getUser()
-
-      if (authError || !user) {
-        throw new Error('Owner session expired. Please sign in again.')
-      }
-
-      const { data, error } = await supabase
-        .from('restaurants')
-        .update({ is_open: nextStatus })
-        .eq('id', restaurantId)
-        .eq('owner_id', user.id)
-        .select('id, is_open')
-        .single()
-
-      if (error) throw error
-
-      const savedStatus =
-        data?.is_open ?? nextStatus
-
-      setIsStoreOpen(savedStatus)
-      setRestaurant((current) =>
-        current
-          ? {
-              ...current,
-              is_open: savedStatus,
-            }
-          : current
-      )
-
-      appNotice(
-        savedStatus
-          ? 'Restaurant is OPEN and accepting orders. ✅'
-          : 'Restaurant is CLOSED. New customer orders are paused. 🔴'
-      )
-    } catch (error) {
-      console.error(
-        '[OWNER] Restaurant status update error:',
-        error
-      )
-
-      appNotice(
-        `Unable to update restaurant status: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-    } finally {
-      setSavingStoreStatus(false)
-    }
-  }
-
-  const handleSwiggySync = async (e) => {
-    e.preventDefault()
-
-    if (!hasAdvancedMenuControls) {
-      appNotice(
-        '🔒 Menu import/sync is available on Restaurant Pro and Restaurant + Resort Pro.'
-      )
-      return
-    }
-
-    if (!swiggyDataInput.trim()) {
-      appNotice(
-        'Please provide valid Swiggy menu export JSON data.'
-      )
-      return
-    }
-
-    setSyncingSwiggy(true)
-
-    try {
-      const parsedItems =
-        JSON.parse(
-          swiggyDataInput
-        )
-
-      if (!Array.isArray(parsedItems)) {
-        throw new Error(
-          'Input must be a JSON array of items.'
-        )
-      }
-
-      const formattedItems =
-        parsedItems.map(
-          (item) => ({
-            restaurant_id:
-              restaurant.id,
-            name:
-              item.name ||
-              'Swiggy Item',
-            price: parseFloat(
-              item.price || 100
-            ),
-            category:
-              item.category ||
-              'Swiggy Sync',
-            image_url:
-              item.image_url ||
-              '',
-            description:
-              item.description ||
-              '',
-            is_veg:
-              item.is_veg ??
-              true,
-            food_type:
-              item.food_type ||
-              (
-                item.is_veg === false
-                  ? 'non-veg'
-                  : 'veg'
-              ),
-            reorder_mode:
-              item.reorder_mode ||
-              'auto',
-            is_available:
-              true
-          })
-        )
-
-      const {
-        data,
-        error
-      } = await supabase
-        .from('menu_items')
-        .insert(
-          formattedItems
-        )
-        .select()
-
-      if (error) {
-        throw new Error(
-          error.message
-        )
-      }
-
-      appNotice(
-        `Successfully synced ${formattedItems.length} items from Swiggy menu! ✅`
-      )
-
-      setSwiggyDataInput('')
-
-      if (data) {
-        setMenuItems((prev) => [
-          ...data,
-          ...prev
-        ])
-      }
-    } catch (err) {
-      appNotice(
-        'Sync Failed: Make sure your input format is valid JSON. Error: ' +
-          err.message
-      )
-    }
-
-    setSyncingSwiggy(false)
-  }
-
-  const handleRequestGatewayEdit = () => {
-    setGatewayPassword('')
-    setShowGatewayPasswordModal(true)
-  }
-
-  const handleVerifyGatewayEditPassword = async (e) => {
-    e.preventDefault()
-
-    if (!gatewayPassword.trim()) {
-      appNotice('Please enter your login password.')
-      return
-    }
-
-    setVerifyingGatewayPassword(true)
-
-    try {
-      const {
-        data: { user },
-        error: userError
-      } = await supabase.auth.getUser()
-
-      if (userError || !user?.email) {
-        throw new Error('Your login session has expired. Please log in again.')
-      }
-
-      // Re-authenticate with the same email + password used for restaurant login.
-      // This protects Razorpay credentials from being edited by someone who only
-      // has access to an already-open dashboard tab.
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: gatewayPassword.trim()
-      })
-
-      if (authError) {
-        throw new Error('Incorrect login password. Gateway credentials remain locked.')
-      }
-
-      setGatewayPassword('')
-      setShowGatewayPasswordModal(false)
-      setIsGatewayEditable(true)
-    } catch (err) {
-      appNotice(err?.message || 'Password verification failed.')
-    } finally {
-      setVerifyingGatewayPassword(false)
-    }
-  }
-
-  const handleSavePaymentSettings =
-    async (e) => {
-      e.preventDefault()
-
-      setSavingPayment(true)
-
-      try {
-        const { data: sessionData, error: sessionError } =
-          await supabase.auth.getSession()
-
-        if (sessionError) throw sessionError
-
-        const accessToken = sessionData?.session?.access_token
-
-        if (!accessToken) {
-          throw new Error(
-            'Your owner session has expired. Please sign in again.'
-          )
-        }
-
-        const response = await fetch(
-          '/api/payment-gateways/config',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              restaurantId,
-              module: 'restaurant',
-              keyId: razorpayKeyId.trim(),
-              keySecret: razorpaySecret.trim(),
-              enabled: Boolean(
-                razorpayKeyId.trim() &&
-                  (razorpaySecret.trim() || razorpayHasSecret)
-              ),
-              offlinePaymentEnabled: enableCounterPayment,
-            }),
-          }
-        )
-
-        const data =
-          await response.json().catch(() => ({}))
-
-        if (!response.ok || !data?.success) {
-          throw new Error(
-            data?.message ||
-              'Failed to update payment settings.'
-          )
-        }
-
-        setRazorpayKeyId(String(data.keyId || ''))
-        setRazorpaySecret('')
-        setRazorpayHasSecret(Boolean(data.hasSecret))
-        setEnableCounterPayment(
-          data.offlinePaymentEnabled ?? enableCounterPayment
-        )
-
-        setRestaurant((prev) => ({
-          ...prev,
-          razorpay_key_id: String(data.keyId || ''),
-          razorpay_secret: '',
-          enable_counter_payment:
-            data.offlinePaymentEnabled ?? enableCounterPayment,
-        }))
-
-        setIsGatewayEditable(false)
-
-        appNotice('Payment settings saved successfully! ✅')
-      } catch (error) {
-        appNotice(
-          'Failed to update payment settings: ' +
-            (error?.message || 'Please try again.')
-        )
-      } finally {
-        setSavingPayment(false)
-      }
-    }
-
-  const resetOfferForm = () => {
-    setOfferTitle('')
-    setOfferDescription('')
-    setOfferDiscountText('')
-    setOfferOriginalPrice('')
-    setOfferPrice('')
-    setOfferDate(new Date().toLocaleDateString('en-CA'))
-    setOfferImageUrl('')
-    setEditingOfferId(null)
-  }
-
-  const handleOfferImageFile = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      appNotice('Please select an image file for the offer.')
-      e.target.value = ''
-      return
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      appNotice('Please use an offer image smaller than 2 MB.')
-      e.target.value = ''
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') setOfferImageUrl(reader.result)
-    }
-    reader.onerror = () => appNotice('Could not read the offer image. Please try another image.')
-    reader.readAsDataURL(file)
-    e.target.value = ''
-  }
-
-  const startEditingOffer = (offer) => {
-    setEditingOfferId(offer.id)
-    setOfferTitle(offer.title || '')
-    setOfferDescription(offer.description || '')
-    setOfferDiscountText(offer.discount_text || '')
-    setOfferOriginalPrice(offer.original_price ?? '')
-    setOfferPrice(offer.offer_price ?? '')
-    setOfferDate(offer.offer_date || new Date().toLocaleDateString('en-CA'))
-    setOfferImageUrl(offer.image_url || '')
-    setActiveTab('offers')
-  }
-
-  const handleSaveOffer = async (e) => {
-    e.preventDefault()
-    if (savingOffer) return
-    if (!offerTitle.trim()) { appNotice('Please enter an offer title.'); return }
-    if (!offerDate) { appNotice('Please select the offer date.'); return }
-    const parsedOfferPrice = parseFloat(offerPrice)
-    if (isNaN(parsedOfferPrice) || parsedOfferPrice < 0) { appNotice('Please enter a valid offer price.'); return }
-    const parsedOriginal = offerOriginalPrice === '' ? null : parseFloat(offerOriginalPrice)
-    if (parsedOriginal !== null && (isNaN(parsedOriginal) || parsedOriginal < 0)) { appNotice('Please enter a valid original price.'); return }
-    setSavingOffer(true)
-    const payload = {
-      restaurant_id: restaurantId,
-      title: offerTitle.trim(),
-      description: offerDescription.trim(),
-      discount_text: offerDiscountText.trim(),
-      original_price: parsedOriginal,
-      offer_price: parsedOfferPrice,
-      offer_date: offerDate,
-      image_url: offerImageUrl.trim(),
-      is_active: true
-    }
-    try {
-      let error
-      let saved
-      if (editingOfferId) {
-        const result = await supabase.from('daily_offers').update(payload).eq('id', editingOfferId).eq('restaurant_id', restaurantId).select().maybeSingle()
-        error = result.error
-        saved = result.data
-      } else {
-        const result = await supabase.from('daily_offers').insert([payload]).select().single()
-        error = result.error
-        saved = result.data
-      }
-      if (error) throw error
-      if (saved) setDailyOffers((prev) => editingOfferId ? prev.map((item) => item.id === editingOfferId ? saved : item) : [saved, ...prev])
-      const wasEditing = Boolean(editingOfferId)
-      resetOfferForm()
-      appNotice(wasEditing ? 'Offer updated successfully! ✅' : 'Offer added successfully! ✅')
-    } catch (error) {
-      console.error('Offer save error:', error)
-      appNotice('Failed to save offer: ' + error.message + '\n\nMake sure the daily_offers table has been created in Supabase.')
-    } finally {
-      setSavingOffer(false)
-    }
-  }
-
-  const toggleOffer = async (offer) => {
-    const nextActive = !offer.is_active
-    const { data, error } = await supabase.from('daily_offers').update({ is_active: nextActive }).eq('id', offer.id).eq('restaurant_id', restaurantId).select().maybeSingle()
-    if (error) { appNotice('Failed to update offer: ' + error.message); return }
-    if (data) setDailyOffers((prev) => prev.map((item) => item.id === offer.id ? data : item))
-  }
-
-  const deleteOffer = async (offer) => {
-    if (!await appConfirm(`Delete the offer "${offer.title}"?`)) return
-    const { error } = await supabase.from('daily_offers').delete().eq('id', offer.id).eq('restaurant_id', restaurantId)
-    if (error) { appNotice('Failed to delete offer: ' + error.message); return }
-    setDailyOffers((prev) => prev.filter((item) => item.id !== offer.id))
-    if (editingOfferId === offer.id) resetOfferForm()
-  }
-
-  // ---------------------------------------------------------
-  // ANALYTICS & REPORTING
-  // ---------------------------------------------------------
-  const REPORT_TIMEFRAMES = [
-    { label: 'Today', value: 'daily' },
-    { label: 'Week', value: 'weekly' },
-    { label: 'Month', value: 'monthly' },
-    { label: '3 Months', value: '3months' },
-    { label: '6 Months', value: '6months' },
-    { label: '1 Year', value: '1year' },
-    { label: '2 Years', value: '2years' },
-    { label: '3 Years', value: '3years' }
-  ]
-
-  const getReportRange = (frame) => {
-    const now = new Date()
-    const start = new Date(now)
-
-    if (frame === 'daily') {
-      start.setHours(0, 0, 0, 0)
-    } else if (frame === 'weekly') {
-      const day = start.getDay()
-      const daysSinceMonday = day === 0 ? 6 : day - 1
-      start.setDate(start.getDate() - daysSinceMonday)
-      start.setHours(0, 0, 0, 0)
-    } else if (frame === 'monthly') {
-      start.setDate(1)
-      start.setHours(0, 0, 0, 0)
-    } else if (frame === '3months') {
-      start.setMonth(start.getMonth() - 3)
-      start.setHours(0, 0, 0, 0)
-    } else if (frame === '6months') {
-      start.setMonth(start.getMonth() - 6)
-      start.setHours(0, 0, 0, 0)
-    } else if (frame === '1year') {
-      start.setFullYear(start.getFullYear() - 1)
-      start.setHours(0, 0, 0, 0)
-    } else if (frame === '2years') {
-      start.setFullYear(start.getFullYear() - 2)
-      start.setHours(0, 0, 0, 0)
-    } else if (frame === '3years') {
-      start.setFullYear(start.getFullYear() - 3)
-      start.setHours(0, 0, 0, 0)
-    } else if (frame === 'yearly') {
-      // Backward compatibility for any existing saved/old UI state.
-      start.setFullYear(start.getFullYear() - 1)
-      start.setHours(0, 0, 0, 0)
-    }
-
-    return { start, end: now }
-  }
-
-  const getReportPeriodLabel = (frame) =>
-    REPORT_TIMEFRAMES.find((item) => item.value === frame)?.label || 'Selected Period'
-
-  const reportRange = getReportRange(reportTimeframe)
-
-  const reportOrders = orders.filter((order) => {
-    if (!order?.created_at || String(order.status || '').toLowerCase() === 'cancelled') return false
-    const createdAt = new Date(order.created_at)
-    return createdAt >= reportRange.start && createdAt <= reportRange.end
-  })
-
-  const reportOrderCount = reportOrders.length
-
-  const reportRevenue = reportOrders.reduce(
-    (sum, order) => sum + Number(order.total_amount || 0),
-    0
-  )
-
-  const reportAverageOrderValue = reportOrderCount
-    ? reportRevenue / reportOrderCount
-    : 0
-
-  const hourlyReport = Array.from({ length: 24 }, (_, hour) => ({
-    hour,
-    orders: 0,
-    revenue: 0
-  }))
-
-  reportOrders.forEach((order) => {
-    const hour = new Date(order.created_at).getHours()
-    hourlyReport[hour].orders += 1
-    hourlyReport[hour].revenue += Number(order.total_amount || 0)
-  })
-
-  const peakHour = hourlyReport.reduce(
-    (peak, item) => item.orders > peak.orders ? item : peak,
-    { hour: 0, orders: 0, revenue: 0 }
-  )
-
-  const formatHour = (hour) => {
-    const suffix = hour >= 12 ? 'PM' : 'AM'
-    const displayHour = hour % 12 || 12
-    return `${displayHour}:00 ${suffix}`
-  }
-
-  const formatCurrency = (value) =>
-    `₹${Number(value || 0).toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`
-
-  const buildSalesGraphData = (frame, orderList) => {
-    const range = getReportRange(frame)
-    const buckets = []
-    const bucketMap = new Map()
-
-    const addBucket = (key, label) => {
-      if (bucketMap.has(key)) return
-      const bucket = { key, label, revenue: 0, orders: 0 }
-      bucketMap.set(key, bucket)
-      buckets.push(bucket)
-    }
-
-    if (frame === 'daily') {
-      for (let hour = 0; hour < 24; hour += 1) {
-        addBucket(String(hour), formatHour(hour))
-      }
-    } else if (frame === 'weekly') {
-      const cursor = new Date(range.start)
-      while (cursor <= range.end) {
-        const key = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`
-        addBucket(key, cursor.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' }))
-        cursor.setDate(cursor.getDate() + 1)
-      }
-    } else if (frame === 'monthly') {
-      const cursor = new Date(range.start)
-      while (cursor <= range.end) {
-        const key = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`
-        addBucket(key, cursor.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }))
-        cursor.setDate(cursor.getDate() + 1)
-      }
-    } else {
-      const cursor = new Date(range.start.getFullYear(), range.start.getMonth(), 1)
-      const endMonth = new Date(range.end.getFullYear(), range.end.getMonth(), 1)
-      while (cursor <= endMonth) {
-        const key = `${cursor.getFullYear()}-${cursor.getMonth()}`
-        addBucket(
-          key,
-          cursor.toLocaleDateString('en-IN', {
-            month: 'short',
-            year: buckets.length === 0 || cursor.getMonth() === 0 ? '2-digit' : undefined
-          })
-        )
-        cursor.setMonth(cursor.getMonth() + 1)
-      }
-    }
-
-    orderList.forEach((order) => {
-      if (!order?.created_at || String(order.status || '').toLowerCase() === 'cancelled') return
-      const createdAt = new Date(order.created_at)
-      if (createdAt < range.start || createdAt > range.end) return
-
-      let key
-      if (frame === 'daily') {
-        key = String(createdAt.getHours())
-      } else if (frame === 'weekly' || frame === 'monthly') {
-        key = `${createdAt.getFullYear()}-${createdAt.getMonth()}-${createdAt.getDate()}`
-      } else {
-        key = `${createdAt.getFullYear()}-${createdAt.getMonth()}`
-      }
-
-      const bucket = bucketMap.get(key)
-      if (!bucket) return
-      bucket.orders += 1
-      bucket.revenue += Number(order.total_amount || 0)
-    })
-
-    return buckets
-  }
-
-  const salesGraphData = buildSalesGraphData(reportTimeframe, orders)
-
-  const handleGenerateAnalyticsReport = () => {
-    if (reportOrders.length === 0) {
-      appNotice('There are no orders in the selected period to generate a report.')
-      return
-    }
-
-    const rows = [
-      ['Report Period', getReportPeriodLabel(reportTimeframe)],
-      ['Generated At', new Date().toLocaleString('en-IN')],
-      ['Total Orders', reportOrderCount],
-      ['Total Revenue', reportRevenue.toFixed(2)],
-      ['Average Order Value', reportAverageOrderValue.toFixed(2)],
-      ['Peak Sales Hour', formatHour(peakHour.hour)],
-      ['Peak Hour Orders', peakHour.orders],
-      [],
-      ['Order ID', 'Date', 'Time', 'Status', 'Payment Mode', 'Total Amount']
-    ]
-
-    reportOrders.forEach((order) => {
-      const date = new Date(order.created_at)
-      rows.push([
-        order.id || '',
-        date.toLocaleDateString('en-IN'),
-        date.toLocaleTimeString('en-IN'),
-        order.status || '',
-        order.payment_mode || '',
-        Number(order.total_amount || 0).toFixed(2)
-      ])
-    })
-
-    const csv = rows
-      .map((row) => row.map((cell) => {
-        const value = String(cell ?? '')
-        return `"${value.replace(/"/g, '""')}"`
-      }).join(','))
-      .join('\n')
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `restaurant-${reportTimeframe}-report-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  }
-
-  const handleReportTimeframeChange = (frame) => {
-    setReportTimeframe(frame)
-  }
-
-  const handleUpgradePlan =
-    async (targetPlan) => {
-      if (!restaurantId) {
-        appNotice(
-          'Restaurant ID is missing. Please log in again.'
-        )
-        return
-      }
-
-      const targetPlanDetails = PLAN_FEATURES[targetPlan]
-      const targetPlanName = targetPlanDetails?.name || targetPlan
-
-      const confirmation =
-        await appConfirm(
-          `Change your subscription to ${targetPlanName}? You will be taken to the secure payment page to continue.`
-        )
-
-      if (!confirmation) return
-
-      // Do not update the restaurant plan directly here.
-      // The existing subscription page handles Razorpay payment first.
-      // The selected plan is passed without changing the existing URL path.
-      router.push(
-        `/subscribe/${restaurantId}?plan=${encodeURIComponent(targetPlan)}`
-      )
-    }
-
-  const getAlarmSource = (options, value) => {
-    return options.find((option) => option.value === value)?.src || options[0].src
-  }
-
-  const handlePreviewAlarm = (src, volume = 1) => {
-    try {
-      if (previewAudio) {
-        previewAudio.pause()
-        previewAudio.currentTime = 0
-      }
-
-      const audio = new Audio(src)
-      audio.volume = Math.min(1, Math.max(0, Number(volume) || 0))
-      audio.play().catch((error) => console.error('Preview audio blocked:', error))
-      setPreviewAudio(audio)
-    } catch (error) {
-      console.error('Alarm preview error:', error)
-    }
-  }
-
-  const handleSaveAlarmSettings = async (event) => {
-    event.preventDefault()
-    if (!restaurantId || savingAlarmSettings) return
-
-    setSavingAlarmSettings(true)
-
-    try {
-      const requestedKitchenSound = String(kitchenAlarmSound || 'kitchen-default')
-      const requestedWaiterSound = String(waiterAlarmSound || 'waiter-default')
-      const requestedKitchenVolume = Math.min(
-        1,
-        Math.max(0, Number(kitchenAlarmVolume) || 0)
-      )
-      const requestedWaiterVolume = Math.min(
-        1,
-        Math.max(0, Number(waiterAlarmVolume) || 0)
-      )
-
-      const { data, error } = await supabase.rpc(
-        'save_owner_alarm_settings',
-        {
-          p_restaurant_id: restaurantId,
-          p_kitchen_alarm_sound: requestedKitchenSound,
-          p_waiter_alarm_sound: requestedWaiterSound,
-          p_kitchen_alarm_enabled: Boolean(kitchenAlarmEnabled),
-          p_waiter_alarm_enabled: Boolean(waiterAlarmEnabled),
-          p_kitchen_alarm_volume: requestedKitchenVolume,
-          p_waiter_alarm_volume: requestedWaiterVolume,
-        }
-      )
-
-      if (error) throw error
-
-      if (!data?.success) {
-        throw new Error(
-          data?.message || 'Alarm settings were not saved.'
-        )
-      }
-
-      const savedKitchenSound = String(
-        data?.kitchenAlarmSound || ''
-      )
-      const savedWaiterSound = String(
-        data?.waiterAlarmSound || ''
-      )
 
       if (
-        savedKitchenSound !== requestedKitchenSound ||
-        savedWaiterSound !== requestedWaiterSound
+
+        !response.ok ||
+
+        !result?.success
+
       ) {
+
         throw new Error(
-          `Database verification failed. Kitchen saved as "${savedKitchenSound || 'empty'}" and Waiter saved as "${savedWaiterSound || 'empty'}".`
+
+          result?.message ||
+
+            'Invalid Owner login details.'
+
         )
+
       }
 
-      setKitchenAlarmSound(savedKitchenSound)
-      setWaiterAlarmSound(savedWaiterSound)
-      setKitchenAlarmEnabled(
-        data?.kitchenAlarmEnabled ?? Boolean(kitchenAlarmEnabled)
-      )
-      setWaiterAlarmEnabled(
-        data?.waiterAlarmEnabled ?? Boolean(waiterAlarmEnabled)
-      )
-      setKitchenAlarmVolume(
-        Number(data?.kitchenAlarmVolume ?? requestedKitchenVolume)
-      )
-      setWaiterAlarmVolume(
-        Number(data?.waiterAlarmVolume ?? requestedWaiterVolume)
-      )
-
-      setRestaurant((current) =>
-        current
-          ? {
-              ...current,
-              kitchen_alarm_sound: savedKitchenSound,
-              waiter_alarm_sound: savedWaiterSound,
-              kitchen_alarm_enabled:
-                data?.kitchenAlarmEnabled ?? Boolean(kitchenAlarmEnabled),
-              waiter_alarm_enabled:
-                data?.waiterAlarmEnabled ?? Boolean(waiterAlarmEnabled),
-              kitchen_alarm_volume:
-                Number(data?.kitchenAlarmVolume ?? requestedKitchenVolume),
-              waiter_alarm_volume:
-                Number(data?.waiterAlarmVolume ?? requestedWaiterVolume),
-            }
-          : current
-      )
-
-      alarmSettingsDirtyRef.current = false
-
-      appNotice(
-        `Alarm settings saved ✅\nKitchen: ${savedKitchenSound}\nWaiter: ${savedWaiterSound}`
-      )
-    } catch (error) {
-      console.error('Alarm settings save error:', error)
-
-      // Keep the owner's chosen values on screen after a failed save.
-      // This avoids silently jumping back to Default.
-      alarmSettingsDirtyRef.current = true
-
-      appNotice(
-        `Failed to save alarm settings: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-    } finally {
-      setSavingAlarmSettings(false)
-    }
-  }
-
-  const handleTabSwitch = (tabId) => {
-    const advancedTabs = ['settlements', 'staff', 'swiggy-sync', 'alarm-settings']
-
-    if (advancedTabs.includes(tabId) && !planFeatures.advanced) {
-      appNotice(
-        `🔒 ${currentPlanDisplay} includes Basic Analytics, but this advanced dashboard feature requires Restaurant Pro or Restaurant + Resort Pro.`
-      )
-      return
-    }
-
-    if (tabId === 'resort' && !resortModuleEnabled) {
-      appNotice('🔒 Resort Management is available only on Restaurant + Resort plans.')
-      return
-    }
-
-    setActiveTab(tabId)
-  }
 
 
-  const openOwnerMobileTab = (tabId) => {
-    setDashboardMode('restaurant')
-    handleTabSwitch(tabId)
-    setMobileOwnerMenuOpen(false)
+      const loggedRestaurant =
 
-    window.setTimeout(() => {
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth',
-      })
-    }, 50)
-  }
+        result?.restaurant
 
 
-  const saveOwnerProfile = async (event) => {
-    event.preventDefault()
 
-    const cleanName = String(profileName || '').trim()
-    const cleanPhone = String(profilePhone || '').replace(/\D/g, '')
+      if (!loggedRestaurant?.id) {
 
-    if (!cleanName) {
-      appNotice('Please enter your name.')
-      return
-    }
+        throw new Error(
 
-    if (cleanName.length < 2 || cleanName.length > 80) {
-      appNotice('Name must be between 2 and 80 characters.')
-      return
-    }
+          'Restaurant profile was not returned.'
 
-    if (cleanPhone && cleanPhone.length !== 10) {
-      appNotice('Please enter a valid 10-digit phone number.')
-      return
-    }
+        )
 
-    setProfileSaving(true)
-
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError || !user) {
-        throw new Error('Your login session has expired. Please sign in again.')
       }
 
-      const { error: metadataError } = await supabase.auth.updateUser({
-        data: {
-          full_name: cleanName,
-        },
-      })
 
-      if (metadataError) throw metadataError
 
-      const { error: restaurantError } = await supabase
-        .from('restaurants')
-        .update({
-          phone: cleanPhone || null,
-        })
-        .eq('id', restaurantId)
-        .eq('owner_id', user.id)
+      if (
 
-      if (restaurantError) throw restaurantError
+        String(loggedRestaurant.id) !==
 
-      setProfileName(cleanName)
-      setProfilePhone(cleanPhone)
-      setRestaurant((current) =>
-        current ? { ...current, phone: cleanPhone || null } : current
-      )
-      setProfileOpen(false)
+        String(restaurantId)
 
-      appNotice('Profile updated successfully! ✅')
-    } catch (error) {
-      console.error('Owner profile update error:', error)
-      appNotice(`Unable to update profile: ${error.message || 'Please try again.'}`)
-    } finally {
-      setProfileSaving(false)
-    }
-  }
+      ) {
 
-  const handleLogout = async () => {
-    const returnCode = String(
-      restaurant?.restaurant_code || ''
-    )
-      .replace(/\D/g, '')
-      .slice(0, 5)
+        throw new Error(
 
-    try {
-      localStorage.removeItem(
-        'digital_dining_restaurant_id'
-      )
+          'This Owner account does not belong to the restaurant code selected in the app.'
 
-      try {
-        sessionStorage.removeItem(
-          'digitaldining_owner_login_context'
         )
-      } catch {}
 
-      await supabase.auth.signOut()
-    } finally {
-      router.replace(
-        returnCode
-          ? `/app?code=${encodeURIComponent(returnCode)}`
-          : '/app'
-      )
-    }
-  }
+      }
 
-  const formatBillDate = (dateValue) => {
-    if (!dateValue) return '—'
-    const date = new Date(dateValue)
-    if (Number.isNaN(date.getTime())) return '—'
 
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    })
-  }
-
-  const formatBillTime = (dateValue) => {
-    if (!dateValue) return '—'
-    const date = new Date(dateValue)
-    if (Number.isNaN(date.getTime())) return '—'
-
-    return date.toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    })
-  }
-
-  const getBillNumber = (order) => {
-    if (!order?.id) return 'BILL-000000'
-
-    const compactId = String(order.id)
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .slice(-8)
-      .toUpperCase()
-
-    return `BILL-${compactId.padStart(8, '0')}`
-  }
-
-  const formatOrderHistoryDate = (dateValue) => {
-    if (!dateValue) return ''
-
-    const [year, month, day] = String(dateValue)
-      .split('-')
-      .map(Number)
-
-    if (!year || !month || !day) {
-      return String(dateValue)
-    }
-
-    const date = new Date(
-      year,
-      month - 1,
-      day
-    )
-
-    if (Number.isNaN(date.getTime())) {
-      return String(dateValue)
-    }
-
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    })
-  }
-
-  const getOrderHistoryDayBounds = (dateValue) => {
-    const [year, month, day] = String(dateValue)
-      .split('-')
-      .map(Number)
-
-    if (!year || !month || !day) {
-      throw new Error(
-        'Please select a valid date.'
-      )
-    }
-
-    const start = new Date(
-      year,
-      month - 1,
-      day,
-      0,
-      0,
-      0,
-      0
-    )
-
-    if (
-      Number.isNaN(start.getTime()) ||
-      start.getFullYear() !== year ||
-      start.getMonth() !== month - 1 ||
-      start.getDate() !== day
-    ) {
-      throw new Error(
-        'Please select a valid date.'
-      )
-    }
-
-    const end = new Date(
-      year,
-      month - 1,
-      day + 1,
-      0,
-      0,
-      0,
-      0
-    )
-
-    return { start, end }
-  }
-
-  const handleLifetimeOrderSearch = async () => {
-    if (orderHistoryLoading) return
-
-    if (!restaurantId) {
-      setOrderHistoryError(
-        'Restaurant ID is missing. Please sign in again.'
-      )
-      return
-    }
-
-    if (!orderHistoryDate) {
-      setOrderHistoryError(
-        'Please select a date to search.'
-      )
-      setOrderHistorySearched(false)
-      return
-    }
-
-    setOrderHistoryLoading(true)
-    setOrderHistoryError('')
-    setOrderHistorySearched(false)
-    setOrderHistoryOrders([])
-    setOrderHistoryVisibleCount(20)
-
-    try {
-      const { start, end } =
-        getOrderHistoryDayBounds(
-          orderHistoryDate
-        )
 
       /*
-       * Fetch the selected day's orders directly from Supabase in pages.
-       * This avoids depending on the dashboard's normal in-memory order
-       * list and also avoids losing results if Supabase's per-request row
-       * limit is reached.
+
+       * IMPORTANT:
+
+       * The server checks Supabase Auth itself for registered
+
+       * passkeys after Email + Password + DOB are verified.
+
+       *
+
+       * No local toggle decides this.
+
        */
-      const PAGE_SIZE = 1000
-      let from = 0
-      const foundOrders = []
 
-      while (true) {
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*')
-          .eq(
-            'restaurant_id',
-            restaurantId
-          )
-          .gte(
-            'created_at',
-            start.toISOString()
-          )
-          .lt(
-            'created_at',
-            end.toISOString()
-          )
-          .order(
-            'created_at',
-            { ascending: true }
-          )
-          .order(
-            'id',
-            { ascending: true }
-          )
-          .range(
-            from,
-            from + PAGE_SIZE - 1
-          )
+      const biometricStatusAvailable =
 
-        if (error) throw error
+        result?.biometric
 
-        const pageRows =
-          Array.isArray(data)
-            ? data
-            : []
+          ?.status_available !== false
 
-        foundOrders.push(...pageRows)
+
+
+      const biometricRegistered =
+
+        result?.biometric
+
+          ?.registered === true
+
+
+
+      if (!biometricStatusAvailable) {
+
+        throw new Error(
+
+          'Biometric account status could not be checked. Update @supabase/supabase-js to v2.105.0 or newer on the server and redeploy.'
+
+        )
+
+      }
+
+
+
+      /*
+
+       * NO REGISTERED PASSKEY:
+
+       * Standard Owner login only. Do not show or request biometric.
+
+       */
+
+      if (!biometricRegistered) {
 
         if (
-          pageRows.length <
-          PAGE_SIZE
+
+          !result?.session?.access_token ||
+
+          !result?.session
+
+            ?.refresh_token
+
         ) {
-          break
-        }
 
-        from += PAGE_SIZE
-      }
+          throw new Error(
 
-      setOrderHistoryOrders(
-        foundOrders
-      )
-      setOrderHistorySearched(true)
-    } catch (error) {
-      console.error(
-        '[OWNER ORDER HISTORY] Search error:',
-        error
-      )
+            'Login succeeded, but the secure Owner session was not returned.'
 
-      setOrderHistoryError(
-        error?.message ||
-          'Unable to search historical orders.'
-      )
-      setOrderHistorySearched(true)
-    } finally {
-      setOrderHistoryLoading(false)
-    }
-  }
-
-  const clearLifetimeOrderSearch = () => {
-    setOrderHistoryDate('')
-    setOrderHistoryOrders([])
-    setOrderHistoryError('')
-    setOrderHistorySearched(false)
-    setOrderHistoryVisibleCount(20)
-  }
-
-  const getOrderItemQuantity = (item) =>
-    Number(item?.qty ?? item?.quantity ?? 1) || 1
-
-  const getOrderSubtotal = (order) => {
-    if (!Array.isArray(order?.items)) return 0
-
-    return order.items.reduce(
-      (sum, item) =>
-        sum +
-        Number(item?.price || 0) * getOrderItemQuantity(item),
-      0
-    )
-  }
-
-  const handleSaveBillSettings = async (e) => {
-    e.preventDefault()
-
-    const restaurantName = billingRestaurantName.trim()
-
-    if (!restaurantName) {
-      appNotice('Please enter a restaurant name.')
-      return
-    }
-
-    setSavingBillSettings(true)
-
-    const updatedData = {
-      name: restaurantName,
-      billing_restaurant_name: restaurantName,
-      manager_signature: managerSignature.trim(),
-      logo_url: restaurantLogo.trim()
-    }
-
-    const { error } = await supabase
-      .from('restaurants')
-      .update(updatedData)
-      .eq('id', restaurantId)
-
-    if (error) {
-      appNotice(
-        'Failed to save bill settings: ' +
-          error.message +
-          '\n\nIf the error mentions a missing column, make sure the restaurants table has billing_restaurant_name, manager_signature, and logo_url columns.'
-      )
-    } else {
-      setRestaurant((prev) => ({
-        ...prev,
-        ...updatedData
-      }))
-      setEditingBillSettings(false)
-      appNotice('Bill settings saved successfully! ✅')
-    }
-
-    setSavingBillSettings(false)
-  }
-
-  const handleSignatureFile = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (!file.type.startsWith('image/')) {
-      appNotice('Please select an image file for the manager signature.')
-      return
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      appNotice('Please use a signature image smaller than 2 MB.')
-      return
-    }
-
-    const reader = new FileReader()
-
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setManagerSignature(reader.result)
-        setEditingBillSettings(true)
-      }
-    }
-
-    reader.readAsDataURL(file)
-  }
-
-  const handleRestaurantLogoFile = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (!file.type.startsWith('image/')) {
-      appNotice('Please select an image file for the restaurant logo.')
-      e.target.value = ''
-      return
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      appNotice('Please use a restaurant logo image smaller than 2 MB.')
-      e.target.value = ''
-      return
-    }
-
-    const reader = new FileReader()
-
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setRestaurantLogo(reader.result)
-        setEditingBillSettings(true)
-      }
-    }
-
-    reader.onerror = () => {
-      appNotice('Could not read the logo image. Please try another image.')
-    }
-
-    reader.readAsDataURL(file)
-    e.target.value = ''
-  }
-
-  const clearRestaurantLogo = () => {
-    setRestaurantLogo('')
-  }
-
-  const clearManagerSignature = () => {
-    setManagerSignature('')
-  }
-
-  const handlePrintBill = (order) => {
-    if (!order) return
-
-    setSelectedBillOrder(order)
-
-    setTimeout(() => {
-      window.print()
-    }, 100)
-  }
-
-  const filteredBillingOrders = orders.filter((order) => {
-    const search = billSearch.trim().toLowerCase()
-
-    const matchesSearch =
-      !search ||
-      String(order.id || '').toLowerCase().includes(search) ||
-      String(order.table_number || '').toLowerCase().includes(search) ||
-      String(order.waiter_name || '').toLowerCase().includes(search)
-
-    const matchesDate =
-      !billDateFilter ||
-      (order.created_at &&
-        new Date(order.created_at)
-          .toISOString()
-          .slice(0, 10) === billDateFilter)
-
-    return matchesSearch && matchesDate
-  })
-
-  const totalRevenue =
-    orders.reduce(
-      (sum, o) =>
-        sum +
-        (
-          o.status !==
-          'cancelled'
-            ? Number(
-                o.total_amount ||
-                  0
-              )
-            : 0
-        ),
-      0
-    )
-
-  const activeOrders =
-    orders.filter(
-      (o) =>
-        o.status === 'pending' ||
-        o.status === 'preparing' ||
-        o.status === 'ready'
-    )
-
-  const todayString =
-    new Date()
-      .toISOString()
-      .split('T')[0]
-
-  const todaysOrders =
-    orders.filter(
-      (o) =>
-        o.created_at &&
-        o.created_at.split(
-          'T'
-        )[0] === todayString
-    )
-
-  const orderHistoryRevenue =
-    orderHistoryOrders.reduce(
-      (sum, order) =>
-        String(
-          order?.status || ''
-        ).toLowerCase() ===
-        'cancelled'
-          ? sum
-          : sum +
-            Number(
-              order?.total_amount || 0
-            ),
-      0
-    )
-
-  const orderHistoryCancelledCount =
-    orderHistoryOrders.filter(
-      (order) =>
-        String(
-          order?.status || ''
-        ).toLowerCase() ===
-        'cancelled'
-    ).length
-
-  const orderHistoryCompletedCount =
-    orderHistoryOrders.filter(
-      (order) =>
-        [
-          'completed',
-          'delivered',
-          'served',
-        ].includes(
-          String(
-            order?.status || ''
-          ).toLowerCase()
-        )
-    ).length
-
-  const visibleOrderHistory =
-    orderHistoryOrders.slice(
-      0,
-      orderHistoryVisibleCount
-    )
-
-  const automaticHighlyReorderedIds =
-    getAutomaticHighlyReorderedIds(
-      menuItems
-    )
-
-  const activeOfferCount = dailyOffers.filter(
-    (offer) => offer.is_active
-  ).length
-
-  const availableMenuCount = menuItems.filter(
-    (item) => item.is_available !== false
-  ).length
-
-  const ownerGreetingHour = new Date().getHours()
-
-  const ownerGreeting =
-    ownerGreetingHour < 12
-      ? 'Good morning'
-      : ownerGreetingHour < 17
-        ? 'Good afternoon'
-        : 'Good evening'
-
-  const ownerDisplayName =
-    String(profileName || '').trim().split(' ')[0] ||
-    'Owner'
-
-  if (!authChecked || !restaurant || !entryLoaderDone) {
-    return (
-      <DashboardEntryLoader
-        portalLabel="Owner Portal"
-        detail={
-          !authChecked || !restaurant
-            ? 'Checking your owner session and restaurant workspace...'
-            : 'Preparing your owner dashboard...'
-        }
-      />
-    )
-  }
-
-  return (
-    <div className="dd-mobile-themeable dd-light-dashboard dd-owner-dashboard dd-owner-mobile-app dd-blinkit-owner dd-human-owner min-h-[100dvh] bg-[#f5f6f8] text-neutral-900 font-sans">
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-
-          .print-bill,
-          .print-bill * {
-            visibility: visible !important;
-          }
-
-          .print-bill {
-            position: absolute !important;
-            inset: 0 !important;
-            display: block !important;
-            background: white !important;
-            padding: 0 !important;
-          }
-
-          .print-bill-sheet {
-            width: 100% !important;
-            max-width: none !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-          }
-
-          .no-print {
-            display: none !important;
-          }
-
-          @page {
-            margin: 10mm;
-          }
-        }
-      `}</style>
-
-      <style jsx global>{`
-
-                /*
-         * Dashboard shell only.
-         * The existing ThemeToggle writes data-theme="light|dark" on <html>.
-         * These rules keep the new sidebar layout while allowing both themes.
-         */
-        .dd-light-dashboard,
-        .dd-dashboard-header,
-        .dd-dashboard-sidebar {
-          transition:
-            background-color 70ms linear,
-            border-color 70ms linear,
-            color 70ms linear;
-        }
-
-        :root[data-theme='light'] .dd-light-dashboard {
-          background: #f5f6f8 !important;
-          color: #171717 !important;
-        }
-
-        :root[data-theme='dark'] .dd-light-dashboard {
-          background: #09090b !important;
-          color: #f5f5f5 !important;
-        }
-
-        :root[data-theme='light'] .dd-dashboard-header {
-          background: rgba(255, 255, 255, 0.97) !important;
-          border-color: #e5e7eb !important;
-          box-shadow: 0 1px 0 rgba(17, 24, 39, 0.04) !important;
-        }
-
-        :root[data-theme='dark'] .dd-dashboard-header {
-          background: rgba(17, 17, 19, 0.97) !important;
-          border-color: #2a2a2e !important;
-          box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) !important;
-        }
-
-        :root[data-theme='light'] .dd-dashboard-header [class~='text-white'] {
-          color: #111827 !important;
-        }
-
-        :root[data-theme='dark'] .dd-light-dashboard [class~='bg-white'] {
-          background-color: #111113 !important;
-        }
-
-        :root[data-theme='dark'] .dd-light-dashboard [class~='bg-neutral-50'] {
-          background-color: #18181b !important;
-        }
-
-        :root[data-theme='dark'] .dd-light-dashboard [class~='border-neutral-200'],
-        :root[data-theme='dark'] .dd-light-dashboard [class~='border-neutral-300'] {
-          border-color: #2f3035 !important;
-        }
-
-        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-900'],
-        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-800'],
-        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-700'] {
-          color: #f4f4f5 !important;
-        }
-
-        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-600'] {
-          color: #a1a1aa !important;
-        }
-
-        :root[data-theme='dark'] .dd-light-dashboard input,
-        :root[data-theme='dark'] .dd-light-dashboard select,
-        :root[data-theme='dark'] .dd-light-dashboard textarea {
-          color: #f4f4f5 !important;
-        }
-
-        :root[data-theme='dark'] .dd-light-dashboard option {
-          background: #111113;
-          color: #f4f4f5;
-        }
-
-        .dd-light-dashboard .rounded-3xl {
-          border-radius: 18px !important;
-        }
-
-        .dd-light-dashboard .rounded-2xl {
-          border-radius: 14px !important;
-        }
-
-        .dd-dashboard-sidebar {
-          scrollbar-width: none;
-        }
-
-        .dd-dashboard-sidebar::-webkit-scrollbar {
-          display: none;
-        }
-
-        .dd-dashboard-sidebar button {
-          box-shadow: none !important;
-        }
-
-        :root[data-theme='light']
-          .dd-dashboard-sidebar
-          button:not([class*='bg-orange-500']) {
-          background: transparent !important;
-          border-color: transparent !important;
-          color: #525252 !important;
-        }
-
-        :root[data-theme='light']
-          .dd-dashboard-sidebar
-          button[class*='bg-orange-500'] {
-          background: #fff3e8 !important;
-          border-color: transparent !important;
-          color: #ea580c !important;
-        }
-
-        :root[data-theme='dark']
-          .dd-dashboard-sidebar
-          button:not([class*='bg-orange-500']) {
-          background: transparent !important;
-          border-color: transparent !important;
-          color: #a1a1aa !important;
-        }
-
-        :root[data-theme='dark']
-          .dd-dashboard-sidebar
-          button[class*='bg-orange-500'] {
-          background: rgba(249, 115, 22, 0.13) !important;
-          border-color: rgba(249, 115, 22, 0.18) !important;
-          color: #fb923c !important;
-        }
-
-        .dd-dashboard-intro {
-          margin-bottom: 2px;
-        }
-
-        @media (min-width: 1024px) {
-          .dd-owner-dashboard .dd-dashboard-main {
-            max-width: none !important;
-            margin-left: 0 !important;
-            margin-right: 0 !important;
-            padding-left: 244px !important;
-            padding-right: 24px !important;
-          }
-
-          .dd-owner-dashboard .dd-dashboard-sidebar {
-            position: fixed;
-            left: 0;
-            top: 82px;
-            bottom: 0;
-            z-index: 20;
-            width: 220px;
-            display: flex !important;
-            flex-direction: column;
-            gap: 4px !important;
-            overflow-y: auto;
-            border-right: 1px solid;
-            border-bottom: 0 !important;
-            padding: 18px 12px;
-          }
-
-          :root[data-theme='light']
-            .dd-owner-dashboard
-            .dd-dashboard-sidebar {
-            background: #ffffff !important;
-            border-right-color: #e5e7eb !important;
-          }
-
-          :root[data-theme='dark']
-            .dd-owner-dashboard
-            .dd-dashboard-sidebar {
-            background: #111113 !important;
-            border-right-color: #2a2a2e !important;
-          }
-
-          .dd-manager-dashboard {
-            padding-left: 240px !important;
-          }
-
-          .dd-manager-dashboard .dd-manager-inner {
-            max-width: none !important;
-            margin: 0 !important;
-          }
-
-          .dd-manager-dashboard .dd-dashboard-header {
-            margin-left: -240px;
-            padding-left: 264px !important;
-            padding-right: 24px !important;
-          }
-
-          .dd-manager-dashboard .dd-dashboard-sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            z-index: 30;
-            width: 220px;
-            display: flex !important;
-            flex-direction: column;
-            gap: 4px !important;
-            overflow-y: auto;
-            border-right: 1px solid;
-            border-bottom: 0 !important;
-            padding: 84px 12px 18px;
-          }
-
-          :root[data-theme='light']
-            .dd-manager-dashboard
-            .dd-dashboard-sidebar {
-            background: #ffffff !important;
-            border-right-color: #e5e7eb !important;
-          }
-
-          :root[data-theme='dark']
-            .dd-manager-dashboard
-            .dd-dashboard-sidebar {
-            background: #111113 !important;
-            border-right-color: #2a2a2e !important;
-          }
-
-          .dd-manager-dashboard .dd-dashboard-sidebar::before {
-            content: 'Digital Dining';
-            position: absolute;
-            left: 20px;
-            top: 24px;
-            font-size: 13px;
-            font-weight: 900;
-            letter-spacing: -0.01em;
-          }
-
-          :root[data-theme='light']
-            .dd-manager-dashboard
-            .dd-dashboard-sidebar::before {
-            color: #111827;
-          }
-
-          :root[data-theme='dark']
-            .dd-manager-dashboard
-            .dd-dashboard-sidebar::before {
-            color: #f4f4f5;
-          }
-
-          .dd-dashboard-sidebar button {
-            width: 100%;
-            justify-content: flex-start !important;
-            text-align: left !important;
-            border-radius: 12px !important;
-            padding: 11px 12px !important;
-            font-size: 11px !important;
-            line-height: 1.3 !important;
-            text-transform: none !important;
-            letter-spacing: 0 !important;
-          }
-        }
-
-        @media (max-width: 1023px) {
-          .dd-dashboard-sidebar {
-            display: flex;
-            overflow-x: auto;
-            gap: 8px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid;
-          }
-
-          :root[data-theme='light'] .dd-dashboard-sidebar {
-            border-bottom-color: #e5e7eb !important;
-          }
-
-          :root[data-theme='dark'] .dd-dashboard-sidebar {
-            border-bottom-color: #2a2a2e !important;
-          }
-
-          .dd-dashboard-sidebar button {
-            flex: 0 0 auto;
-          }
-        }
-
-
-        .dd-owner-mobile-bottom-nav {
-          display: none;
-        }
-
-        /* ======================================================
-           BLINKIT-INSPIRED OWNER MOBILE APP
-           Fast, dense, colorful and action-first.
-           Existing backend/features remain untouched.
-           ====================================================== */
-
-        .dd-blinkit-owner {
-          --dd-green: #0c831f;
-          --dd-green-dark: #086b19;
-          --dd-green-soft: #eaf8ed;
-          --dd-yellow: #f8cb46;
-          --dd-yellow-soft: #fff7d6;
-          --dd-red: #e53935;
-          --dd-blue: #2563eb;
-          --dd-bg: #f6f7f2;
-          --dd-card: #ffffff;
-          --dd-card-2: #fafbf8;
-          --dd-text: #171717;
-          --dd-muted: #6f736d;
-          --dd-line: #e8e9e4;
-          background: var(--dd-bg) !important;
-          color: var(--dd-text) !important;
-          width: 100%;
-          min-height: 100dvh;
-          overflow-x: hidden;
-          padding-bottom: calc(6.4rem + env(safe-area-inset-bottom)) !important;
-        }
-
-        :root[data-theme='dark'] .dd-blinkit-owner {
-          --dd-bg: #0d0f0d;
-          --dd-card: #151815;
-          --dd-card-2: #1b1f1b;
-          --dd-text: #f6f7f2;
-          --dd-muted: #9da39a;
-          --dd-line: #2a2f29;
-          --dd-green-soft: rgba(12, 131, 31, .16);
-          --dd-yellow-soft: rgba(248, 203, 70, .12);
-        }
-
-        .dd-blinkit-owner .dd-dashboard-header {
-          background: transparent !important;
-          border: 0 !important;
-          box-shadow: none !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-shell {
-          width: 100%;
-          max-width: 480px;
-          margin: 0 auto;
-        }
-
-        .dd-blinkit-owner .dd-dashboard-main {
-          width: 100%;
-          max-width: 480px !important;
-          margin: 0 auto !important;
-          padding: 0 12px calc(6.6rem + env(safe-area-inset-bottom)) !important;
-        }
-
-        .dd-blinkit-owner .dd-dashboard-sidebar {
-          display: none !important;
-        }
-
-        .dd-blinkit-owner .dd-dashboard-intro {
-          display: none !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-top {
-          background:
-            radial-gradient(circle at 88% 8%, rgba(248,203,70,.72), transparent 25%),
-            linear-gradient(145deg, #0c831f 0%, #0a741c 58%, #075f16 100%);
-          color: white;
-          border-radius: 0 0 28px 28px;
-          padding:
-            max(14px, env(safe-area-inset-top))
-            14px
-            18px;
-          box-shadow: 0 12px 32px rgba(12,131,31,.18);
-        }
-
-        .dd-blinkit-owner .dd-bk-icon-btn {
-          width: 42px;
-          height: 42px;
-          border-radius: 14px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border: 1px solid rgba(255,255,255,.18);
-          background: rgba(255,255,255,.12);
-          color: white;
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-        }
-
-        .dd-blinkit-owner .dd-bk-store-toggle {
-          min-height: 58px;
-          border-radius: 18px;
-          background: rgba(255,255,255,.96);
-          color: #172118;
-          border: 1px solid rgba(255,255,255,.68);
-          box-shadow: 0 10px 24px rgba(0,0,0,.11);
-        }
-
-        .dd-blinkit-owner .dd-bk-scroll {
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
-          scrollbar-width: none;
-        }
-
-        .dd-blinkit-owner .dd-bk-scroll::-webkit-scrollbar {
-          display: none;
-        }
-
-        .dd-blinkit-owner .dd-bk-scroll > * {
-          flex: 0 0 auto;
-        }
-
-        .dd-blinkit-owner .dd-bk-mode-switch {
-          margin-top: 12px;
-          border: 1px solid var(--dd-line) !important;
-          background: var(--dd-card) !important;
-          border-radius: 18px !important;
-          padding: 5px !important;
-          box-shadow: 0 3px 14px rgba(0,0,0,.04);
-        }
-
-        .dd-blinkit-owner .dd-bk-mode-switch button {
-          border-radius: 14px !important;
-          min-height: 42px;
-          text-transform: none !important;
-          letter-spacing: 0 !important;
-          font-size: 11px !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-section-title {
-          color: var(--dd-text);
-          font-size: 16px;
-          line-height: 1.2;
-          font-weight: 900;
-          letter-spacing: -0.02em;
-        }
-
-        .dd-blinkit-owner .dd-bk-section-sub {
-          color: var(--dd-muted);
-          font-size: 10px;
-          line-height: 1.55;
-          font-weight: 600;
-        }
-
-        .dd-blinkit-owner .dd-bk-card {
-          border: 1px solid var(--dd-line) !important;
-          background: var(--dd-card) !important;
-          color: var(--dd-text) !important;
-          border-radius: 22px !important;
-          box-shadow: 0 5px 18px rgba(26,32,24,.045);
-        }
-
-        .dd-blinkit-owner .dd-bk-stat {
-          min-height: 112px;
-          overflow: hidden;
-          position: relative;
-        }
-
-        .dd-blinkit-owner .dd-bk-stat::after {
-          content: '';
-          position: absolute;
-          width: 72px;
-          height: 72px;
-          right: -22px;
-          bottom: -22px;
-          border-radius: 999px;
-          background: currentColor;
-          opacity: .065;
-        }
-
-        .dd-blinkit-owner .dd-bk-action {
-          min-width: 106px;
-          min-height: 104px;
-          border-radius: 20px;
-          border: 1px solid var(--dd-line);
-          background: var(--dd-card);
-          padding: 12px;
-          text-align: left;
-          box-shadow: 0 4px 14px rgba(0,0,0,.035);
-        }
-
-        .dd-blinkit-owner .dd-bk-action-icon {
-          width: 42px;
-          height: 42px;
-          border-radius: 14px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 20px;
-          margin-bottom: 10px;
-        }
-
-        .dd-blinkit-owner .dd-bk-live-row {
-          border-top: 1px solid var(--dd-line);
-          padding: 12px 0;
-        }
-
-        .dd-blinkit-owner .dd-bk-live-row:first-child {
-          border-top: 0;
-          padding-top: 0;
-        }
-
-        .dd-blinkit-owner .dd-bk-live-row:last-child {
-          padding-bottom: 0;
-        }
-
-        .dd-blinkit-owner .dd-bk-plan {
-          background:
-            radial-gradient(circle at 88% 18%, rgba(248,203,70,.34), transparent 30%),
-            linear-gradient(145deg, #141b14, #20281f) !important;
-          border-color: rgba(248,203,70,.22) !important;
-          color: white !important;
-        }
-
-        .dd-blinkit-owner .dd-owner-mobile-bottom-nav {
-          display: grid !important;
-          position: fixed;
-          z-index: 90;
-          left: 50% !important;
-          right: auto !important;
-          bottom: 0;
-          transform: translateX(-50%);
-          width: min(100%, 480px);
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 4px;
-          padding:
-            8px
-            10px
-            max(8px, env(safe-area-inset-bottom));
-          background: rgba(255,255,255,.96) !important;
-          border-top: 1px solid #e5e7eb !important;
-          box-shadow: 0 -10px 30px rgba(20,30,18,.10);
-          backdrop-filter: blur(18px);
-          -webkit-backdrop-filter: blur(18px);
-        }
-
-        :root[data-theme='dark'] .dd-blinkit-owner .dd-owner-mobile-bottom-nav {
-          background: rgba(19,22,19,.96) !important;
-          border-top-color: #2a2f29 !important;
-        }
-
-        .dd-blinkit-owner .dd-owner-mobile-bottom-nav button {
-          min-height: 54px;
-          border-radius: 16px !important;
-          transition: transform 90ms ease, background-color 90ms ease !important;
-        }
-
-        .dd-blinkit-owner .dd-owner-mobile-bottom-nav button:active {
-          transform: scale(.96);
-        }
-
-        .dd-blinkit-owner .dd-bk-nav-active {
-          background: var(--dd-green-soft) !important;
-          color: var(--dd-green) !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-more-sheet {
-          width: min(100%, 480px);
-          margin: 0 auto;
-          background: var(--dd-card) !important;
-          color: var(--dd-text) !important;
-          border-color: var(--dd-line) !important;
-          border-radius: 30px 30px 0 0 !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-sheet-action {
-          min-height: 96px;
-          border-radius: 18px;
-          border: 1px solid var(--dd-line);
-          background: var(--dd-card-2);
-          padding: 14px;
-          text-align: left;
-        }
-
-        .dd-blinkit-owner .dd-bk-content-card,
-        .dd-blinkit-owner [class*='bg-neutral-900'][class*='rounded-3xl'] {
-          border-color: var(--dd-line) !important;
-          background: var(--dd-card) !important;
-          color: var(--dd-text) !important;
-          box-shadow: 0 5px 18px rgba(26,32,24,.04);
-        }
-
-        .dd-blinkit-owner [class~='text-white'] {
-          color: var(--dd-text) !important;
-        }
-
-        .dd-blinkit-owner [class~='text-neutral-300'],
-        .dd-blinkit-owner [class~='text-neutral-400'],
-        .dd-blinkit-owner [class~='text-neutral-500'] {
-          color: var(--dd-muted) !important;
-        }
-
-        .dd-blinkit-owner [class*='bg-neutral-950'] {
-          background: var(--dd-card-2) !important;
-        }
-
-        .dd-blinkit-owner [class*='border-neutral-800'],
-        .dd-blinkit-owner [class*='border-neutral-700'] {
-          border-color: var(--dd-line) !important;
-        }
-
-        .dd-blinkit-owner input,
-        .dd-blinkit-owner select,
-        .dd-blinkit-owner textarea {
-          min-height: 46px;
-          border-color: var(--dd-line) !important;
-          background: var(--dd-card-2) !important;
-          color: var(--dd-text) !important;
-          font-size: 16px !important;
-        }
-
-        .dd-blinkit-owner input::placeholder,
-        .dd-blinkit-owner textarea::placeholder {
-          color: #9ca39a !important;
-        }
-
-        .dd-blinkit-owner button,
-        .dd-blinkit-owner a,
-        .dd-blinkit-owner label {
-          -webkit-tap-highlight-color: transparent;
-          touch-action: manipulation;
-        }
-
-        .dd-blinkit-owner .dd-owner-support-offset {
-          bottom: calc(5.8rem + env(safe-area-inset-bottom)) !important;
-          right: 12px !important;
-        }
-
-        .dd-blinkit-owner .dd-owner-support-offset > button {
-          border-radius: 18px !important;
-          padding: 12px 14px !important;
-          background: var(--dd-green) !important;
-        }
-
-        @media (max-width: 640px) {
-          .dd-blinkit-owner [class*='md:grid-cols-'],
-          .dd-blinkit-owner [class*='lg:grid-cols-'],
-          .dd-blinkit-owner form[class*='grid-cols-'] {
-            grid-template-columns: minmax(0, 1fr) !important;
-          }
-
-          .dd-blinkit-owner .dd-keep-two {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          }
-
-          .dd-blinkit-owner [class*='p-8'] {
-            padding: 16px !important;
-          }
-
-          .dd-blinkit-owner [class*='p-6'] {
-            padding: 15px !important;
-          }
-
-          .dd-blinkit-owner [class*='p-5'] {
-            padding: 14px !important;
-          }
-
-          .dd-blinkit-owner table {
-            min-width: 720px;
-          }
-
-          .dd-blinkit-owner .overflow-x-auto {
-            -webkit-overflow-scrolling: touch;
-          }
-        }
-
-        @media (min-width: 641px) {
-          .dd-blinkit-owner {
-            max-width: 480px;
-            margin: 0 auto;
-            box-shadow: 0 0 0 1px rgba(0,0,0,.04), 0 28px 80px rgba(0,0,0,.14);
-          }
-        }
-      `}</style>
-
-      <audio
-        ref={audioRef}
-        src="/sounds/kitchen-default.mp3"
-        preload="auto"
-      />
-
-      <style jsx global>{`
-        .dd-human-owner .font-black { font-weight: 700 !important; }
-        .dd-human-owner { --dd-brand: #f97316; --dd-brand-strong: #ea580c; }
-        .dd-human-owner.dd-blinkit-owner {
-          --dd-green: var(--dd-brand);
-          --dd-green-dark: var(--dd-brand-strong);
-          --dd-green-soft: #fff7ed;
-          --dd-yellow: #f59e0b;
-          --dd-yellow-soft: #fffbeb;
-          --dd-bg: #f7f7f6;
-          --dd-card: #ffffff;
-          --dd-card-2: #fafaf9;
-          --dd-text: #18181b;
-          --dd-muted: #71717a;
-          --dd-line: #e7e5e4;
-        }
-        :root[data-theme='dark'] .dd-human-owner.dd-blinkit-owner {
-          --dd-bg: #0f0f10;
-          --dd-card: #171718;
-          --dd-card-2: #1d1d1f;
-          --dd-text: #f5f5f5;
-          --dd-muted: #a1a1aa;
-          --dd-line: #2a2a2d;
-          --dd-green-soft: rgba(249,115,22,.12);
-          --dd-yellow-soft: rgba(245,158,11,.12);
-        }
-        .dd-human-owner .dd-bk-top {
-          background: var(--dd-card) !important;
-          color: var(--dd-text) !important;
-          border-radius: 0 !important;
-          border-bottom: 1px solid var(--dd-line) !important;
-          box-shadow: none !important;
-          padding-bottom: 14px !important;
-        }
-        .dd-human-owner .dd-bk-top [class*='text-white'] { color: var(--dd-text) !important; }
-        .dd-human-owner .dd-bk-top [class*='bg-white/'] { background: var(--dd-card-2) !important; border: 1px solid var(--dd-line) !important; }
-        .dd-human-owner .dd-bk-icon-btn {
-          width: 40px !important; height: 40px !important; border-radius: 12px !important;
-          background: var(--dd-card-2) !important; color: var(--dd-text) !important; border-color: var(--dd-line) !important;
-          backdrop-filter: none !important;
-        }
-        .dd-human-owner .dd-bk-store-toggle {
-          min-height: 56px !important; border-radius: 14px !important; background: var(--dd-card-2) !important;
-          color: var(--dd-text) !important; border: 1px solid var(--dd-line) !important; box-shadow: none !important;
-        }
-        .dd-human-owner .dd-bk-card, .dd-human-owner .dd-bk-action, .dd-human-owner .dd-bk-sheet-action {
-          border-radius: 14px !important; box-shadow: none !important; border-color: var(--dd-line) !important;
-        }
-        .dd-human-owner .dd-bk-action { min-width: 118px !important; }
-        .dd-human-owner .dd-bk-action-icon { border-radius: 10px !important; }
-        .dd-human-owner .dd-bk-stat [class*='rounded-2xl'] { border-radius: 10px !important; }
-        .dd-human-owner [class*='shadow-xl'], .dd-human-owner [class*='shadow-2xl'] { box-shadow: 0 8px 24px rgba(0,0,0,.12) !important; }
-        .dd-human-owner .dd-owner-mobile-bottom-nav {
-          background: rgba(255,255,255,.97) !important; border-color: #e7e5e4 !important; box-shadow: 0 -4px 16px rgba(0,0,0,.05) !important;
-        }
-        :root[data-theme='dark'] .dd-human-owner .dd-owner-mobile-bottom-nav {
-          background: rgba(17,17,18,.97) !important; border-color: #2a2a2d !important; box-shadow: 0 -4px 18px rgba(0,0,0,.2) !important;
-        }
-        .dd-human-owner .dd-owner-mobile-bottom-nav button { border-radius: 10px !important; }
-        .dd-human-owner .dd-bk-nav-active { color: var(--dd-brand) !important; background: transparent !important; }
-        .dd-human-owner .dd-bk-more-sheet { border-radius: 20px 20px 0 0 !important; box-shadow: 0 -10px 36px rgba(0,0,0,.2) !important; }
-        .dd-human-owner [class*='bg-gradient-to-br'] { background-image: none !important; }
-        .dd-human-owner button, .dd-human-owner input, .dd-human-owner select, .dd-human-owner textarea { -webkit-tap-highlight-color: transparent; }
-      `}</style>
-
-      {/* OWNER MOBILE HEADER */}
-      <header className="dd-dashboard-header">
-        <div className="dd-bk-top dd-bk-shell">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/70">
-                Owner workspace
-              </p>
-
-              <h1 className="mt-1 truncate text-[20px] font-black tracking-tight text-white">
-                {ownerGreeting}, {ownerDisplayName}
-              </h1>
-
-              <div className="mt-1 flex min-w-0 items-center gap-2">
-                <span className="truncate text-[11px] font-bold text-white/85">
-                  {restaurant.name}
-                </span>
-
-                {restaurant.restaurant_code && (
-                  <span className="shrink-0 rounded-full bg-white/15 px-2 py-1 text-[8px] font-black tracking-wider text-white">
-                    {restaurant.restaurant_code}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              <ThemeToggle />
-
-              <button
-                type="button"
-                onClick={() => setProfileOpen(true)}
-                className="dd-bk-icon-btn"
-                aria-label="Owner profile"
-              >
-                <AppIcon name="user" className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="dd-bk-store-toggle mt-4 flex items-center justify-between gap-3 px-4 py-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    isStoreOpen
-                      ? 'bg-orange-500'
-                      : 'bg-red-500'
-                  }`}
-                />
-
-                <p className="text-[12px] font-black">
-                  {isStoreOpen
-                    ? 'Restaurant is live'
-                    : 'Restaurant is closed'}
-                </p>
-              </div>
-
-              <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                {isStoreOpen
-                  ? 'Customers can place new orders now.'
-                  : 'New customer orders are currently paused.'}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              role="switch"
-              aria-checked={isStoreOpen}
-              disabled={savingStoreStatus}
-              onClick={handleOwnerStoreToggle}
-              className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:opacity-60 ${
-                isStoreOpen
-                  ? 'bg-orange-500'
-                  : 'bg-neutral-300'
-              }`}
-            >
-              <span
-                className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow-md transition-transform ${
-                  isStoreOpen
-                    ? 'translate-x-7'
-                    : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
-
-          <div className="dd-bk-scroll mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                setTableQrOpen(true)
-              }
-              className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
-            >
-              <span className="inline-flex items-center gap-1.5"><AppIcon name="qr" className="h-4 w-4" />Table QR</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('billing')}
-              className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
-            >
-              <span className="inline-flex items-center gap-1.5"><AppIcon name="billing" className="h-4 w-4" />Billing</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('settlements')}
-              className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
-            >
-              <span className="inline-flex items-center gap-1.5"><AppIcon name="chart" className="h-4 w-4" />Reports</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-2xl bg-red-500/18 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
-            >
-              Log out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {profileOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">
-                  Account
-                </span>
-                <h2 className="mt-3 text-xl font-black text-white">Owner Profile</h2>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Update your personal contact details. Login credentials remain unchanged.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setProfileOpen(false)}
-                className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-black text-neutral-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={saveOwnerProfile} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">
-                  Owner Name
-                </label>
-                <input
-                  type="text"
-                  value={profileName}
-                  onChange={(e) => setProfileName(e.target.value)}
-                  maxLength={80}
-                  autoComplete="name"
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-white outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  value={profileEmail}
-                  readOnly
-                  className="w-full cursor-not-allowed rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-sm text-neutral-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  value={profilePhone}
-                  onChange={(e) =>
-                    setProfilePhone(e.target.value.replace(/\D/g, '').slice(0, 10))
-                  }
-                  inputMode="numeric"
-                  maxLength={10}
-                  autoComplete="tel"
-                  placeholder="10-digit mobile number"
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-white outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Restaurant</p>
-                <p className="mt-1 text-sm font-black text-white">{restaurant?.name || 'Restaurant'}</p>
-                <p className="mt-2 text-[10px] font-mono text-neutral-500 break-all">
-                  Restaurant ID: {restaurant?.id || restaurantId}
-                </p>
-                <p className="mt-1 text-[10px] font-black text-orange-400">
-                  Plan: {currentPlanDisplay}
-                </p>
-              </div>
-
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setProfileOpen(false)}
-                  className="flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs font-black text-neutral-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={profileSaving}
-                  className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
-                >
-                  {profileSaving ? 'Saving...' : 'Save Profile'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Main Container */}
-
-      <main className="dd-dashboard-main max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-6">
-
-        <div className="dd-dashboard-intro">
-          <h2>{restaurant.name}</h2>
-        </div>
-
-        {/* Owner workspace switch. Mobile visual language remains unchanged. */}
-        <div className="dd-bk-mode-switch rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
-          <div
-            className={`grid gap-2 ${
-              enabledModuleCount >= 3
-                ? 'grid-cols-3'
-                : enabledModuleCount === 2
-                  ? 'grid-cols-2'
-                  : 'grid-cols-1'
-            }`}
-          >
-            {restaurantModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('restaurant')}
-                className={`rounded-2xl px-2 py-3 text-[10px] font-black transition ${
-                  dashboardMode === 'restaurant'
-                    ? 'bg-[#0c831f] text-white'
-                    : 'bg-transparent text-neutral-500'
-                }`}
-              >
-                🍽️ Restaurant
-              </button>
-            )}
-
-            {resortModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('resort')}
-                className={`rounded-2xl px-2 py-3 text-[10px] font-black transition ${
-                  dashboardMode === 'resort'
-                    ? 'bg-[#2563eb] text-white'
-                    : 'bg-transparent text-neutral-500'
-                }`}
-              >
-                🏨 Resort
-              </button>
-            )}
-
-            {deliveryModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('delivery')}
-                className={`rounded-2xl px-2 py-3 text-[10px] font-black transition ${
-                  dashboardMode === 'delivery'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-transparent text-neutral-500'
-                }`}
-              >
-                🚚 Delivery
-              </button>
-            )}
-          </div>
-        </div>
-
-        {dashboardMode === 'resort' && resortModuleEnabled && (
-          <ResortManagement
-            restaurant={restaurant}
-            planCode={currentPlanCode}
-            advancedFeaturesEnabled={hasAdvancedResortFeatures}
-          />
-        )}
-
-        {dashboardMode === 'delivery' && deliveryModuleEnabled && (
-          <div className="space-y-4">
-            <NativeDeliveryPush
-              restaurantId={restaurantId}
-              role="owner"
-              enabled={deliveryModuleEnabled}
-            />
-
-            <DeliveryManagement
-              restaurant={restaurant}
-              planCode={currentPlanCode}
-            />
-
-            {currentPlanCode === 'delivery' && (
-              <section className="rounded-[24px] border border-sky-500/20 bg-neutral-900 p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-400">
-                      Delivery Manager Access
-                    </p>
-
-                    <h3 className="mt-1 text-base font-black text-white">
-                      Manager Login
-                    </h3>
-
-                    <p className="mt-1 text-[10px] leading-5 text-neutral-500">
-                      Create the Manager credentials used from the Digital Dine app after this restaurant code is entered.
-                    </p>
-                  </div>
-
-                  <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[8px] font-black uppercase text-sky-300">
-                    Owner only
-                  </span>
-                </div>
-
-                <form
-                  onSubmit={handleCreateStaff}
-                  className="mt-4 grid grid-cols-1 gap-3"
-                >
-                  <input
-                    type="text"
-                    value={staffName}
-                    onChange={(event) =>
-                      setStaffName(event.target.value)
-                    }
-                    placeholder="Manager name"
-                    required
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
-                  />
-
-                  <input
-                    type="text"
-                    value={staffUserId}
-                    onChange={(event) =>
-                      setStaffUserId(event.target.value)
-                    }
-                    placeholder="Manager User ID"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    autoComplete="username"
-                    required
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
-                  />
-
-                  <input
-                    type="password"
-                    value={staffPassword}
-                    onChange={(event) =>
-                      setStaffPassword(event.target.value)
-                    }
-                    placeholder="Manager password / PIN"
-                    autoComplete="new-password"
-                    required
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={addingStaff}
-                    className="rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
-                  >
-                    {addingStaff
-                      ? 'Creating Manager...'
-                      : 'Create Manager Login'}
-                  </button>
-                </form>
-
-                <div className="mt-4 space-y-2">
-                  {staffList
-                    .filter(
-                      (staff) =>
-                        String(staff?.role || '').toLowerCase() === 'manager'
-                    )
-                    .map((staff) => (
-                      <div
-                        key={staff.id}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-black text-white">
-                            {staff.name || staff.user_id}
-                          </p>
-                          <p className="mt-1 truncate text-[9px] text-neutral-500">
-                            User ID: {staff.user_id}
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteStaff(
-                              staff.id,
-                              staff.name || staff.user_id
-                            )
-                          }
-                          className="shrink-0 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[9px] font-black text-red-300"
-                        >
-                          Revoke
-                        </button>
-                      </div>
-                    ))}
-
-                  {!staffList.some(
-                    (staff) =>
-                      String(staff?.role || '').toLowerCase() === 'manager'
-                  ) && (
-                    <p className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-[10px] leading-5 text-neutral-500">
-                      No Manager login exists yet. Create one above, then the Manager can enter this restaurant code in the app and sign in.
-                    </p>
-                  )}
-                </div>
-              </section>
-            )}
-          </div>
-        )}
-
-        {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
-          <div className="contents">
-        {/* OWNER MOBILE HOME */}
-        {activeTab === 'owner-home' && (
-          <div className="space-y-5">
-            <section className="pt-1">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <h2 className="dd-bk-section-title">
-                    Today at a glance
-                  </h2>
-                  <p className="dd-bk-section-sub mt-1">
-                    Live restaurant performance and operations.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => openOwnerMobileTab('settlements')}
-                  className="text-[10px] font-semibold text-orange-600"
-                >
-                  Full reports →
-                </button>
-              </div>
-
-              <div className="dd-keep-two mt-3 grid grid-cols-2 gap-3">
-                <div className="dd-bk-card dd-bk-stat p-4 text-orange-600">
-                  <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-sm font-semibold text-orange-600">
-                      ₹
-                    </div>
-                    <span className="rounded-full bg-orange-50 px-2 py-1 text-[8px] font-semibold text-orange-600">
-                      TODAY
-                    </span>
-                  </div>
-
-                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                    Revenue
-                  </p>
-
-                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
-                    ₹{totalRevenue}
-                  </p>
-                </div>
-
-                <div className="dd-bk-card dd-bk-stat p-4 text-[#2563eb]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                      <AppIcon name="orders" className="h-5 w-5" />
-                    </div>
-                    <span className="rounded-full bg-blue-50 px-2 py-1 text-[7px] font-black text-blue-600">
-                      LIVE
-                    </span>
-                  </div>
-
-                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                    Orders
-                  </p>
-
-                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
-                    {todaysOrders.length}
-                  </p>
-                </div>
-
-                <div className="dd-bk-card dd-bk-stat p-4 text-[#f59e0b]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                      <AppIcon name="kitchen" className="h-5 w-5" />
-                    </div>
-                    <span className="rounded-full bg-amber-50 px-2 py-1 text-[7px] font-black text-amber-600">
-                      KDS
-                    </span>
-                  </div>
-
-                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                    Kitchen Queue
-                  </p>
-
-                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
-                    {activeOrders.length}
-                  </p>
-                </div>
-
-                <div className="dd-bk-card dd-bk-stat p-4 text-[#8b5cf6]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                      <AppIcon name="tables" className="h-5 w-5" />
-                    </div>
-                    <span className="rounded-full bg-violet-50 px-2 py-1 text-[7px] font-black text-violet-600">
-                      TABLES
-                    </span>
-                  </div>
-
-                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                    Available
-                  </p>
-
-                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
-                    {availableTableCount}/{configuredTableNumbers.length}
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <h2 className="dd-bk-section-title">
-                    Quick actions
-                  </h2>
-                  <p className="dd-bk-section-sub mt-1">
-                    Jump straight into daily operations.
-                  </p>
-                </div>
-              </div>
-
-              <div className="dd-bk-scroll mt-3 flex gap-3 pb-1">
-                {[
-                  ['menu', 'menu', 'Menu', `${availableMenuCount} live`, '#fff7ed'],
-                  ['tables', 'tables', 'Tables', `${occupiedTableCount} occupied`, '#fffbeb'],
-                  ['billing', 'billing', 'Billing', 'Create bills', '#eff6ff'],
-                  ['offers', 'tag', 'Offers', `${activeOfferCount} active`, '#fff1f2'],
-                  ['staff-access', 'qr', 'Staff QR', 'Quick login', '#f5f3ff'],
-                  ['taxes', 'card', 'Taxes', 'GST & packing', '#f5f5f4'],
-                ].map(([tabId, icon, title, sub, background]) => (
-                  <button
-                    key={tabId}
-                    type="button"
-                    onClick={() => openOwnerMobileTab(tabId)}
-                    className="dd-bk-action"
-                  >
-                    <span
-                      className="dd-bk-action-icon"
-                      style={{ background }}
-                    >
-                      <AppIcon name={icon} className="h-5 w-5" />
-                    </span>
-
-                    <span className="block text-[11px] font-black text-neutral-900">
-                      {title}
-                    </span>
-
-                    <span className="mt-1 block text-[8px] font-bold text-neutral-500">
-                      {sub}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            {/* LIFETIME ORDER DATE SEARCH */}
-            <section className="dd-bk-card overflow-hidden">
-              <div className="border-b border-neutral-200 bg-neutral-50 p-4 text-neutral-900 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-700">
-                        <AppIcon name="search" className="h-5 w-5" />
-                      </span>
-
-                      <div>
-                        <p className="text-[8px] font-black uppercase tracking-[0.18em] text-orange-600">
-                          Lifetime Order Search
-                        </p>
-
-                        <h2 className="mt-0.5 text-[16px] font-black tracking-tight">
-                          Find orders from any date
-                        </h2>
-                      </div>
-                    </div>
-
-                    <p className="mt-3 max-w-sm text-[9px] font-semibold leading-5 text-neutral-500">
-                      Search the restaurant's full order history by date. For example, select 11/12/2000 to retrieve orders saved on that day.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950">
-                  <label className="block text-[8px] font-black uppercase tracking-wider text-neutral-500">
-                    Order Date
-                  </label>
-
-                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                    <input
-                      type="date"
-                      value={orderHistoryDate}
-                      onChange={(event) => {
-                        setOrderHistoryDate(
-                          event.target.value
-                        )
-                        setOrderHistoryError('')
-                      }}
-                      className="min-h-12 flex-1 rounded-xl border border-neutral-300 bg-white px-4 text-base font-semibold text-neutral-900 outline-none focus:border-orange-500 dark:border-neutral-700"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={handleLifetimeOrderSearch}
-                      disabled={
-                        orderHistoryLoading ||
-                        !orderHistoryDate
-                      }
-                      className="min-h-12 rounded-xl bg-orange-500 px-5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {orderHistoryLoading
-                        ? 'Searching...'
-                        : 'Search Orders'}
-                    </button>
-                  </div>
-
-                  {orderHistoryDate && (
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                      <p className="text-[8px] font-bold text-neutral-500">
-                        Selected: {formatOrderHistoryDate(orderHistoryDate)}
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={clearLifetimeOrderSearch}
-                        disabled={orderHistoryLoading}
-                        className="text-[8px] font-black text-orange-600 disabled:opacity-50"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-4">
-                {orderHistoryError && (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-[9px] font-bold leading-5 text-red-600">
-                    {orderHistoryError}
-                  </div>
-                )}
-
-                {!orderHistorySearched &&
-                  !orderHistoryLoading &&
-                  !orderHistoryError && (
-                    <div className="py-4 text-center">
-                      <div className="text-3xl">📅</div>
-
-                      <p className="mt-2 text-[11px] font-black text-neutral-900">
-                        Search your complete order history
-                      </p>
-
-                      <p className="mx-auto mt-1 max-w-[290px] text-[8px] font-semibold leading-4 text-neutral-500">
-                        This search reads that specific day directly from Supabase, so it is not limited to only today's or recently loaded orders.
-                      </p>
-                    </div>
-                  )}
-
-                {orderHistoryLoading && (
-                  <div className="flex items-center justify-center gap-3 py-8">
-                    <div className="h-7 w-7 animate-spin rounded-full border-4 border-neutral-200 border-t-[#0c831f]" />
-
-                    <div>
-                      <p className="text-[10px] font-black text-neutral-900">
-                        Searching lifetime history
-                      </p>
-
-                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
-                        Looking for every order on {formatOrderHistoryDate(orderHistoryDate)}...
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {orderHistorySearched &&
-                  !orderHistoryLoading &&
-                  !orderHistoryError && (
-                    <>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-[#0c831f]">
-                            Search Result
-                          </p>
-
-                          <h3 className="mt-1 text-[15px] font-black text-neutral-900">
-                            {formatOrderHistoryDate(orderHistoryDate)}
-                          </h3>
-                        </div>
-
-                        <span className="rounded-full bg-[#eaf8ed] px-3 py-1.5 text-[8px] font-black text-[#0c831f]">
-                          {orderHistoryOrders.length} ORDER{orderHistoryOrders.length === 1 ? '' : 'S'}
-                        </span>
-                      </div>
-
-                      <div className="dd-keep-two mt-4 grid grid-cols-2 gap-2">
-                        <div className="rounded-2xl bg-[#eaf8ed] p-3">
-                          <p className="text-[7px] font-black uppercase tracking-wider text-[#0c831f]/70">
-                            Revenue
-                          </p>
-
-                          <p className="mt-1 text-[16px] font-black text-[#0c831f]">
-                            {formatCurrency(orderHistoryRevenue)}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-blue-50 p-3">
-                          <p className="text-[7px] font-black uppercase tracking-wider text-blue-500">
-                            Completed
-                          </p>
-
-                          <p className="mt-1 text-[16px] font-black text-blue-700">
-                            {orderHistoryCompletedCount}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-amber-50 p-3">
-                          <p className="text-[7px] font-black uppercase tracking-wider text-amber-600">
-                            Total Orders
-                          </p>
-
-                          <p className="mt-1 text-[16px] font-black text-amber-700">
-                            {orderHistoryOrders.length}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-red-50 p-3">
-                          <p className="text-[7px] font-black uppercase tracking-wider text-red-500">
-                            Cancelled
-                          </p>
-
-                          <p className="mt-1 text-[16px] font-black text-red-600">
-                            {orderHistoryCancelledCount}
-                          </p>
-                        </div>
-                      </div>
-
-                      {orderHistoryOrders.length === 0 ? (
-                        <div className="py-8 text-center">
-                          <div className="text-4xl">🧾</div>
-
-                          <p className="mt-3 text-[11px] font-black text-neutral-900">
-                            No orders found
-                          </p>
-
-                          <p className="mt-1 text-[8px] font-semibold text-neutral-500">
-                            There are no saved orders for {formatOrderHistoryDate(orderHistoryDate)}.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="mt-4 space-y-2">
-                          {visibleOrderHistory.map((order, index) => {
-                            const status = String(
-                              order?.status || 'pending'
-                            ).toLowerCase()
-
-                            const statusClass =
-                              status === 'cancelled'
-                                ? 'bg-red-50 text-red-600'
-                                : ['completed', 'delivered', 'served'].includes(status)
-                                  ? 'bg-[#eaf8ed] text-[#0c831f]'
-                                  : status === 'ready'
-                                    ? 'bg-blue-50 text-blue-600'
-                                    : 'bg-amber-50 text-amber-700'
-
-                            return (
-                              <div
-                                key={
-                                  order?.id ||
-                                  `${order?.created_at || 'order'}-${index}`
-                                }
-                                className="rounded-[18px] border border-neutral-200 bg-neutral-50 p-3"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="rounded-lg bg-white px-2 py-1 text-[8px] font-black text-neutral-700 shadow-sm">
-                                        {getBillNumber(order)}
-                                      </span>
-
-                                      <span
-                                        className={`rounded-full px-2 py-1 text-[7px] font-black uppercase ${statusClass}`}
-                                      >
-                                        {status}
-                                      </span>
-                                    </div>
-
-                                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] font-semibold text-neutral-500">
-                                      <span>
-                                        🕒 {formatBillTime(order.created_at)}
-                                      </span>
-
-                                      <span>
-                                        🪑 Table {order.table_number || '—'}
-                                      </span>
-
-                                      <span>
-                                        💳 {order.payment_mode || 'Online'}
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="shrink-0 text-right">
-                                    <p className="text-[7px] font-black uppercase tracking-wider text-neutral-400">
-                                      Total
-                                    </p>
-
-                                    <p className="mt-1 text-[14px] font-black text-[#0c831f]">
-                                      {formatCurrency(order.total_amount)}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="mt-3 flex items-center justify-between gap-2 border-t border-neutral-200 pt-2.5">
-                                  <p className="truncate text-[7px] font-semibold text-neutral-400">
-                                    Order ID: {String(order?.id || '—')}
-                                  </p>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handlePrintBill(order)}
-                                    className="shrink-0 rounded-xl bg-white px-3 py-2 text-[8px] font-black text-neutral-700 shadow-sm"
-                                  >
-                                    View Bill
-                                  </button>
-                                </div>
-                              </div>
-                            )
-                          })}
-
-                          {orderHistoryVisibleCount <
-                            orderHistoryOrders.length && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setOrderHistoryVisibleCount(
-                                  (current) =>
-                                    current + 20
-                                )
-                              }
-                              className="w-full rounded-2xl border border-neutral-200 bg-white py-3 text-[9px] font-black text-[#0c831f]"
-                            >
-                              Show 20 More Orders
-                            </button>
-                          )}
-
-                          {orderHistoryOrders.length > 20 && (
-                            <p className="pt-1 text-center text-[7px] font-semibold text-neutral-400">
-                              Showing {Math.min(orderHistoryVisibleCount, orderHistoryOrders.length)} of {orderHistoryOrders.length} orders
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-              </div>
-            </section>
-
-            <section className="dd-bk-card p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="dd-bk-section-title">
-                    Live operations
-                  </h2>
-                  <p className="dd-bk-section-sub mt-1">
-                    Everything important right now.
-                  </p>
-                </div>
-
-                <span
-                  className={`rounded-full px-2.5 py-1.5 text-[8px] font-black ${
-                    isStoreOpen
-                      ? 'bg-[#eaf8ed] text-[#0c831f]'
-                      : 'bg-red-50 text-red-600'
-                  }`}
-                >
-                  {isStoreOpen ? '● OPEN' : '● CLOSED'}
-                </span>
-              </div>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => openOwnerMobileTab('tables')}
-                  className="dd-bk-live-row flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#eaf8ed] text-lg">
-                      🪑
-                    </span>
-                    <div>
-                      <p className="text-[11px] font-black text-neutral-900">
-                        Table availability
-                      </p>
-                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
-                        {availableTableCount} available · {occupiedTableCount} occupied
-                      </p>
-                    </div>
-                  </div>
-                  <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => openOwnerMobileTab('menu')}
-                  className="dd-bk-live-row flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff7d6] text-lg">
-                      🍽️
-                    </span>
-                    <div>
-                      <p className="text-[11px] font-black text-neutral-900">
-                        Menu availability
-                      </p>
-                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
-                        {availableMenuCount} of {menuItems.length} items available
-                      </p>
-                    </div>
-                  </div>
-                  <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => openOwnerMobileTab('offers')}
-                  className="dd-bk-live-row flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff0ec] text-lg">
-                      🔥
-                    </span>
-                    <div>
-                      <p className="text-[11px] font-black text-neutral-900">
-                        Offers of the day
-                      </p>
-                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
-                        {activeOfferCount} active customer offer{activeOfferCount === 1 ? '' : 's'}
-                      </p>
-                    </div>
-                  </div>
-                  <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                </button>
-              </div>
-            </section>
-
-            <section className="dd-bk-card dd-bk-plan overflow-hidden p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[8px] font-black uppercase tracking-[0.18em] text-orange-600">
-                    Membership
-                  </p>
-
-                  <h3 className="mt-1 text-lg font-black text-white">
-                    {currentPlanDisplay}
-                  </h3>
-
-                  <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                    ₹{currentPlanMonthlyPrice.toLocaleString('en-IN')} / month
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-[#f8cb46] px-3 py-2 text-center text-[#171717]">
-                  <p className="text-[7px] font-black uppercase">
-                    Restaurant Code
-                  </p>
-                  <p className="mt-0.5 font-mono text-sm font-black tracking-[0.18em]">
-                    {restaurant.restaurant_code || '-----'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="dd-bk-scroll mt-4 flex gap-2">
-                {Object.values(PLAN_FEATURES)
-                  .filter((plan) => plan.code !== currentPlanCode)
-                  .map((plan) => (
-                    <button
-                      key={plan.code}
-                      type="button"
-                      onClick={() => handleUpgradePlan(plan.code)}
-                      className="rounded-xl border border-white/10 bg-white/8 px-3 py-2 text-left"
-                    >
-                      <span className="block text-[9px] font-black text-white">
-                        {plan.name}
-                      </span>
-                      <span className="mt-0.5 block text-[8px] font-bold text-white/55">
-                        ₹{plan.monthlyPrice.toLocaleString('en-IN')}/mo
-                      </span>
-                    </button>
-                  ))}
-              </div>
-            </section>
-
-            {resortModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('resort')}
-                className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-xl">
-                    🏨
-                  </span>
-                  <div>
-                    <p className="text-[12px] font-black text-neutral-900">
-                      Resort Management
-                    </p>
-                    <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                      Rooms, guests and resort operations
-                    </p>
-                  </div>
-                </div>
-
-                <span className="text-lg text-neutral-400">›</span>
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Tab Navigation */}
-        <nav className="dd-dashboard-sidebar flex space-x-2 border-b border-neutral-200 pb-3 overflow-x-auto">
-          {[
-            {
-              id: 'owner-home',
-              label: '⌂ Home'
-            },
-            {
-              id: 'settlements',
-              label: '↗ Reports'
-            },
-            {
-              id: 'menu',
-              label: `≡ Menu (${menuItems.length})`
-            },
-            {
-              id: 'staff',
-              label: `◎ Managers (${staffList.length})`
-            },
-            {
-              id: 'staff-access',
-              label: '▦ Staff Login QR'
-            },
-            {
-              id: 'tables',
-              label: `⌁ Tables (${availableTableCount}/${configuredTableNumbers.length})`
-            },
-            {
-              id: 'taxes',
-              label: '₹ Taxes & Packing'
-            },
-            {
-              id: 'billing',
-              label: '▣ Billing'
-            },
-            {
-              id: 'offers',
-              label: `★ Offers (${dailyOffers.filter((offer) => offer.is_active).length})`
-            },
-            {
-              id: 'swiggy-sync',
-              label: '↻ Menu Import / Sync'
-            },
-            {
-              id: 'gateway',
-              label: '₹ Payment Gateways'
-            },
-            {
-              id: 'alarm-settings',
-              label: '◉ Alarm Settings'
-            },
-          ]
-            .filter((tab) => {
-              if (['staff', 'swiggy-sync', 'alarm-settings'].includes(tab.id)) {
-                return planFeatures.advanced
-              }
-              return true
-            })
-            .map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() =>
-                handleTabSwitch(tab.id)
-              }
-              className={`px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider transition whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
-                  : 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800 border border-neutral-800'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-        {activeTab === 'tables' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5">
-                <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Total Tables</p>
-                <p className="text-3xl font-black text-white mt-2">{configuredTableNumbers.length}</p>
-              </div>
-              <div className="bg-neutral-900 border border-emerald-500/20 rounded-3xl p-5">
-                <p className="text-[10px] uppercase tracking-wider text-emerald-400 font-black">Available</p>
-                <p className="text-3xl font-black text-emerald-400 mt-2">{availableTableCount}/{configuredTableNumbers.length}</p>
-              </div>
-              <div className="bg-neutral-900 border border-red-500/20 rounded-3xl p-5">
-                <p className="text-[10px] uppercase tracking-wider text-red-400 font-black">Occupied</p>
-                <p className="text-3xl font-black text-red-400 mt-2">{occupiedTableCount}</p>
-              </div>
-            </div>
-
-            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-                <div>
-                  <h2 className="text-lg font-black text-white">Restaurant Tables</h2>
-                  <p className="text-xs text-neutral-500 mt-1">Only table QR codes registered from your Table QR page are counted.</p>
-                </div>
-                <button type="button" onClick={() => setTableQrOpen(true)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black">📷 Manage Table QR Codes</button>
-              </div>
-              {configuredTableNumbers.length === 0 ? (
-                <div className="text-center py-10 text-sm text-neutral-500">No table QR codes have been registered yet.</div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                  {configuredTableNumbers.map((number) => {
-                    const occupied = occupiedTableNumbers.has(number)
-                    return (
-                      <div key={number} className={`rounded-2xl border p-4 text-center ${occupied ? 'border-red-500/30 bg-red-500/10' : 'border-emerald-500/30 bg-emerald-500/10'}`}>
-                        <div className="text-2xl">{occupied ? '🔴' : '🟢'}</div>
-                        <p className="font-black text-white mt-2">Table {number}</p>
-                        <p className={`text-[10px] font-black uppercase mt-1 ${occupied ? 'text-red-400' : 'text-emerald-400'}`}>{occupied ? 'Occupied' : 'Available'}</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: MENU CATALOG */}
-        {activeTab === 'menu' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-            {/* ADD ITEM */}
-            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl space-y-4 md:col-span-1 h-fit">
-              <div className="flex justify-between items-center">
-                <h2 className="text-md font-black text-white">
-                  Add New Dish
-                </h2>
-
-                <span className="text-[10px] text-neutral-400 font-bold">
-                  {menuItems.length} items · Included in all plans
-                </span>
-              </div>
-
-              <form
-                onSubmit={handleAddDish}
-                className="space-y-4"
-              >
-
-                {/* FOOD TYPE */}
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                    Food Type
-                  </label>
-
-                  <div className="grid grid-cols-2 gap-2 bg-neutral-950 p-2 rounded-xl border border-neutral-800">
-                    {[
-                      {
-                        value: 'veg',
-                        label: 'Veg',
-                        dot: 'bg-emerald-500',
-                        active:
-                          'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                      },
-                      {
-                        value: 'non-veg',
-                        label:
-                          'Non-Veg',
-                        dot: 'bg-red-500',
-                        active:
-                          'bg-red-500/20 text-red-400 border-red-500/30'
-                      },
-                      {
-                        value: 'egg',
-                        label: 'Egg',
-                        dot: 'bg-amber-400',
-                        active:
-                          'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                      },
-                      {
-                        value:
-                          'beverage',
-                        label:
-                          'Beverage',
-                        dot: 'bg-sky-400',
-                        active:
-                          'bg-sky-500/20 text-sky-300 border-sky-500/30'
-                      },
-                      {
-                        value: 'other',
-                        label: 'Other',
-                        dot: 'bg-neutral-400',
-                        active:
-                          'bg-neutral-500/20 text-neutral-200 border-neutral-500/30'
-                      }
-                    ].map(
-                      (type) => (
-                        <button
-                          key={
-                            type.value
-                          }
-                          type="button"
-                          onClick={() =>
-                            setFoodType(
-                              type.value
-                            )
-                          }
-                          className={`flex items-center justify-center space-x-1.5 py-2 rounded-lg text-xs font-bold transition border ${
-                            foodType ===
-                            type.value
-                              ? type.active
-                              : 'border-transparent text-neutral-500 hover:text-neutral-300'
-                          }`}
-                        >
-                          <span
-                            className={`w-2 h-2 rounded-full ${type.dot}`}
-                          ></span>
-
-                          <span>
-                            {
-                              type.label
-                            }
-                          </span>
-                        </button>
-                      )
-                    )}
-                  </div>
-
-                  <p className="text-[10px] text-neutral-500 mt-2">
-                    Use Beverage for water bottles, cool drinks, juices, soda, etc.
-                  </p>
-                </div>
-
-                {/* NAME */}
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                    Item Name
-                  </label>
-
-                  <input
-                    type="text"
-                    placeholder="e.g. Paneer Tikka"
-                    value={name}
-                    onChange={(e) =>
-                      setName(
-                        e.target.value
-                      )
-                    }
-                    required
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm"
-                  />
-                </div>
-
-                {/* PRICE */}
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                    Price (₹)
-                  </label>
-
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="e.g. 250"
-                    value={price}
-                    onChange={(e) =>
-                      setPrice(
-                        e.target.value
-                      )
-                    }
-                    required
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm"
-                  />
-                </div>
-
-                {/* CATEGORY */}
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                    Category
-                  </label>
-
-                  <input
-                    type="text"
-                    placeholder="e.g. Starter"
-                    value={category}
-                    onChange={(e) =>
-                      setCategory(
-                        e.target.value
-                      )
-                    }
-                    required
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm"
-                  />
-                </div>
-
-                {/* DESCRIPTION */}
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                    Item Description
-                  </label>
-
-                  <textarea
-                    rows="3"
-                    placeholder="e.g. Soft and fluffy bite-sized dumplings served with chutney."
-                    value={description}
-                    onChange={(e) =>
-                      setDescription(
-                        e.target.value
-                      )
-                    }
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm resize-none"
-                  />
-                </div>
-
-                {/* HIGHLY REORDERED */}
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                    Highly Reordered
-                  </label>
-
-                  <select
-                    value={
-                      reorderMode
-                    }
-                    onChange={(e) =>
-                      setReorderMode(
-                        e.target.value
-                      )
-                    }
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm"
-                  >
-                    <option value="auto">
-                      Auto — based on customer orders
-                    </option>
-
-                    <option value="on">
-                      Always show 🔥 Highly Reordered
-                    </option>
-
-                    <option value="off">
-                      Never show Highly Reordered
-                    </option>
-                  </select>
-
-                  <p className="text-[10px] text-neutral-500 mt-1">
-                    Auto uses actual order activity. You can override it with Always or Never.
-                  </p>
-                </div>
-
-                {/* IMAGE */}
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                    Image URL
-                  </label>
-
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    value={imageUrl}
-                    onChange={(e) =>
-                      setImageUrl(
-                        e.target.value
-                      )
-                    }
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm"
-                  />
-                </div>
-
-                {/* ADDONS */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-[10px] uppercase font-bold text-neutral-400">
-                      Custom Add-ons (Unlimited)
-                    </label>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAddons([
-                          ...addons,
-                          ''
-                        ])
-                      }
-                      className="text-[10px] font-bold text-orange-400 hover:underline"
-                    >
-                      + Add More Add-on
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {addons.map(
-                      (
-                        addon,
-                        index
-                      ) => (
-                        <div
-                          key={index}
-                          className="flex space-x-2"
-                        >
-                          <input
-                            type="text"
-                            placeholder={`Add-on ${
-                              index + 1
-                            } (e.g. Extra Cheese)`}
-                            value={addon}
-                            onChange={(
-                              e
-                            ) => {
-                              const newAddons =
-                                [
-                                  ...addons
-                                ]
-
-                              newAddons[
-                                index
-                              ] =
-                                e.target.value
-
-                              setAddons(
-                                newAddons
-                              )
-                            }}
-                            className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white text-xs"
-                          />
-
-                          {addons.length >
-                            1 && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setAddons(
-                                  addons.filter(
-                                    (
-                                      _,
-                                      i
-                                    ) =>
-                                      i !==
-                                      index
-                                  )
-                                )
-                              }
-                              className="bg-neutral-800 hover:bg-red-500/20 text-neutral-400 hover:text-red-400 px-3 py-2 rounded-xl text-xs font-bold transition"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-orange-500/20"
-                >
-                  {loading
-                    ? 'Publishing...'
-                    : '+ Publish Dish'}
-                </button>
-              </form>
-            </div>
-
-            {/* ACTIVE CATALOG */}
-            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl md:col-span-2 space-y-4">
-
-              <div className="flex justify-between items-center">
-                <h2 className="text-md font-black text-white">
-                  Active Catalog ({menuItems.length})
-                </h2>
-
-                {!hasAdvancedMenuControls && (
-                  <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-lg">
-                    🔒 Advanced menu controls require Restaurant Pro or Restaurant + Resort Pro
-                  </span>
-                )}
-              </div>
-
-              {menuItems.length ===
-              0 ? (
-                <p className="text-xs text-neutral-500 py-8">
-                  No dishes added to your catalog yet.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {menuItems.map(
-                    (item) => {
-                      const orderCount =
-                        getItemOrderCount(
-                          item
-                        )
-
-                      const highlyReordered =
-                        isItemHighlyReordered(
-                          item,
-                          automaticHighlyReorderedIds
-                        )
-
-                      const currentItemFoodType =
-                        item.food_type ||
-                        (
-                          item.is_veg
-                            ? 'veg'
-                            : 'non-veg'
-                        )
-
-                      return (
-                        <div
-                          key={item.id}
-                          className="bg-neutral-950 border border-neutral-800 p-4 rounded-2xl space-y-4"
-                        >
-                          {editingMenuItemId ===
-                          item.id ? (
-                            /* EDIT MODE */
-                            <div className="space-y-4">
-
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <h3 className="font-black text-white text-sm">
-                                    Edit Menu Item
-                                  </h3>
-
-                                  <p className="text-[10px] text-neutral-500 mt-0.5">
-                                    Update the details customers see on your menu.
-                                  </p>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={
-                                    cancelEditingMenuItem
-                                  }
-                                  className="bg-neutral-800 hover:bg-neutral-700 text-neutral-400 px-3 py-1.5 rounded-lg text-xs font-bold transition"
-                                >
-                                  ✕ Close
-                                </button>
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-                                {/* EDIT NAME */}
-                                <div>
-                                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                    Item Name
-                                  </label>
-
-                                  <input
-                                    type="text"
-                                    value={
-                                      editItemName
-                                    }
-                                    onChange={(
-                                      e
-                                    ) =>
-                                      setEditItemName(
-                                        e.target.value
-                                      )
-                                    }
-                                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm"
-                                  />
-                                </div>
-
-                                {/* EDIT PRICING */}
-                                <div className="sm:col-span-2 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4 space-y-3">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <label className="text-[10px] uppercase font-black text-orange-400 block">
-                                        Pricing & Offer
-                                      </label>
-                                      <p className="text-[10px] text-neutral-500 mt-1">
-                                        Set the original price and a special offer price. The offer price becomes the live menu price.
-                                      </p>
-                                    </div>
-                                    <span className="shrink-0 bg-orange-500/10 border border-orange-500/20 text-orange-400 px-2 py-1 rounded-lg text-[9px] font-black">
-                                      {hasAdvancedMenuControls ? 'PRO PRICING' : 'PRO REQUIRED'}
-                                    </span>
-                                  </div>
-
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    <div>
-                                      <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                        Original Price (₹)
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={editItemOriginalPrice}
-                                        onChange={(e) => {
-                                          const value = e.target.value
-                                          setEditItemOriginalPrice(value)
-
-                                          // Keep the existing Price field in sync with an offer price.
-                                          if (editItemOfferPrice === '' && value !== '') {
-                                            setEditItemPrice(value)
-                                          }
-                                        }}
-                                        disabled={!hasAdvancedMenuControls}
-                                        placeholder="299"
-                                        className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm ${
-                                          !hasAdvancedMenuControls ? 'opacity-50 cursor-not-allowed' : ''
-                                        }`}
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                        Offer Price (₹)
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={editItemOfferPrice}
-                                        onChange={(e) => {
-                                          const value = e.target.value
-                                          setEditItemOfferPrice(value)
-                                          if (value !== '') {
-                                            setEditItemPrice(value)
-                                          }
-                                        }}
-                                        disabled={!hasAdvancedMenuControls}
-                                        placeholder="199"
-                                        className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm ${
-                                          !hasAdvancedMenuControls ? 'opacity-50 cursor-not-allowed' : ''
-                                        }`}
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                        Discount
-                                      </label>
-                                      <div className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 min-h-[42px] flex items-center justify-between gap-2">
-                                        <span className="text-white text-sm font-black">
-                                          {(() => {
-                                            const original = parseFloat(editItemOriginalPrice)
-                                            const offer = parseFloat(editItemOfferPrice)
-                                            if (original > 0 && offer >= 0 && offer < original) {
-                                              return `${Math.round(((original - offer) / original) * 100)}% OFF`
-                                            }
-                                            return '—'
-                                          })()}
-                                        </span>
-                                        <span className="text-[9px] text-neutral-500 font-bold">AUTO</span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex flex-wrap items-center gap-2 text-[10px]">
-                                    <span className="text-neutral-500">Live customer price:</span>
-                                    <span className="font-black text-emerald-400">
-                                      ₹{Number(editItemOfferPrice || editItemPrice || 0).toFixed(2)}
-                                    </span>
-                                    {editItemOriginalPrice && editItemOfferPrice && Number(editItemOfferPrice) < Number(editItemOriginalPrice) && (
-                                      <span className="line-through text-neutral-600">
-                                        ₹{Number(editItemOriginalPrice).toFixed(2)}
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {!hasAdvancedMenuControls && (
-                                    <p className="text-[9px] text-amber-400">
-                                      🔒 Price, original price and offer price editing require Restaurant Pro or Restaurant + Resort Pro.
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* EXISTING PRICE — KEPT FOR BACKWARD COMPATIBILITY */}
-                                <div>
-                                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                    Base Price (₹)
-                                  </label>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={editItemPrice}
-                                    onChange={(e) => setEditItemPrice(e.target.value)}
-                                    disabled={!hasAdvancedMenuControls}
-                                    className={`w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm ${
-                                      !hasAdvancedMenuControls ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
-                                  />
-                                  <p className="text-[9px] text-neutral-500 mt-1">
-                                    Used when no offer price is set.
-                                  </p>
-                                </div>
-
-                                {/* EDIT CATEGORY */}
-                                <div>
-                                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                    Category
-                                  </label>
-
-                                  <input
-                                    type="text"
-                                    value={
-                                      editItemCategory
-                                    }
-                                    onChange={(
-                                      e
-                                    ) =>
-                                      setEditItemCategory(
-                                        e.target.value
-                                      )
-                                    }
-                                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm"
-                                  />
-                                </div>
-
-                                {/* EDIT FOOD TYPE */}
-                                <div>
-                                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                    Food Type
-                                  </label>
-
-                                  <select
-                                    value={
-                                      editItemFoodType
-                                    }
-                                    onChange={(
-                                      e
-                                    ) =>
-                                      setEditItemFoodType(
-                                        e.target.value
-                                      )
-                                    }
-                                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm"
-                                  >
-                                    <option value="veg">
-                                      🟢 Veg
-                                    </option>
-
-                                    <option value="non-veg">
-                                      🔴 Non-Veg
-                                    </option>
-
-                                    <option value="egg">
-                                      🥚 Egg
-                                    </option>
-
-                                    <option value="beverage">
-                                      🥤 Beverage
-                                    </option>
-
-                                    <option value="cocktail">
-                                      🍹 Cocktail
-                                    </option>
-
-                                    <option value="other">
-                                      ⚪ Other
-                                    </option>
-                                  </select>
-                                </div>
-                              </div>
-
-                              {/* EDIT DESCRIPTION */}
-                              <div>
-                                <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                  Item Description
-                                </label>
-
-                                <textarea
-                                  rows="3"
-                                  value={
-                                    editItemDescription
-                                  }
-                                  onChange={(
-                                    e
-                                  ) =>
-                                    setEditItemDescription(
-                                      e.target.value
-                                    )
-                                  }
-                                  placeholder="Describe the dish for customers..."
-                                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm resize-none"
-                                />
-                              </div>
-
-                              {/* EDIT HIGHLY REORDERED */}
-                              <div>
-                                <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                  Highly Reordered
-                                </label>
-
-                                <select
-                                  value={
-                                    editItemReorderMode
-                                  }
-                                  onChange={(
-                                    e
-                                  ) =>
-                                    setEditItemReorderMode(
-                                      e.target.value
-                                    )
-                                  }
-                                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm"
-                                >
-                                  <option value="auto">
-                                    Auto — based on customer orders
-                                  </option>
-
-                                  <option value="on">
-                                    Always show 🔥 Highly Reordered
-                                  </option>
-
-                                  <option value="off">
-                                    Never show Highly Reordered
-                                  </option>
-                                </select>
-
-                                <p className="text-[10px] text-neutral-500 mt-1">
-                                  Auto follows actual order activity. Always and Never let the restaurant override it.
-                                </p>
-                              </div>
-
-                              {/* EDIT IMAGE */}
-                              <div>
-                                <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                                  Image URL
-                                </label>
-
-                                <input
-                                  type="url"
-                                  value={
-                                    editItemImageUrl
-                                  }
-                                  onChange={(
-                                    e
-                                  ) =>
-                                    setEditItemImageUrl(
-                                      e.target.value
-                                    )
-                                  }
-                                  placeholder="https://..."
-                                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-sm"
-                                />
-                              </div>
-
-                              {/* EDIT ADDONS */}
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <label className="text-[10px] uppercase font-bold text-neutral-400">
-                                    Custom Add-ons
-                                  </label>
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setEditItemAddons(
-                                        [
-                                          ...editItemAddons,
-                                          ''
-                                        ]
-                                      )
-                                    }
-                                    className="text-[10px] font-bold text-orange-400 hover:underline"
-                                  >
-                                    + Add More Add-on
-                                  </button>
-                                </div>
-
-                                <div className="space-y-2">
-                                  {editItemAddons.map(
-                                    (
-                                      addon,
-                                      index
-                                    ) => (
-                                      <div
-                                        key={
-                                          index
-                                        }
-                                        className="flex space-x-2"
-                                      >
-                                        <input
-                                          type="text"
-                                          placeholder={`Add-on ${
-                                            index +
-                                            1
-                                          }`}
-                                          value={
-                                            addon
-                                          }
-                                          onChange={(
-                                            e
-                                          ) => {
-                                            const next =
-                                              [
-                                                ...editItemAddons
-                                              ]
-
-                                            next[
-                                              index
-                                            ] =
-                                              e.target.value
-
-                                            setEditItemAddons(
-                                              next
-                                            )
-                                          }}
-                                          className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-white text-xs"
-                                        />
-
-                                        {editItemAddons.length >
-                                          1 && (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              setEditItemAddons(
-                                                editItemAddons.filter(
-                                                  (
-                                                    _,
-                                                    i
-                                                  ) =>
-                                                    i !==
-                                                    index
-                                                )
-                                              )
-                                            }
-                                            className="bg-neutral-800 hover:bg-red-500/20 text-neutral-400 hover:text-red-400 px-3 py-2 rounded-xl text-xs font-bold transition"
-                                          >
-                                            ✕
-                                          </button>
-                                        )}
-                                      </div>
-                                    )
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* SAVE / CANCEL */}
-                              <div className="flex space-x-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleSaveMenuItem(
-                                      item.id
-                                    )
-                                  }
-                                  disabled={
-                                    savingMenuItem
-                                  }
-                                  className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3 rounded-xl text-xs transition shadow-lg shadow-orange-500/20"
-                                >
-                                  {savingMenuItem
-                                    ? 'Saving Changes...'
-                                    : 'Save Item Changes 💾'}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={
-                                    cancelEditingMenuItem
-                                  }
-                                  disabled={
-                                    savingMenuItem
-                                  }
-                                  className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-5 py-3 rounded-xl text-xs font-bold transition"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            /* DISPLAY MODE */
-                            <>
-                              <div className="flex items-start justify-between gap-4">
-
-                                <div className="min-w-0 flex-1">
-
-                                  <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-
-                                    <span
-                                      className={`w-2.5 h-2.5 rounded-full ${getFoodTypeClasses(
-                                        currentItemFoodType
-                                      )}`}
-                                    ></span>
-
-                                    <h3 className="font-bold text-white text-sm">
-                                      {
-                                        item.name
-                                      }
-                                    </h3>
-
-                                    {highlyReordered && (
-                                      <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide">
-                                        🔥 Highly Reordered
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
-
-                                    {item.original_price != null &&
-                                    item.offer_price != null &&
-                                    Number(item.offer_price) < Number(item.original_price) ? (
-                                      <>
-                                        <span className="font-black text-emerald-400 text-sm">
-                                          ₹{Number(item.offer_price).toFixed(2)}
-                                        </span>
-                                        <span className="text-neutral-600 line-through text-xs">
-                                          ₹{Number(item.original_price).toFixed(2)}
-                                        </span>
-                                        <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full text-[9px] font-black">
-                                          {Math.round(((Number(item.original_price) - Number(item.offer_price)) / Number(item.original_price)) * 100)}% OFF
-                                        </span>
-                                      </>
-                                    ) : (
-                                      <span className="font-black text-emerald-400 text-sm">
-                                        ₹{Number(item.price).toFixed(2)}
-                                      </span>
-                                    )}
-
-                                    <span className="text-neutral-600">
-                                      •
-                                    </span>
-
-                                    <span className="text-xs text-orange-400">
-                                      {
-                                        item.category ||
-                                        'General'
-                                      }
-                                    </span>
-
-                                    <span className="text-neutral-600">
-                                      •
-                                    </span>
-
-                                    <span className="text-[10px] font-bold uppercase text-neutral-500">
-                                      {
-                                        getFoodTypeLabel(
-                                          currentItemFoodType
-                                        )
-                                      }
-                                    </span>
-
-                                    <span className="text-neutral-600">
-                                      •
-                                    </span>
-
-                                    <span className="text-[10px] font-bold text-neutral-500">
-                                      {
-                                        orderCount
-                                      }{' '}
-                                      order
-                                      {orderCount ===
-                                      1
-                                        ? ''
-                                        : 's'}
-                                    </span>
-                                  </div>
-
-                                  {item.description && (
-                                    <p className="text-xs text-neutral-400 mt-2 max-w-2xl line-clamp-2">
-                                      {
-                                        item.description
-                                      }
-                                    </p>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center space-x-2 shrink-0">
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      startEditingMenuItem(
-                                        item
-                                      )
-                                    }
-                                    className="bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white border border-orange-500/20 px-3 py-2 rounded-xl text-[10px] font-black transition"
-                                  >
-                                    ✏️ Edit Item
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      toggleItemAvailability(
-                                        item.id,
-                                        item.is_available
-                                      )
-                                    }
-                                    className={`w-12 h-6 flex items-center rounded-full p-1 transition cursor-pointer ${
-                                      item.is_available
-                                        ? 'bg-emerald-600 justify-end'
-                                        : 'bg-neutral-700 justify-start'
-                                    }`}
-                                    aria-label="Toggle item availability"
-                                  >
-                                    <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition"></div>
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between pt-2 border-t border-neutral-800">
-                                <div className="flex items-center gap-2">
-
-                                  <span
-                                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${
-                                      item.is_available
-                                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                        : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                                    }`}
-                                  >
-                                    {item.is_available
-                                      ? 'Available'
-                                      : 'Out of Stock'}
-                                  </span>
-
-                                  <span className="text-[10px] text-neutral-500">
-                                    Reorder:{' '}
-                                    {item.reorder_mode ===
-                                    'on'
-                                      ? 'Always'
-                                      : item.reorder_mode ===
-                                        'off'
-                                      ? 'Never'
-                                      : 'Auto'}
-                                  </span>
-                                </div>
-
-                                {!hasAdvancedMenuControls && (
-                                  <span className="text-[9px] text-neutral-600">
-                                    Price editing: Restaurant Pro / Restaurant + Resort Pro
-                                  </span>
-                                )}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )
-                    }
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB: STAFF LOGIN QR CODES */}
-        {activeTab === 'staff-access' && (
-          <div className="space-y-6">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-xl">
-              <span className="text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
-                Secure Restaurant Access
-              </span>
-              <h2 className="text-2xl font-black text-white mt-3">
-                Staff Login QR Codes
-              </h2>
-              <p className="text-xs text-neutral-400 mt-2 max-w-3xl leading-relaxed">
-                Generate and share separate login QR codes for your Manager, Kitchen,
-                and Waiter pages. The QR code contains only this restaurant's URL.
-                Staff must enter their own credentials, and the Kitchen and Waiter
-                pages verify the restaurant and role before showing data.
-              </p>
-            </div>
-
-            {!restaurantId ? (
-              <div className="bg-red-500/10 border border-red-500/30 text-red-300 rounded-2xl p-5 text-sm font-bold">
-                Restaurant ID is missing. Please reopen the dashboard from your restaurant login.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                <StaffLoginQrCard
-                  title="Manager Login"
-                  icon="👔"
-                  description="Open the existing restaurant manager dashboard. Staff must enter this restaurant's code and manager credentials."
-                  restaurantCode={restaurant?.restaurant_code}
-                  url={`${typeof window !== 'undefined' ? window.location.origin : 'https://www.digitaldine-in.online'}/manager/${encodeURIComponent(restaurantId)}`}
-                />
-                <StaffLoginQrCard
-                  title="Kitchen Login"
-                  icon="👨‍🍳"
-                  description="Kitchen staff enter the restaurant code, Kitchen username, and password and see only this restaurant's kitchen orders."
-                  restaurantCode={restaurant?.restaurant_code}
-                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/kitchen/${encodeURIComponent(restaurantId)}`}
-                />
-                <StaffLoginQrCard
-                  title="Waiter Login"
-                  icon="🧑‍🍽️"
-                  description="Waiters enter the restaurant code, Waiter username, and password and see only this restaurant's menu and ready orders."
-                  restaurantCode={restaurant?.restaurant_code}
-                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/waiter/${encodeURIComponent(restaurantId)}`}
-                />
-              </div>
-            )}
-
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 text-xs text-amber-200 leading-relaxed">
-              <strong className="text-amber-100">Important:</strong> These QR codes do not
-              store passwords. Do not share staff passwords. If a staff member is disabled
-              in Staff Management, their login should no longer be permitted.
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: STAFF MANAGEMENT */}
-        {activeTab === 'staff' && hasManagerManagement && (
-          <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-4xl mx-auto space-y-6 shadow-xl">
-
-            <div className="border-b border-neutral-800 pb-4">
-              <span className="text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
-                Restaurant Manager Access Control
-              </span>
-
-              <h2 className="text-xl font-black text-white mt-2">
-                Restaurant Manager Login Credentials
-              </h2>
-
-              <p className="text-xs text-neutral-400">
-                Create login accounts for Waiter, Kitchen, or Restaurant Manager staff. Each role opens its own dedicated portal.
-              </p>
-            </div>
-
-            <form
-              onSubmit={handleCreateStaff}
-              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end bg-neutral-950 p-4 rounded-2xl border border-neutral-800"
-            >
-              <div>
-                <label className="text-[10px] font-bold text-neutral-400 block mb-1 uppercase">
-                  Staff Name
-                </label>
-
-                <input
-                  type="text"
-                  placeholder="Rahul Kumar"
-                  value={staffName}
-                  onChange={(e) =>
-                    setStaffName(
-                      e.target.value
-                    )
-                  }
-                  required
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-neutral-400 block mb-1 uppercase">
-                  User ID
-                </label>
-
-                <input
-                  type="text"
-                  placeholder="waiter1"
-                  value={staffUserId}
-                  onChange={(e) =>
-                    setStaffUserId(
-                      e.target.value
-                    )
-                  }
-                  required
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-neutral-400 block mb-1 uppercase">
-                  Password / PIN
-                </label>
-
-                <input
-                  type="text"
-                  placeholder="Secret123"
-                  value={
-                    staffPassword
-                  }
-                  onChange={(e) =>
-                    setStaffPassword(
-                      e.target.value
-                    )
-                  }
-                  required
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-neutral-400 block mb-1 uppercase">
-                  Role
-                </label>
-                <select
-                  value={staffRole}
-                  onChange={(e) => setStaffRole(e.target.value)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-orange-500"
-                >
-                  <option value="waiter">Waiter</option>
-                  <option value="kitchen">Kitchen</option>
-                  <option value="manager">Restaurant Manager</option>
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                disabled={addingStaff}
-                className="bg-orange-500 hover:bg-orange-600 text-white font-black py-2.5 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/20"
-              >
-                {addingStaff
-                  ? 'Adding...'
-                  : 'Create Login ➕'}
-              </button>
-            </form>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-neutral-800 text-[10px] text-neutral-400 uppercase tracking-widest bg-neutral-950/40">
-                    <th className="p-3 font-bold">
-                      Staff Name
-                    </th>
-                    <th className="p-3 font-bold">
-                      Login User ID
-                    </th>
-                    <th className="p-3 font-bold">
-                      Password / PIN
-                    </th>
-                    <th className="p-3 font-bold">
-                      Role Portal
-                    </th>
-                    <th className="p-3 font-bold text-right">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-neutral-800/60 text-xs">
-                  {staffList.length ===
-                  0 ? (
-                    <tr>
-                      <td
-                        colSpan="5"
-                        className="p-6 text-center text-neutral-500"
-                      >
-                        No staff accounts created yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    staffList.map(
-                      (staff) => (
-                        <tr
-                          key={staff.id}
-                          className="hover:bg-neutral-800/20 transition"
-                        >
-                          <td className="p-3 font-bold text-white">
-                            {
-                              staff.name
-                            }
-                          </td>
-
-                          <td className="p-3 font-mono text-neutral-300">
-                            {staff.user_id || staff.pin}
-                          </td>
-
-                          <td className="p-3 font-mono text-neutral-300">
-                            {staff.password || staff.pin || '••••••'}
-                          </td>
-
-                          <td className="p-3">
-                            <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
-                                staff.role ===
-                                'manager'
-                                  ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
-                                  : 'bg-neutral-500/10 text-neutral-400 border border-neutral-500/20'
-                              }`}
-                            >
-                              {
-                                staff.role
-                              }
-                            </span>
-                          </td>
-
-                          <td className="p-3 text-right space-x-2">
-                            <button
-                              onClick={() => {
-                                const portalPath =
-                                  staff.role === 'waiter'
-                                    ? `/waiter/${restaurantId}`
-                                    : staff.role === 'kitchen'
-                                      ? `/kitchen/${restaurantId}`
-                                      : `/manager/${restaurantId}`
-
-                                window.open(portalPath, '_blank', 'noopener,noreferrer')
-                              }}
-                              className="bg-orange-500/10 hover:bg-orange-500 text-orange-400 hover:text-white border border-orange-500/20 px-3 py-1 rounded-lg font-bold transition"
-                            >
-                              {staff.role === 'waiter'
-                                ? 'Open Waiter Portal ↗'
-                                : staff.role === 'kitchen'
-                                  ? 'Open Kitchen Portal ↗'
-                                  : 'Open Manager Portal ↗'}
-                            </button>
-
-                            <button
-                              onClick={() =>
-                                handleDeleteStaff(
-                                  staff.id,
-                                  staff.name
-                                )
-                              }
-                              className="bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1 rounded-lg font-bold transition"
-                            >
-                              Revoke 🗑️
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    )
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: TAX & PACKING CHARGES */}
-        {activeTab ===
-          'taxes' && (
-          <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-xl mx-auto space-y-6 shadow-xl">
-
-            <div className="text-center space-y-2">
-              <span className="text-[10px] font-extrabold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
-                State Taxation & Fees
-              </span>
-
-              <h2 className="text-xl font-black text-white">
-                Tax & Parcel Packing Settings
-              </h2>
-
-              <p className="text-xs text-neutral-400">
-                Configure your local SGST, CGST, and parcel packing fees applied automatically across all membership tiers.
-              </p>
-            </div>
-
-            <form
-              onSubmit={
-                handleSaveTaxSettings
-              }
-              className="space-y-4"
-            >
-              <div>
-                <label className="text-xs font-bold text-neutral-300 block mb-1">
-                  SGST Rate (%)
-                </label>
-
-                <input
-                  type="number"
-                  step="0.1"
-                  value={sgstRate}
-                  onChange={(e) =>
-                    setSgstRate(
-                      e.target.value
-                    )
-                  }
-                  required
-                  className="w-full bg-neutral-950 text-white font-mono text-xs border border-neutral-800 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-neutral-300 block mb-1">
-                  CGST Rate (%)
-                </label>
-
-                <input
-                  type="number"
-                  step="0.1"
-                  value={cgstRate}
-                  onChange={(e) =>
-                    setCgstRate(
-                      e.target.value
-                    )
-                  }
-                  required
-                  className="w-full bg-neutral-950 text-white font-mono text-xs border border-neutral-800 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-neutral-300 block mb-1">
-                  Parcel Packing Charge (₹)
-                </label>
-
-                <input
-                  type="number"
-                  step="1"
-                  value={
-                    packingCharge
-                  }
-                  onChange={(e) =>
-                    setPackingCharge(
-                      e.target.value
-                    )
-                  }
-                  required
-                  className="w-full bg-neutral-950 text-white font-mono text-xs border border-neutral-800 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={savingTaxes}
-                className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3.5 rounded-xl text-xs transition shadow-lg shadow-orange-500/25 hover:opacity-95"
-              >
-                {savingTaxes
-                  ? 'Saving Tax Configurations...'
-                  : 'Save Tax Settings 💾'}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* TAB 5: BILLING */}
-        {activeTab === 'billing' && (
-          <div className="space-y-6">
-            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div>
-                  <span className="text-[10px] font-extrabold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
-                    Billing Center
-                  </span>
-                  <h2 className="text-xl font-black text-white mt-3">
-                    Orders & Bills
-                  </h2>
-                  <p className="text-xs text-neutral-400 mt-1">
-                    Generate a printable bill using the order's original date and time.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <input
-                    type="text"
-                    value={billSearch}
-                    onChange={(e) => setBillSearch(e.target.value)}
-                    placeholder="Search order / table / waiter"
-                    className="bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500"
-                  />
-
-                  <input
-                    type="date"
-                    value={billDateFilter}
-                    onChange={(e) => setBillDateFilter(e.target.value)}
-                    className="bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500"
-                  />
-
-                  {(billSearch || billDateFilter) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBillSearch('')
-                        setBillDateFilter('')
-                      }}
-                      className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-4 py-2.5 rounded-xl text-xs font-bold transition"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-                <div>
-                  <h3 className="text-md font-black text-white">
-                    Bill Header Settings
-                  </h3>
-                  <p className="text-[10px] text-neutral-500 mt-1">
-                    This information appears on every generated bill.
-                  </p>
-                </div>
-
-                {!editingBillSettings && (
-                  <button
-                    type="button"
-                    onClick={() => setEditingBillSettings(true)}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-orange-400 border border-neutral-700 px-4 py-2.5 rounded-xl text-xs font-black transition"
-                  >
-                    ✏️ Edit Bill Details
-                  </button>
-                )}
-              </div>
-
-              {editingBillSettings ? (
-                <form onSubmit={handleSaveBillSettings} className="space-y-4">
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">
-                      Restaurant Name on Bill
-                    </label>
-                    <input
-                      type="text"
-                      value={billingRestaurantName}
-                      onChange={(e) =>
-                        setBillingRestaurantName(e.target.value)
-                      }
-                      placeholder="Enter restaurant name"
-                      required
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-2">
-                      Restaurant Logo
-                    </label>
-
-                    <div className="bg-neutral-950 border border-dashed border-neutral-700 rounded-2xl p-4">
-                      {restaurantLogo ? (
-                        <div className="space-y-3">
-                          <div className="bg-white rounded-xl p-4 flex items-center justify-center min-h-32">
-                            <img
-                              src={restaurantLogo}
-                              alt={`${restaurant?.name || 'Restaurant'} logo preview`}
-                              className="max-h-28 max-w-full object-contain opacity-100"
-                            />
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
-                            <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">
-                              🔄 Replace Logo
-                              <input
-                                type="file"
-                                accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                                onChange={handleRestaurantLogoFile}
-                                className="hidden"
-                              />
-                            </label>
-
-                            <button
-                              type="button"
-                              onClick={clearRestaurantLogo}
-                              className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 px-4 py-2.5 rounded-xl text-xs font-bold transition"
-                            >
-                              🗑️ Remove Logo
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <label className="cursor-pointer block text-center py-8">
-                          <div className="text-3xl mb-2">🖼️</div>
-                          <p className="text-xs font-bold text-white">
-                            Upload Restaurant Logo
-                          </p>
-                          <p className="text-[10px] text-neutral-500 mt-1">
-                            PNG, JPG, WEBP or SVG image, maximum 2 MB
-                          </p>
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                            onChange={handleRestaurantLogoFile}
-                            className="hidden"
-                          />
-                        </label>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-2">
-                      Manager Signature
-                    </label>
-
-                    <div className="bg-neutral-950 border border-dashed border-neutral-700 rounded-2xl p-4">
-                      {managerSignature ? (
-                        <div className="space-y-3">
-                          <div className="bg-white rounded-xl p-4 flex items-center justify-center min-h-32">
-                            <img
-                              src={managerSignature}
-                              alt="Manager signature preview"
-                              className="max-h-24 max-w-full object-contain"
-                            />
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
-                            <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition">
-                              🔄 Replace Signature
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleSignatureFile}
-                                className="hidden"
-                              />
-                            </label>
-
-                            <button
-                              type="button"
-                              onClick={clearManagerSignature}
-                              className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 px-4 py-2.5 rounded-xl text-xs font-bold transition"
-                            >
-                              🗑️ Remove Signature
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <label className="cursor-pointer block text-center py-8">
-                          <div className="text-3xl mb-2">✍️</div>
-                          <p className="text-xs font-bold text-white">
-                            Upload Manager Signature
-                          </p>
-                          <p className="text-[10px] text-neutral-500 mt-1">
-                            PNG/JPG image, maximum 2 MB
-                          </p>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleSignatureFile}
-                            className="hidden"
-                          />
-                        </label>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      type="submit"
-                      disabled={savingBillSettings}
-                      className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3 rounded-xl text-xs transition disabled:opacity-50"
-                    >
-                      {savingBillSettings
-                        ? 'Saving...'
-                        : 'Save Bill Settings 💾'}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={savingBillSettings}
-                      onClick={() => {
-                        setBillingRestaurantName(
-                          restaurant?.billing_restaurant_name ||
-                            restaurant?.name ||
-                            ''
-                        )
-                        setManagerSignature(
-                          restaurant?.manager_signature || ''
-                        )
-                        setRestaurantLogo(
-                          restaurant?.logo_url || ''
-                        )
-                        setEditingBillSettings(false)
-                      }}
-                      className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-5 py-3 rounded-xl text-xs font-bold transition"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
-                    <p className="text-[10px] uppercase font-bold text-neutral-500 mb-2">
-                      Restaurant Logo
-                    </p>
-                    {restaurantLogo ? (
-                      <div className="bg-white rounded-xl p-2 h-20 flex items-center justify-center">
-                        <img
-                          src={restaurantLogo}
-                          alt={`${restaurant.name} logo`}
-                          className="max-h-16 max-w-full object-contain opacity-100"
-                        />
-                      </div>
-                    ) : (
-                      <p className="text-xs text-neutral-500">
-                        No logo configured
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
-                    <p className="text-[10px] uppercase font-bold text-neutral-500">
-                      Restaurant Name
-                    </p>
-                    <p className="text-white font-black text-base mt-1">
-                      {billingRestaurantName || restaurant.name}
-                    </p>
-                  </div>
-
-                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
-                    <p className="text-[10px] uppercase font-bold text-neutral-500 mb-2">
-                      Manager Signature
-                    </p>
-                    {managerSignature ? (
-                      <div className="bg-white rounded-xl p-2 inline-flex min-h-16 min-w-40 items-center justify-center">
-                        <img
-                          src={managerSignature}
-                          alt="Manager signature"
-                          className="max-h-14 max-w-48 object-contain"
-                        />
-                      </div>
-                    ) : (
-                      <p className="text-xs text-neutral-500">
-                        No signature configured
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-xl">
-              <div className="p-6 border-b border-neutral-800 flex items-center justify-between">
-                <div>
-                  <h3 className="text-md font-black text-white">
-                    Orders Available for Billing
-                  </h3>
-                  <p className="text-[10px] text-neutral-500 mt-1">
-                    {filteredBillingOrders.length} order
-                    {filteredBillingOrders.length === 1 ? '' : 's'} found
-                  </p>
-                </div>
-              </div>
-
-              {filteredBillingOrders.length === 0 ? (
-                <div className="p-12 text-center">
-                  <div className="text-4xl mb-3">🧾</div>
-                  <p className="text-sm font-bold text-white">
-                    No matching orders
-                  </p>
-                  <p className="text-xs text-neutral-500 mt-1">
-                    Try another date or search term.
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-neutral-800">
-                  {filteredBillingOrders.map((order) => (
-                    <div
-                      key={order.id}
-                      className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 hover:bg-neutral-800/20 transition"
-                    >
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2.5 py-1 rounded-lg text-[10px] font-black">
-                            {getBillNumber(order)}
-                          </span>
-
-                          <span className="bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-lg text-[10px] font-bold">
-                            Table {order.table_number || '1'}
-                          </span>
-
-                          <span className="text-[10px] text-neutral-500 uppercase font-bold">
-                            {order.status || 'pending'}
-                          </span>
-                        </div>
-
-                        <div className="flex flex-wrap gap-4 mt-2 text-[11px] text-neutral-400">
-                          <span>
-                            📅 {formatBillDate(order.created_at)}
-                          </span>
-                          <span>
-                            🕒 {formatBillTime(order.created_at)}
-                          </span>
-                          <span>
-                            💳 {order.payment_mode || 'Online'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <p className="text-[10px] uppercase font-bold text-neutral-500">
-                            Total
-                          </p>
-                          <p className="text-lg font-black text-emerald-400">
-                            ₹{Number(order.total_amount || 0).toFixed(2)}
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handlePrintBill(order)}
-                          className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black transition shadow-lg shadow-orange-500/20"
-                        >
-                          🧾 Generate Bill
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 5: SWIGGY SYNC */}
-        {activeTab ===
-          'swiggy-sync' && (
-          <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-xl mx-auto space-y-6 shadow-xl">
-
-            <div className="space-y-2 text-center">
-              <span className="text-[10px] font-extrabold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
-                Swiggy Integration
-              </span>
-
-              <h2 className="text-xl font-black text-white">
-                Sync Swiggy Menu Directly
-              </h2>
-            </div>
-
-            <form
-              onSubmit={
-                handleSwiggySync
-              }
-              className="space-y-4"
-            >
-              <div>
-                <label className="text-xs font-bold text-neutral-300 block mb-1">
-                  Swiggy Menu JSON Data
-                </label>
-
-                <textarea
-                  rows="6"
-                  placeholder={`[
-  {
-    "name": "Chicken Biryani",
-    "price": 320,
-    "category": "Main Course",
-    "is_veg": false,
-    "description": "Aromatic basmati rice with tender chicken.",
-    "food_type": "non-veg",
-    "reorder_mode": "auto"
-  }
-]`}
-                  value={
-                    swiggyDataInput
-                  }
-                  onChange={(e) =>
-                    setSwiggyDataInput(
-                      e.target.value
-                    )
-                  }
-                  className="w-full bg-neutral-950 text-white font-mono text-xs border border-neutral-800 rounded-xl p-4 focus:outline-none focus:border-orange-500"
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={
-                  syncingSwiggy
-                }
-                className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3.5 rounded-xl text-xs transition shadow-lg shadow-orange-500/25 hover:opacity-95"
-              >
-                {syncingSwiggy
-                  ? 'Syncing Menu Items...'
-                  : 'Sync Swiggy Menu Now 🔄'}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* TAB: OFFERS OF THE DAY */}
-        {activeTab === 'offers' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl h-fit">
-              <div className="flex items-center justify-between mb-5">
-                <div><span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Restaurant Advertising</span><h2 className="text-xl font-black text-white mt-2">{editingOfferId ? 'Edit Offer' : 'Add Offer of the Day'} 🔥</h2></div><span className="text-2xl">🎁</span>
-              </div>
-              <form onSubmit={handleSaveOffer} className="space-y-4">
-                <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Offer Title</label><input value={offerTitle} onChange={(e) => setOfferTitle(e.target.value)} placeholder="Weekend Biryani Special" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" /></div>
-                <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Description</label><textarea value={offerDescription} onChange={(e) => setOfferDescription(e.target.value)} rows={3} placeholder="Chicken biryani + soft drink at a special price" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500 resize-none" /></div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Original Price</label><input type="number" min="0" step="0.01" value={offerOriginalPrice} onChange={(e) => setOfferOriginalPrice(e.target.value)} placeholder="299" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" /></div>
-                  <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Offer Price *</label><input type="number" min="0" step="0.01" value={offerPrice} onChange={(e) => setOfferPrice(e.target.value)} placeholder="199" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" required /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Discount Badge</label><input value={offerDiscountText} onChange={(e) => setOfferDiscountText(e.target.value)} placeholder="33% OFF" className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" /></div>
-                  <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Offer Date *</label><input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs focus:outline-none focus:border-orange-500" required /></div>
-                </div>
-                <div><label className="text-[10px] uppercase font-bold text-neutral-400 block mb-1">Offer Image</label><div className="bg-neutral-950 border border-dashed border-neutral-700 rounded-2xl p-3">{offerImageUrl ? <div className="space-y-3"><img src={offerImageUrl} alt="Offer preview" className="w-full h-32 object-cover rounded-xl" /><div className="flex gap-2"><label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-white px-3 py-2 rounded-xl text-[10px] font-bold">Replace Image<input type="file" accept="image/*" onChange={handleOfferImageFile} className="hidden" /></label><button type="button" onClick={() => setOfferImageUrl('')} className="bg-red-500/10 text-red-400 px-3 py-2 rounded-xl text-[10px] font-bold">Remove</button></div></div> : <label className="cursor-pointer block text-center py-5"><div className="text-3xl mb-2">🖼️</div><p className="text-xs font-bold text-white">Upload Offer Image</p><p className="text-[10px] text-neutral-500 mt-1">PNG, JPG, WEBP or SVG, maximum 2 MB</p><input type="file" accept="image/*" onChange={handleOfferImageFile} className="hidden" /></label>}</div></div>
-                <div className="flex gap-2"><button type="submit" disabled={savingOffer} className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-3 rounded-xl text-xs shadow-lg shadow-orange-500/20">{savingOffer ? 'Saving...' : editingOfferId ? 'Update Offer 💾' : 'Publish Offer 🚀'}</button>{editingOfferId && <button type="button" onClick={resetOfferForm} className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-4 py-3 rounded-xl text-xs font-bold">Cancel</button>}</div>
-              </form>
-            </div>
-            <div className="lg:col-span-2 space-y-4">
-              <div className="bg-gradient-to-r from-red-600 via-orange-500 to-amber-400 p-6 rounded-3xl shadow-xl"><p className="text-[10px] uppercase tracking-widest font-black text-white/80">Customer Preview</p><h3 className="text-2xl font-black text-white mt-1">🔥 Offers of the Day</h3><p className="text-xs text-white/80 mt-1">Only active offers with today's date are advertised on the QR menu.</p></div>
-              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden"><div className="p-5 border-b border-neutral-800 flex items-center justify-between"><div><h3 className="font-black text-white">Your Offers</h3><p className="text-[10px] text-neutral-500 mt-1">Manage everything shown in the QR menu advertising area.</p></div><span className="text-xs font-black text-orange-400">{dailyOffers.length} total</span></div>
-                {dailyOffers.length === 0 ? <div className="p-12 text-center"><div className="text-5xl">🎁</div><p className="text-white font-bold mt-3">No offers yet</p><p className="text-xs text-neutral-500 mt-1">Create an offer from the form to advertise it to QR customers.</p></div> : <div className="p-4 space-y-3">{dailyOffers.map((offer) => <div key={offer.id} className="bg-neutral-950 border border-neutral-800 rounded-2xl p-3 flex gap-3 items-center"><div className="w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 shrink-0">{offer.image_url ? <img src={offer.image_url} alt={offer.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl">🎁</div>}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2 flex-wrap"><h4 className="font-black text-white text-sm">{offer.title}</h4><span className={`text-[9px] font-black px-2 py-1 rounded-full ${offer.is_active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-neutral-800 text-neutral-500'}`}>{offer.is_active ? 'ACTIVE' : 'HIDDEN'}</span></div><p className="text-[10px] text-neutral-500 mt-1">{offer.offer_date}{offer.discount_text ? ` • ${offer.discount_text}` : ''}</p><div className="flex items-center gap-2 mt-1">{offer.original_price != null && <span className="text-[10px] text-neutral-600 line-through">₹{Number(offer.original_price).toFixed(2)}</span>}<span className="text-sm font-black text-orange-400">₹{Number(offer.offer_price).toFixed(2)}</span></div></div><div className="flex flex-col gap-2"><button type="button" onClick={() => startEditingOffer(offer)} className="bg-blue-500/10 text-blue-400 px-3 py-2 rounded-lg text-[10px] font-bold">Edit</button><button type="button" onClick={() => toggleOffer(offer)} className="bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-[10px] font-bold">{offer.is_active ? 'Hide' : 'Show'}</button><button type="button" onClick={() => deleteOffer(offer)} className="bg-red-500/10 text-red-400 px-3 py-2 rounded-lg text-[10px] font-bold">Delete</button></div></div>)}</div>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB: ALARM SETTINGS */}
-        {activeTab === 'alarm-settings' && hasRealtimeOrderAlarm && (
-          <form
-            onSubmit={handleSaveAlarmSettings}
-            className="grid grid-cols-1 lg:grid-cols-2 gap-6"
-          >
-            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl space-y-5">
-              <div>
-                <span className="text-[10px] font-extrabold text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Kitchen</span>
-                <h2 className="text-xl font-black text-white mt-3">Kitchen Alarm Sound</h2>
-                <p className="text-xs text-neutral-400 mt-1">Used by the Kitchen/KDS page when a new order arrives.</p>
-              </div>
-
-              <label className="flex items-center justify-between gap-4 bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
-                <span>
-                  <span className="block text-sm font-bold text-white">Enable Kitchen Alarm</span>
-                  <span className="block text-[11px] text-neutral-500 mt-1">Allow sound notifications in the kitchen.</span>
-                </span>
-                <input type="checkbox" checked={kitchenAlarmEnabled} onChange={(e) => { alarmSettingsDirtyRef.current = true; setKitchenAlarmEnabled(e.target.checked) }} className="h-5 w-5 accent-orange-500" />
-              </label>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-neutral-300">Select Kitchen Sound</label>
-                <select value={kitchenAlarmSound} onChange={(e) => { alarmSettingsDirtyRef.current = true; setKitchenAlarmSound(e.target.value) }} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-orange-500">
-                  {kitchenAlarmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold text-neutral-300"><span>Kitchen Volume</span><span>{Math.round(kitchenAlarmVolume * 100)}%</span></div>
-                <input type="range" min="0" max="1" step="0.05" value={kitchenAlarmVolume} onChange={(e) => { alarmSettingsDirtyRef.current = true; setKitchenAlarmVolume(Number(e.target.value)) }} className="w-full accent-orange-500" />
-              </div>
-
-              <button type="button" onClick={() => handlePreviewAlarm(getAlarmSource(kitchenAlarmOptions, kitchenAlarmSound), kitchenAlarmVolume)} className="w-full bg-neutral-950 border border-neutral-700 hover:border-orange-500 text-white font-bold py-3 rounded-xl text-xs">▶ Preview Kitchen Sound</button>
-            </div>
-
-            <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-3xl shadow-xl space-y-5">
-              <div>
-                <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Waiter</span>
-                <h2 className="text-xl font-black text-white mt-3">Waiter Alarm Sound</h2>
-                <p className="text-xs text-neutral-400 mt-1">Used by the Waiter page when an order becomes ready.</p>
-              </div>
-
-              <label className="flex items-center justify-between gap-4 bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
-                <span>
-                  <span className="block text-sm font-bold text-white">Enable Waiter Alarm</span>
-                  <span className="block text-[11px] text-neutral-500 mt-1">Allow sound notifications for ready orders.</span>
-                </span>
-                <input type="checkbox" checked={waiterAlarmEnabled} onChange={(e) => { alarmSettingsDirtyRef.current = true; setWaiterAlarmEnabled(e.target.checked) }} className="h-5 w-5 accent-orange-500" />
-              </label>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-neutral-300">Select Waiter Sound</label>
-                <select value={waiterAlarmSound} onChange={(e) => { alarmSettingsDirtyRef.current = true; setWaiterAlarmSound(e.target.value) }} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-orange-500">
-                  {waiterAlarmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold text-neutral-300"><span>Waiter Volume</span><span>{Math.round(waiterAlarmVolume * 100)}%</span></div>
-                <input type="range" min="0" max="1" step="0.05" value={waiterAlarmVolume} onChange={(e) => { alarmSettingsDirtyRef.current = true; setWaiterAlarmVolume(Number(e.target.value)) }} className="w-full accent-orange-500" />
-              </div>
-
-              <button type="button" onClick={() => handlePreviewAlarm(getAlarmSource(waiterAlarmOptions, waiterAlarmSound), waiterAlarmVolume)} className="w-full bg-neutral-950 border border-neutral-700 hover:border-orange-500 text-white font-bold py-3 rounded-xl text-xs">▶ Preview Waiter Sound</button>
-            </div>
-
-            <div className="lg:col-span-2 flex justify-end">
-              <button type="submit" disabled={savingAlarmSettings} className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-black px-8 py-3 rounded-xl text-xs uppercase tracking-wider">{savingAlarmSettings ? 'Saving...' : 'Save Alarm Settings 🔔'}</button>
-            </div>
-          </form>
-        )}
-
-        {/* TAB 6: PAYMENT GATEWAYS */}
-        {activeTab ===
-          'gateway' && (
-          <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-xl mx-auto space-y-6 shadow-xl">
-
-            <div className="space-y-2 text-center">
-              <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
-                Gateway Configurations
-              </span>
-
-              <h2 className="text-xl font-black text-white">
-                Manage Your Payment Gateways
-              </h2>
-
-              <p className="text-xs text-neutral-400">
-                Configure your individual Razorpay credentials securely.
-              </p>
-            </div>
-
-            {!isGatewayEditable ? (
-              <div className="space-y-4 bg-neutral-950 p-6 rounded-2xl border border-neutral-800 text-center">
-
-                <div
-                  className={`flex items-center justify-center space-x-2 font-bold text-xs py-2 rounded-xl border ${
-                    razorpayKeyId.trim() && razorpayHasSecret
-                      ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                      : 'text-red-400 bg-red-500/10 border-red-500/20'
-                  }`}
-                >
-                  <span>
-                    {razorpayKeyId.trim() && razorpayHasSecret
-                      ? '🟢 Razorpay Connected'
-                      : '🔴 Razorpay Not Connected'}
-                  </span>
-                </div>
-
-                <div className="space-y-3 text-left">
-
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-neutral-500 block">
-                      Razorpay Key ID
-                    </label>
-
-                    <p className="font-mono text-xs text-white bg-neutral-900 p-2.5 rounded-xl border border-neutral-800">
-                      {razorpayKeyId
-                        ? razorpayKeyId
-                        : 'Not Configured'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-neutral-500 block">
-                      Razorpay Key Secret
-                    </label>
-
-                    <p className="font-mono text-xs text-white bg-neutral-900 p-2.5 rounded-xl border border-neutral-800">
-                      {razorpayHasSecret
-                        ? '••••••••••••••••••••••••'
-                        : 'Not Configured'}
-                    </p>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs bg-neutral-900 p-3 rounded-xl border border-neutral-800">
-                    <span className="text-neutral-400 font-bold">
-                      Pay at Counter (Cash):
-                    </span>
-
-                    <span
-                      className={`font-bold uppercase ${
-                        enableCounterPayment
-                          ? 'text-emerald-400'
-                          : 'text-red-400'
-                      }`}
-                    >
-                      {enableCounterPayment
-                        ? 'Enabled ✅'
-                        : 'Disabled ❌'}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleRequestGatewayEdit}
-                  className="w-full bg-neutral-800 hover:bg-neutral-700 text-orange-400 font-black py-3 rounded-xl text-xs uppercase tracking-wider transition border border-neutral-700 mt-2"
-                >
-                  🔐 Edit Gateway Credentials
-                </button>
-              </div>
-            ) : (
-              <form
-                onSubmit={
-                  handleSavePaymentSettings
-                }
-                className="space-y-4"
-              >
-
-                <div>
-                  <label className="text-xs font-bold text-neutral-300 block mb-1">
-                    Razorpay Key ID
-                  </label>
-
-                  <input
-                    type="text"
-                    placeholder="rzp_live_xxxxxxxxxx"
-                    value={
-                      razorpayKeyId
-                    }
-                    onChange={(e) =>
-                      setRazorpayKeyId(
-                        e.target.value
-                      )
-                    }
-                    className="w-full bg-neutral-950 text-white font-mono text-xs border border-neutral-800 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-neutral-300 block mb-1">
-                    Razorpay Key Secret
-                  </label>
-
-                  <input
-                    type="password"
-                    placeholder={
-                      razorpayHasSecret
-                        ? 'Leave blank to keep existing secret'
-                        : 'enter_secret_key'
-                    }
-                    value={
-                      razorpaySecret
-                    }
-                    onChange={(e) =>
-                      setRazorpaySecret(
-                        e.target.value
-                      )
-                    }
-                    className="w-full bg-neutral-950 text-white font-mono text-xs border border-neutral-800 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between bg-neutral-950 p-4 rounded-2xl border border-neutral-800">
-                  <div>
-                    <p className="text-xs font-bold text-white">
-                      Enable "Pay at Counter"
-                    </p>
-
-                    <p className="text-[10px] text-neutral-400">
-                      Allow customers to choose cash or offline payments.
-                    </p>
-                  </div>
-
-                  <input
-                    type="checkbox"
-                    checked={
-                      enableCounterPayment
-                    }
-                    onChange={(e) =>
-                      setEnableCounterPayment(
-                        e.target.checked
-                      )
-                    }
-                    className="w-5 h-5 accent-orange-500 rounded cursor-pointer"
-                  />
-                </div>
-
-                <div className="flex space-x-2">
-
-                  <button
-                    type="submit"
-                    disabled={
-                      savingPayment
-                    }
-                    className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3.5 rounded-xl text-xs transition shadow-lg shadow-orange-500/25 hover:opacity-95"
-                  >
-                    {savingPayment
-                      ? 'Saving...'
-                      : 'Save & Lock Gateway 💾'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setIsGatewayEditable(
-                        false
-                      )
-                    }
-                    className="bg-neutral-800 hover:bg-neutral-700 text-neutral-400 px-4 py-3.5 rounded-xl text-xs font-bold transition"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        )}
-
-        {showGatewayPasswordModal && (
-          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl">
-              <div className="text-center space-y-2 mb-6">
-                <div className="text-4xl">🔐</div>
-                <h3 className="text-lg font-black text-white">Verify Your Password</h3>
-                <p className="text-xs text-neutral-400 leading-relaxed">
-                  Enter the same password you use to sign in to your restaurant dashboard before editing Razorpay credentials.
-                </p>
-              </div>
-
-              <form onSubmit={handleVerifyGatewayEditPassword} className="space-y-4">
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-neutral-400 block mb-2">
-                    Login Password
-                  </label>
-                  <input
-                    type="password"
-                    autoFocus
-                    autoComplete="current-password"
-                    value={gatewayPassword}
-                    onChange={(e) => setGatewayPassword(e.target.value)}
-                    placeholder="Enter your login password"
-                    disabled={verifyingGatewayPassword}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={verifyingGatewayPassword}
-                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-black py-3 rounded-xl text-xs uppercase tracking-wider transition disabled:opacity-50"
-                  >
-                    {verifyingGatewayPassword ? 'Verifying...' : 'Verify & Continue 🔓'}
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={verifyingGatewayPassword}
-                    onClick={() => {
-                      setGatewayPassword('')
-                      setShowGatewayPasswordModal(false)
-                    }}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-4 py-3 rounded-xl text-xs font-bold transition disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 7: ANALYTICS & REPORTS */}
-        {activeTab === 'settlements' && (
-          hasAdvancedAnalytics ? (
-          <div className="space-y-6">
-            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-              <div>
-                <span className="text-[10px] font-extrabold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
-                  Restaurant Analytics
-                </span>
-                <h2 className="text-2xl font-black text-white mt-3">
-                  Sales & Order Reports
-                </h2>
-                <p className="text-xs text-neutral-400 mt-2">
-                  Review order volume, revenue, average order value, and the time of day when orders sell most.
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={handleGenerateAnalyticsReport}
-                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 rounded-xl text-xs font-black transition"
-                >
-                  Generate CSV Report 📥
-                </button>
-                <button
-                  onClick={() => window.print()}
-                  className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-3 rounded-xl text-xs font-black transition"
-                >
-                  Print Report 🖨️
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
-              {REPORT_TIMEFRAMES.map(({ label, value: frame }) => {
-                const range = getReportRange(frame)
-                const periodOrders = orders.filter((order) => {
-                  if (!order?.created_at || order.status === 'cancelled') return false
-                  const createdAt = new Date(order.created_at)
-                  return createdAt >= range.start && createdAt <= range.end
-                })
-                const periodRevenue = periodOrders.reduce(
-                  (sum, order) => sum + Number(order.total_amount || 0),
-                  0
-                )
-
-                return (
-                  <button
-                    key={frame}
-                    onClick={() => handleReportTimeframeChange(frame)}
-                    className={`text-left p-4 rounded-2xl border transition ${
-                      reportTimeframe === frame
-                        ? 'bg-orange-500/15 border-orange-500/60'
-                        : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
-                    }`}
-                  >
-                    <p className="text-[10px] uppercase tracking-wider text-neutral-400 font-black">
-                      {label}
-                    </p>
-                    <p className="text-2xl font-black text-white mt-2">
-                      {periodOrders.length}
-                    </p>
-                    <p className="text-xs text-emerald-400 font-bold mt-1">
-                      {formatCurrency(periodRevenue)} sales
-                    </p>
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
-                <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">
-                  Selected Period Orders
-                </p>
-                <p className="text-3xl font-black text-white mt-2">
-                  {reportOrderCount}
-                </p>
-              </div>
-              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
-                <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">
-                  Selected Period Sales
-                </p>
-                <p className="text-3xl font-black text-emerald-400 mt-2">
-                  {formatCurrency(reportRevenue)}
-                </p>
-              </div>
-              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
-                <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">
-                  Average Order Value
-                </p>
-                <p className="text-3xl font-black text-orange-400 mt-2">
-                  {formatCurrency(reportAverageOrderValue)}
-                </p>
-              </div>
-            </div>
-
-            <SalesRevenueGraph
-              data={salesGraphData}
-              formatCurrency={formatCurrency}
-              periodLabel={getReportPeriodLabel(reportTimeframe)}
-            />
-
-            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                  <h3 className="text-lg font-black text-white">
-                    What time do customers order most?
-                  </h3>
-                  <p className="text-xs text-neutral-500 mt-1">
-                    Hourly order generation for the selected {reportTimeframe} period.
-                  </p>
-                </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-[10px] uppercase text-neutral-500 font-black">Peak Hour</p>
-                  <p className="text-lg font-black text-amber-400">
-                    {peakHour.orders > 0 ? formatHour(peakHour.hour) : 'No orders'}
-                  </p>
-                  <p className="text-[10px] text-neutral-500">
-                    {peakHour.orders} order{peakHour.orders === 1 ? '' : 's'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {hourlyReport.map((item) => {
-                  const maxOrders = Math.max(...hourlyReport.map((hour) => hour.orders), 1)
-                  const width = `${Math.max((item.orders / maxOrders) * 100, item.orders ? 5 : 0)}%`
-
-                  return (
-                    <div key={item.hour} className="grid grid-cols-[72px_1fr_80px] items-center gap-3 text-xs">
-                      <span className="text-neutral-400 font-mono">{formatHour(item.hour)}</span>
-                      <div className="h-5 bg-neutral-950 rounded-lg overflow-hidden border border-neutral-800">
-                        <div
-                          className="h-full bg-orange-500 rounded-lg transition-all"
-                          style={{ width }}
-                        />
-                      </div>
-                      <span className="text-right text-neutral-300 font-bold">
-                        {item.orders} · {formatCurrency(item.revenue)}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6">
-              <h3 className="text-lg font-black text-white">Report Summary</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
-                <div>
-                  <p className="text-[10px] uppercase text-neutral-500 font-black">Period</p>
-                  <p className="text-sm font-bold text-white mt-1">{getReportPeriodLabel(reportTimeframe)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase text-neutral-500 font-black">Orders Generated</p>
-                  <p className="text-sm font-bold text-white mt-1">{reportOrderCount}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase text-neutral-500 font-black">Sales Generated</p>
-                  <p className="text-sm font-bold text-emerald-400 mt-1">{formatCurrency(reportRevenue)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase text-neutral-500 font-black">Report Status</p>
-                  <p className="text-sm font-bold text-emerald-400 mt-1">Ready to export</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6">
-                <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
-                  Basic Analytics
-                </span>
-                <h2 className="text-2xl font-black text-white mt-3">Restaurant Overview</h2>
-                <p className="text-xs text-neutral-400 mt-2">
-                  Basic analytics are included with {currentPlanDisplay}.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5">
-                    <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Orders Today</p>
-                    <p className="text-3xl font-black text-white mt-2">{todaysOrders.length}</p>
-                  </div>
-                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5">
-                    <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Revenue Today</p>
-                    <p className="text-3xl font-black text-emerald-400 mt-2">₹{totalRevenue}</p>
-                  </div>
-                  <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5">
-                    <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Live Kitchen Queue</p>
-                    <p className="text-3xl font-black text-orange-400 mt-2">{activeOrders.length}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6">
-                <h3 className="text-lg font-black text-white">Advanced Analytics & Reports</h3>
-                <p className="text-xs text-neutral-300 mt-2">
-                  CSV reports, period reports, average order value, peak-hour analysis and advanced reporting are available with Restaurant Pro or Restaurant + Resort Pro.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => handleUpgradePlan(planFeatures.resort ? 'restaurant_resort_pro' : 'restaurant_pro')}
-                  className="mt-4 bg-orange-500 hover:bg-orange-600 text-white px-5 py-3 rounded-xl text-xs font-black transition"
-                >
-                  Upgrade for Advanced Analytics 🚀
-                </button>
-              </div>
-            </div>
           )
-        )}
 
-          </div>
-        )}
+        }
+
+
+
+        const {
+
+          error: sessionError,
+
+        } =
+
+          await supabase.auth
+
+            .setSession({
+
+              access_token:
+
+                result.session
+
+                  .access_token,
+
+              refresh_token:
+
+                result.session
+
+                  .refresh_token,
+
+            })
+
+
+
+        if (sessionError) {
+
+          throw sessionError
+
+        }
+
+
+
+        browserSessionCreated = true
+
+
+
+        try {
+
+          sessionStorage.setItem(
+
+            OWNER_APP_CONTEXT_KEY,
+
+            JSON.stringify({
+
+              restaurantId,
+
+              restaurantCode,
+
+            })
+
+          )
+
+        } catch {}
+
+
+
+        router.replace(
+
+          `/app/owner/${encodeURIComponent(
+
+            restaurantId
+
+          )}`
+
+        )
+
+        router.refresh()
+
+        return
+
+      }
+
+
+
+      /*
+
+       * REGISTERED PASSKEY:
+
+       * This account enrolled biometric/passkey in Supabase Auth,
+
+       * so now — and only now — ask for biometric verification.
+
+       */
+
+      setBiometricAccountDetected(true)
+
+
+
+      if (!isPasskeySupported()) {
+
+        throw new Error(
+
+          'This Owner account has biometric/passkey login enabled, but this device/browser cannot use passkeys on the current page.'
+
+        )
+
+      }
+
+
+
+      if (
+
+        typeof supabase?.auth
+
+          ?.signInWithPasskey !==
+
+        'function'
+
+      ) {
+
+        throw new Error(
+
+          'This Owner account has biometric/passkey login enabled, but the installed Supabase client does not support passkey sign-in. Upgrade @supabase/supabase-js to v2.105.0 or newer.'
+
+        )
+
+      }
+
+
+
+      setLoading(false)
+
+      setBiometricLoading(true)
+
+
+
+      const {
+
+        data: passkeyAuthData,
+
+        error: passkeyError,
+
+      } =
+
+        await supabase.auth
+
+          .signInWithPasskey()
+
+
+
+      if (
+
+        passkeyError ||
+
+        !passkeyAuthData?.user
+
+      ) {
+
+        throw new Error(
+
+          getPasskeyErrorMessage(
+
+            passkeyError
+
+          )
+
+        )
+
+      }
+
+
+
+      const biometricUserId =
+
+        String(
+
+          passkeyAuthData.user.id || ''
+
+        )
+
+
+
+      const restaurantOwnerId =
+
+        String(
+
+          loggedRestaurant.owner_id ||
+
+            ''
+
+        )
+
+
+
+      if (
+
+        !restaurantOwnerId ||
+
+        biometricUserId !==
+
+          restaurantOwnerId
+
+      ) {
+
+        await supabase.auth.signOut()
+
+
+
+        throw new Error(
+
+          'The biometric/passkey account does not match the Owner of the selected restaurant.'
+
+        )
+
+      }
+
+
+
+      const {
+
+        data:
+
+          biometricRestaurant,
+
+        error:
+
+          biometricOwnershipError,
+
+      } = await supabase
+
+        .from('restaurants')
+
+        .select(
+
+          'id, owner_id, restaurant_code'
+
+        )
+
+        .eq(
+
+          'id',
+
+          restaurantId
+
+        )
+
+        .eq(
+
+          'owner_id',
+
+          biometricUserId
+
+        )
+
+        .maybeSingle()
+
+
+
+      if (
+
+        biometricOwnershipError ||
+
+        !biometricRestaurant?.id
+
+      ) {
+
+        await supabase.auth.signOut()
+
+
+
+        throw new Error(
+
+          'Biometric verification succeeded, but this Owner does not match the selected restaurant.'
+
+        )
+
+      }
+
+
+
+      try {
+
+        sessionStorage.setItem(
+
+          OWNER_APP_CONTEXT_KEY,
+
+          JSON.stringify({
+
+            restaurantId,
+
+            restaurantCode:
+
+              restaurantCode ||
+
+              biometricRestaurant
+
+                .restaurant_code ||
+
+              '',
+
+          })
+
+        )
+
+      } catch {}
+
+
+
+      router.replace(
+
+        `/app/owner/${encodeURIComponent(
+
+          restaurantId
+
+        )}`
+
+      )
+
+      router.refresh()
+
+    } catch (loginError) {
+
+      console.error(
+
+        '[OWNER APP LOGIN] Login error:',
+
+        loginError
+
+      )
+
+
+
+      if (browserSessionCreated) {
+
+        try {
+
+          await supabase.auth.signOut()
+
+        } catch {}
+
+      }
+
+
+
+      setError(
+
+        loginError?.message ||
+
+          'Owner login failed.'
+
+      )
+
+    } finally {
+
+      setBiometricLoading(false)
+
+      setLoading(false)
+
+    }
+
+  }
+
+
+
+  const isBusy =
+
+    loading ||
+
+    googleLoading ||
+
+    biometricLoading ||
+
+    checkingSession
+
+
+
+  const backToRestaurantRoles = () => {
+
+    try {
+
+      sessionStorage.removeItem(
+
+        OWNER_GOOGLE_CONTEXT_KEY
+
+      )
+
+      localStorage.removeItem(
+
+        OWNER_GOOGLE_CONTEXT_KEY
+
+      )
+
+    } catch {}
+
+
+
+    const destination = restaurantCode
+      ? `/app?code=${encodeURIComponent(restaurantCode)}`
+      : '/app'
+
+    if (typeof window !== 'undefined') {
+      window.location.assign(destination)
+      return
+    }
+
+    router.replace(destination)
+
+  }
+
+
+
+  if (!contextReady || checkingSession) {
+
+    return (
+
+      <main className="flex min-h-[100dvh] w-full max-w-full items-center justify-center overflow-x-hidden bg-neutral-950 px-4 text-white sm:px-5">
+
+        <div className="text-center">
+
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-neutral-800 border-t-orange-500" />
+
+          <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
+
+            Opening Owner Login
+
+          </p>
+
+        </div>
+
       </main>
 
-      {/* Printable Bill */}
-      {selectedBillOrder && (
-        <div className="print-bill fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
-          <div className="print-bill-sheet bg-white text-black w-full max-w-md rounded-xl shadow-2xl overflow-hidden">
-            <div className="p-6">
-              <div className="text-center border-b border-neutral-300 pb-4">
-                {restaurantLogo && (
-                  <img
-                    src={restaurantLogo}
-                    alt={`${restaurant.name} logo`}
-                    className="h-16 max-w-48 object-contain mx-auto mb-2 opacity-100"
-                  />
-                )}
-                <h2 className="text-2xl font-black uppercase tracking-wide">
-                  {billingRestaurantName || restaurant.name}
-                </h2>
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  DIGITAL DINING
-                </p>
-              </div>
+    )
 
-              <div className="grid grid-cols-2 gap-2 text-[11px] mt-4 pb-4 border-b border-neutral-300">
-                <div>
-                  <strong>Bill No:</strong> {getBillNumber(selectedBillOrder)}
-                </div>
-                <div className="text-right">
-                  <strong>Order No:</strong>{' '}
-                  {String(selectedBillOrder.id).slice(-8).toUpperCase()}
-                </div>
-                <div>
-                  <strong>Date:</strong>{' '}
-                  {formatBillDate(selectedBillOrder.created_at)}
-                </div>
-                <div className="text-right">
-                  <strong>Time:</strong>{' '}
-                  {formatBillTime(selectedBillOrder.created_at)}
-                </div>
-                <div>
-                  <strong>Table:</strong>{' '}
-                  {selectedBillOrder.table_number || '1'}
-                </div>
-                <div className="text-right">
-                  <strong>Payment:</strong>{' '}
-                  {selectedBillOrder.payment_mode || 'Online'}
-                </div>
-                {selectedBillOrder.waiter_name && (
-                  <div className="col-span-2">
-                    <strong>Waiter:</strong>{' '}
-                    {selectedBillOrder.waiter_name}
-                  </div>
-                )}
-              </div>
+  }
 
-              <table className="w-full text-[11px] mt-4">
-                <thead>
-                  <tr className="border-b border-neutral-300">
-                    <th className="text-left py-2">Item</th>
-                    <th className="text-center py-2">Qty</th>
-                    <th className="text-right py-2">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.isArray(selectedBillOrder.items) &&
-                    selectedBillOrder.items.map((item, index) => {
-                      const quantity = getOrderItemQuantity(item)
-                      const amount =
-                        Number(item?.price || 0) * quantity
 
-                      return (
-                        <tr key={index} className="border-b border-neutral-200">
-                          <td className="py-2 pr-2">
-                            {item?.name || 'Item'}
-                          </td>
-                          <td className="py-2 text-center">
-                            {quantity}
-                          </td>
-                          <td className="py-2 text-right">
-                            ₹{amount.toFixed(2)}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                </tbody>
-              </table>
 
-              <div className="mt-4 space-y-1 text-[11px]">
-                <div className="flex justify-between">
-                  <span>Items Subtotal</span>
-                  <span>
-                    ₹{getOrderSubtotal(selectedBillOrder).toFixed(2)}
-                  </span>
-                </div>
+  return (
 
-                <div className="flex justify-between font-black text-base border-t border-neutral-300 pt-2 mt-2">
-                  <span>Grand Total</span>
-                  <span>
-                    ₹{Number(selectedBillOrder.total_amount || 0).toFixed(2)}
-                  </span>
-                </div>
+    <main className="min-h-[100dvh] w-full overflow-x-hidden bg-neutral-950 text-white">
 
-                <p className="text-[9px] text-neutral-500 mt-1">
-                  Grand total uses the final amount stored on the order, including applicable taxes and packing charges.
-                </p>
-              </div>
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
 
-              <div className="mt-8 text-center">
-                {managerSignature ? (
-                  <img
-                    src={managerSignature}
-                    alt="Manager signature"
-                    className="max-h-16 max-w-40 object-contain mx-auto mb-1"
-                  />
-                ) : (
-                  <div className="h-12"></div>
-                )}
+        <header className="flex items-center justify-between gap-3 py-2">
 
-                <div className="border-t border-neutral-400 w-40 mx-auto pt-1 text-[10px] font-bold">
-                  Manager Signature
-                </div>
-              </div>
+          <button
 
-              <div className="text-center mt-6 text-[10px] text-neutral-500">
-                Thank you! Visit again.
-              </div>
-            </div>
+            type="button"
 
-            <div className="no-print bg-neutral-100 p-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-lg text-xs"
-              >
-                🖨️ Print Bill
-              </button>
+            onClick={backToRestaurantRoles}
 
-              <button
-                type="button"
-                onClick={() => setSelectedBillOrder(null)}
-                className="bg-neutral-800 hover:bg-neutral-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs"
-              >
-                Close
-              </button>
-            </div>
+            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900 text-neutral-300"
+
+            aria-label="Back to restaurant roles"
+
+          >
+
+            ←
+
+          </button>
+
+
+
+          <div className="text-right">
+
+            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-400">
+
+              Digital Dine
+
+            </p>
+
+            {restaurantCode && (
+
+              <p className="mt-1 text-[9px] font-bold text-neutral-600">
+
+                Restaurant Code {restaurantCode}
+
+              </p>
+
+            )}
+
           </div>
-        </div>
-      )}
+
+        </header>
 
 
-      {/* OWNER MOBILE APP NAVIGATION */}
-      {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
-        <>
-          <nav className="dd-owner-mobile-bottom-nav">
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('owner-home')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
-                activeTab === 'owner-home'
-                  ? 'dd-bk-nav-active'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <AppIcon name="home" className="h-5 w-5" />
-              <span className="mt-1">Home</span>
-            </button>
 
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('menu')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
-                activeTab === 'menu'
-                  ? 'dd-bk-nav-active'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <AppIcon name="menu" className="h-5 w-5" />
-              <span className="mt-1">Menu</span>
-            </button>
+        <div className="flex flex-1 items-center py-6">
 
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('tables')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
-                activeTab === 'tables'
-                  ? 'dd-bk-nav-active'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <AppIcon name="tables" className="h-5 w-5" />
-              <span className="mt-1">Tables</span>
-            </button>
+          <section className="w-full overflow-hidden rounded-[32px] border border-neutral-800 bg-neutral-900 shadow-2xl">
 
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('billing')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
-                activeTab === 'billing'
-                  ? 'dd-bk-nav-active'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <AppIcon name="billing" className="h-5 w-5" />
-              <span className="mt-1">Billing</span>
-            </button>
+            <div className="border-b border-neutral-800 bg-gradient-to-br from-orange-500/15 via-neutral-900 to-neutral-900 p-6">
 
-            <button
-              type="button"
-              onClick={() => setMobileOwnerMenuOpen(true)}
-              className="flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium text-neutral-500"
-            >
-              <AppIcon name="more" className="h-5 w-5" />
-              <span className="mt-1">More</span>
-            </button>
-          </nav>
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500 text-2xl shadow-lg shadow-orange-500/20">
 
-          {mobileOwnerMenuOpen && (
-            <div
-              className="fixed inset-0 z-[95] flex items-end bg-black/55 backdrop-blur-sm"
-              onClick={() => setMobileOwnerMenuOpen(false)}
-            >
-              <div
-                className="dd-bk-more-sheet max-h-[84dvh] overflow-y-auto border p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200" />
+                👑
 
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#0c831f]">
-                      Owner menu
-                    </p>
-
-                    <h3 className="mt-1 text-[20px] font-black tracking-tight text-neutral-900">
-                      More
-                    </h3>
-
-                    <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                      Reports, staff, payments, modules and app settings.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setMobileOwnerMenuOpen(false)}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900"
-                  >
-                    <AppIcon name="close" className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="mt-5">
-                  <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
-                    Operations
-                  </p>
-
-                  <div className="dd-keep-two grid grid-cols-2 gap-2">
-                    {[
-                      ['settlements', 'chart', 'Reports', 'Sales & analytics'],
-                      ['staff-access', 'qr', 'Staff Login QR', 'Manager / waiter / kitchen'],
-                      ['taxes', 'card', 'Taxes', 'GST & packing'],
-                      ['billing', 'billing', 'Billing', 'Bills & signatures'],
-                    ].map(([tabId, icon, label, sub]) => (
-                      <button
-                        key={tabId}
-                        type="button"
-                        onClick={() => openOwnerMobileTab(tabId)}
-                        className="dd-bk-sheet-action"
-                      >
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"><AppIcon name={icon} className="h-5 w-5" /></div>
-                        <div className="mt-2 text-[10px] font-black text-neutral-900">
-                          {label}
-                        </div>
-                        <div className="mt-1 text-[8px] font-semibold text-neutral-500">
-                          {sub}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-5">
-                  <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
-                    Growth & team
-                  </p>
-
-                  <div className="dd-keep-two grid grid-cols-2 gap-2">
-                    {[
-                      ['offers', 'tag', 'Offers', `${activeOfferCount} active`],
-                      ['gateway', 'card', 'Payments', 'Gateway settings'],
-                      ...(planFeatures.advanced
-                        ? [
-                            ['staff', 'users', 'Managers', `${staffList.length} accounts`],
-                            ['swiggy-sync', 'sync', 'Menu Sync', 'Import menu data'],
-                          ]
-                        : []),
-                    ].map(([tabId, icon, label, sub]) => (
-                      <button
-                        key={tabId}
-                        type="button"
-                        onClick={() => openOwnerMobileTab(tabId)}
-                        className="dd-bk-sheet-action"
-                      >
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"><AppIcon name={icon} className="h-5 w-5" /></div>
-                        <div className="mt-2 text-[10px] font-black text-neutral-900">
-                          {label}
-                        </div>
-                        <div className="mt-1 text-[8px] font-semibold text-neutral-500">
-                          {sub}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-5">
-                  <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
-                    Personalization
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileOwnerMenuOpen(false)
-                      setExperienceOpen(true)
-                    }}
-                    className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-                        <AppIcon name="settings" className="h-5 w-5" />
-                      </span>
-                      <div>
-                        <p className="text-[11px] font-black text-neutral-900">
-                          App Settings
-                        </p>
-                        <p className="mt-1 text-[8px] font-semibold text-neutral-500">
-                          Appearance, text and notifications
-                        </p>
-                      </div>
-                    </div>
-                    <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                  </button>
-                </div>
-
-                {planFeatures.advanced && (
-                  <div className="mt-5">
-                    <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
-                      Experience
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={() => openOwnerMobileTab('alarm-settings')}
-                      className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-                          <AppIcon name="bell" className="h-5 w-5" />
-                        </span>
-
-                        <div>
-                          <p className="text-[11px] font-black text-neutral-900">
-                            Alarm Settings
-                          </p>
-                          <p className="mt-1 text-[8px] font-semibold text-neutral-500">
-                            Kitchen & waiter sounds
-                          </p>
-                        </div>
-                      </div>
-
-                      <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                    </button>
-                  </div>
-                )}
-
-                {resortModuleEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardMode('resort')
-                      setMobileOwnerMenuOpen(false)
-                    }}
-                    className="mt-5 flex w-full items-center justify-between rounded-[22px] bg-blue-600 p-4 text-left text-white shadow-lg shadow-blue-600/20"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
-                        <AppIcon name="hotel" className="h-5 w-5" />
-                      </span>
-
-                      <div>
-                        <p className="text-[11px] font-black">
-                          Resort Management
-                        </p>
-                        <p className="mt-1 text-[8px] font-semibold text-white/70">
-                          Open resort operations
-                        </p>
-                      </div>
-                    </div>
-
-                    <AppIcon name="chevron" className="h-4 w-4" />
-                  </button>
-                )}
-
-                {deliveryModuleEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardMode('delivery')
-                      setMobileOwnerMenuOpen(false)
-                    }}
-                    className="mt-3 flex w-full items-center justify-between rounded-[22px] bg-emerald-600 p-4 text-left text-white shadow-lg shadow-emerald-600/20"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-base">
-                        🚚
-                      </span>
-
-                      <div>
-                        <p className="text-[11px] font-black">
-                          Delivery Management
-                        </p>
-                        <p className="mt-1 text-[8px] font-semibold text-white/70">
-                          Orders, menu, drivers, offers & alerts
-                        </p>
-                      </div>
-                    </div>
-
-                    <AppIcon name="chevron" className="h-4 w-4" />
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="mt-5 w-full rounded-2xl border border-red-500/20 bg-red-500/10 py-3 text-[10px] font-black text-red-500"
-                >
-                  Log out of Owner App
-                </button>
               </div>
+
+
+
+              <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-orange-400">
+
+                Owner Mobile Access
+
+              </p>
+
+
+
+              <h1 className="mt-2 text-2xl font-black">
+
+                Owner Sign In
+
+              </h1>
+
+
+
+              <p className="mt-2 max-w-sm text-xs leading-6 text-neutral-400">
+
+                Sign in to open the mobile Owner dashboard for the restaurant you selected.
+
+              </p>
+
             </div>
-          )}
-        </>
-      )}
 
-      <MobileExperienceSettings open={experienceOpen} onClose={() => setExperienceOpen(false)} portal="Owner" />
 
-      {tableQrOpen && (
-        <OwnerTableQrSheet
-          restaurant={restaurant}
-          restaurantId={restaurantId}
-          onClose={() => setTableQrOpen(false)}
-        />
-      )}
 
-      {/* Embedded Real-Time Restaurant Chat Widget */}
-      <RestaurantChatWidget
-        restaurantId={restaurantId}
-      />
-    </div>
+            <form
+
+              onSubmit={handleLogin}
+
+              className="space-y-4 p-5"
+
+            >
+
+              <div className="rounded-[22px] border border-neutral-800 bg-neutral-950 p-4">
+
+                <div className="flex items-start gap-3">
+
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-xl">
+
+                    🔐
+
+                  </div>
+
+
+
+                  <div>
+
+                    <p className="text-sm font-black text-white">
+
+                      Automatic biometric protection
+
+                    </p>
+
+
+
+                    <p className="mt-1 text-[10px] leading-5 text-neutral-500">
+
+                      Biometric is requested only when this Owner account actually has a passkey registered in Supabase Auth. Owners who did not complete biometric registration will use Email + Password + DOB normally.
+
+                    </p>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+
+
+              <button
+
+                type="button"
+
+                onClick={handleGoogleLogin}
+
+                disabled={
+
+                  googleLoading ||
+
+                  loading ||
+
+                  biometricLoading ||
+
+                  !restaurantId
+
+                }
+
+                className="flex w-full items-center justify-center gap-3 rounded-2xl border border-neutral-700 bg-white px-4 py-4 text-sm font-black text-neutral-900 shadow-lg shadow-black/10 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+
+              >
+
+                {googleLoading ? (
+
+                  <>
+
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900" />
+
+                    <span>Opening Google...</span>
+
+                  </>
+
+                ) : (
+
+                  <>
+
+                    <svg
+
+                      width="20"
+
+                      height="20"
+
+                      viewBox="0 0 24 24"
+
+                      aria-hidden="true"
+
+                    >
+
+                      <path
+
+                        fill="#4285F4"
+
+                        d="M21.6 12.23c0-.71-.06-1.4-.18-2.06H12v3.9h5.38a4.6 4.6 0 0 1-2 3.02v2.52h3.24c1.9-1.75 2.98-4.33 2.98-7.38Z"
+
+                      />
+
+                      <path
+
+                        fill="#34A853"
+
+                        d="M12 22c2.7 0 4.97-.9 6.62-2.39l-3.24-2.52c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.6A10 10 0 0 0 12 22Z"
+
+                      />
+
+                      <path
+
+                        fill="#FBBC05"
+
+                        d="M6.39 13.92A6.03 6.03 0 0 1 6.07 12c0-.67.12-1.32.32-1.92v-2.6H3.04A10 10 0 0 0 2 12c0 1.61.38 3.13 1.04 4.52l3.35-2.6Z"
+
+                      />
+
+                      <path
+
+                        fill="#EA4335"
+
+                        d="M12 5.95c1.47 0 2.78.5 3.82 1.49l2.86-2.86A9.6 9.6 0 0 0 12 2 10 10 0 0 0 3.04 7.48l3.35 2.6C7.18 7.71 9.39 5.95 12 5.95Z"
+
+                      />
+
+                    </svg>
+
+
+
+                    <span>Continue with Google</span>
+
+                  </>
+
+                )}
+
+              </button>
+
+
+
+              <p className="px-2 text-center text-[9px] font-semibold leading-4 text-neutral-500">
+
+                Use the Google account connected to this restaurant Owner account.
+
+              </p>
+
+
+
+              <div className="flex items-center gap-3 py-1">
+
+                <div className="h-px flex-1 bg-neutral-800" />
+
+                <span className="text-[8px] font-black uppercase tracking-[0.18em] text-neutral-600">
+
+                  or use password
+
+                </span>
+
+                <div className="h-px flex-1 bg-neutral-800" />
+
+              </div>
+
+
+
+              <div>
+
+                <label className="mb-2 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
+
+                  Owner Email
+
+                </label>
+
+
+
+                <input
+
+                  type="email"
+
+                  value={email}
+
+                  onChange={(event) => {
+
+                    setEmail(event.target.value)
+
+                    setError('')
+
+                  }}
+
+                  autoCapitalize="none"
+
+                  autoCorrect="off"
+
+                  autoComplete="email"
+
+                  placeholder="owner@restaurant.com"
+
+                  disabled={isBusy}
+
+                  className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 text-base text-white outline-none transition focus:border-orange-500 disabled:opacity-60"
+
+                />
+
+              </div>
+
+
+
+              <div>
+
+                <label className="mb-2 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
+
+                  Password
+
+                </label>
+
+
+
+                <input
+
+                  type="password"
+
+                  value={password}
+
+                  onChange={(event) => {
+
+                    setPassword(event.target.value)
+
+                    setError('')
+
+                  }}
+
+                  autoComplete="current-password"
+
+                  placeholder="Enter Owner password"
+
+                  disabled={isBusy}
+
+                  className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 text-base text-white outline-none transition focus:border-orange-500 disabled:opacity-60"
+
+                />
+
+              </div>
+
+
+
+              <div>
+
+                <label className="mb-2 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
+
+                  Date of Birth
+
+                </label>
+
+
+
+                <input
+
+                  type="date"
+
+                  value={dob}
+
+                  onChange={(event) => {
+
+                    setDob(event.target.value)
+
+                    setError('')
+
+                  }}
+
+                  disabled={isBusy}
+
+                  className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 text-base text-white outline-none transition focus:border-orange-500 disabled:opacity-60"
+
+                />
+
+              </div>
+
+
+
+              {biometricAccountDetected && biometricLoading && (
+
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
+
+                  <p className="text-[10px] font-black text-emerald-300">
+
+                    Registered biometric account detected 🔐
+
+                  </p>
+
+                  <p className="mt-1 text-[9px] leading-4 text-neutral-400">
+
+                    Complete the passkey / fingerprint / Face ID / device PIN prompt to continue.
+
+                  </p>
+
+                </div>
+
+              )}
+
+
+
+              {error && (
+
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-[10px] font-bold leading-5 text-red-300">
+
+                  {error}
+
+                </div>
+
+              )}
+
+
+
+              <button
+
+                type="submit"
+
+                disabled={isBusy || !restaurantId}
+
+                className="w-full rounded-2xl bg-orange-500 py-4 text-sm font-black text-white shadow-lg shadow-orange-500/20 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+
+              >
+
+                {biometricLoading
+
+                  ? 'Verify Biometric / Passkey...'
+
+                  : loading
+
+                    ? 'Checking Owner Account...'
+
+                    : 'Open Owner Mobile Dashboard'}
+
+              </button>
+
+
+
+              <button
+
+                type="button"
+
+                onClick={backToRestaurantRoles}
+
+                disabled={isBusy}
+
+                className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 py-3 text-[10px] font-black text-neutral-400"
+
+              >
+
+                ← Back to Owner / Manager / Waiter / Kitchen
+
+              </button>
+
+            </form>
+
+          </section>
+
+        </div>
+
+
+
+        <p className="px-4 text-center text-[9px] leading-5 text-neutral-600">
+
+          Google returns through the secure Google callback and then opens this selected mobile Owner restaurant.
+
+          Password login requests biometric automatically only when Supabase confirms that this Owner has a registered passkey.
+
+        </p>
+
+      </div>
+
+    </main>
+
+  )
+
+}
+
+function OwnerLoginFallback() {
+  return (
+    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 px-4 py-10 text-white">
+      <div className="mx-auto w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-center">
+        <p className="text-sm font-bold text-neutral-400">
+          Preparing Owner login...
+        </p>
+      </div>
+    </main>
   )
 }
+
+export default function OwnerMobileLoginPage() {
+  return (
+    <Suspense fallback={<OwnerLoginFallback />}>
+      <OwnerMobileLoginContent />
+    </Suspense>
+  )
+}
+
