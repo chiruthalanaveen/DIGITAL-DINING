@@ -388,6 +388,21 @@ export async function POST(request) {
       throw updateError
     }
 
+    try {
+      await admin.rpc(
+        'try_delivery_auto_assignment',
+        {
+          p_restaurant_id:
+            deliveryOrder.restaurant_id,
+        }
+      )
+    } catch (assignmentError) {
+      console.error(
+        'Delivery Razorpay auto assignment fallback error:',
+        assignmentError
+      )
+    }
+
     await sendDeliveryOrderPush({
       restaurantId:
         deliveryOrder.restaurant_id,

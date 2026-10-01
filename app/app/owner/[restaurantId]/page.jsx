@@ -1,9 +1,11 @@
 'use client'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
+import DeliveryManagement from '@/app/components/DeliveryManagement'
+import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 
 function AppIcon({ name, className = 'h-5 w-5', strokeWidth = 1.8 }) {
   const common = {
@@ -2194,6 +2196,7 @@ export default function RestaurantDashboard() {
   const params = useParams()
   const restaurantId = String(params.id || params.restaurantId || '').trim()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const ownerAppLoginUrl = restaurantId
     ? `/app/owner?restaurantId=${encodeURIComponent(
@@ -2281,6 +2284,7 @@ export default function RestaurantDashboard() {
   // Payment Gateway Configuration States & Edit Toggle
   const [razorpayKeyId, setRazorpayKeyId] = useState('')
   const [razorpaySecret, setRazorpaySecret] = useState('')
+  const [razorpayHasSecret, setRazorpayHasSecret] = useState(false)
   const [enableCounterPayment, setEnableCounterPayment] = useState(true)
   const [savingPayment, setSavingPayment] = useState(false)
   const [hasInitializedKeys, setHasInitializedKeys] = useState(false)
@@ -2360,76 +2364,173 @@ export default function RestaurantDashboard() {
     { value: 'waiter-9', label: 'Waiter Sound 9 — Quick Pulse', src: '/sounds/waiter-9.mp3' },
   ]
 
-  // Subscription-wise feature control.
-  // plan_code is the canonical plan value. Legacy `plan` is used only for old accounts.
-  const legacyPlan = String(restaurant?.plan || 'Standard')
+  // Subscription-wise module control.
+  // Final plans:
+  // Restaurant, Delivery, Restaurant + Resort,
+  // Restaurant + Delivery, Restaurant + Resort + Delivery.
+  //
+  // Legacy Standard values were migrated to the full Restaurant plan.
+  const legacyPlan = String(restaurant?.plan || 'Pro')
   const legacyPlanCode =
     legacyPlan === 'Pro+'
       ? 'restaurant_resort_pro'
-      : legacyPlan === 'Pro'
-        ? 'restaurant_pro'
-        : 'restaurant_standard'
+      : 'restaurant_pro'
 
-  const currentPlanCode = String(restaurant?.plan_code || legacyPlanCode).toLowerCase()
+  const currentPlanCode = String(
+    restaurant?.plan_code || legacyPlanCode
+  ).toLowerCase()
 
   const PLAN_FEATURES = {
-    restaurant_standard: {
-      code: 'restaurant_standard',
-      name: 'Restaurant Standard',
-      monthlyPrice: 799,
-      advanced: false,
-      resort: false,
-      advancedResort: false,
-      menuLimit: 50,
-    },
     restaurant_pro: {
       code: 'restaurant_pro',
-      name: 'Restaurant Pro',
-      monthlyPrice: 1299,
-      advanced: true,
+      name: 'Restaurant',
+      monthlyPrice: 1499,
+      restaurant: true,
       resort: false,
+      delivery: false,
+      advanced: true,
       advancedResort: false,
       menuLimit: Infinity,
     },
-    restaurant_resort_standard: {
-      code: 'restaurant_resort_standard',
-      name: 'Restaurant + Resort Standard',
-      monthlyPrice: 1999,
-      advanced: false,
-      resort: true,
+
+    delivery: {
+      code: 'delivery',
+      name: 'Delivery',
+      monthlyPrice: 1499,
+      restaurant: false,
+      resort: false,
+      delivery: true,
+      advanced: true,
       advancedResort: false,
-      menuLimit: 50,
+      menuLimit: Infinity,
     },
+
     restaurant_resort_pro: {
       code: 'restaurant_resort_pro',
-      name: 'Restaurant + Resort Pro',
+      name: 'Restaurant + Resort',
       monthlyPrice: 2999,
-      advanced: true,
+      restaurant: true,
       resort: true,
+      delivery: false,
+      advanced: true,
+      advancedResort: true,
+      menuLimit: Infinity,
+    },
+
+    restaurant_delivery: {
+      code: 'restaurant_delivery',
+      name: 'Restaurant + Delivery',
+      monthlyPrice: 2999,
+      restaurant: true,
+      resort: false,
+      delivery: true,
+      advanced: true,
+      advancedResort: false,
+      menuLimit: Infinity,
+    },
+
+    restaurant_resort_delivery: {
+      code: 'restaurant_resort_delivery',
+      name: 'Restaurant + Resort + Delivery',
+      monthlyPrice: 3999,
+      restaurant: true,
+      resort: true,
+      delivery: true,
+      advanced: true,
       advancedResort: true,
       menuLimit: Infinity,
     },
   }
 
-  const planFeatures = PLAN_FEATURES[currentPlanCode] || PLAN_FEATURES.restaurant_standard
+  const planFeatures =
+    PLAN_FEATURES[currentPlanCode] ||
+    PLAN_FEATURES.restaurant_pro
+
   const currentPlanDisplay = planFeatures.name
   const currentPlanMonthlyPrice = planFeatures.monthlyPrice
 
-  // Base restaurant features are available on all four plans.
-  // Pro-only restaurant features:
-  const hasAdvancedAnalytics = planFeatures.advanced
-  const hasManagerManagement = planFeatures.advanced
-  const hasAdvancedMenuControls = planFeatures.advanced
-  const hasRealtimeOrderAlarm = planFeatures.advanced
+  // Every enabled Restaurant module gets the complete Restaurant feature set.
+  const hasAdvancedAnalytics = Boolean(planFeatures.restaurant)
+  const hasManagerManagement = Boolean(planFeatures.restaurant)
+  const hasAdvancedMenuControls = Boolean(planFeatures.restaurant)
+  const hasRealtimeOrderAlarm = Boolean(planFeatures.restaurant)
 
-  // Resort features are available only on Restaurant + Resort plans.
-  // Resort access follows the active subscription plan exactly.
-  // A stale resort_enabled database flag must not unlock resort features on restaurant-only plans.
-  const resortModuleEnabled = planFeatures.resort
-  const hasAdvancedResortFeatures = planFeatures.advancedResort
+  const restaurantModuleEnabled = Boolean(planFeatures.restaurant)
+  const resortModuleEnabled = Boolean(planFeatures.resort)
+  const deliveryModuleEnabled = Boolean(planFeatures.delivery)
+  const hasAdvancedResortFeatures = Boolean(planFeatures.resort)
 
-  // Menu Management is included in all four plans. The feature matrix does not impose a plan-based menu-item limit.
+  // No plan-based menu item limit in the final five-plan structure.
   const maxMenuAllowed = Infinity
+
+  const enabledModuleCount =
+    Number(restaurantModuleEnabled) +
+    Number(resortModuleEnabled) +
+    Number(deliveryModuleEnabled)
+
+  // Keep the selected workspace inside the modules included in the plan.
+  // Delivery-only subscriptions open directly in Delivery.
+  useEffect(() => {
+    if (!restaurant) return
+
+    const allowedModes = []
+
+    if (restaurantModuleEnabled) {
+      allowedModes.push('restaurant')
+    }
+
+    if (resortModuleEnabled) {
+      allowedModes.push('resort')
+    }
+
+    if (deliveryModuleEnabled) {
+      allowedModes.push('delivery')
+    }
+
+    if (
+      allowedModes.length > 0 &&
+      !allowedModes.includes(dashboardMode)
+    ) {
+      setDashboardMode(allowedModes[0])
+    }
+  }, [
+    restaurant,
+    dashboardMode,
+    restaurantModuleEnabled,
+    resortModuleEnabled,
+    deliveryModuleEnabled,
+  ])
+
+  // Native notification taps can deep-link directly into a module.
+  useEffect(() => {
+    const requestedModule = String(
+      searchParams?.get('module') || ''
+    )
+      .trim()
+      .toLowerCase()
+
+    if (
+      requestedModule === 'delivery' &&
+      deliveryModuleEnabled
+    ) {
+      setDashboardMode('delivery')
+    } else if (
+      requestedModule === 'resort' &&
+      resortModuleEnabled
+    ) {
+      setDashboardMode('resort')
+    } else if (
+      requestedModule === 'restaurant' &&
+      restaurantModuleEnabled
+    ) {
+      setDashboardMode('restaurant')
+    }
+  }, [
+    searchParams,
+    restaurantModuleEnabled,
+    resortModuleEnabled,
+    deliveryModuleEnabled,
+  ])
 
   // SECURITY: The restaurant ID in the URL is not authentication.
   // The authenticated Supabase user must own the dashboard being opened.
@@ -2586,23 +2687,73 @@ export default function RestaurantDashboard() {
       )
 
       if (!hasInitializedKeys && !savingPayment) {
-        const keyId = restData.razorpay_key_id || ''
-        const keySec = restData.razorpay_secret || ''
-
-        setRazorpayKeyId(keyId)
-        setRazorpaySecret(keySec)
-        setEnableCounterPayment(
-          restData.enable_counter_payment ?? true
-        )
         setSgstRate(restData.sgst_rate ?? 2.5)
         setCgstRate(restData.cgst_rate ?? 2.5)
         setPackingCharge(restData.packing_charge ?? 20)
-        setHasInitializedKeys(true)
 
-        if (keyId || keySec) {
+        try {
+          const { data: sessionData, error: sessionError } =
+            await supabase.auth.getSession()
+
+          if (sessionError) throw sessionError
+
+          const accessToken = sessionData?.session?.access_token
+
+          if (!accessToken) {
+            throw new Error(
+              'Your owner session has expired. Please sign in again.'
+            )
+          }
+
+          const gatewayResponse = await fetch(
+            `/api/payment-gateways/config?restaurantId=${encodeURIComponent(
+              restaurantId
+            )}&module=restaurant`,
+            {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+              cache: 'no-store',
+            }
+          )
+
+          const gatewayData =
+            await gatewayResponse.json().catch(() => ({}))
+
+          if (!gatewayResponse.ok || !gatewayData?.success) {
+            throw new Error(
+              gatewayData?.message ||
+                'Unable to load restaurant payment settings.'
+            )
+          }
+
+          const keyId = String(gatewayData.keyId || '')
+          const hasSecret = Boolean(gatewayData.hasSecret)
+
+          setRazorpayKeyId(keyId)
+          setRazorpaySecret('')
+          setRazorpayHasSecret(hasSecret)
+          setEnableCounterPayment(
+            gatewayData.offlinePaymentEnabled ?? true
+          )
+
+          setIsGatewayEditable(!(keyId && hasSecret))
+        } catch (gatewayError) {
+          console.error(
+            'Restaurant payment gateway load error:',
+            gatewayError
+          )
+
+          setRazorpayKeyId('')
+          setRazorpaySecret('')
+          setRazorpayHasSecret(false)
+          setEnableCounterPayment(
+            restData.enable_counter_payment ?? true
+          )
           setIsGatewayEditable(false)
-        } else {
-          setIsGatewayEditable(true)
+        } finally {
+          setHasInitializedKeys(true)
         }
       }
 
@@ -3552,45 +3703,78 @@ export default function RestaurantDashboard() {
 
       setSavingPayment(true)
 
-      const updatedData = {
-        razorpay_key_id:
-          razorpayKeyId.trim(),
-        razorpay_secret:
-          razorpaySecret.trim(),
-        enable_counter_payment:
-          enableCounterPayment
-      }
+      try {
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession()
 
-      const { error } =
-        await supabase
-          .from('restaurants')
-          .update(updatedData)
-          .eq(
-            'id',
-            restaurantId
+        if (sessionError) throw sessionError
+
+        const accessToken = sessionData?.session?.access_token
+
+        if (!accessToken) {
+          throw new Error(
+            'Your owner session has expired. Please sign in again.'
           )
+        }
 
-      if (error) {
-        alert(
-          'Failed to update payment settings: ' +
-            error.message
+        const response = await fetch(
+          '/api/payment-gateways/config',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              restaurantId,
+              module: 'restaurant',
+              keyId: razorpayKeyId.trim(),
+              keySecret: razorpaySecret.trim(),
+              enabled: Boolean(
+                razorpayKeyId.trim() &&
+                  (razorpaySecret.trim() || razorpayHasSecret)
+              ),
+              offlinePaymentEnabled: enableCounterPayment,
+            }),
+          }
         )
-      } else {
-        setRestaurant(
-          (prev) => ({
-            ...prev,
-            ...updatedData
-          })
+
+        const data =
+          await response.json().catch(() => ({}))
+
+        if (!response.ok || !data?.success) {
+          throw new Error(
+            data?.message ||
+              'Failed to update payment settings.'
+          )
+        }
+
+        setRazorpayKeyId(String(data.keyId || ''))
+        setRazorpaySecret('')
+        setRazorpayHasSecret(Boolean(data.hasSecret))
+        setEnableCounterPayment(
+          data.offlinePaymentEnabled ?? enableCounterPayment
         )
+
+        setRestaurant((prev) => ({
+          ...prev,
+          razorpay_key_id: String(data.keyId || ''),
+          razorpay_secret: '',
+          enable_counter_payment:
+            data.offlinePaymentEnabled ?? enableCounterPayment,
+        }))
 
         setIsGatewayEditable(false)
 
+        alert('Payment settings saved successfully! ✅')
+      } catch (error) {
         alert(
-          'Payment settings saved successfully! ✅'
+          'Failed to update payment settings: ' +
+            (error?.message || 'Please try again.')
         )
+      } finally {
+        setSavingPayment(false)
       }
-
-      setSavingPayment(false)
     }
 
   const resetOfferForm = () => {
@@ -5705,23 +5889,56 @@ export default function RestaurantDashboard() {
           <h2>{restaurant.name}</h2>
         </div>
 
-        {/* Owner workspace switch. Existing restaurant features remain unchanged. */}
+        {/* Owner workspace switch. Mobile visual language remains unchanged. */}
         <div className="dd-bk-mode-switch rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
-          <div className={`grid gap-2 ${resortModuleEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            <button
-              type="button"
-              onClick={() => setDashboardMode('restaurant')}
-              className={`rounded-2xl px-4 py-3 text-xs font-black transition ${dashboardMode === 'restaurant' ? 'bg-[#0c831f] text-white' : 'bg-transparent text-neutral-500'}`}
-            >
-              🍽️ Restaurant Dashboard
-            </button>
+          <div
+            className={`grid gap-2 ${
+              enabledModuleCount >= 3
+                ? 'grid-cols-3'
+                : enabledModuleCount === 2
+                  ? 'grid-cols-2'
+                  : 'grid-cols-1'
+            }`}
+          >
+            {restaurantModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('restaurant')}
+                className={`rounded-2xl px-2 py-3 text-[10px] font-black transition ${
+                  dashboardMode === 'restaurant'
+                    ? 'bg-[#0c831f] text-white'
+                    : 'bg-transparent text-neutral-500'
+                }`}
+              >
+                🍽️ Restaurant
+              </button>
+            )}
+
             {resortModuleEnabled && (
               <button
                 type="button"
                 onClick={() => setDashboardMode('resort')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black transition ${dashboardMode === 'resort' ? 'bg-[#2563eb] text-white' : 'bg-transparent text-neutral-500'}`}
+                className={`rounded-2xl px-2 py-3 text-[10px] font-black transition ${
+                  dashboardMode === 'resort'
+                    ? 'bg-[#2563eb] text-white'
+                    : 'bg-transparent text-neutral-500'
+                }`}
               >
-                🏨 Resort Dashboard
+                🏨 Resort
+              </button>
+            )}
+
+            {deliveryModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('delivery')}
+                className={`rounded-2xl px-2 py-3 text-[10px] font-black transition ${
+                  dashboardMode === 'delivery'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-transparent text-neutral-500'
+                }`}
+              >
+                🚚 Delivery
               </button>
             )}
           </div>
@@ -5735,7 +5952,22 @@ export default function RestaurantDashboard() {
           />
         )}
 
-        {dashboardMode === 'restaurant' && (
+        {dashboardMode === 'delivery' && deliveryModuleEnabled && (
+          <div className="space-y-4">
+            <NativeDeliveryPush
+              restaurantId={restaurantId}
+              role="owner"
+              enabled={deliveryModuleEnabled}
+            />
+
+            <DeliveryManagement
+              restaurant={restaurant}
+              planCode={currentPlanCode}
+            />
+          </div>
+        )}
+
+        {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
           <div className="contents">
         {/* OWNER MOBILE HOME */}
         {activeTab === 'owner-home' && (
@@ -8416,13 +8648,13 @@ export default function RestaurantDashboard() {
 
                 <div
                   className={`flex items-center justify-center space-x-2 font-bold text-xs py-2 rounded-xl border ${
-                    razorpayKeyId.trim() && razorpaySecret.trim()
+                    razorpayKeyId.trim() && razorpayHasSecret
                       ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
                       : 'text-red-400 bg-red-500/10 border-red-500/20'
                   }`}
                 >
                   <span>
-                    {razorpayKeyId.trim() && razorpaySecret.trim()
+                    {razorpayKeyId.trim() && razorpayHasSecret
                       ? '🟢 Razorpay Connected'
                       : '🔴 Razorpay Not Connected'}
                   </span>
@@ -8448,7 +8680,7 @@ export default function RestaurantDashboard() {
                     </label>
 
                     <p className="font-mono text-xs text-white bg-neutral-900 p-2.5 rounded-xl border border-neutral-800">
-                      {razorpaySecret
+                      {razorpayHasSecret
                         ? '••••••••••••••••••••••••'
                         : 'Not Configured'}
                     </p>
@@ -8516,7 +8748,11 @@ export default function RestaurantDashboard() {
 
                   <input
                     type="password"
-                    placeholder="enter_secret_key"
+                    placeholder={
+                      razorpayHasSecret
+                        ? 'Leave blank to keep existing secret'
+                        : 'enter_secret_key'
+                    }
                     value={
                       razorpaySecret
                     }
@@ -9004,7 +9240,7 @@ export default function RestaurantDashboard() {
 
 
       {/* OWNER MOBILE APP NAVIGATION */}
-      {dashboardMode === 'restaurant' && (
+      {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
         <>
           <nav className="dd-owner-mobile-bottom-nav">
             <button
@@ -9091,7 +9327,7 @@ export default function RestaurantDashboard() {
                     </h3>
 
                     <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                      Reports, staff, payments and app settings.
+                      Reports, staff, payments, modules and app settings.
                     </p>
                   </div>
 
@@ -9249,6 +9485,34 @@ export default function RestaurantDashboard() {
                         </p>
                         <p className="mt-1 text-[8px] font-semibold text-white/70">
                           Open resort operations
+                        </p>
+                      </div>
+                    </div>
+
+                    <AppIcon name="chevron" className="h-4 w-4" />
+                  </button>
+                )}
+
+                {deliveryModuleEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardMode('delivery')
+                      setMobileOwnerMenuOpen(false)
+                    }}
+                    className="mt-3 flex w-full items-center justify-between rounded-[22px] bg-emerald-600 p-4 text-left text-white shadow-lg shadow-emerald-600/20"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-base">
+                        🚚
+                      </span>
+
+                      <div>
+                        <p className="text-[11px] font-black">
+                          Delivery Management
+                        </p>
+                        <p className="mt-1 text-[8px] font-semibold text-white/70">
+                          Orders, menu, drivers, offers & alerts
                         </p>
                       </div>
                     </div>

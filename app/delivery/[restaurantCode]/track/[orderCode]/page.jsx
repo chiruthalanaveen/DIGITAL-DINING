@@ -185,7 +185,7 @@ export default function DeliveryTrackingPage({
         () => {
           loadOrder()
         },
-        8000
+        60_000
       )
 
     return () => {

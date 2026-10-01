@@ -37,6 +37,8 @@ const EMPTY_SETTINGS = {
   cgst_rate: 2.5,
   max_delivery_distance_km: '',
   estimated_delivery_minutes: 45,
+  auto_assign_enabled: false,
+  auto_assign_min_orders: 3,
   support_phone: '',
   address: '',
   city: '',
@@ -63,6 +65,13 @@ const EMPTY_DRIVER = {
   alternate_mobile: '',
   vehicle_type: 'bike',
   vehicle_number: '',
+  portal_user_id: '',
+  password: '',
+}
+
+const EMPTY_PACKER = {
+  name: '',
+  mobile: '',
   portal_user_id: '',
   password: '',
 }
@@ -130,6 +139,8 @@ export default function DeliveryManagement({
   const [menuItems, setMenuItems] = useState([])
   const [offers, setOffers] = useState([])
   const [drivers, setDrivers] = useState([])
+  const [packers, setPackers] = useState([])
+  const [deliveryProofsByOrder, setDeliveryProofsByOrder] = useState({})
 
   const [message, setMessage] = useState('')
   const [alarmEnabled, setAlarmEnabled] = useState(false)
@@ -151,12 +162,19 @@ export default function DeliveryManagement({
   const [driverSaving, setDriverSaving] =
     useState(false)
 
+  const [packerForm, setPackerForm] =
+    useState(EMPTY_PACKER)
+  const [packerSaving, setPackerSaving] =
+    useState(false)
+
   const [offerForm, setOfferForm] =
     useState(EMPTY_OFFER)
   const [offerSaving, setOfferSaving] =
     useState(false)
 
   const [savingSettings, setSavingSettings] =
+    useState(false)
+  const [runningAutoAssign, setRunningAutoAssign] =
     useState(false)
 
   const deliveryUrl =
@@ -179,6 +197,14 @@ export default function DeliveryManagement({
       ? `${window.location.origin}/delivery-driver/${restaurant.restaurant_code}`
       : restaurant?.restaurant_code
         ? `/delivery-driver/${restaurant.restaurant_code}`
+        : ''
+
+  const packerPortalUrl =
+    typeof window !== 'undefined' &&
+    restaurant?.restaurant_code
+      ? `${window.location.origin}/delivery-packer/${restaurant.restaurant_code}`
+      : restaurant?.restaurant_code
+        ? `/delivery-packer/${restaurant.restaurant_code}`
         : ''
 
   const playNewOrderAlarm = useCallback(() => {
@@ -367,6 +393,81 @@ export default function DeliveryManagement({
     }
   }
 
+
+  const loadDeliveryProofs = useCallback(
+    async () => {
+      if (!restaurantId) return
+
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
+
+        if (sessionError) throw sessionError
+
+        const accessToken =
+          session?.access_token
+
+        if (!accessToken) {
+          throw new Error(
+            'Your owner session has expired.'
+          )
+        }
+
+        const response = await fetch(
+          `/api/delivery/driver-proof?restaurantId=${encodeURIComponent(
+            restaurantId
+          )}`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            cache: 'no-store',
+          }
+        )
+
+        const data = await response
+          .json()
+          .catch(() => ({}))
+
+        if (!response.ok || !data?.success) {
+          throw new Error(
+            data?.message ||
+              'Unable to load delivery proof.'
+          )
+        }
+
+        const grouped = {}
+
+        for (const proof of Array.isArray(data.proofs)
+          ? data.proofs
+          : []) {
+          const orderId = String(
+            proof.delivery_order_id || ''
+          )
+
+          if (!orderId) continue
+
+          if (!grouped[orderId]) {
+            grouped[orderId] = []
+          }
+
+          grouped[orderId].push(proof)
+        }
+
+        setDeliveryProofsByOrder(grouped)
+      } catch (proofError) {
+        console.error(
+          'Delivery proof load error:',
+          proofError
+        )
+      }
+    },
+    [restaurantId]
+  )
+
   const loadDelivery = useCallback(
     async (
       quiet = false,
@@ -387,6 +488,7 @@ export default function DeliveryManagement({
           settingsResult,
           ordersResult,
           driversResult,
+          packersResult,
           menuResult,
           offersResult,
         ] = await Promise.all([
@@ -407,6 +509,14 @@ export default function DeliveryManagement({
 
           supabase
             .from('delivery_drivers')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .order('created_at', {
+              ascending: false,
+            }),
+
+          supabase
+            .from('delivery_packers')
             .select('*')
             .eq('restaurant_id', restaurantId)
             .order('created_at', {
@@ -458,6 +568,7 @@ export default function DeliveryManagement({
           settingsResult.error,
           ordersResult.error,
           driversResult.error,
+          packersResult.error,
           menuResult.error,
           offersResult.error,
         ].filter(Boolean)
@@ -524,6 +635,12 @@ export default function DeliveryManagement({
             : []
         )
 
+        setPackers(
+          Array.isArray(packersResult.data)
+            ? packersResult.data
+            : []
+        )
+
         setMenuItems(
           Array.isArray(menuResult.data)
             ? menuResult.data
@@ -535,6 +652,8 @@ export default function DeliveryManagement({
             ? offersResult.data
             : []
         )
+
+        await loadDeliveryProofs()
       } catch (error) {
         console.error(
           'Delivery dashboard load error:',
@@ -555,6 +674,7 @@ export default function DeliveryManagement({
       restaurant?.name,
       restaurant?.phone,
       inspectNewOrders,
+      loadDeliveryProofs,
     ]
   )
 
@@ -562,30 +682,58 @@ export default function DeliveryManagement({
     loadDelivery()
   }, [loadDelivery])
 
+  const refreshOrdersOnly = useCallback(
+    async (announceNew = true) => {
+      if (!restaurantId) return
+
+      try {
+        const { data, error } = await supabase
+          .from('delivery_orders')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('created_at', { ascending: false })
+          .limit(200)
+
+        if (error) throw error
+
+        const nextOrders = Array.isArray(data) ? data : []
+        inspectNewOrders(nextOrders, announceNew)
+        setOrders(nextOrders)
+        await loadDeliveryProofs()
+      } catch (refreshError) {
+        console.error('Delivery orders refresh error:', refreshError)
+      }
+    },
+    [restaurantId, inspectNewOrders, loadDeliveryProofs]
+  )
+
   useEffect(() => {
     if (!restaurantId) return undefined
 
     const channel = supabase
-      .channel(
-        `owner-delivery-orders-${restaurantId}`
-      )
+      .channel(`owner-delivery-orders-${restaurantId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'delivery_orders',
-          filter:
-            `restaurant_id=eq.${restaurantId}`,
+          filter: `restaurant_id=eq.${restaurantId}`,
         },
-        () => loadDelivery(true, true)
+        () => refreshOrdersOnly(true)
       )
       .subscribe()
 
+    const interval = window.setInterval(() => {
+      refreshOrdersOnly(true)
+    }, 60_000)
+
     return () => {
+      window.clearInterval(interval)
       supabase.removeChannel(channel)
     }
-  }, [restaurantId, loadDelivery])
+  }, [restaurantId, refreshOrdersOnly])
+
 
   const stats = useMemo(() => {
     const today = new Date()
@@ -804,6 +952,22 @@ export default function DeliveryManagement({
                 45
             )
           ),
+        auto_assign_enabled: Boolean(
+          settings.auto_assign_enabled
+        ),
+        auto_assign_min_orders:
+          Math.max(
+            3,
+            Math.min(
+              20,
+              Math.floor(
+                Number(
+                  settings.auto_assign_min_orders ||
+                    3
+                )
+              )
+            )
+          ),
         support_phone: String(
           settings.support_phone || ''
         ).trim(),
@@ -862,6 +1026,84 @@ export default function DeliveryManagement({
       )
     } finally {
       setSavingSettings(false)
+    }
+  }
+
+  const runAutoAssignmentNow = async () => {
+    if (
+      !restaurantId ||
+      runningAutoAssign
+    ) {
+      return
+    }
+
+    setRunningAutoAssign(true)
+    setMessage('')
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase.rpc(
+        'owner_run_delivery_auto_assignment',
+        {
+          p_restaurant_id:
+            restaurantId,
+        }
+      )
+
+      if (error) throw error
+
+      if (data?.success === false) {
+        throw new Error(
+          data?.message ||
+            'Unable to run automatic assignment.'
+        )
+      }
+
+      const assignedOrders =
+        Number(
+          data?.assigned_orders || 0
+        )
+
+      const assignedBatches =
+        Number(
+          data?.assigned_batches || 0
+        )
+
+      setMessage(
+        assignedOrders > 0
+          ? `Auto assignment completed: ${assignedOrders} order${
+              assignedOrders === 1
+                ? ''
+                : 's'
+            } assigned in ${assignedBatches} batch${
+              assignedBatches === 1
+                ? ''
+                : 'es'
+            }.`
+          : data?.reason === 'automation_disabled'
+            ? 'Auto assignment is disabled. Enable it and save Delivery Settings.'
+            : data?.reason === 'waiting_for_batch'
+              ? `Waiting for a complete batch. Queue: ${Number(data?.queued_orders || 0)} / ${Number(data?.batch_size || 3)}.`
+              : data?.reason === 'no_available_driver'
+                ? 'A complete batch is ready, but no active free driver is available.'
+                : 'No auto-assignment action was required.'
+      )
+
+      await loadDelivery(false)
+    } catch (error) {
+      console.error(
+        'Delivery auto assignment error:',
+        error
+      )
+
+      setMessage(
+        error?.message ||
+          'Unable to run automatic assignment.'
+      )
+    } finally {
+      setRunningAutoAssign(false)
     }
   }
 
@@ -1369,6 +1611,143 @@ export default function DeliveryManagement({
       )
     }
 
+  const savePacker = async (event) => {
+    event.preventDefault()
+    if (!restaurantId || packerSaving) return
+
+    const cleanName = String(packerForm.name || '').trim()
+    const cleanMobile = cleanDigits(packerForm.mobile)
+    const cleanUserId = String(packerForm.portal_user_id || '')
+      .trim()
+      .toLowerCase()
+    const cleanPassword = String(packerForm.password || '')
+
+    if (cleanName.length < 2) {
+      alert('Enter the packer name.')
+      return
+    }
+
+    if (cleanMobile && cleanMobile.length !== 10) {
+      alert('Enter a valid 10-digit packer mobile number.')
+      return
+    }
+
+    if (!/^[a-z0-9._-]{3,40}$/.test(cleanUserId)) {
+      alert('Packer User ID must be 3-40 characters using letters, numbers, dot, underscore or hyphen.')
+      return
+    }
+
+    if (cleanPassword.length < 6) {
+      alert('Packer password must contain at least 6 characters.')
+      return
+    }
+
+    setPackerSaving(true)
+    setMessage('')
+
+    try {
+      const { data, error } = await supabase.rpc(
+        'owner_create_delivery_packer',
+        {
+          p_restaurant_id: restaurantId,
+          p_name: cleanName,
+          p_mobile: cleanMobile,
+          p_portal_user_id: cleanUserId,
+          p_password: cleanPassword,
+        }
+      )
+
+      if (error) throw error
+      if (!data?.success) {
+        throw new Error(data?.message || 'Unable to create packer.')
+      }
+
+      setPackerForm(EMPTY_PACKER)
+      setMessage(
+        `Packer ${data?.packer?.name || cleanName} created. User ID: ${cleanUserId}`
+      )
+      await loadDelivery(true)
+    } catch (packerError) {
+      console.error('Packer save error:', packerError)
+      alert(packerError?.message || 'Unable to create packer.')
+    } finally {
+      setPackerSaving(false)
+    }
+  }
+
+  const resetPackerLogin = async (packer) => {
+    const nextUserId = window.prompt(
+      'Packer User ID',
+      packer.portal_user_id ||
+        String(packer.name || 'packer')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '.')
+          .replace(/^\.+|\.+$/g, '')
+          .slice(0, 30)
+    )
+
+    if (nextUserId === null) return
+
+    const cleanUserId = nextUserId.trim().toLowerCase()
+    if (!/^[a-z0-9._-]{3,40}$/.test(cleanUserId)) {
+      alert('Packer User ID must be 3-40 characters using letters, numbers, dot, underscore or hyphen.')
+      return
+    }
+
+    const password = window.prompt(
+      'Enter a new Packer Portal password (minimum 6 characters).'
+    )
+    if (password === null) return
+    if (password.length < 6) {
+      alert('Packer password must contain at least 6 characters.')
+      return
+    }
+
+    try {
+      const { data, error } = await supabase.rpc(
+        'owner_set_delivery_packer_login',
+        {
+          p_restaurant_id: restaurantId,
+          p_packer_id: packer.id,
+          p_portal_user_id: cleanUserId,
+          p_password: password,
+        }
+      )
+
+      if (error) throw error
+      if (!data?.success) {
+        throw new Error(data?.message || 'Unable to update Packer login.')
+      }
+
+      setMessage(`Packer login updated. User ID: ${cleanUserId}`)
+      await loadDelivery(true)
+    } catch (packerError) {
+      console.error('Packer login reset error:', packerError)
+      alert(packerError?.message || 'Unable to update Packer login.')
+    }
+  }
+
+  const togglePackerActive = async (packer) => {
+    const next = packer.is_active === false
+
+    const { data, error } = await supabase
+      .from('delivery_packers')
+      .update({ is_active: next })
+      .eq('id', packer.id)
+      .eq('restaurant_id', restaurantId)
+      .select('*')
+      .single()
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    setPackers((current) =>
+      current.map((row) => (row.id === data.id ? data : row))
+    )
+  }
+
   const assignDriver = async (
     order,
     driverId
@@ -1747,6 +2126,10 @@ export default function DeliveryManagement({
       'drivers',
       `Drivers (${drivers.length})`,
     ],
+    [
+      'packers',
+      `Packers (${packers.length})`,
+    ],
     ['settings', 'Settings'],
     ['payments', 'Payments'],
     ['website', 'Ordering Website'],
@@ -2090,6 +2473,23 @@ export default function DeliveryManagement({
                           .join(', ')}
                       </p>
 
+                      {Number.isFinite(Number(order.latitude)) &&
+                        Number.isFinite(Number(order.longitude)) && (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                              `${order.latitude},${order.longitude}`
+                            )}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-flex rounded-lg bg-sky-500/10 px-3 py-2 text-[10px] font-black text-sky-400"
+                          >
+                            📍 Open Customer Live Location
+                            {order.location_accuracy_m
+                              ? ` · ±${Math.round(Number(order.location_accuracy_m))}m`
+                              : ''}
+                          </a>
+                        )}
+
                       <p className="mt-2 text-[10px] text-neutral-600">
                         Placed{' '}
                         {orderTime(
@@ -2271,6 +2671,139 @@ export default function DeliveryManagement({
                         )}
                     </div>
                   </div>
+
+
+                  {Array.isArray(
+                    deliveryProofsByOrder[
+                      String(order.id)
+                    ]
+                  ) &&
+                    deliveryProofsByOrder[
+                      String(order.id)
+                    ].length > 0 && (
+                    <div className="mt-4 border-t border-neutral-800 pt-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                            Delivery Proof / Attempts
+                          </p>
+                          <p className="mt-1 text-[10px] text-neutral-600">
+                            Submitted from the assigned Driver Portal.
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-[9px] font-black text-sky-300">
+                          {
+                            deliveryProofsByOrder[
+                              String(order.id)
+                            ].length
+                          }{' '}
+                          {
+                            deliveryProofsByOrder[
+                              String(order.id)
+                            ].length === 1
+                              ? 'attempt'
+                              : 'attempts'
+                          }
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-3">
+                        {deliveryProofsByOrder[
+                          String(order.id)
+                        ].map((proof) => (
+                          <div
+                            key={proof.id}
+                            className={`rounded-2xl border p-4 ${
+                              proof.delivery_result ===
+                              'delivered'
+                                ? 'border-emerald-500/20 bg-emerald-500/5'
+                                : 'border-red-500/20 bg-red-500/5'
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p
+                                  className={`text-xs font-black ${
+                                    proof.delivery_result ===
+                                    'delivered'
+                                      ? 'text-emerald-300'
+                                      : 'text-red-300'
+                                  }`}
+                                >
+                                  {proof.delivery_result ===
+                                  'delivered'
+                                    ? '✓ Delivered'
+                                    : '✕ Not Delivered'}
+                                </p>
+                                <p className="mt-1 text-[10px] text-neutral-500">
+                                  Driver:{' '}
+                                  {proof.driver_name ||
+                                    'Assigned driver'}{' '}
+                                  ·{' '}
+                                  {orderTime(
+                                    proof.created_at
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+
+                            {proof.failure_reason && (
+                              <div className="mt-3 rounded-xl border border-red-500/10 bg-neutral-950/60 px-3 py-2.5">
+                                <p className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
+                                  Reason
+                                </p>
+                                <p className="mt-1 text-xs font-bold text-red-200">
+                                  {labelStatus(
+                                    proof.failure_reason
+                                  )}
+                                </p>
+                              </div>
+                            )}
+
+                            {proof.driver_note && (
+                              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/60 px-3 py-2.5">
+                                <p className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
+                                  Driver Note
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-neutral-300">
+                                  {proof.driver_note}
+                                </p>
+                              </div>
+                            )}
+
+                            {Array.isArray(proof.images) &&
+                              proof.images.length > 0 && (
+                              <div className="mt-3">
+                                <p className="mb-2 text-[9px] font-black uppercase tracking-wider text-neutral-600">
+                                  Uploaded Items / Proof
+                                </p>
+                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+                                  {proof.images.map(
+                                    (image, index) => (
+                                      <a
+                                        key={`${proof.id}-${index}`}
+                                        href={image.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="group overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950"
+                                      >
+                                        <img
+                                          src={image.url}
+                                          alt={`Delivery proof ${index + 1}`}
+                                          className="aspect-square w-full object-cover transition group-hover:scale-[1.03]"
+                                          loading="lazy"
+                                        />
+                                      </a>
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </article>
               )
             )}
@@ -3196,6 +3729,180 @@ export default function DeliveryManagement({
         </div>
       )}
 
+      {tab === 'packers' && (
+        <div className="space-y-5">
+          <div className="rounded-3xl border border-violet-500/20 bg-violet-500/10 p-5">
+            <p className="text-[10px] font-black uppercase tracking-wider text-violet-300">
+              Delivery Packer Portal
+            </p>
+
+            <p className="mt-2 break-all font-mono text-xs text-white">
+              {packerPortalUrl || 'Restaurant code not available'}
+            </p>
+
+            <p className="mt-2 text-[10px] leading-5 text-neutral-400">
+              Packers receive all eligible Delivery orders. They can Confirm,
+              mark Packed, and move a packed order Out for Delivery after a
+              driver has been assigned.
+            </p>
+
+            {packerPortalUrl && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(packerPortalUrl)
+                      setMessage('Packer Portal link copied.')
+                    } catch {
+                      window.prompt('Copy Packer Portal URL:', packerPortalUrl)
+                    }
+                  }}
+                  className="rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-white"
+                >
+                  Copy Packer Portal Link
+                </button>
+
+                <a
+                  href={packerPortalUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-white"
+                >
+                  Open Packer Portal
+                </a>
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+            <form
+              onSubmit={savePacker}
+              className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
+            >
+              <h3 className="font-black text-white">Add Delivery Packer</h3>
+
+              <div className="mt-5 space-y-3">
+                <Field
+                  label="Packer Name"
+                  value={packerForm.name}
+                  onChange={(value) =>
+                    setPackerForm((current) => ({ ...current, name: value }))
+                  }
+                />
+
+                <Field
+                  label="Mobile"
+                  value={packerForm.mobile}
+                  onChange={(value) =>
+                    setPackerForm((current) => ({
+                      ...current,
+                      mobile: cleanDigits(value),
+                    }))
+                  }
+                  placeholder="Optional"
+                />
+
+                <Field
+                  label="Packer User ID"
+                  value={packerForm.portal_user_id}
+                  onChange={(value) =>
+                    setPackerForm((current) => ({
+                      ...current,
+                      portal_user_id: value
+                        .toLowerCase()
+                        .replace(/[^a-z0-9._-]/g, ''),
+                    }))
+                  }
+                  placeholder="packer01"
+                />
+
+                <Field
+                  label="Packer Portal Password"
+                  type="password"
+                  value={packerForm.password}
+                  onChange={(value) =>
+                    setPackerForm((current) => ({ ...current, password: value }))
+                  }
+                  placeholder="Minimum 6 characters"
+                />
+
+                <p className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-[10px] leading-5 text-neutral-500">
+                  Packer passwords are hashed and old sessions are invalidated
+                  when the owner resets a login.
+                </p>
+
+                <button
+                  type="submit"
+                  disabled={packerSaving}
+                  className="w-full rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                >
+                  {packerSaving ? 'Adding...' : 'Add Packer'}
+                </button>
+              </div>
+            </form>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {packers.map((packer) => (
+                <article
+                  key={packer.id}
+                  className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-black text-white">{packer.name}</h3>
+                      <p className="mt-1 text-xs text-neutral-400">
+                        {packer.mobile || 'No mobile added'}
+                      </p>
+                      <p className="mt-2 text-[10px] font-mono text-violet-300">
+                        Portal: {packer.portal_user_id || 'Not configured'}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${
+                        packer.is_active === false
+                          ? 'bg-neutral-800 text-neutral-500'
+                          : 'bg-emerald-500/10 text-emerald-400'
+                      }`}
+                    >
+                      {packer.is_active === false ? 'Inactive' : 'Active'}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => resetPackerLogin(packer)}
+                    className="mt-4 w-full rounded-xl border border-violet-500/20 bg-violet-500/10 px-4 py-3 text-xs font-black text-violet-300"
+                  >
+                    Reset Packer Login
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => togglePackerActive(packer)}
+                    className={`mt-2 w-full rounded-xl px-4 py-3 text-xs font-black ${
+                      packer.is_active === false
+                        ? 'bg-emerald-600 text-white'
+                        : 'border border-red-500/20 bg-red-500/10 text-red-400'
+                    }`}
+                  >
+                    {packer.is_active === false
+                      ? 'Reactivate Packer'
+                      : 'Deactivate Packer'}
+                  </button>
+                </article>
+              ))}
+
+              {!packers.length && (
+                <div className="col-span-full rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
+                  No packers added yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {tab === 'settings' && (
         <form
           onSubmit={saveSettings}
@@ -3474,6 +4181,141 @@ export default function DeliveryManagement({
                 )
               }
             />
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-400">
+                  Owner-only Dispatch Automation
+                </p>
+
+                <h4 className="mt-1 text-sm font-black text-white">
+                  Automatic Driver Assignment
+                </h4>
+
+                <p className="mt-1 max-w-2xl text-[11px] leading-5 text-neutral-400">
+                  When enabled, Delivery orders wait until a complete batch is ready.
+                  The oldest batch is assigned to one available driver automatically.
+                  Cash-on-delivery orders qualify immediately; online-payment orders
+                  qualify only after successful payment verification.
+                </p>
+              </div>
+
+              <span className={`w-fit rounded-full px-3 py-1.5 text-[9px] font-black uppercase ${
+                settings.auto_assign_enabled
+                  ? 'bg-emerald-500/10 text-emerald-400'
+                  : 'bg-neutral-800 text-neutral-400'
+              }`}>
+                {settings.auto_assign_enabled
+                  ? 'Automation On'
+                  : 'Automation Off'}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_220px]">
+              <Toggle
+                label="Enable Auto Assignment"
+                checked={Boolean(
+                  settings.auto_assign_enabled
+                )}
+                onChange={(checked) =>
+                  setSettings(
+                    (current) => ({
+                      ...current,
+                      auto_assign_enabled:
+                        checked,
+                    })
+                  )
+                }
+              />
+
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+                  Orders Per Driver Batch
+                </span>
+
+                <input
+                  type="number"
+                  min="3"
+                  max="20"
+                  step="1"
+                  value={
+                    settings.auto_assign_min_orders
+                  }
+                  onChange={(event) =>
+                    setSettings(
+                      (current) => ({
+                        ...current,
+                        auto_assign_min_orders:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-emerald-500"
+                />
+
+                <p className="mt-1 text-[9px] leading-4 text-neutral-600">
+                  Minimum allowed is 3 orders. Example: with 3 selected, the first
+                  two eligible orders wait; when the third arrives, all three are
+                  assigned together to one available driver.
+                </p>
+              </label>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+                <p className="text-[9px] font-black uppercase text-neutral-500">
+                  Eligible Unassigned Queue
+                </p>
+                <p className="mt-1 text-xl font-black text-white">
+                  {orders.filter((order) =>
+                    !order.driver_id &&
+                    ['received', 'confirmed', 'preparing', 'packed'].includes(
+                      String(order.order_status || '')
+                    ) &&
+                    (
+                      order.payment_method === 'cod' ||
+                      order.payment_status === 'paid'
+                    )
+                  ).length}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+                <p className="text-[9px] font-black uppercase text-neutral-500">
+                  Available Drivers
+                </p>
+                <p className="mt-1 text-xl font-black text-white">
+                  {drivers.filter((driver) =>
+                    driver.is_active !== false &&
+                    driver.status !== 'offline' &&
+                    !orders.some((order) =>
+                      order.driver_id === driver.id &&
+                      !['delivered', 'cancelled'].includes(
+                        String(order.order_status || '')
+                      )
+                    )
+                  ).length}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={
+                runAutoAssignmentNow
+              }
+              disabled={
+                runningAutoAssign ||
+                !settings.auto_assign_enabled
+              }
+              className="mt-4 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs font-black text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {runningAutoAssign
+                ? 'Running Assignment...'
+                : 'Run Auto Assignment Now'}
+            </button>
           </div>
 
           <label className="mt-4 block">

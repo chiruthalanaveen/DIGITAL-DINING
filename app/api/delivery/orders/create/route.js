@@ -142,6 +142,15 @@ export async function POST(request) {
         .trim()
         .toLowerCase()
 
+    const latitude = Number(body?.latitude)
+    const longitude = Number(body?.longitude)
+    const locationAccuracy =
+      body?.locationAccuracy === null ||
+      body?.locationAccuracy === undefined ||
+      body?.locationAccuracy === ''
+        ? null
+        : Number(body.locationAccuracy)
+
     if (!restaurantCode) {
       return NextResponse.json(
         {
@@ -163,6 +172,38 @@ export async function POST(request) {
           success: false,
           message:
             'Choose a valid payment method.',
+        },
+        { status: 400 }
+      )
+    }
+
+    if (
+      !Number.isFinite(latitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      !Number.isFinite(longitude) ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'Choose your live delivery location before placing the order.',
+        },
+        { status: 400 }
+      )
+    }
+
+    if (
+      locationAccuracy !== null &&
+      (!Number.isFinite(locationAccuracy) || locationAccuracy < 0)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'The selected live location is invalid. Please choose it again.',
         },
         { status: 400 }
       )
@@ -281,9 +322,42 @@ export async function POST(request) {
     createdOrderId =
       created.order.id
 
+    const { error: locationSaveError } = await admin
+      .from('delivery_orders')
+      .update({
+        latitude,
+        longitude,
+        location_accuracy_m:
+          locationAccuracy,
+        location_captured_at:
+          new Date().toISOString(),
+      })
+      .eq('id', createdOrderId)
+
+    if (locationSaveError) {
+      throw new Error(
+        locationSaveError.message ||
+          'Unable to save the customer live location.'
+      )
+    }
+
     if (
       paymentMethod === 'cod'
     ) {
+      try {
+        await admin.rpc(
+          'try_delivery_auto_assignment',
+          {
+            p_restaurant_id:
+              String(created.restaurantId || ''),
+          }
+        )
+      } catch (assignmentError) {
+        console.error(
+          'Delivery COD auto assignment fallback error:',
+          assignmentError
+        )
+      }
       await sendDeliveryOrderPush({
         restaurantId:
           String(

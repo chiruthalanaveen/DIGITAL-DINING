@@ -39,6 +39,289 @@ function formatDate(value) {
   })
 }
 
+
+const DELIVERY_FAILURE_REASONS = [
+  ['customer_unavailable', 'Customer unavailable'],
+  ['customer_rejected', 'Customer rejected order'],
+  ['unable_to_contact', 'Unable to contact customer'],
+  ['wrong_address', 'Wrong / incomplete address'],
+  ['payment_issue', 'COD / payment issue'],
+  ['other', 'Other'],
+]
+
+function DeliveryResultPanel({
+  order,
+  sessionToken,
+  disabled = false,
+  onCompleted,
+}) {
+  const [result, setResult] = useState('delivered')
+  const [failureReason, setFailureReason] = useState('')
+  const [note, setNote] = useState('')
+  const [files, setFiles] = useState([])
+  const [previews, setPreviews] = useState([])
+  const [submitting, setSubmitting] = useState(false)
+  const [localError, setLocalError] = useState('')
+
+  useEffect(() => {
+    const nextPreviews = files.map((file) => ({
+      name: file.name,
+      url: URL.createObjectURL(file),
+    }))
+
+    setPreviews(nextPreviews)
+
+    return () => {
+      nextPreviews.forEach((preview) => {
+        URL.revokeObjectURL(preview.url)
+      })
+    }
+  }, [files])
+
+  const handleFiles = (event) => {
+    const selected = Array.from(event.target.files || [])
+
+    if (selected.length > 5) {
+      setLocalError('You can upload up to 5 photos per delivery attempt.')
+      event.target.value = ''
+      return
+    }
+
+    const allowedTypes = new Set([
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ])
+
+    const invalid = selected.find(
+      (file) => !allowedTypes.has(file.type) || file.size > 5 * 1024 * 1024
+    )
+
+    if (invalid) {
+      setLocalError(
+        'Each photo must be JPG, PNG or WEBP and no larger than 5 MB.'
+      )
+      event.target.value = ''
+      return
+    }
+
+    setLocalError('')
+    setFiles(selected)
+  }
+
+  const submitResult = async () => {
+    if (!sessionToken || submitting || disabled) return
+
+    if (result === 'not_delivered' && !failureReason) {
+      setLocalError('Choose a reason for Not Delivered.')
+      return
+    }
+
+    const confirmation = window.confirm(
+      result === 'delivered'
+        ? `Confirm ${order.order_code} was delivered?`
+        : `Submit a Not Delivered attempt for ${order.order_code}?`
+    )
+
+    if (!confirmation) return
+
+    setSubmitting(true)
+    setLocalError('')
+
+    try {
+      const formData = new FormData()
+      formData.append('sessionToken', sessionToken)
+      formData.append('orderId', String(order.id))
+      formData.append('result', result)
+      formData.append('failureReason', result === 'not_delivered' ? failureReason : '')
+      formData.append('note', note.trim())
+
+      files.forEach((file) => {
+        formData.append('files', file)
+      })
+
+      const response = await fetch('/api/delivery/driver-proof', {
+        method: 'POST',
+        body: formData,
+        cache: 'no-store',
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || 'Unable to submit the delivery result.'
+        )
+      }
+
+      setFiles([])
+      setNote('')
+      setFailureReason('')
+      setResult('delivered')
+
+      onCompleted?.(
+        result === 'delivered'
+          ? 'Delivery completed and proof sent to the Delivery Dashboard.'
+          : 'Not Delivered attempt sent to the Delivery Dashboard.'
+      )
+    } catch (submitError) {
+      console.error('Delivery proof submit error:', submitError)
+      setLocalError(
+        submitError?.message || 'Unable to submit the delivery result.'
+      )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+            Delivery Result
+          </p>
+          <p className="mt-1 text-xs leading-5 text-neutral-400">
+            Confirm delivery or report an unsuccessful attempt. Uploaded item / proof photos are sent to the owner Delivery Dashboard.
+          </p>
+        </div>
+        <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-[9px] font-black text-sky-300">
+          Up to 5 photos
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setResult('delivered')
+            setFailureReason('')
+            setLocalError('')
+          }}
+          className={`rounded-xl border px-3 py-3 text-xs font-black transition ${
+            result === 'delivered'
+              ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+              : 'border-neutral-800 bg-neutral-900 text-neutral-400'
+          }`}
+        >
+          ✓ Delivered
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setResult('not_delivered')
+            setLocalError('')
+          }}
+          className={`rounded-xl border px-3 py-3 text-xs font-black transition ${
+            result === 'not_delivered'
+              ? 'border-red-500 bg-red-500/10 text-red-300'
+              : 'border-neutral-800 bg-neutral-900 text-neutral-400'
+          }`}
+        >
+          ✕ Not Delivered
+        </button>
+      </div>
+
+      {result === 'not_delivered' && (
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
+            Reason
+          </span>
+          <select
+            value={failureReason}
+            onChange={(event) => setFailureReason(event.target.value)}
+            className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-xs font-bold text-white outline-none focus:border-red-500"
+          >
+            <option value="">Select reason</option>
+            {DELIVERY_FAILURE_REASONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <label className="mt-4 block">
+        <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
+          Upload Items / Delivery Proof
+        </span>
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          onChange={handleFiles}
+          className="block w-full rounded-xl border border-dashed border-neutral-700 bg-neutral-900 px-3 py-3 text-xs text-neutral-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-600 file:px-3 file:py-2 file:text-[10px] file:font-black file:text-white"
+        />
+        <p className="mt-1.5 text-[9px] leading-4 text-neutral-600">
+          Optional. Maximum 5 photos, 5 MB each. JPG, PNG or WEBP.
+        </p>
+      </label>
+
+      {previews.length > 0 && (
+        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+          {previews.map((preview) => (
+            <div
+              key={`${preview.name}-${preview.url}`}
+              className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900"
+            >
+              <img
+                src={preview.url}
+                alt={preview.name}
+                className="aspect-square w-full object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <label className="mt-4 block">
+        <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
+          Driver Note
+        </span>
+        <textarea
+          value={note}
+          onChange={(event) => setNote(event.target.value.slice(0, 500))}
+          rows={3}
+          placeholder={
+            result === 'delivered'
+              ? 'Optional delivery note...'
+              : 'Add useful details about the failed attempt...'
+          }
+          className="w-full resize-none rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-xs text-white outline-none focus:border-emerald-500"
+        />
+        <p className="mt-1 text-right text-[9px] text-neutral-600">
+          {note.length}/500
+        </p>
+      </label>
+
+      {localError && (
+        <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-[10px] font-bold leading-4 text-red-300">
+          {localError}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={submitResult}
+        disabled={submitting || disabled}
+        className={`mt-4 w-full rounded-xl px-5 py-4 text-sm font-black text-white disabled:opacity-50 ${
+          result === 'delivered'
+            ? 'bg-emerald-600'
+            : 'bg-red-600'
+        }`}
+      >
+        {submitting
+          ? 'Uploading & Submitting...'
+          : result === 'delivered'
+            ? 'Confirm Delivered'
+            : 'Submit Not Delivered'}
+      </button>
+    </div>
+  )
+}
+
 export default function DeliveryDriverPortal({
   params,
 }) {
@@ -168,7 +451,7 @@ export default function DeliveryDriverPortal({
         () => {
           loadPortal()
         },
-        8000
+        60_000
       )
 
     return () => {
@@ -662,10 +945,17 @@ export default function DeliveryDriverPortal({
                   .filter(Boolean)
                   .join(', ')
 
-                const mapUrl =
-                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                    address
-                  )}`
+                const hasLiveLocation =
+                  Number.isFinite(Number(order.latitude)) &&
+                  Number.isFinite(Number(order.longitude))
+
+                const mapUrl = hasLiveLocation
+                  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                      `${order.latitude},${order.longitude}`
+                    )}`
+                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                      address
+                    )}`
 
                 const codDue =
                   order.payment_method ===
@@ -722,6 +1012,15 @@ export default function DeliveryDriverPortal({
                       <p className="mt-2 text-sm leading-6 text-neutral-200">
                         {address}
                       </p>
+
+                      {hasLiveLocation && (
+                        <p className="mt-2 text-[10px] font-black text-emerald-400">
+                          ✓ Customer live location captured
+                          {order.location_accuracy_m
+                            ? ` · ±${Math.round(Number(order.location_accuracy_m))}m`
+                            : ''}
+                        </p>
+                      )}
                     </div>
 
                     {order.customer_note && (
@@ -847,32 +1146,22 @@ export default function DeliveryDriverPortal({
                       </button>
                     )}
 
-                    {order.order_status ===
-                      'out_for_delivery' && (
-                      <button
-                        type="button"
-                        disabled={
-                          updatingOrderId ===
-                          order.id
-                        }
-                        onClick={() =>
-                          updateStatus(
-                            order,
-                            'delivered'
-                          )
-                        }
-                        className="mt-4 w-full rounded-xl bg-emerald-600 px-5 py-4 text-sm font-black text-white disabled:opacity-50"
-                      >
-                        {updatingOrderId ===
+                  {order.order_status ===
+                    'out_for_delivery' && (
+                    <DeliveryResultPanel
+                      order={order}
+                      sessionToken={sessionToken}
+                      disabled={
+                        updatingOrderId ===
                         order.id
-                          ? 'Updating...'
-                          : codDue
-                            ? `Delivered & Collected ${money(
-                                order.total_amount
-                              )}`
-                            : 'Mark Delivered'}
-                      </button>
-                    )}
+                      }
+                      onCompleted={async (text) => {
+                        setMessage(text)
+                        setError('')
+                        await loadPortal()
+                      }}
+                    />
+                  )}
 
                     {![
                       'packed',
