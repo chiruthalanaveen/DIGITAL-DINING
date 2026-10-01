@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 
 const EMPTY_CHECKOUT = {
@@ -68,6 +69,7 @@ export default function DeliveryStorePage({
 }) {
   const unwrappedParams = use(params)
   const router = useRouter()
+  useMobileViewportLock()
 
   // Support either dynamic-folder spelling:
   // app/delivery/[restaurantCode]/page.jsx
@@ -1017,8 +1019,8 @@ export default function DeliveryStorePage({
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#f7f7f5] px-4 py-10 text-neutral-950">
-        <div className="mx-auto max-w-lg rounded-[28px] border border-neutral-200/80 bg-white p-8 text-center shadow-[0_20px_60px_rgba(0,0,0,0.06)]">
+      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] px-3 py-6 text-neutral-950 sm:px-4 sm:py-10">
+        <div className="mx-auto w-full max-w-lg rounded-[28px] border border-neutral-200/80 bg-white p-8 text-center shadow-[0_20px_60px_rgba(0,0,0,0.06)]">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-emerald-600" />
           <p className="mt-4 text-sm font-bold text-neutral-600">
             Loading Delivery
@@ -1031,8 +1033,8 @@ export default function DeliveryStorePage({
 
   if (error || !storeData) {
     return (
-      <main className="min-h-screen bg-[#f7f7f5] px-4 py-10 text-neutral-950">
-        <div className="mx-auto max-w-lg rounded-[28px] border border-neutral-200/80 bg-white p-8 text-center shadow-[0_20px_60px_rgba(0,0,0,0.06)]">
+      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] px-3 py-6 text-neutral-950 sm:px-4 sm:py-10">
+        <div className="mx-auto w-full max-w-lg rounded-[28px] border border-neutral-200/80 bg-white p-8 text-center shadow-[0_20px_60px_rgba(0,0,0,0.06)]">
           <div className="text-4xl">
             🚚
           </div>
@@ -1059,11 +1061,11 @@ export default function DeliveryStorePage({
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f7f5] pb-32 text-neutral-950">
+    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] pb-[calc(8rem+env(safe-area-inset-bottom))] text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 backdrop-blur-xl">
-        <div className="mx-auto max-w-5xl px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100 shadow-sm">
+        <div className="mx-auto w-full max-w-5xl px-3 pb-3 sm:px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-2xl sm:h-12 sm:w-12 border border-neutral-200 bg-neutral-100 shadow-sm">
               {restaurant.logo_url ? (
                 <img
                   src={restaurant.logo_url}
@@ -1099,7 +1101,7 @@ export default function DeliveryStorePage({
             <button
               type="button"
               onClick={openTracking}
-              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 text-[10px] font-black text-neutral-800 shadow-sm transition active:scale-[0.98]"
+              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 sm:px-3 text-[10px] font-black text-neutral-800 shadow-sm transition active:scale-[0.98]"
             >
               <span aria-hidden="true">⌖</span>
               Track
@@ -1108,7 +1110,7 @@ export default function DeliveryStorePage({
             <button
               type="button"
               onClick={() => setCheckoutOpen(true)}
-              className="relative flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-neutral-950 px-3.5 text-[10px] font-black text-white shadow-sm transition active:scale-[0.98]"
+              className="relative flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-neutral-950 px-2.5 sm:px-3.5 text-[10px] font-black text-white shadow-sm transition active:scale-[0.98]"
             >
               <span aria-hidden="true">🛒</span>
               Cart
@@ -1134,7 +1136,7 @@ export default function DeliveryStorePage({
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 py-4 sm:py-6">
+      <div className="mx-auto w-full max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
         <section className="overflow-hidden rounded-[28px] border border-neutral-200/80 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
           <div className="relative">
             {settings.banner_url ? (
@@ -1359,7 +1361,7 @@ export default function DeliveryStorePage({
                   key={item.id}
                   className="group flex min-h-[138px] overflow-hidden rounded-[24px] border border-neutral-200/80 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.07)] sm:block sm:min-h-0"
                 >
-                  <div className="h-[138px] w-[128px] shrink-0 bg-neutral-100 sm:aspect-[16/10] sm:h-auto sm:w-full">
+                  <div className="h-[132px] w-[108px] shrink-0 bg-neutral-100 min-[380px]:w-[128px] sm:aspect-[16/10] sm:h-auto sm:w-full">
                     {item.image_url ? (
                       <img
                         src={
@@ -1499,7 +1501,7 @@ export default function DeliveryStorePage({
       </div>
 
       {cartCount > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="fixed inset-x-0 bottom-0 z-40 px-2 sm:px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto flex max-w-2xl items-center gap-3 rounded-[22px] border border-neutral-800 bg-neutral-950 p-2.5 pl-4 text-white shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
             <div className="min-w-0 flex-1">
               <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
@@ -1527,7 +1529,7 @@ export default function DeliveryStorePage({
 
       {trackingOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
-          <div className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:rounded-[30px]">
+          <div className="max-h-[92dvh] w-full min-w-0 max-w-md overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:rounded-[30px]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">
@@ -1652,7 +1654,7 @@ export default function DeliveryStorePage({
 
       {checkoutOpen && (
         <div className="fixed inset-0 z-50 flex items-end bg-black/55 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-5">
-          <div className="max-h-[94dvh] w-full overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:max-w-2xl sm:rounded-[30px]">
+          <div className="max-h-[94dvh] w-full min-w-0 overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:max-w-2xl sm:rounded-[30px]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
