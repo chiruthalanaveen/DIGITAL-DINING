@@ -388,34 +388,9 @@ export default function DeliveryPackerPortal({ params }) {
 
 
 
-    const labels = {
-
-      confirmed: 'confirm',
-
-      packed: 'mark packed',
-
-      out_for_delivery: 'send out for delivery',
-
-    }
-
-
-
-    if (
-
-      !window.confirm(
-
-        `${labels[nextStatus] || 'update'} ${order.order_code}?`
-
-      )
-
-    ) {
-
-      return
-
-    }
-
-
-
+    // Update immediately from the Packer Portal.
+    // Do not use the browser's native window.confirm() popup.
+    // The pressed button itself is the confirmation/input.
     setUpdatingOrderId(order.id)
 
     setError('')

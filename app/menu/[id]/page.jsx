@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { appNotice } from '@/lib/appDialog'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+
 
 // Restaurant logo used throughout the QR menu.
 function RestaurantLogo({ restaurant, className = '', imageClassName = 'w-full h-full object-contain' }) {
@@ -141,6 +144,7 @@ function MenuFoodImage({
 }
 
 export default function CustomerMenuPage() {
+  useMobileViewportLock()
   const params = useParams()
   const searchParams = useSearchParams()
 
@@ -490,12 +494,12 @@ export default function CustomerMenuPage() {
     e.preventDefault()
 
     if (!customerName.trim()) {
-      alert('Please enter your name.')
+      appNotice('Please enter your name.')
       return
     }
 
     if (!/^[0-9]{10}$/.test(customerMobile)) {
-      alert('Please enter a valid 10-digit mobile number.')
+      appNotice('Please enter a valid 10-digit mobile number.')
       return
     }
 
@@ -675,7 +679,7 @@ export default function CustomerMenuPage() {
       )
 
     if (!matchedMenuItem) {
-      alert('This offer is not linked to an available menu item.')
+      appNotice('This offer is not linked to an available menu item.')
       return
     }
 
@@ -1101,12 +1105,12 @@ export default function CustomerMenuPage() {
 
   const handlePayAtCounter = async () => {
     if (!cartItemsArray.length) {
-      alert('Please add at least one item to your cart.')
+      appNotice('Please add at least one item to your cart.')
       return
     }
 
     if (!counterPaymentEnabled) {
-      alert('Pay at Counter is currently disabled by this restaurant.')
+      appNotice('Pay at Counter is currently disabled by this restaurant.')
       setPaymentMethod('online')
       return
     }
@@ -1163,7 +1167,7 @@ export default function CustomerMenuPage() {
       await fetchCustomerOrders(finalMobile)
     } catch (error) {
       console.error('Counter payment error:', error)
-      alert('Failed to place order: ' + error.message)
+      appNotice('Failed to place order: ' + error.message)
     } finally {
       setPaymentLoading(false)
     }
@@ -1171,7 +1175,7 @@ export default function CustomerMenuPage() {
 
   const handleRazorpayCheckout = async () => {
     if (!cartItemsArray.length) {
-      alert('Please add at least one item to your cart.')
+      appNotice('Please add at least one item to your cart.')
       return
     }
 
@@ -1187,14 +1191,14 @@ export default function CustomerMenuPage() {
 
     const sdkLoaded = await loadRazorpayScript()
     if (!sdkLoaded) {
-      alert('Razorpay SDK failed to load. Please check your internet connection.')
+      appNotice('Razorpay SDK failed to load. Please check your internet connection.')
       setPaymentLoading(false)
       return
     }
 
     const activeKeyId = restaurant?.razorpay_key_id?.trim()
     if (!activeKeyId) {
-      alert(
+      appNotice(
         'This restaurant has not configured their Razorpay Key in their dashboard yet. Please ask the staff or counter.'
       )
       setPaymentLoading(false)
@@ -1251,7 +1255,7 @@ export default function CustomerMenuPage() {
             await fetchCustomerOrders(finalMobile)
           } catch (error) {
             console.error('Online order logging error:', error)
-            alert('Payment received, but failed to log order: ' + error.message)
+            appNotice('Payment received, but failed to log order: ' + error.message)
           } finally {
             setPaymentLoading(false)
           }
@@ -1273,7 +1277,7 @@ export default function CustomerMenuPage() {
 
       const rzp = new window.Razorpay(options)
       rzp.on('payment.failed', response => {
-        alert(
+        appNotice(
           `Payment Failed: ${
             response?.error?.description || 'Please try again.'
           }`
@@ -1283,7 +1287,7 @@ export default function CustomerMenuPage() {
       rzp.open()
     } catch (error) {
       console.error('Razorpay checkout error:', error)
-      alert('Checkout Error: ' + error.message)
+      appNotice('Checkout Error: ' + error.message)
       setPaymentLoading(false)
     }
   }

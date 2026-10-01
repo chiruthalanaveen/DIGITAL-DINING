@@ -2,10 +2,14 @@
 
 import { useState, useEffect, use, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { appNotice } from '@/lib/appDialog'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
 export default function KitchenPortal({ params }) {
+  useMobileViewportLock()
   const unwrappedParams = use(params)
 
   const restaurantId = String(
@@ -1789,7 +1793,7 @@ export default function KitchenPortal({ params }) {
         !userId.trim() ||
         !password.trim()
       ) {
-        alert(
+        appNotice(
           'Enter the 5-digit Restaurant Code, Kitchen User ID, and password.'
         )
 
@@ -2040,7 +2044,7 @@ export default function KitchenPortal({ params }) {
           false
         )
 
-        alert(
+        appNotice(
           err.message ||
             'Unable to login.'
         )
@@ -2529,7 +2533,7 @@ export default function KitchenPortal({ params }) {
           error
         )
 
-        alert(
+        appNotice(
           `Unable to update order: ${
             error.message ||
             'Unknown error'

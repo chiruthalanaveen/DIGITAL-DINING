@@ -1,11 +1,14 @@
 'use client'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
 import DeliveryManagement from '@/app/components/DeliveryManagement'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
+import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+
 
 // Real-Time Restaurant Chat Widget Component
 function RestaurantChatWidget({ restaurantId }) {
@@ -376,7 +379,7 @@ function RestaurantChatWidget({ restaurantId }) {
     } catch (error) {
       console.error('AI support escalation error:', error)
 
-      alert(
+      appNotice(
         `Unable to connect to Admin: ${
           error?.message || 'Please try again.'
         }`
@@ -402,7 +405,7 @@ function RestaurantChatWidget({ restaurantId }) {
       String(session?.status || '').toLowerCase() !==
       'connected'
     ) {
-      alert('Please wait until Admin accepts the support chat.')
+      appNotice('Please wait until Admin accepts the support chat.')
       return
     }
 
@@ -435,7 +438,7 @@ function RestaurantChatWidget({ restaurantId }) {
     } catch (error) {
       console.error('Support message send error:', error)
 
-      alert(
+      appNotice(
         `Unable to send message: ${
           error.message || 'Please try again.'
         }`
@@ -760,10 +763,10 @@ function StaffLoginQrCard({ title, description, url, icon, restaurantCode }) {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(url)
-      alert(`${title} URL copied.`)
+      appNotice(`${title} URL copied.`)
     } catch (error) {
       console.error('Copy URL error:', error)
-      window.prompt('Copy this URL:', url)
+      await appPrompt('Copy this URL:', url)
     }
   }
 
@@ -1181,11 +1184,10 @@ function DashboardEntryLoader({
 }
 
 export default function RestaurantDashboard() {
+  useMobileViewportLock()
   const params = useParams()
   const restaurantId = String(params.id || params.restaurantId || '').trim()
   const router = useRouter()
-  const searchParams = useSearchParams()
-
   const [restaurant, setRestaurant] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
   const [entryLoaderDone, setEntryLoaderDone] = useState(false)
@@ -1474,7 +1476,9 @@ export default function RestaurantDashboard() {
   // Native push/deep-link support.
   useEffect(() => {
     const requestedModule = String(
-      searchParams?.get('module') || ''
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('module') || ''
+        : ''
     )
       .trim()
       .toLowerCase()
@@ -1496,8 +1500,7 @@ export default function RestaurantDashboard() {
       setDashboardMode('restaurant')
     }
   }, [
-    searchParams,
-    restaurantModuleEnabled,
+restaurantModuleEnabled,
     resortModuleEnabled,
     deliveryModuleEnabled,
   ])
@@ -1819,7 +1822,7 @@ export default function RestaurantDashboard() {
     currentAvailability
   ) => {
     if (!hasAdvancedMenuControls) {
-      alert(
+      appNotice(
         '🔒 Advanced menu controls are available on Restaurant Pro and Restaurant + Resort Pro.'
       )
       return
@@ -1841,7 +1844,7 @@ export default function RestaurantDashboard() {
       .eq('id', itemId)
 
     if (error) {
-      alert(
+      appNotice(
         'Failed to update availability: ' + error.message
       )
     }
@@ -1849,7 +1852,7 @@ export default function RestaurantDashboard() {
 
   const handleSaveItemPrice = async (itemId) => {
     if (!hasAdvancedMenuControls) {
-      alert(
+      appNotice(
         '🔒 Advanced menu pricing is available on Restaurant Pro and Restaurant + Resort Pro.'
       )
       setEditingItemId(null)
@@ -1859,7 +1862,7 @@ export default function RestaurantDashboard() {
     const newPrice = parseFloat(editPriceValue)
 
     if (isNaN(newPrice) || newPrice <= 0) {
-      alert('Please enter a valid price.')
+      appNotice('Please enter a valid price.')
       return
     }
 
@@ -1879,9 +1882,9 @@ export default function RestaurantDashboard() {
       .eq('id', itemId)
 
     if (error) {
-      alert('Failed to update price: ' + error.message)
+      appNotice('Failed to update price: ' + error.message)
     } else {
-      alert('Dish price modified successfully! ✅')
+      appNotice('Dish price modified successfully! ✅')
     }
   }
 
@@ -2060,7 +2063,7 @@ export default function RestaurantDashboard() {
     if (savingMenuItem) return
 
     if (!editItemName.trim()) {
-      alert('Please enter an item name.')
+      appNotice('Please enter an item name.')
       return
     }
 
@@ -2078,7 +2081,7 @@ export default function RestaurantDashboard() {
       isNaN(parsedPrice) ||
       parsedPrice <= 0
     ) {
-      alert('Please enter a valid price.')
+      appNotice('Please enter a valid price.')
       return
     }
 
@@ -2086,7 +2089,7 @@ export default function RestaurantDashboard() {
       parsedOriginalPrice !== null &&
       (isNaN(parsedOriginalPrice) || parsedOriginalPrice <= 0)
     ) {
-      alert('Please enter a valid original price.')
+      appNotice('Please enter a valid original price.')
       return
     }
 
@@ -2094,7 +2097,7 @@ export default function RestaurantDashboard() {
       parsedOfferPrice !== null &&
       (isNaN(parsedOfferPrice) || parsedOfferPrice <= 0)
     ) {
-      alert('Please enter a valid offer price.')
+      appNotice('Please enter a valid offer price.')
       return
     }
 
@@ -2103,7 +2106,7 @@ export default function RestaurantDashboard() {
       parsedOfferPrice !== null &&
       parsedOfferPrice >= parsedOriginalPrice
     ) {
-      alert('Offer price must be lower than the original price.')
+      appNotice('Offer price must be lower than the original price.')
       return
     }
 
@@ -2131,7 +2134,7 @@ export default function RestaurantDashboard() {
           currentOffer !== parsedOfferPrice)
 
       if (pricingChanged) {
-        alert(
+        appNotice(
           '🔒 Advanced price and offer modification is available on Restaurant Pro and Restaurant + Resort Pro.'
         )
         return
@@ -2179,7 +2182,7 @@ export default function RestaurantDashboard() {
       .single()
 
     if (error) {
-      alert(
+      appNotice(
         'Failed to update menu item: ' +
           error.message
       )
@@ -2192,7 +2195,7 @@ export default function RestaurantDashboard() {
         )
       )
 
-      alert(
+      appNotice(
         'Menu item updated successfully! ✅'
       )
 
@@ -2208,14 +2211,14 @@ export default function RestaurantDashboard() {
     if (!restaurant) return
 
     if (menuItems.length >= maxMenuAllowed) {
-      alert(
+      appNotice(
         'Menu item limit reached.'
       )
       return
     }
 
     if (!name.trim()) {
-      alert('Please enter the item name.')
+      appNotice('Please enter the item name.')
       return
     }
 
@@ -2225,12 +2228,12 @@ export default function RestaurantDashboard() {
       isNaN(parsedPrice) ||
       parsedPrice <= 0
     ) {
-      alert('Please enter a valid price.')
+      appNotice('Please enter a valid price.')
       return
     }
 
     if (!category.trim()) {
-      alert('Please enter a category.')
+      appNotice('Please enter a category.')
       return
     }
 
@@ -2262,12 +2265,12 @@ export default function RestaurantDashboard() {
       .select()
 
     if (error) {
-      alert(
+      appNotice(
         'Error adding item: ' +
           error.message
       )
     } else {
-      alert(
+      appNotice(
         'Dish added to your live menu!'
       )
 
@@ -2299,7 +2302,7 @@ export default function RestaurantDashboard() {
       !staffUserId.trim() ||
       !staffPassword.trim()
     ) {
-      alert(
+      appNotice(
         'Please fill out all staff credentials.'
       )
       return
@@ -2333,7 +2336,7 @@ export default function RestaurantDashboard() {
 
       if (error) throw error
 
-      alert(
+      appNotice(
         `${staffRole === 'waiter' ? 'Waiter' : staffRole === 'kitchen' ? 'Kitchen' : 'Restaurant Manager'} account created successfully! 🎉`
       )
 
@@ -2348,7 +2351,7 @@ export default function RestaurantDashboard() {
         ])
       }
     } catch (err) {
-      alert(
+      appNotice(
         'Error creating staff account: ' +
           err.message
       )
@@ -2362,7 +2365,7 @@ export default function RestaurantDashboard() {
     name
   ) => {
     if (
-      !confirm(
+      !await appConfirm(
         `Are you sure you want to remove staff member "${name}"?`
       )
     ) {
@@ -2384,11 +2387,11 @@ export default function RestaurantDashboard() {
 
       if (error) throw error
 
-      alert(
+      appNotice(
         'Staff account revoked.'
       )
     } catch (err) {
-      alert(
+      appNotice(
         'Failed to delete staff: ' +
           err.message
       )
@@ -2420,7 +2423,7 @@ export default function RestaurantDashboard() {
           )
 
       if (error) {
-        alert(
+        appNotice(
           'Failed to save tax settings: ' +
             error.message
         )
@@ -2430,7 +2433,7 @@ export default function RestaurantDashboard() {
           ...taxData
         }))
 
-        alert(
+        appNotice(
           'Tax & packing charges updated successfully! ✅'
         )
       }
@@ -2478,7 +2481,7 @@ export default function RestaurantDashboard() {
           : current
       )
 
-      alert(
+      appNotice(
         savedStatus
           ? 'Restaurant is OPEN and accepting orders. ✅'
           : 'Restaurant is CLOSED. New customer orders are paused. 🔴'
@@ -2489,7 +2492,7 @@ export default function RestaurantDashboard() {
         error
       )
 
-      alert(
+      appNotice(
         `Unable to update restaurant status: ${
           error?.message || 'Please try again.'
         }`
@@ -2503,14 +2506,14 @@ export default function RestaurantDashboard() {
     e.preventDefault()
 
     if (!hasAdvancedMenuControls) {
-      alert(
+      appNotice(
         '🔒 Menu import/sync is available on Restaurant Pro and Restaurant + Resort Pro.'
       )
       return
     }
 
     if (!swiggyDataInput.trim()) {
-      alert(
+      appNotice(
         'Please provide valid Swiggy menu export JSON data.'
       )
       return
@@ -2584,7 +2587,7 @@ export default function RestaurantDashboard() {
         )
       }
 
-      alert(
+      appNotice(
         `Successfully synced ${formattedItems.length} items from Swiggy menu! ✅`
       )
 
@@ -2597,7 +2600,7 @@ export default function RestaurantDashboard() {
         ])
       }
     } catch (err) {
-      alert(
+      appNotice(
         'Sync Failed: Make sure your input format is valid JSON. Error: ' +
           err.message
       )
@@ -2615,7 +2618,7 @@ export default function RestaurantDashboard() {
     e.preventDefault()
 
     if (!gatewayPassword.trim()) {
-      alert('Please enter your login password.')
+      appNotice('Please enter your login password.')
       return
     }
 
@@ -2647,7 +2650,7 @@ export default function RestaurantDashboard() {
       setShowGatewayPasswordModal(false)
       setIsGatewayEditable(true)
     } catch (err) {
-      alert(err?.message || 'Password verification failed.')
+      appNotice(err?.message || 'Password verification failed.')
     } finally {
       setVerifyingGatewayPassword(false)
     }
@@ -2712,9 +2715,9 @@ export default function RestaurantDashboard() {
       }))
 
       setIsGatewayEditable(false)
-      alert('Payment settings saved successfully! ✅')
+      appNotice('Payment settings saved successfully! ✅')
     } catch (error) {
-      alert(
+      appNotice(
         'Failed to update payment settings: ' +
           (error?.message || 'Please try again.')
       )
@@ -2738,12 +2741,12 @@ export default function RestaurantDashboard() {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file for the offer.')
+      appNotice('Please select an image file for the offer.')
       e.target.value = ''
       return
     }
     if (file.size > 2 * 1024 * 1024) {
-      alert('Please use an offer image smaller than 2 MB.')
+      appNotice('Please use an offer image smaller than 2 MB.')
       e.target.value = ''
       return
     }
@@ -2751,7 +2754,7 @@ export default function RestaurantDashboard() {
     reader.onload = () => {
       if (typeof reader.result === 'string') setOfferImageUrl(reader.result)
     }
-    reader.onerror = () => alert('Could not read the offer image. Please try another image.')
+    reader.onerror = () => appNotice('Could not read the offer image. Please try another image.')
     reader.readAsDataURL(file)
     e.target.value = ''
   }
@@ -2771,12 +2774,12 @@ export default function RestaurantDashboard() {
   const handleSaveOffer = async (e) => {
     e.preventDefault()
     if (savingOffer) return
-    if (!offerTitle.trim()) { alert('Please enter an offer title.'); return }
-    if (!offerDate) { alert('Please select the offer date.'); return }
+    if (!offerTitle.trim()) { appNotice('Please enter an offer title.'); return }
+    if (!offerDate) { appNotice('Please select the offer date.'); return }
     const parsedOfferPrice = parseFloat(offerPrice)
-    if (isNaN(parsedOfferPrice) || parsedOfferPrice < 0) { alert('Please enter a valid offer price.'); return }
+    if (isNaN(parsedOfferPrice) || parsedOfferPrice < 0) { appNotice('Please enter a valid offer price.'); return }
     const parsedOriginal = offerOriginalPrice === '' ? null : parseFloat(offerOriginalPrice)
-    if (parsedOriginal !== null && (isNaN(parsedOriginal) || parsedOriginal < 0)) { alert('Please enter a valid original price.'); return }
+    if (parsedOriginal !== null && (isNaN(parsedOriginal) || parsedOriginal < 0)) { appNotice('Please enter a valid original price.'); return }
     setSavingOffer(true)
     const payload = {
       restaurant_id: restaurantId,
@@ -2805,10 +2808,10 @@ export default function RestaurantDashboard() {
       if (saved) setDailyOffers((prev) => editingOfferId ? prev.map((item) => item.id === editingOfferId ? saved : item) : [saved, ...prev])
       const wasEditing = Boolean(editingOfferId)
       resetOfferForm()
-      alert(wasEditing ? 'Offer updated successfully! ✅' : 'Offer added successfully! ✅')
+      appNotice(wasEditing ? 'Offer updated successfully! ✅' : 'Offer added successfully! ✅')
     } catch (error) {
       console.error('Offer save error:', error)
-      alert('Failed to save offer: ' + error.message + '\n\nMake sure the daily_offers table has been created in Supabase.')
+      appNotice('Failed to save offer: ' + error.message + '\n\nMake sure the daily_offers table has been created in Supabase.')
     } finally {
       setSavingOffer(false)
     }
@@ -2817,14 +2820,14 @@ export default function RestaurantDashboard() {
   const toggleOffer = async (offer) => {
     const nextActive = !offer.is_active
     const { data, error } = await supabase.from('daily_offers').update({ is_active: nextActive }).eq('id', offer.id).eq('restaurant_id', restaurantId).select().maybeSingle()
-    if (error) { alert('Failed to update offer: ' + error.message); return }
+    if (error) { appNotice('Failed to update offer: ' + error.message); return }
     if (data) setDailyOffers((prev) => prev.map((item) => item.id === offer.id ? data : item))
   }
 
   const deleteOffer = async (offer) => {
-    if (!window.confirm(`Delete the offer "${offer.title}"?`)) return
+    if (!await appConfirm(`Delete the offer "${offer.title}"?`)) return
     const { error } = await supabase.from('daily_offers').delete().eq('id', offer.id).eq('restaurant_id', restaurantId)
-    if (error) { alert('Failed to delete offer: ' + error.message); return }
+    if (error) { appNotice('Failed to delete offer: ' + error.message); return }
     setDailyOffers((prev) => prev.filter((item) => item.id !== offer.id))
     if (editingOfferId === offer.id) resetOfferForm()
   }
@@ -3005,7 +3008,7 @@ export default function RestaurantDashboard() {
 
   const handleGenerateAnalyticsReport = () => {
     if (reportOrders.length === 0) {
-      alert('There are no orders in the selected period to generate a report.')
+      appNotice('There are no orders in the selected period to generate a report.')
       return
     }
 
@@ -3056,9 +3059,9 @@ export default function RestaurantDashboard() {
   }
 
   const handleUpgradePlan =
-    (targetPlan) => {
+    async (targetPlan) => {
       if (!restaurantId) {
-        alert(
+        appNotice(
           'Restaurant ID is missing. Please log in again.'
         )
         return
@@ -3068,7 +3071,7 @@ export default function RestaurantDashboard() {
       const targetPlanName = targetPlanDetails?.name || targetPlan
 
       const confirmation =
-        window.confirm(
+        await appConfirm(
           `Change your subscription to ${targetPlanName}? You will be taken to the secure payment page to continue.`
         )
 
@@ -3192,7 +3195,7 @@ export default function RestaurantDashboard() {
 
       alarmSettingsDirtyRef.current = false
 
-      alert(
+      appNotice(
         `Alarm settings saved ✅\nKitchen: ${savedKitchenSound}\nWaiter: ${savedWaiterSound}`
       )
     } catch (error) {
@@ -3202,7 +3205,7 @@ export default function RestaurantDashboard() {
       // This avoids silently jumping back to Default.
       alarmSettingsDirtyRef.current = true
 
-      alert(
+      appNotice(
         `Failed to save alarm settings: ${
           error?.message || 'Please try again.'
         }`
@@ -3214,14 +3217,14 @@ export default function RestaurantDashboard() {
 
   const handleTabSwitch = (tabId) => {
     if (tabId === 'resort' && !resortModuleEnabled) {
-      alert(
+      appNotice(
         '🔒 Resort Management is not included in your active subscription.'
       )
       return
     }
 
     if (tabId === 'delivery' && !deliveryModuleEnabled) {
-      alert(
+      appNotice(
         '🔒 Delivery Management is not included in your active subscription.'
       )
       return
@@ -3252,17 +3255,17 @@ export default function RestaurantDashboard() {
     const cleanPhone = String(profilePhone || '').replace(/\D/g, '')
 
     if (!cleanName) {
-      alert('Please enter your name.')
+      appNotice('Please enter your name.')
       return
     }
 
     if (cleanName.length < 2 || cleanName.length > 80) {
-      alert('Name must be between 2 and 80 characters.')
+      appNotice('Name must be between 2 and 80 characters.')
       return
     }
 
     if (cleanPhone && cleanPhone.length !== 10) {
-      alert('Please enter a valid 10-digit phone number.')
+      appNotice('Please enter a valid 10-digit phone number.')
       return
     }
 
@@ -3303,10 +3306,10 @@ export default function RestaurantDashboard() {
       )
       setProfileOpen(false)
 
-      alert('Profile updated successfully! ✅')
+      appNotice('Profile updated successfully! ✅')
     } catch (error) {
       console.error('Owner profile update error:', error)
-      alert(`Unable to update profile: ${error.message || 'Please try again.'}`)
+      appNotice(`Unable to update profile: ${error.message || 'Please try again.'}`)
     } finally {
       setProfileSaving(false)
     }
@@ -3379,7 +3382,7 @@ export default function RestaurantDashboard() {
     const restaurantName = billingRestaurantName.trim()
 
     if (!restaurantName) {
-      alert('Please enter a restaurant name.')
+      appNotice('Please enter a restaurant name.')
       return
     }
 
@@ -3398,7 +3401,7 @@ export default function RestaurantDashboard() {
       .eq('id', restaurantId)
 
     if (error) {
-      alert(
+      appNotice(
         'Failed to save bill settings: ' +
           error.message +
           '\n\nIf the error mentions a missing column, make sure the restaurants table has billing_restaurant_name, manager_signature, and logo_url columns.'
@@ -3409,7 +3412,7 @@ export default function RestaurantDashboard() {
         ...updatedData
       }))
       setEditingBillSettings(false)
-      alert('Bill settings saved successfully! ✅')
+      appNotice('Bill settings saved successfully! ✅')
     }
 
     setSavingBillSettings(false)
@@ -3420,12 +3423,12 @@ export default function RestaurantDashboard() {
     if (!file) return
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file for the manager signature.')
+      appNotice('Please select an image file for the manager signature.')
       return
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      alert('Please use a signature image smaller than 2 MB.')
+      appNotice('Please use a signature image smaller than 2 MB.')
       return
     }
 
@@ -3446,13 +3449,13 @@ export default function RestaurantDashboard() {
     if (!file) return
 
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file for the restaurant logo.')
+      appNotice('Please select an image file for the restaurant logo.')
       e.target.value = ''
       return
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      alert('Please use a restaurant logo image smaller than 2 MB.')
+      appNotice('Please use a restaurant logo image smaller than 2 MB.')
       e.target.value = ''
       return
     }
@@ -3467,7 +3470,7 @@ export default function RestaurantDashboard() {
     }
 
     reader.onerror = () => {
-      alert('Could not read the logo image. Please try another image.')
+      appNotice('Could not read the logo image. Please try another image.')
     }
 
     reader.readAsDataURL(file)

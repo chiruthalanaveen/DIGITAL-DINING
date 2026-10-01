@@ -1,12 +1,14 @@
 'use client'
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
 import ManagerDeliveryManagement from '@/app/components/ManagerDeliveryManagement'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
+import { appConfirm, appNotice } from '@/lib/appDialog'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
@@ -416,7 +418,7 @@ function RestaurantChatWidget({ restaurantId }) {
     } catch (error) {
       console.error('AI support escalation error:', error)
 
-      alert(
+      appNotice(
         `Unable to connect to Admin: ${
           error?.message || 'Please try again.'
         }`
@@ -442,7 +444,7 @@ function RestaurantChatWidget({ restaurantId }) {
       String(session?.status || '').toLowerCase() !==
       'connected'
     ) {
-      alert('Please wait until Admin accepts the support chat.')
+      appNotice('Please wait until Admin accepts the support chat.')
       return
     }
 
@@ -475,7 +477,7 @@ function RestaurantChatWidget({ restaurantId }) {
     } catch (error) {
       console.error('Support message send error:', error)
 
-      alert(
+      appNotice(
         `Unable to send message: ${
           error.message || 'Please try again.'
         }`
@@ -1058,10 +1060,9 @@ function DashboardEntryLoader({
 }
 
 export default function RestaurantManagerDashboard({ params }) {
+  useMobileViewportLock()
   const routeParams = use(params)
   const restaurantId = routeParams?.restaurantId || routeParams?.id
-  const searchParams = useSearchParams()
-
   const [authenticated, setAuthenticated] = useState(false)
   const [manager, setManager] = useState(null)
   const [entryLoading, setEntryLoading] = useState(false)
@@ -1260,7 +1261,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const handleLogin = async (event) => {
     event.preventDefault()
     if (!restaurantId || !restaurantCode.trim() || !loginUserId.trim() || !loginPassword.trim()) {
-      alert('Enter the Restaurant Code, Manager User ID, and password.')
+      appNotice('Enter the Restaurant Code, Manager User ID, and password.')
       return
     }
 
@@ -1302,7 +1303,7 @@ export default function RestaurantManagerDashboard({ params }) {
     } catch (error) {
       console.error(error)
       setAuthenticated(false)
-      alert(error.message || 'Unable to sign in.')
+      appNotice(error.message || 'Unable to sign in.')
     } finally {
       setLoginLoading(false)
     }
@@ -1627,7 +1628,9 @@ export default function RestaurantManagerDashboard({ params }) {
   // Native push notification tap / deep-link support.
   useEffect(() => {
     const requestedModule = String(
-      searchParams?.get('module') || ''
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('module') || ''
+        : ''
     )
       .trim()
       .toLowerCase()
@@ -1649,8 +1652,7 @@ export default function RestaurantManagerDashboard({ params }) {
       setDashboardMode('restaurant')
     }
   }, [
-    searchParams,
-    restaurantModuleEnabled,
+restaurantModuleEnabled,
     hasResortAccess,
     deliveryModuleEnabled,
   ])
@@ -1710,19 +1712,19 @@ export default function RestaurantManagerDashboard({ params }) {
     const name = dish.name.trim()
     const price = Number(dish.price)
     if (!name || !Number.isFinite(price) || price <= 0) {
-      alert('Enter a valid dish name and price.')
+      appNotice('Enter a valid dish name and price.')
       return
     }
     if (!editingDishId && menuItems.length >= maxMenuAllowed) {
-      alert(`Your ${currentPlan} plan allows ${maxMenuAllowed} menu items.`)
+      appNotice(`Your ${currentPlan} plan allows ${maxMenuAllowed} menu items.`)
       return
     }
 
     const originalPrice = dish.original_price === '' ? null : Number(dish.original_price)
     const offerPrice = dish.offer_price === '' ? null : Number(dish.offer_price)
-    if (originalPrice !== null && (!Number.isFinite(originalPrice) || originalPrice <= 0)) return alert('Enter a valid original price.')
-    if (offerPrice !== null && (!Number.isFinite(offerPrice) || offerPrice <= 0)) return alert('Enter a valid offer price.')
-    if (originalPrice !== null && offerPrice !== null && offerPrice >= originalPrice) return alert('Offer price must be lower than original price.')
+    if (originalPrice !== null && (!Number.isFinite(originalPrice) || originalPrice <= 0)) return appNotice('Enter a valid original price.')
+    if (offerPrice !== null && (!Number.isFinite(offerPrice) || offerPrice <= 0)) return appNotice('Enter a valid offer price.')
+    if (originalPrice !== null && offerPrice !== null && offerPrice >= originalPrice) return appNotice('Offer price must be lower than original price.')
 
     setSavingDish(true)
     const payload = {
@@ -1749,20 +1751,20 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(editingDishId ? 'Dish updated successfully.' : 'Dish added successfully.')
     } catch (error) {
       console.error(error)
-      alert(`Unable to save dish: ${error.message}`)
+      appNotice(`Unable to save dish: ${error.message}`)
     } finally {
       setSavingDish(false)
     }
   }
 
   const deleteDish = async (item) => {
-    if (!window.confirm(`Delete ${item.name}?`)) return
+    if (!await appConfirm(`Delete ${item.name}?`)) return
     try {
       await managerRpcAction('delete_menu', { id: item.id })
       setMenuItems((items) => items.filter((value) => value.id !== item.id))
       notify('Dish deleted.')
     } catch (error) {
-      alert(`Unable to delete dish: ${error.message}`)
+      appNotice(`Unable to delete dish: ${error.message}`)
     }
   }
 
@@ -1772,7 +1774,7 @@ export default function RestaurantManagerDashboard({ params }) {
       const result = await managerRpcAction('toggle_menu', { id: item.id, is_available: next })
       setMenuItems((items) => items.map((value) => value.id === item.id ? result.data : value))
     } catch (error) {
-      alert(`Unable to update availability: ${error.message}`)
+      appNotice(`Unable to update availability: ${error.message}`)
     }
   }
 
@@ -1784,7 +1786,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const saveOffer = async (event) => {
     event.preventDefault()
     if (!offer.title.trim() || !offer.offer_price || Number(offer.offer_price) <= 0) {
-      alert('Enter an offer title and valid offer price.')
+      appNotice('Enter an offer title and valid offer price.')
       return
     }
 
@@ -1810,7 +1812,7 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(editingOfferId ? 'Offer updated.' : 'Offer created.')
     } catch (error) {
       console.error(error)
-      alert(`Unable to save offer: ${error.message}`)
+      appNotice(`Unable to save offer: ${error.message}`)
     } finally {
       setSavingOffer(false)
     }
@@ -1830,13 +1832,13 @@ export default function RestaurantManagerDashboard({ params }) {
   }
 
   const deleteOffer = async (item) => {
-    if (!window.confirm(`Delete offer ${item.title}?`)) return
+    if (!await appConfirm(`Delete offer ${item.title}?`)) return
     try {
       await managerRpcAction('delete_offer', { id: item.id })
       setDailyOffers((items) => items.filter((value) => value.id !== item.id))
       notify('Offer deleted.')
     } catch (error) {
-      alert(`Unable to delete offer: ${error.message}`)
+      appNotice(`Unable to delete offer: ${error.message}`)
     }
   }
 
@@ -1846,7 +1848,7 @@ export default function RestaurantManagerDashboard({ params }) {
       const result = await managerRpcAction('toggle_offer', { id: item.id, is_active: next })
       setDailyOffers((items) => items.map((value) => value.id === item.id ? result.data : value))
     } catch (error) {
-      alert(`Unable to update offer: ${error.message}`)
+      appNotice(`Unable to update offer: ${error.message}`)
     }
   }
 
@@ -1855,9 +1857,9 @@ export default function RestaurantManagerDashboard({ params }) {
     const name = staffName.trim()
     const userId = staffUserId.trim().toLowerCase()
     const password = staffPassword.trim()
-    if (!name || !userId || !password) return alert('Fill in all staff fields.')
-    if (!/^[a-zA-Z0-9._-]{3,40}$/.test(userId)) return alert('User ID must be 3–40 characters.')
-    if (password.length < 4) return alert('Password/PIN must contain at least 4 characters.')
+    if (!name || !userId || !password) return appNotice('Fill in all staff fields.')
+    if (!/^[a-zA-Z0-9._-]{3,40}$/.test(userId)) return appNotice('User ID must be 3–40 characters.')
+    if (password.length < 4) return appNotice('Password/PIN must contain at least 4 characters.')
 
     setSavingStaff(true)
     try {
@@ -1874,20 +1876,20 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(`${staffRole === 'waiter' ? 'Waiter' : 'Kitchen'} account created.`)
     } catch (error) {
       console.error(error)
-      alert(`Unable to create staff account: ${error.message}`)
+      appNotice(`Unable to create staff account: ${error.message}`)
     } finally {
       setSavingStaff(false)
     }
   }
 
   const revokeStaff = async (staff) => {
-    if (!window.confirm(`Revoke ${staff.name}'s account?`)) return
+    if (!await appConfirm(`Revoke ${staff.name}'s account?`)) return
     try {
       await managerRpcAction('revoke_staff', { id: staff.id })
       setStaffList((items) => items.filter((item) => item.id !== staff.id))
       notify('Staff account revoked.')
     } catch (error) {
-      alert(`Unable to revoke account: ${error.message}`)
+      appNotice(`Unable to revoke account: ${error.message}`)
     }
   }
 
@@ -1900,7 +1902,7 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(`Order #${selectedOrder?.order_number || String(orderId).slice(0, 8)} marked ${nextStatus}.`)
     } catch (error) {
       console.error('Order status update error:', error)
-      alert(`Unable to update order: ${error.message || 'Unknown error'}`)
+      appNotice(`Unable to update order: ${error.message || 'Unknown error'}`)
     }
   }
 
@@ -1927,7 +1929,7 @@ export default function RestaurantManagerDashboard({ params }) {
           : 'Restaurant is now closed. New orders are paused.'
       )
     } catch (error) {
-      alert(
+      appNotice(
         `Unable to update restaurant status: ${
           error?.message || 'Please try again.'
         }`
@@ -1939,13 +1941,13 @@ export default function RestaurantManagerDashboard({ params }) {
 
   const handleSwiggySync = async (event) => {
     event.preventDefault()
-    if (!swiggyDataInput.trim()) return alert('Paste valid menu JSON data.')
+    if (!swiggyDataInput.trim()) return appNotice('Paste valid menu JSON data.')
     let items
     try {
       items = JSON.parse(swiggyDataInput)
       if (!Array.isArray(items)) throw new Error('JSON must be an array.')
     } catch (error) {
-      return alert(`Invalid JSON: ${error.message}`)
+      return appNotice(`Invalid JSON: ${error.message}`)
     }
 
     setSyncingSwiggy(true)
@@ -1970,7 +1972,7 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(`${imported.length || rows.length} menu items imported.`)
     } catch (error) {
       console.error(error)
-      alert(`Unable to sync menu: ${error.message}`)
+      appNotice(`Unable to sync menu: ${error.message}`)
     } finally {
       setSyncingSwiggy(false)
     }
@@ -2076,7 +2078,7 @@ export default function RestaurantManagerDashboard({ params }) {
     const cleanName = String(profileName || '').trim()
 
     if (cleanName.length < 2 || cleanName.length > 80) {
-      alert('Manager name must be between 2 and 80 characters.')
+      appNotice('Manager name must be between 2 and 80 characters.')
       return
     }
 
@@ -2119,7 +2121,7 @@ export default function RestaurantManagerDashboard({ params }) {
       notify('Profile updated successfully. ✅')
     } catch (error) {
       console.error('Manager profile update error:', error)
-      alert(`Unable to update profile: ${error.message || 'Please try again.'}`)
+      appNotice(`Unable to update profile: ${error.message || 'Please try again.'}`)
     } finally {
       setProfileSaving(false)
     }

@@ -10,6 +10,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import PaymentGatewayConfigCard from '@/app/components/PaymentGatewayConfigCard'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
+import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
+
 
 const ORDER_STATUSES = [
   'received',
@@ -1252,7 +1254,7 @@ export default function DeliveryManagement({
       ) ||
       deliveryPrice < 0
     ) {
-      alert(
+      appNotice(
         'Enter a valid item name and Delivery price.'
       )
       return
@@ -1268,7 +1270,7 @@ export default function DeliveryManagement({
         offerPrice > deliveryPrice
       )
     ) {
-      alert(
+      appNotice(
         'Delivery offer price must be between ₹0 and the Delivery price.'
       )
       return
@@ -1377,7 +1379,7 @@ export default function DeliveryManagement({
         error
       )
 
-      alert(
+      appNotice(
         error?.message ||
           'Unable to save Delivery menu item.'
       )
@@ -1448,7 +1450,7 @@ export default function DeliveryManagement({
       .single()
 
     if (error) {
-      alert(error.message)
+      appNotice(error.message)
       return
     }
 
@@ -1490,7 +1492,7 @@ export default function DeliveryManagement({
       name.length < 2 ||
       mobile.length !== 10
     ) {
-      alert(
+      appNotice(
         'Enter driver name and a valid 10-digit mobile number.'
       )
       return
@@ -1500,7 +1502,7 @@ export default function DeliveryManagement({
       alternate &&
       alternate.length !== 10
     ) {
-      alert(
+      appNotice(
         'Enter a valid alternate mobile number.'
       )
       return
@@ -1511,7 +1513,7 @@ export default function DeliveryManagement({
         portalUserId
       )
     ) {
-      alert(
+      appNotice(
         'Driver User ID must be 3-40 characters using letters, numbers, dot, underscore or hyphen.'
       )
       return
@@ -1522,7 +1524,7 @@ export default function DeliveryManagement({
         driverForm.password || ''
       ).length < 6
     ) {
-      alert(
+      appNotice(
         'Driver password must contain at least 6 characters.'
       )
       return
@@ -1583,7 +1585,7 @@ export default function DeliveryManagement({
         error
       )
 
-      alert(
+      appNotice(
         error?.message ||
           'Unable to save driver.'
       )
@@ -1603,7 +1605,7 @@ export default function DeliveryManagement({
           .slice(0, 30)
 
       const nextUserId =
-        window.prompt(
+        await appPrompt(
           'Driver User ID',
           defaultUserId
         )
@@ -1622,14 +1624,14 @@ export default function DeliveryManagement({
           cleanUserId
         )
       ) {
-        alert(
+        appNotice(
           'Driver User ID must be 3-40 characters using letters, numbers, dot, underscore or hyphen.'
         )
         return
       }
 
       const password =
-        window.prompt(
+        await appPrompt(
           'Enter a new Driver Portal password (minimum 6 characters). The old password and old sessions will be replaced.'
         )
 
@@ -1638,7 +1640,7 @@ export default function DeliveryManagement({
       }
 
       if (password.length < 6) {
-        alert(
+        appNotice(
           'Driver password must contain at least 6 characters.'
         )
         return
@@ -1682,7 +1684,7 @@ export default function DeliveryManagement({
           error
         )
 
-        alert(
+        appNotice(
           error?.message ||
             'Unable to update Driver Portal login.'
         )
@@ -1714,7 +1716,7 @@ export default function DeliveryManagement({
         .single()
 
       if (error) {
-        alert(error.message)
+        appNotice(error.message)
         return
       }
 
@@ -1739,22 +1741,22 @@ export default function DeliveryManagement({
     const cleanPassword = String(packerForm.password || '')
 
     if (cleanName.length < 2) {
-      alert('Enter the packer name.')
+      appNotice('Enter the packer name.')
       return
     }
 
     if (cleanMobile && cleanMobile.length !== 10) {
-      alert('Enter a valid 10-digit packer mobile number.')
+      appNotice('Enter a valid 10-digit packer mobile number.')
       return
     }
 
     if (!/^[a-z0-9._-]{3,40}$/.test(cleanUserId)) {
-      alert('Packer User ID must be 3-40 characters using letters, numbers, dot, underscore or hyphen.')
+      appNotice('Packer User ID must be 3-40 characters using letters, numbers, dot, underscore or hyphen.')
       return
     }
 
     if (cleanPassword.length < 6) {
-      alert('Packer password must contain at least 6 characters.')
+      appNotice('Packer password must contain at least 6 characters.')
       return
     }
 
@@ -1785,14 +1787,14 @@ export default function DeliveryManagement({
       await loadDelivery(true)
     } catch (packerError) {
       console.error('Packer save error:', packerError)
-      alert(packerError?.message || 'Unable to create packer.')
+      appNotice(packerError?.message || 'Unable to create packer.')
     } finally {
       setPackerSaving(false)
     }
   }
 
   const resetPackerLogin = async (packer) => {
-    const nextUserId = window.prompt(
+    const nextUserId = await appPrompt(
       'Packer User ID',
       packer.portal_user_id ||
         String(packer.name || 'packer')
@@ -1806,16 +1808,16 @@ export default function DeliveryManagement({
 
     const cleanUserId = nextUserId.trim().toLowerCase()
     if (!/^[a-z0-9._-]{3,40}$/.test(cleanUserId)) {
-      alert('Packer User ID must be 3-40 characters using letters, numbers, dot, underscore or hyphen.')
+      appNotice('Packer User ID must be 3-40 characters using letters, numbers, dot, underscore or hyphen.')
       return
     }
 
-    const password = window.prompt(
+    const password = await appPrompt(
       'Enter a new Packer Portal password (minimum 6 characters).'
     )
     if (password === null) return
     if (password.length < 6) {
-      alert('Packer password must contain at least 6 characters.')
+      appNotice('Packer password must contain at least 6 characters.')
       return
     }
 
@@ -1839,7 +1841,7 @@ export default function DeliveryManagement({
       await loadDelivery(true)
     } catch (packerError) {
       console.error('Packer login reset error:', packerError)
-      alert(packerError?.message || 'Unable to update Packer login.')
+      appNotice(packerError?.message || 'Unable to update Packer login.')
     }
   }
 
@@ -1855,7 +1857,7 @@ export default function DeliveryManagement({
       .single()
 
     if (error) {
-      alert(error.message)
+      appNotice(error.message)
       return
     }
 
@@ -1889,7 +1891,7 @@ export default function DeliveryManagement({
       .single()
 
     if (error) {
-      alert(error.message)
+      appNotice(error.message)
       return
     }
 
@@ -1957,7 +1959,7 @@ export default function DeliveryManagement({
         .single()
 
       if (error) {
-        alert(error.message)
+        appNotice(error.message)
         return
       }
 
@@ -1993,7 +1995,7 @@ export default function DeliveryManagement({
       ) ||
       offerPrice < 0
     ) {
-      alert(
+      appNotice(
         'Enter a valid offer title and price.'
       )
       return
@@ -2059,7 +2061,7 @@ export default function DeliveryManagement({
         error
       )
 
-      alert(
+      appNotice(
         error?.message ||
           'Unable to save offer.'
       )
@@ -2092,7 +2094,7 @@ export default function DeliveryManagement({
       .single()
 
     if (error) {
-      alert(error.message)
+      appNotice(error.message)
       return
     }
 
@@ -2109,7 +2111,7 @@ export default function DeliveryManagement({
     offer
   ) => {
     if (
-      !window.confirm(
+      !await appConfirm(
         `Delete "${offer.title}"?`
       )
     ) {
@@ -2127,7 +2129,7 @@ export default function DeliveryManagement({
         )
 
     if (error) {
-      alert(error.message)
+      appNotice(error.message)
       return
     }
 
@@ -2152,7 +2154,7 @@ export default function DeliveryManagement({
           'Delivery website link copied.'
         )
       } catch {
-        window.prompt(
+        await appPrompt(
           'Copy Delivery URL:',
           deliveryUrl
         )
@@ -3565,7 +3567,7 @@ export default function DeliveryManagement({
                         'Driver Portal link copied.'
                       )
                     } catch {
-                      window.prompt(
+                      await appPrompt(
                         'Copy Driver Portal URL:',
                         driverPortalUrl
                       )
@@ -3871,7 +3873,7 @@ export default function DeliveryManagement({
                       await navigator.clipboard.writeText(packerPortalUrl)
                       setMessage('Packer Portal link copied.')
                     } catch {
-                      window.prompt('Copy Packer Portal URL:', packerPortalUrl)
+                      await appPrompt('Copy Packer Portal URL:', packerPortalUrl)
                     }
                   }}
                   className="rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-white"
