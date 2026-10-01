@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { supabase } from '@/lib/supabase'
 import PaymentGatewayConfigCard from '@/app/components/PaymentGatewayConfigCard'
+import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 
 const ORDER_STATUSES = [
   'received',
@@ -36,6 +37,10 @@ const EMPTY_SETTINGS = {
   sgst_rate: 2.5,
   cgst_rate: 2.5,
   max_delivery_distance_km: '',
+  delivery_radius_enabled: false,
+  delivery_origin_latitude: '',
+  delivery_origin_longitude: '',
+  delivery_origin_accuracy_m: '',
   estimated_delivery_minutes: 45,
   auto_assign_enabled: false,
   auto_assign_min_orders: 3,
@@ -176,6 +181,10 @@ export default function DeliveryManagement({
     useState(false)
   const [runningAutoAssign, setRunningAutoAssign] =
     useState(false)
+  const [ownerLocationLoading, setOwnerLocationLoading] =
+    useState(false)
+  const [ownerLocationError, setOwnerLocationError] =
+    useState('')
 
   const deliveryUrl =
     typeof window !== 'undefined' &&
@@ -852,6 +861,54 @@ export default function DeliveryManagement({
     orderStatusFilter,
   ])
 
+  const chooseOwnerDeliveryCenter = () => {
+    if (ownerLocationLoading) return
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setOwnerLocationError(
+        'Location access is not supported in this browser.'
+      )
+      return
+    }
+
+    setOwnerLocationLoading(true)
+    setOwnerLocationError('')
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latitude = Number(position.coords.latitude)
+        const longitude = Number(position.coords.longitude)
+        const accuracy = Number(position.coords.accuracy || 0)
+
+        setSettings((current) => ({
+          ...current,
+          delivery_origin_latitude: latitude.toFixed(7),
+          delivery_origin_longitude: longitude.toFixed(7),
+          delivery_origin_accuracy_m: accuracy
+            ? accuracy.toFixed(2)
+            : '',
+        }))
+
+        setOwnerLocationLoading(false)
+        setOwnerLocationError('')
+      },
+      (geoError) => {
+        console.error('Owner delivery center geolocation error:', geoError)
+        setOwnerLocationLoading(false)
+        setOwnerLocationError(
+          geoError?.code === 1
+            ? 'Location permission was denied. Allow location access and try again.'
+            : 'Unable to read this device location. Check GPS/location services and try again.'
+        )
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    )
+  }
+
   const saveSettings = async (
     event
   ) => {
@@ -868,6 +925,47 @@ export default function DeliveryManagement({
     setMessage('')
 
     try {
+      const radiusEnabled = Boolean(
+        settings.delivery_radius_enabled
+      )
+      const radiusKm = Number(
+        settings.max_delivery_distance_km
+      )
+      const originLatitude = Number(
+        settings.delivery_origin_latitude
+      )
+      const originLongitude = Number(
+        settings.delivery_origin_longitude
+      )
+
+      if (
+        radiusEnabled &&
+        (
+          !Number.isFinite(radiusKm) ||
+          radiusKm <= 0
+        )
+      ) {
+        throw new Error(
+          'Enter a valid delivery radius in kilometres.'
+        )
+      }
+
+      if (
+        radiusEnabled &&
+        (
+          !Number.isFinite(originLatitude) ||
+          originLatitude < -90 ||
+          originLatitude > 90 ||
+          !Number.isFinite(originLongitude) ||
+          originLongitude < -180 ||
+          originLongitude > 180
+        )
+      ) {
+        throw new Error(
+          'Set the store delivery center on the map before enabling the delivery radius.'
+        )
+      }
+
       const payload = {
         restaurant_id: restaurantId,
         store_name: String(
@@ -943,6 +1041,24 @@ export default function DeliveryManagement({
                 Number(
                   settings.max_delivery_distance_km
                 )
+              ),
+        delivery_radius_enabled:
+          radiusEnabled,
+        delivery_origin_latitude:
+          Number.isFinite(originLatitude)
+            ? originLatitude
+            : null,
+        delivery_origin_longitude:
+          Number.isFinite(originLongitude)
+            ? originLongitude
+            : null,
+        delivery_origin_accuracy_m:
+          settings.delivery_origin_accuracy_m === '' ||
+          settings.delivery_origin_accuracy_m === null
+            ? null
+            : Math.max(
+                0,
+                Number(settings.delivery_origin_accuracy_m || 0)
               ),
         estimated_delivery_minutes:
           Math.max(
@@ -4055,23 +4171,6 @@ export default function DeliveryManagement({
             />
 
             <Field
-              label="Max Delivery Distance (km)"
-              type="number"
-              value={
-                settings.max_delivery_distance_km
-              }
-              onChange={(value) =>
-                setSettings(
-                  (current) => ({
-                    ...current,
-                    max_delivery_distance_km:
-                      value,
-                  })
-                )
-              }
-            />
-
-            <Field
               label="Estimated Delivery (minutes)"
               type="number"
               value={
@@ -4181,6 +4280,120 @@ export default function DeliveryManagement({
                 )
               }
             />
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-400">
+                  Owner-only Delivery Coverage
+                </p>
+                <h4 className="mt-1 text-sm font-black text-white">
+                  Map Delivery Radius
+                </h4>
+                <p className="mt-1 max-w-2xl text-[11px] leading-5 text-neutral-400">
+                  Set the restaurant/store dispatch center and choose how many kilometres you will deliver. Customer orders outside this radius are blocked on the server. Managers and packers cannot change this setting.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSettings((current) => ({
+                    ...current,
+                    delivery_radius_enabled:
+                      !current.delivery_radius_enabled,
+                  }))
+                }
+                className={`shrink-0 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase ${
+                  settings.delivery_radius_enabled
+                    ? 'bg-sky-500 text-white'
+                    : 'bg-neutral-800 text-neutral-400'
+                }`}
+              >
+                {settings.delivery_radius_enabled
+                  ? 'Radius Limit On'
+                  : 'Radius Limit Off'}
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[240px_1fr]">
+              <div className="space-y-3">
+                <Field
+                  label="Delivery Radius (km)"
+                  type="number"
+                  value={settings.max_delivery_distance_km}
+                  onChange={(value) =>
+                    setSettings((current) => ({
+                      ...current,
+                      max_delivery_distance_km: value,
+                    }))
+                  }
+                  placeholder="Example: 5"
+                />
+
+                <button
+                  type="button"
+                  onClick={chooseOwnerDeliveryCenter}
+                  disabled={ownerLocationLoading}
+                  className="w-full rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                >
+                  {ownerLocationLoading
+                    ? 'Getting Store Location...'
+                    : 'Use Current Store Location'}
+                </button>
+
+                {settings.delivery_origin_latitude &&
+                  settings.delivery_origin_longitude && (
+                    <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3 text-[10px] leading-5 text-neutral-400">
+                      <p className="font-black text-sky-300">
+                        Store delivery center set
+                      </p>
+                      <p className="mt-1 font-mono">
+                        {Number(settings.delivery_origin_latitude).toFixed(5)}, {Number(settings.delivery_origin_longitude).toFixed(5)}
+                      </p>
+                      {settings.delivery_origin_accuracy_m && (
+                        <p>
+                          GPS accuracy ±{Math.round(Number(settings.delivery_origin_accuracy_m))}m
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                {ownerLocationError && (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-[10px] font-bold leading-5 text-red-300">
+                    {ownerLocationError}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <DeliveryLocationMap
+                  latitude={settings.delivery_origin_latitude}
+                  longitude={settings.delivery_origin_longitude}
+                  referenceLatitude={settings.delivery_origin_latitude}
+                  referenceLongitude={settings.delivery_origin_longitude}
+                  radiusKm={settings.max_delivery_distance_km}
+                  showRadius={
+                    Boolean(settings.delivery_radius_enabled) &&
+                    Number(settings.max_delivery_distance_km) > 0
+                  }
+                  onChange={({ latitude, longitude }) => {
+                    setSettings((current) => ({
+                      ...current,
+                      delivery_origin_latitude: latitude,
+                      delivery_origin_longitude: longitude,
+                      delivery_origin_accuracy_m: '',
+                    }))
+                    setOwnerLocationError('')
+                  }}
+                  height={320}
+                />
+                <p className="mt-2 text-[10px] leading-4 text-neutral-500">
+                  Tap the map or drag the pin to the exact restaurant/store dispatch point. The circle shows the configured delivery boundary.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 sm:p-5">

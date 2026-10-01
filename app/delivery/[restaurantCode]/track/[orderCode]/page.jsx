@@ -57,15 +57,21 @@ export default function DeliveryTrackingPage({
 }) {
   const unwrappedParams = use(params)
 
+  // Support either dynamic-folder spelling:
+  // [restaurantCode] or [restaurantcode]
   const restaurantCode =
     String(
       unwrappedParams?.restaurantCode ||
+        unwrappedParams?.restaurantcode ||
         ''
     ).trim()
 
+  // Support either dynamic-folder spelling:
+  // [orderCode] or [ordercode]
   const orderCode =
     String(
       unwrappedParams?.orderCode ||
+        unwrappedParams?.ordercode ||
         ''
     ).trim()
 

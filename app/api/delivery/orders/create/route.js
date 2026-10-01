@@ -43,6 +43,62 @@ function getAdminClient() {
   )
 }
 
+function distanceKm(lat1, lng1, lat2, lng2) {
+  const firstLat = Number(lat1)
+  const firstLng = Number(lng1)
+  const secondLat = Number(lat2)
+  const secondLng = Number(lng2)
+
+  if (![firstLat, firstLng, secondLat, secondLng].every(Number.isFinite)) {
+    return null
+  }
+
+  const toRadians = (value) => (value * Math.PI) / 180
+  const earthRadiusKm = 6371.0088
+  const dLat = toRadians(secondLat - firstLat)
+  const dLng = toRadians(secondLng - firstLng)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(firstLat)) *
+      Math.cos(toRadians(secondLat)) *
+      Math.sin(dLng / 2) ** 2
+
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(a))
+}
+
+async function readDeliveryCoverage(admin, restaurantCode) {
+  const { data: restaurant, error: restaurantError } = await admin
+    .from('restaurants')
+    .select('id')
+    .ilike('restaurant_code', restaurantCode)
+    .maybeSingle()
+
+  if (restaurantError) throw restaurantError
+  if (!restaurant?.id) {
+    throw new Error('Delivery store was not found.')
+  }
+
+  const { data: settings, error: settingsError } = await admin
+    .from('delivery_settings')
+    .select(
+      `
+        delivery_radius_enabled,
+        max_delivery_distance_km,
+        delivery_origin_latitude,
+        delivery_origin_longitude
+      `
+    )
+    .eq('restaurant_id', restaurant.id)
+    .maybeSingle()
+
+  if (settingsError) throw settingsError
+
+  return {
+    restaurantId: restaurant.id,
+    settings: settings || null,
+  }
+}
+
 async function readDeliveryGateway(
   admin,
   restaurantId
@@ -211,6 +267,77 @@ export async function POST(request) {
 
     admin = getAdminClient()
 
+    const coverage = await readDeliveryCoverage(
+      admin,
+      restaurantCode
+    )
+
+    const radiusEnabled = Boolean(
+      coverage?.settings?.delivery_radius_enabled
+    )
+    const maxRadiusKm = Number(
+      coverage?.settings?.max_delivery_distance_km
+    )
+    const originLatitude = Number(
+      coverage?.settings?.delivery_origin_latitude
+    )
+    const originLongitude = Number(
+      coverage?.settings?.delivery_origin_longitude
+    )
+
+    let deliveryDistanceKm = null
+
+    if (
+      Number.isFinite(originLatitude) &&
+      Number.isFinite(originLongitude)
+    ) {
+      deliveryDistanceKm = distanceKm(
+        originLatitude,
+        originLongitude,
+        latitude,
+        longitude
+      )
+    }
+
+    if (radiusEnabled) {
+      if (
+        !Number.isFinite(maxRadiusKm) ||
+        maxRadiusKm <= 0 ||
+        !Number.isFinite(originLatitude) ||
+        originLatitude < -90 ||
+        originLatitude > 90 ||
+        !Number.isFinite(originLongitude) ||
+        originLongitude < -180 ||
+        originLongitude > 180
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Delivery coverage is not configured correctly. Please contact the store.',
+          },
+          { status: 409 }
+        )
+      }
+
+      if (
+        deliveryDistanceKm === null ||
+        deliveryDistanceKm > maxRadiusKm
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'OUTSIDE_DELIVERY_RADIUS',
+            message:
+              `This location is outside the delivery area. This store delivers within ${maxRadiusKm.toFixed(1)} km. Your selected pin is ${Number(deliveryDistanceKm || 0).toFixed(2)} km away.`,
+            maxDeliveryDistanceKm: maxRadiusKm,
+            selectedDistanceKm: deliveryDistanceKm,
+          },
+          { status: 422 }
+        )
+      }
+    }
+
     const {
       data: created,
       error: createError,
@@ -331,6 +458,10 @@ export async function POST(request) {
           locationAccuracy,
         location_captured_at:
           new Date().toISOString(),
+        delivery_distance_km:
+          deliveryDistanceKm === null
+            ? null
+            : Number(deliveryDistanceKm.toFixed(2)),
       })
       .eq('id', createdOrderId)
 
