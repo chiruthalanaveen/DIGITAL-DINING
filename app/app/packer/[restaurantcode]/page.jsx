@@ -15,6 +15,7 @@ import {
 } from 'react'
 
 import { supabase } from '@/lib/supabase'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
 
 
@@ -69,6 +70,7 @@ function formatDate(value) {
 export default function DeliveryPackerPortal({ params }) {
 
   const unwrappedParams = use(params)
+  useMobileViewportLock()
 
   const restaurantCode = String(
 
@@ -388,34 +390,9 @@ export default function DeliveryPackerPortal({ params }) {
 
 
 
-    const labels = {
-
-      confirmed: 'confirm',
-
-      packed: 'mark packed',
-
-      out_for_delivery: 'send out for delivery',
-
-    }
-
-
-
-    if (
-
-      !window.confirm(
-
-        `${labels[nextStatus] || 'update'} ${order.order_code}?`
-
-      )
-
-    ) {
-
-      return
-
-    }
-
-
-
+    // Update immediately from the Packer Portal.
+    // No second browser confirmation is used here.
+    // The pressed button itself is the confirmation/input.
     setUpdatingOrderId(order.id)
 
     setError('')
@@ -540,9 +517,9 @@ export default function DeliveryPackerPortal({ params }) {
 
     return (
 
-      <main className="min-h-screen bg-neutral-950 px-4 py-10 text-white">
+      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 px-3 py-6 text-white sm:px-4 sm:py-10">
 
-        <div className="mx-auto max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-8 text-center">
+        <div className="mx-auto w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-center sm:p-8">
 
           Loading Packer Portal...
 
@@ -560,11 +537,11 @@ export default function DeliveryPackerPortal({ params }) {
 
     return (
 
-      <main className="min-h-screen bg-neutral-950 px-4 py-10 text-neutral-100">
+      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 px-3 py-6 text-neutral-100 sm:px-4 sm:py-10">
 
-        <div className="mx-auto max-w-md">
+        <div className="mx-auto w-full max-w-md">
 
-          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
+          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl sm:p-6">
 
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/10 text-2xl">
 
@@ -764,13 +741,13 @@ export default function DeliveryPackerPortal({ params }) {
 
           const mapUrl = hasLocation
 
-            ? `https\://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
 
                 `${order.latitude},${order.longitude}`
 
               )}`
 
-            : `https\://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
 
                 address
 
@@ -790,7 +767,7 @@ export default function DeliveryPackerPortal({ params }) {
 
               key={order.id}
 
-              className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
+              className="min-w-0 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5"
 
             >
 
@@ -930,7 +907,7 @@ export default function DeliveryPackerPortal({ params }) {
 
 
 
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-3 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
 
                 <a
 
@@ -1112,11 +1089,11 @@ export default function DeliveryPackerPortal({ params }) {
 
   return (
 
-    <main className="min-h-screen bg-neutral-950 pb-10 text-neutral-100">
+    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 pb-[max(2.5rem,env(safe-area-inset-bottom))] text-neutral-100">
 
       <header className="sticky top-0 z-30 border-b border-neutral-800 bg-neutral-950/95 backdrop-blur">
 
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-4">
 
           <div className="min-w-0">
 
@@ -1176,9 +1153,9 @@ export default function DeliveryPackerPortal({ params }) {
 
 
 
-      <div className="mx-auto max-w-4xl space-y-6 px-4 py-5">
+      <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-5">
 
-        <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+        <section className="min-w-0 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
 
           <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
 

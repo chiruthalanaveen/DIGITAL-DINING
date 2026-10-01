@@ -1,8 +1,14 @@
 'use client'
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import ThemeToggle from '@/app/components/ThemeToggle'
 import { supabase } from '@/lib/supabase'
+import ResortManagement from '@/app/components/ResortManagement'
 import ManagerDeliveryManagement from '@/app/components/ManagerDeliveryManagement'
+import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
+import { appConfirm, appNotice } from '@/lib/appDialog'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
@@ -34,362 +40,6 @@ function Input({ label, value, onChange, type = 'text', placeholder = '' }) {
     </div>
   )
 }
-
-function AppIcon({ name, className = 'h-5 w-5', strokeWidth = 1.8 }) {
-  const common = {
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-  }
-
-  const icons = {
-    home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V21h13V9.5" /><path d="M9.5 21v-7h5v7" /></>,
-    orders: <><path d="M6 3.5h12v17H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
-    tables: <><rect x="3.5" y="4" width="17" height="16" rx="2" /><path d="M3.5 10h17M9 4v16M15 4v16" /></>,
-    menu: <><path d="M5 7h14M5 12h14M5 17h14" /></>,
-    more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
-    user: <><circle cx="12" cy="8" r="3.25" /><path d="M5.5 20c.8-4 3-6 6.5-6s5.7 2 6.5 6" /></>,
-    refresh: <><path d="M20 7v5h-5" /><path d="M19 12a7 7 0 1 1-2-5.2L20 9" /></>,
-    chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
-    qr: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" /><path d="M14 14h2v2h-2zM18 14h2v6h-2M14 18h2v2h-2" /></>,
-    billing: <><path d="M6 3.5h12v17l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
-    tag: <><path d="M4 4h7l9 9-7 7-9-9z" /><circle cx="8.5" cy="8.5" r="1.2" /></>,
-    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 9h18M7 15h4" /></>,
-    users: <><circle cx="9" cy="8.5" r="3" /><path d="M3.5 19c.6-3.4 2.5-5 5.5-5s4.9 1.6 5.5 5" /><path d="M15.5 6.2a2.7 2.7 0 0 1 0 5.2M17 14.5c2.1.5 3.3 1.9 3.7 4.5" /></>,
-    sync: <><path d="M20 7h-5V2" /><path d="M20 7a8 8 0 0 0-13.6-2.6L4 7" /><path d="M4 17h5v5" /><path d="M4 17a8 8 0 0 0 13.6 2.6L20 17" /></>,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2-1.7.7-1.9-.9L1.1 6l.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2h3l.7-2 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z" transform="translate(2.5 0) scale(.8)" /></>,
-    bell: <><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" /><path d="M10 19a2.3 2.3 0 0 0 4 0" /></>,
-    hotel: <><path d="M4 21V6h10v15M14 11h6v10M7 9h1M10 9h1M7 13h1M10 13h1M7 17h1M10 17h1M17 14h1M17 17h1" /></>,
-    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
-    logout: <><path d="M10 5H5v14h5" /><path d="M13 8l4 4-4 4M8 12h9" /></>,
-    kitchen: <><path d="M5 12h14v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3z" /><path d="M7 12V9a5 5 0 0 1 10 0v3M9 6.5V4M15 6.5V4" /></>,
-    palette: <><path d="M12 3a9 9 0 1 0 0 18h1.3a2 2 0 0 0 1.2-3.6c-.7-.5-.4-1.5.4-1.7H17a4 4 0 0 0 4-4A8.7 8.7 0 0 0 12 3Z" /><circle cx="7.5" cy="10" r=".8" fill="currentColor" stroke="none" /><circle cx="10" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="14" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="17" cy="10" r=".8" fill="currentColor" stroke="none" /></>,
-    type: <><path d="M5 6V4h14v2M9 20h6M12 4v16" /></>,
-    moon: <path d="M20 15.2A8 8 0 0 1 8.8 4 8 8 0 1 0 20 15.2Z" />,
-    sun: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
-    volume: <><path d="M5 10v4h4l5 4V6l-5 4z" /><path d="M17 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" /></>,
-    notifications: <><path d="M6 9a6 6 0 0 1 12 0v4l2 3H4l2-3z" /><path d="M10 20h4" /></>,
-    chevron: <path d="m9 18 6-6-6-6" />,
-    close: <path d="M6 6l12 12M18 6 6 18" />,
-    check: <path d="m5 12 4 4L19 6" />,
-    store: <><path d="M4 10v10h16V10" /><path d="M3 10l2-6h14l2 6" /><path d="M8 20v-6h8v6" /></>,
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} {...common}>
-      {icons[name] || icons.more}
-    </svg>
-  )
-}
-
-const MOBILE_EXPERIENCE_KEY = 'digital-dine-mobile-experience-v1'
-
-const DEFAULT_MOBILE_EXPERIENCE = {
-  darkMode: true,
-  theme: 'orange',
-  textSize: 'normal',
-  uiStyle: 'soft',
-  pushNotifications: true,
-  orderMessages: true,
-  promotions: false,
-  sound: true,
-}
-
-function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
-  const [saved, setSaved] = useState(DEFAULT_MOBILE_EXPERIENCE)
-  const [draft, setDraft] = useState(DEFAULT_MOBILE_EXPERIENCE)
-
-  const themeOptions = [
-    { id: 'orange', label: 'Orange', color: '#f97316' },
-    { id: 'emerald', label: 'Green', color: '#059669' },
-    { id: 'ocean', label: 'Blue', color: '#2563eb' },
-    { id: 'violet', label: 'Violet', color: '#7c3aed' },
-    { id: 'rose', label: 'Rose', color: '#e11d48' },
-  ]
-
-  const normalize = (value) => ({
-    ...DEFAULT_MOBILE_EXPERIENCE,
-    ...(value && typeof value === 'object' ? value : {}),
-  })
-
-  const applyExperience = (prefs) => {
-    if (typeof document === 'undefined') return
-    const root = document.documentElement
-    root.dataset.ddAppTheme = prefs.theme
-    root.dataset.ddUiStyle = prefs.uiStyle
-    root.dataset.ddTextSize = prefs.textSize
-    root.dataset.ddDarkMode = prefs.darkMode ? 'true' : 'false'
-  }
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const parsed = JSON.parse(localStorage.getItem(MOBILE_EXPERIENCE_KEY) || '{}')
-      const next = normalize(parsed)
-      setSaved(next)
-      setDraft(next)
-      applyExperience(next)
-    } catch {
-      applyExperience(DEFAULT_MOBILE_EXPERIENCE)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!open) return
-    setDraft(saved)
-  }, [open, saved])
-
-  const setPreview = (patch) => {
-    setDraft((current) => {
-      const next = { ...current, ...patch }
-      applyExperience(next)
-      return next
-    })
-  }
-
-  const closeWithoutSaving = () => {
-    setDraft(saved)
-    applyExperience(saved)
-    onClose?.()
-  }
-
-  const save = () => {
-    const next = normalize(draft)
-    setSaved(next)
-    applyExperience(next)
-    try {
-      localStorage.setItem(MOBILE_EXPERIENCE_KEY, JSON.stringify(next))
-    } catch (error) {
-      console.error('Unable to save mobile experience preferences:', error)
-    }
-    onClose?.()
-  }
-
-  if (!open) return null
-
-  const accent = themeOptions.find((item) => item.id === draft.theme)?.color || '#f97316'
-  const surface = draft.darkMode ? 'bg-[#151515] border-white/10 text-white' : 'bg-white border-neutral-200 text-neutral-950'
-  const page = draft.darkMode ? 'bg-[#0d0d0e] text-white' : 'bg-[#f5f5f4] text-neutral-950'
-  const muted = draft.darkMode ? 'text-neutral-400' : 'text-neutral-500'
-
-  const Toggle = ({ value, onChange, label }) => (
-    <button
-      type="button"
-      role="switch"
-      aria-label={label}
-      aria-checked={Boolean(value)}
-      onClick={() => onChange(!value)}
-      className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${
-        value ? 'border-transparent' : draft.darkMode ? 'border-white/10 bg-neutral-800' : 'border-neutral-300 bg-neutral-200'
-      }`}
-      style={value ? { backgroundColor: accent } : undefined}
-    >
-      <span
-        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-          value ? 'translate-x-[23px]' : 'translate-x-[3px]'
-        }`}
-      />
-    </button>
-  )
-
-  return (
-    <div className={`fixed inset-0 z-[120] ${page}`}>
-      <style jsx global>{`
-        html[data-dd-text-size='small'] .dd-mobile-themeable { font-size: 14px; }
-        html[data-dd-text-size='normal'] .dd-mobile-themeable { font-size: 16px; }
-        html[data-dd-text-size='large'] .dd-mobile-themeable { font-size: 18px; }
-        html[data-dd-ui-style='rounded'] .dd-mobile-themeable .dd-experience-surface { border-radius: 20px; }
-        html[data-dd-ui-style='soft'] .dd-mobile-themeable .dd-experience-surface { border-radius: 14px; }
-        html[data-dd-ui-style='crisp'] .dd-mobile-themeable .dd-experience-surface { border-radius: 8px; }
-      `}</style>
-
-      <div className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden">
-        <header className={`shrink-0 border-b px-4 pb-3 pt-[max(0.85rem,env(safe-area-inset-top))] ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]' : 'border-neutral-200 bg-white'}`}>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={closeWithoutSaving}
-              className={`flex h-10 w-10 items-center justify-center rounded-xl border ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
-              aria-label="Back"
-            >
-              <AppIcon name="chevron" className="h-5 w-5 rotate-180" />
-            </button>
-            <div className="min-w-0">
-              <p className={`text-[11px] font-medium ${muted}`}>{portal}</p>
-              <h2 className="text-base font-semibold">App settings</h2>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-4 py-5 pb-28">
-          <section>
-            <div className="mb-2 px-1">
-              <h3 className="text-sm font-semibold">Appearance</h3>
-              <p className={`mt-0.5 text-[11px] ${muted}`}>Choose how this app looks on this device.</p>
-            </div>
-
-            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
-              <div className={`flex items-center justify-between gap-4 p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                    <AppIcon name={draft.darkMode ? 'moon' : 'sun'} className="h-[18px] w-[18px]" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold">Dark mode</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Use a darker app surface.</p>
-                  </div>
-                </div>
-                <Toggle value={draft.darkMode} onChange={(value) => setPreview({ darkMode: value })} label="Dark mode" />
-              </div>
-
-              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                    <AppIcon name="palette" className="h-[18px] w-[18px]" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-semibold">Accent color</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Used for selected controls and switches.</p>
-                  </div>
-                </div>
-                <div className="mt-4 grid grid-cols-5 gap-2">
-                  {themeOptions.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setPreview({ theme: item.id })}
-                      className={`flex min-h-14 flex-col items-center justify-center rounded-xl border px-1 transition ${
-                        draft.theme === item.id
-                          ? draft.darkMode ? 'border-white/30 bg-white/5' : 'border-neutral-300 bg-neutral-50'
-                          : draft.darkMode ? 'border-white/10' : 'border-neutral-200'
-                      }`}
-                      aria-label={`${item.label} accent`}
-                    >
-                      <span className="h-5 w-5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className={`mt-1.5 text-[8px] font-medium ${muted}`}>{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                    <AppIcon name="type" className="h-[18px] w-[18px]" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-semibold">Text size</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Adjust the app's reading size.</p>
-                  </div>
-                </div>
-                <div className={`mt-4 grid grid-cols-3 rounded-xl p-1 ${draft.darkMode ? 'bg-neutral-900' : 'bg-neutral-100'}`}>
-                  {['small', 'normal', 'large'].map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setPreview({ textSize: id })}
-                      className={`min-h-10 rounded-lg text-[11px] font-medium capitalize transition ${
-                        draft.textSize === id
-                          ? draft.darkMode ? 'bg-neutral-700 text-white shadow-sm' : 'bg-white text-neutral-950 shadow-sm'
-                          : muted
-                      }`}
-                    >
-                      {id}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <p className="text-[13px] font-semibold">Card corners</p>
-                <p className={`mt-0.5 text-[10px] ${muted}`}>A small visual preference; features stay unchanged.</p>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {[
-                    ['rounded', 'Rounded'],
-                    ['soft', 'Soft'],
-                    ['crisp', 'Compact'],
-                  ].map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setPreview({ uiStyle: id })}
-                      className={`min-h-11 border px-2 text-[10px] font-medium transition ${
-                        id === 'rounded' ? 'rounded-2xl' : id === 'soft' ? 'rounded-xl' : 'rounded-md'
-                      } ${
-                        draft.uiStyle === id
-                          ? 'text-white'
-                          : draft.darkMode ? 'border-white/10 text-neutral-400' : 'border-neutral-200 text-neutral-600'
-                      }`}
-                      style={draft.uiStyle === id ? { backgroundColor: accent, borderColor: accent } : undefined}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-6">
-            <div className="mb-2 px-1">
-              <h3 className="text-sm font-semibold">Notifications</h3>
-              <p className={`mt-0.5 text-[11px] ${muted}`}>Control which app alerts are enabled.</p>
-            </div>
-
-            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
-              {[
-                ['pushNotifications', 'notifications', 'Push notifications', 'General app and order alerts'],
-                ['orderMessages', 'orders', 'Order activity', 'New orders and status changes'],
-                ['promotions', 'tag', 'Product updates', 'Plan and feature announcements'],
-                ['sound', 'volume', 'Alert sound', 'Play sound for supported alerts'],
-              ].map(([key, icon, title, subtitle], index) => (
-                <div key={key} className={`flex items-center justify-between gap-4 p-4 ${index ? draft.darkMode ? 'border-t border-white/10' : 'border-t border-neutral-200' : ''}`}>
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                      <AppIcon name={icon} className="h-[18px] w-[18px]" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-semibold">{title}</p>
-                      <p className={`mt-0.5 truncate text-[10px] ${muted}`}>{subtitle}</p>
-                    </div>
-                  </div>
-                  <Toggle value={draft[key]} onChange={(value) => setPreview({ [key]: value })} label={title} />
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <p className={`mt-4 px-1 text-[10px] leading-5 ${muted}`}>
-            These preferences are stored on this device. Restaurant data, orders, staff, menu, billing and payment settings are unchanged.
-          </p>
-        </div>
-
-        <div className={`absolute bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t px-4 pb-[max(0.8rem,env(safe-area-inset-bottom))] pt-3 ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]/95' : 'border-neutral-200 bg-white/95'} backdrop-blur-xl`}>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={closeWithoutSaving}
-              className={`min-h-11 rounded-xl border text-xs font-semibold ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              className="min-h-11 rounded-xl text-xs font-semibold text-white shadow-sm"
-              style={{ backgroundColor: accent }}
-            >
-              Save changes
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 
 function Stat({ title, value, accent = 'text-white' }) {
   return (
@@ -768,7 +418,7 @@ function RestaurantChatWidget({ restaurantId }) {
     } catch (error) {
       console.error('AI support escalation error:', error)
 
-      alert(
+      appNotice(
         `Unable to connect to Admin: ${
           error?.message || 'Please try again.'
         }`
@@ -794,7 +444,7 @@ function RestaurantChatWidget({ restaurantId }) {
       String(session?.status || '').toLowerCase() !==
       'connected'
     ) {
-      alert('Please wait until Admin accepts the support chat.')
+      appNotice('Please wait until Admin accepts the support chat.')
       return
     }
 
@@ -827,7 +477,7 @@ function RestaurantChatWidget({ restaurantId }) {
     } catch (error) {
       console.error('Support message send error:', error)
 
-      alert(
+      appNotice(
         `Unable to send message: ${
           error.message || 'Please try again.'
         }`
@@ -843,7 +493,7 @@ function RestaurantChatWidget({ restaurantId }) {
   const isClosed = status === 'closed'
 
   return (
-    <div className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-2 z-[60] max-w-[calc(100svw-1rem)] font-sans sm:bottom-6 sm:right-6">
+    <div className="fixed bottom-6 right-6 z-50 font-sans">
       {!isOpen ? (
         <button
           onClick={handleOpen}
@@ -855,7 +505,7 @@ function RestaurantChatWidget({ restaurantId }) {
           </span>
         </button>
       ) : (
-        <div className="flex h-[560px] max-h-[70dvh] w-[calc(100svw-1rem)] max-w-[390px] flex-col overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(390px,calc(100vw-2rem))] h-[560px] shadow-2xl flex flex-col overflow-hidden">
           <div className="bg-neutral-950 p-4 border-b border-neutral-800">
             <div className="flex justify-between items-start gap-3">
               <div>
@@ -1021,7 +671,7 @@ function RestaurantChatWidget({ restaurantId }) {
                       setNewMessage(e.target.value)
                     }
                     disabled={aiLoading || !aiIssueCategory}
-                    className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-orange-500 disabled:opacity-50"
+                    className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-violet-500 disabled:opacity-50"
                   />
                   <button
                     type="submit"
@@ -1146,18 +796,282 @@ function RestaurantChatWidget({ restaurantId }) {
   )
 }
 
+
+function DashboardEntryLoader({
+  portalLabel = 'Digital Dining Portal',
+  detail = 'Preparing your workspace...',
+}) {
+  return (
+    <div className="dd-entry-screen fixed inset-0 z-[99999] flex min-h-screen items-center justify-center overflow-hidden bg-[#f7f7f8] px-5 text-neutral-900">
+      <style jsx global>{`
+        .dd-entry-screen {
+          background:
+            radial-gradient(circle at 50% 30%, rgba(249,115,22,.08), transparent 34%),
+            #f7f7f8;
+        }
+
+        :root[data-theme='dark'] .dd-entry-screen {
+          background:
+            radial-gradient(circle at 50% 30%, rgba(249,115,22,.10), transparent 34%),
+            #09090b;
+          color: #f5f5f5;
+        }
+
+        .dd-entry-child {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: dd-child-chase 1.05s ease-in-out infinite alternate;
+        }
+
+        .dd-entry-arm-front,
+        .dd-entry-leg-back {
+          transform-box: fill-box;
+          transform-origin: top center;
+          animation: dd-limb-forward .34s ease-in-out infinite alternate;
+        }
+
+        .dd-entry-arm-back,
+        .dd-entry-leg-front {
+          transform-box: fill-box;
+          transform-origin: top center;
+          animation: dd-limb-back .34s ease-in-out infinite alternate;
+        }
+
+        .dd-entry-ball {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: dd-ball-bounce .7s ease-in-out infinite;
+        }
+
+        .dd-entry-shadow {
+          animation: dd-shadow-pulse .7s ease-in-out infinite;
+        }
+
+        .dd-entry-progress {
+          animation: dd-progress-4s 4s linear forwards;
+          transform-origin: left center;
+        }
+
+        @keyframes dd-child-chase {
+          from { transform: translate3d(-12px, 0, 0); }
+          to { transform: translate3d(34px, -1px, 0); }
+        }
+
+        @keyframes dd-limb-forward {
+          from { transform: rotate(22deg); }
+          to { transform: rotate(-28deg); }
+        }
+
+        @keyframes dd-limb-back {
+          from { transform: rotate(-24deg); }
+          to { transform: rotate(30deg); }
+        }
+
+        @keyframes dd-ball-bounce {
+          0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+          45% { transform: translate3d(-8px, -22px, 0) rotate(130deg); }
+          70% { transform: translate3d(-13px, -5px, 0) rotate(220deg); }
+        }
+
+        @keyframes dd-shadow-pulse {
+          0%, 100% { transform: scaleX(1); opacity: .18; }
+          45% { transform: scaleX(.72); opacity: .1; }
+        }
+
+        @keyframes dd-progress-4s {
+          from { transform: scaleX(0); }
+          to { transform: scaleX(1); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .dd-entry-child,
+          .dd-entry-arm-front,
+          .dd-entry-arm-back,
+          .dd-entry-leg-front,
+          .dd-entry-leg-back,
+          .dd-entry-ball,
+          .dd-entry-shadow {
+            animation: none !important;
+          }
+
+          .dd-entry-progress {
+            animation-duration: 4s !important;
+          }
+        }
+      `}</style>
+
+      <div className="w-full max-w-md text-center">
+        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-black text-white shadow-lg shadow-orange-500/20">
+          D
+        </div>
+
+        <div className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-orange-500">
+          Digital Dining
+        </div>
+
+        <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
+          Opening {portalLabel}
+        </h1>
+
+        <p className="mt-2 text-xs font-medium text-neutral-500">
+          {detail}
+        </p>
+
+        <div className="relative mx-auto mt-7 h-[150px] w-full max-w-[360px] overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-sm">
+          <svg
+            viewBox="0 0 360 150"
+            className="h-full w-full"
+            role="img"
+            aria-label="A child running after a ball"
+          >
+            <defs>
+              <linearGradient id="ddLoaderSky" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="#fff7ed" />
+                <stop offset="100%" stopColor="#ffffff" />
+              </linearGradient>
+              <linearGradient id="ddLoaderShirt" x1="0" x2="1">
+                <stop offset="0%" stopColor="#fb923c" />
+                <stop offset="100%" stopColor="#ea580c" />
+              </linearGradient>
+            </defs>
+
+            <rect width="360" height="150" fill="url(#ddLoaderSky)" />
+            <path d="M0 116 C70 109 134 121 205 115 C278 109 321 116 360 112 V150 H0 Z" fill="#f3f4f6" />
+            <path d="M0 116 H360" stroke="#d4d4d8" strokeWidth="1" />
+
+            <ellipse
+              className="dd-entry-shadow"
+              cx="154"
+              cy="122"
+              rx="35"
+              ry="6"
+              fill="#111827"
+            />
+
+            <g className="dd-entry-child">
+              <circle cx="122" cy="48" r="13" fill="#b97852" />
+              <path
+                d="M110 43 C113 30 134 29 137 45 C132 39 124 37 116 39 Z"
+                fill="#2b211b"
+              />
+              <path
+                d="M132 45 C137 46 140 49 140 53"
+                stroke="#2b211b"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+              <circle cx="127" cy="47" r="1.2" fill="#1f2937" />
+
+              <rect
+                x="111"
+                y="61"
+                width="28"
+                height="39"
+                rx="11"
+                fill="url(#ddLoaderShirt)"
+              />
+              <path d="M115 98 H138 L134 111 H116 Z" fill="#1f2937" />
+
+              <g className="dd-entry-arm-back">
+                <path
+                  d="M115 70 L94 85 L82 78"
+                  fill="none"
+                  stroke="#b97852"
+                  strokeWidth="7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+
+              <g className="dd-entry-arm-front">
+                <path
+                  d="M136 70 L154 83 L169 75"
+                  fill="none"
+                  stroke="#b97852"
+                  strokeWidth="7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+
+              <g className="dd-entry-leg-back">
+                <path
+                  d="M120 107 L103 123 L89 122"
+                  fill="none"
+                  stroke="#b97852"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M87 122 H101"
+                  stroke="#111827"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                />
+              </g>
+
+              <g className="dd-entry-leg-front">
+                <path
+                  d="M132 107 L147 122 L160 114"
+                  fill="none"
+                  stroke="#b97852"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M157 114 L170 116"
+                  stroke="#111827"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                />
+              </g>
+            </g>
+
+            <g className="dd-entry-ball">
+              <circle cx="265" cy="107" r="15" fill="#ffffff" stroke="#111827" strokeWidth="1.5" />
+              <path
+                d="M265 92 L273 101 L269 111 L257 111 L253 101 Z"
+                fill="#f97316"
+              />
+              <path
+                d="M273 101 L279 96 M269 111 L277 119 M257 111 L251 120 M253 101 L247 96"
+                stroke="#111827"
+                strokeWidth="1.2"
+              />
+            </g>
+          </svg>
+
+          <div className="absolute bottom-3 left-4 right-4">
+            <div className="h-1.5 overflow-hidden rounded-full bg-neutral-200">
+              <div className="dd-entry-progress h-full w-full rounded-full bg-orange-500" />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center justify-center gap-2 text-[10px] font-bold text-neutral-500">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+          Secure workspace is loading · about 4 seconds
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function RestaurantManagerDashboard({ params }) {
+  useMobileViewportLock()
   const routeParams = use(params)
   const restaurantId = routeParams?.restaurantId || routeParams?.id
-
   const [authenticated, setAuthenticated] = useState(false)
   const [manager, setManager] = useState(null)
+  const [entryLoading, setEntryLoading] = useState(false)
+  const authenticatedOnceRef = useRef(false)
 
   // Manager Profile
   const [profileOpen, setProfileOpen] = useState(false)
   const [profileName, setProfileName] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
-  const [experienceOpen, setExperienceOpen] = useState(false)
   const [restaurantCode, setRestaurantCode] = useState('')
   const [loginUserId, setLoginUserId] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -1180,7 +1094,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const [orders, setOrders] = useState([])
   const [restaurantTables, setRestaurantTables] = useState([])
   const [staffList, setStaffList] = useState([])
-  const [activeTab, setActiveTab] = useState('home')
+  const [activeTab, setActiveTab] = useState('settlements')
   const [dashboardMode, setDashboardMode] = useState('restaurant')
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState('')
@@ -1200,18 +1114,6 @@ export default function RestaurantManagerDashboard({ params }) {
   const [savingStaff, setSavingStaff] = useState(false)
 
   const [reportTimeframe, setReportTimeframe] = useState('daily')
-
-  // Lifetime order date search.
-  // The existing secure Manager dashboard RPC already returns this
-  // restaurant's order history, so this feature searches that same
-  // Manager-authorized data without bypassing the existing backend.
-  const [orderHistoryDate, setOrderHistoryDate] = useState('')
-  const [orderHistoryOrders, setOrderHistoryOrders] = useState([])
-  const [orderHistoryLoading, setOrderHistoryLoading] = useState(false)
-  const [orderHistorySearched, setOrderHistorySearched] = useState(false)
-  const [orderHistoryError, setOrderHistoryError] = useState('')
-  const [orderHistoryVisibleCount, setOrderHistoryVisibleCount] = useState(20)
-
   const [swiggyDataInput, setSwiggyDataInput] = useState('')
   const [syncingSwiggy, setSyncingSwiggy] = useState(false)
   const [storeOpen, setStoreOpen] = useState(true)
@@ -1359,7 +1261,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const handleLogin = async (event) => {
     event.preventDefault()
     if (!restaurantId || !restaurantCode.trim() || !loginUserId.trim() || !loginPassword.trim()) {
-      alert('Enter the Restaurant Code, Manager User ID, and password.')
+      appNotice('Enter the Restaurant Code, Manager User ID, and password.')
       return
     }
 
@@ -1401,7 +1303,7 @@ export default function RestaurantManagerDashboard({ params }) {
     } catch (error) {
       console.error(error)
       setAuthenticated(false)
-      alert(error.message || 'Unable to sign in.')
+      appNotice(error.message || 'Unable to sign in.')
     } finally {
       setLoginLoading(false)
     }
@@ -1568,11 +1470,8 @@ export default function RestaurantManagerDashboard({ params }) {
     return () => window.clearInterval(interval)
   }, [authenticated, fetchDashboard])
 
-  // Subscription-wise module control.
-  // Final plans:
-  // Restaurant, Delivery, Restaurant + Resort,
-  // Restaurant + Delivery, Restaurant + Resort + Delivery.
-  // Existing staff authentication and session verification remain unchanged.
+  // Final five-plan module control.
+  // Manager receives operational access only to modules included in plan_code.
   const legacyPlan = String(restaurant?.plan || 'Pro')
   const legacyPlanCode =
     legacyPlan === 'Pro+'
@@ -1586,7 +1485,6 @@ export default function RestaurantManagerDashboard({ params }) {
   const PLAN_FEATURES = {
     restaurant_pro: {
       name: 'Restaurant',
-      legacyPlan: 'Pro',
       restaurant: true,
       resort: false,
       delivery: false,
@@ -1596,7 +1494,6 @@ export default function RestaurantManagerDashboard({ params }) {
 
     delivery: {
       name: 'Delivery',
-      legacyPlan: 'Pro',
       restaurant: false,
       resort: false,
       delivery: true,
@@ -1606,7 +1503,6 @@ export default function RestaurantManagerDashboard({ params }) {
 
     restaurant_resort_pro: {
       name: 'Restaurant + Resort',
-      legacyPlan: 'Pro+',
       restaurant: true,
       resort: true,
       delivery: false,
@@ -1616,7 +1512,6 @@ export default function RestaurantManagerDashboard({ params }) {
 
     restaurant_delivery: {
       name: 'Restaurant + Delivery',
-      legacyPlan: 'Pro',
       restaurant: true,
       resort: false,
       delivery: true,
@@ -1626,7 +1521,6 @@ export default function RestaurantManagerDashboard({ params }) {
 
     restaurant_resort_delivery: {
       name: 'Restaurant + Resort + Delivery',
-      legacyPlan: 'Pro+',
       restaurant: true,
       resort: true,
       delivery: true,
@@ -1634,10 +1528,9 @@ export default function RestaurantManagerDashboard({ params }) {
       advancedResort: true,
     },
 
-    // Temporary compatibility with accounts not yet refreshed after migration.
+    // Temporary compatibility only. Phase 1 already migrated these.
     restaurant_standard: {
       name: 'Restaurant',
-      legacyPlan: 'Pro',
       restaurant: true,
       resort: false,
       delivery: false,
@@ -1647,7 +1540,6 @@ export default function RestaurantManagerDashboard({ params }) {
 
     restaurant_resort_standard: {
       name: 'Restaurant + Resort',
-      legacyPlan: 'Pro+',
       restaurant: true,
       resort: true,
       delivery: false,
@@ -1660,14 +1552,12 @@ export default function RestaurantManagerDashboard({ params }) {
     PLAN_FEATURES[currentPlanCode] ||
     PLAN_FEATURES.restaurant_pro
 
-  const currentPlan = planFeatures.legacyPlan
-  const currentPlanDisplay = planFeatures.name
+  const currentPlan = String(
+    restaurant?.plan || 'Pro'
+  )
 
-  const restaurantModuleEnabled =
-    Boolean(planFeatures.restaurant)
-
-  const deliveryModuleEnabled =
-    Boolean(planFeatures.delivery)
+  const currentPlanDisplay =
+    planFeatures.name
 
   const hasAdvancedAnalytics =
     Boolean(
@@ -1681,8 +1571,14 @@ export default function RestaurantManagerDashboard({ params }) {
       planFeatures.advanced
     )
 
+  const restaurantModuleEnabled =
+    Boolean(planFeatures.restaurant)
+
   const hasResortAccess =
     Boolean(planFeatures.resort)
+
+  const deliveryModuleEnabled =
+    Boolean(planFeatures.delivery)
 
   const hasAdvancedResort =
     Boolean(
@@ -1690,41 +1586,75 @@ export default function RestaurantManagerDashboard({ params }) {
       planFeatures.advancedResort
     )
 
-  // Final five-plan structure has no Restaurant menu item cap.
   const maxMenuAllowed = Infinity
 
-  // Delivery-only Managers open directly into Delivery.
-  // Combined plans start in Restaurant and can switch to Delivery.
+  const enabledModuleCount =
+    Number(restaurantModuleEnabled) +
+    Number(hasResortAccess) +
+    Number(deliveryModuleEnabled)
+
+  // Delivery-only Managers should open directly into Delivery.
   useEffect(() => {
     if (!restaurant) return
 
+    const allowedModes = []
+
+    if (restaurantModuleEnabled) {
+      allowedModes.push('restaurant')
+    }
+
+    if (hasResortAccess) {
+      allowedModes.push('resort')
+    }
+
+    if (deliveryModuleEnabled) {
+      allowedModes.push('delivery')
+    }
+
     if (
-      deliveryModuleEnabled &&
-      !restaurantModuleEnabled
+      allowedModes.length > 0 &&
+      !allowedModes.includes(dashboardMode)
+    ) {
+      setDashboardMode(allowedModes[0])
+    }
+  }, [
+    restaurant,
+    dashboardMode,
+    restaurantModuleEnabled,
+    hasResortAccess,
+    deliveryModuleEnabled,
+  ])
+
+  // Native push notification tap / deep-link support.
+  useEffect(() => {
+    const requestedModule = String(
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('module') || ''
+        : ''
+    )
+      .trim()
+      .toLowerCase()
+
+    if (
+      requestedModule === 'delivery' &&
+      deliveryModuleEnabled
     ) {
       setDashboardMode('delivery')
-      return
-    }
-
-    if (
-      restaurantModuleEnabled &&
-      dashboardMode !== 'restaurant' &&
-      dashboardMode !== 'delivery'
+    } else if (
+      requestedModule === 'resort' &&
+      hasResortAccess
     ) {
-      setDashboardMode('restaurant')
-    }
-
-    if (
-      !deliveryModuleEnabled &&
-      dashboardMode === 'delivery'
+      setDashboardMode('resort')
+    } else if (
+      requestedModule === 'restaurant' &&
+      restaurantModuleEnabled
     ) {
       setDashboardMode('restaurant')
     }
   }, [
-    restaurant,
-    restaurantModuleEnabled,
+restaurantModuleEnabled,
+    hasResortAccess,
     deliveryModuleEnabled,
-    dashboardMode,
   ])
 
   const getItemOrderCount = useCallback((item) => {
@@ -1782,19 +1712,19 @@ export default function RestaurantManagerDashboard({ params }) {
     const name = dish.name.trim()
     const price = Number(dish.price)
     if (!name || !Number.isFinite(price) || price <= 0) {
-      alert('Enter a valid dish name and price.')
+      appNotice('Enter a valid dish name and price.')
       return
     }
     if (!editingDishId && menuItems.length >= maxMenuAllowed) {
-      alert(`Your ${currentPlan} plan allows ${maxMenuAllowed} menu items.`)
+      appNotice(`Your ${currentPlan} plan allows ${maxMenuAllowed} menu items.`)
       return
     }
 
     const originalPrice = dish.original_price === '' ? null : Number(dish.original_price)
     const offerPrice = dish.offer_price === '' ? null : Number(dish.offer_price)
-    if (originalPrice !== null && (!Number.isFinite(originalPrice) || originalPrice <= 0)) return alert('Enter a valid original price.')
-    if (offerPrice !== null && (!Number.isFinite(offerPrice) || offerPrice <= 0)) return alert('Enter a valid offer price.')
-    if (originalPrice !== null && offerPrice !== null && offerPrice >= originalPrice) return alert('Offer price must be lower than original price.')
+    if (originalPrice !== null && (!Number.isFinite(originalPrice) || originalPrice <= 0)) return appNotice('Enter a valid original price.')
+    if (offerPrice !== null && (!Number.isFinite(offerPrice) || offerPrice <= 0)) return appNotice('Enter a valid offer price.')
+    if (originalPrice !== null && offerPrice !== null && offerPrice >= originalPrice) return appNotice('Offer price must be lower than original price.')
 
     setSavingDish(true)
     const payload = {
@@ -1821,20 +1751,20 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(editingDishId ? 'Dish updated successfully.' : 'Dish added successfully.')
     } catch (error) {
       console.error(error)
-      alert(`Unable to save dish: ${error.message}`)
+      appNotice(`Unable to save dish: ${error.message}`)
     } finally {
       setSavingDish(false)
     }
   }
 
   const deleteDish = async (item) => {
-    if (!window.confirm(`Delete ${item.name}?`)) return
+    if (!await appConfirm(`Delete ${item.name}?`)) return
     try {
       await managerRpcAction('delete_menu', { id: item.id })
       setMenuItems((items) => items.filter((value) => value.id !== item.id))
       notify('Dish deleted.')
     } catch (error) {
-      alert(`Unable to delete dish: ${error.message}`)
+      appNotice(`Unable to delete dish: ${error.message}`)
     }
   }
 
@@ -1844,7 +1774,7 @@ export default function RestaurantManagerDashboard({ params }) {
       const result = await managerRpcAction('toggle_menu', { id: item.id, is_available: next })
       setMenuItems((items) => items.map((value) => value.id === item.id ? result.data : value))
     } catch (error) {
-      alert(`Unable to update availability: ${error.message}`)
+      appNotice(`Unable to update availability: ${error.message}`)
     }
   }
 
@@ -1856,7 +1786,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const saveOffer = async (event) => {
     event.preventDefault()
     if (!offer.title.trim() || !offer.offer_price || Number(offer.offer_price) <= 0) {
-      alert('Enter an offer title and valid offer price.')
+      appNotice('Enter an offer title and valid offer price.')
       return
     }
 
@@ -1882,7 +1812,7 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(editingOfferId ? 'Offer updated.' : 'Offer created.')
     } catch (error) {
       console.error(error)
-      alert(`Unable to save offer: ${error.message}`)
+      appNotice(`Unable to save offer: ${error.message}`)
     } finally {
       setSavingOffer(false)
     }
@@ -1902,13 +1832,13 @@ export default function RestaurantManagerDashboard({ params }) {
   }
 
   const deleteOffer = async (item) => {
-    if (!window.confirm(`Delete offer ${item.title}?`)) return
+    if (!await appConfirm(`Delete offer ${item.title}?`)) return
     try {
       await managerRpcAction('delete_offer', { id: item.id })
       setDailyOffers((items) => items.filter((value) => value.id !== item.id))
       notify('Offer deleted.')
     } catch (error) {
-      alert(`Unable to delete offer: ${error.message}`)
+      appNotice(`Unable to delete offer: ${error.message}`)
     }
   }
 
@@ -1918,7 +1848,7 @@ export default function RestaurantManagerDashboard({ params }) {
       const result = await managerRpcAction('toggle_offer', { id: item.id, is_active: next })
       setDailyOffers((items) => items.map((value) => value.id === item.id ? result.data : value))
     } catch (error) {
-      alert(`Unable to update offer: ${error.message}`)
+      appNotice(`Unable to update offer: ${error.message}`)
     }
   }
 
@@ -1927,9 +1857,9 @@ export default function RestaurantManagerDashboard({ params }) {
     const name = staffName.trim()
     const userId = staffUserId.trim().toLowerCase()
     const password = staffPassword.trim()
-    if (!name || !userId || !password) return alert('Fill in all staff fields.')
-    if (!/^[a-zA-Z0-9._-]{3,40}$/.test(userId)) return alert('User ID must be 3–40 characters.')
-    if (password.length < 4) return alert('Password/PIN must contain at least 4 characters.')
+    if (!name || !userId || !password) return appNotice('Fill in all staff fields.')
+    if (!/^[a-zA-Z0-9._-]{3,40}$/.test(userId)) return appNotice('User ID must be 3–40 characters.')
+    if (password.length < 4) return appNotice('Password/PIN must contain at least 4 characters.')
 
     setSavingStaff(true)
     try {
@@ -1946,20 +1876,20 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(`${staffRole === 'waiter' ? 'Waiter' : 'Kitchen'} account created.`)
     } catch (error) {
       console.error(error)
-      alert(`Unable to create staff account: ${error.message}`)
+      appNotice(`Unable to create staff account: ${error.message}`)
     } finally {
       setSavingStaff(false)
     }
   }
 
   const revokeStaff = async (staff) => {
-    if (!window.confirm(`Revoke ${staff.name}'s account?`)) return
+    if (!await appConfirm(`Revoke ${staff.name}'s account?`)) return
     try {
       await managerRpcAction('revoke_staff', { id: staff.id })
       setStaffList((items) => items.filter((item) => item.id !== staff.id))
       notify('Staff account revoked.')
     } catch (error) {
-      alert(`Unable to revoke account: ${error.message}`)
+      appNotice(`Unable to revoke account: ${error.message}`)
     }
   }
 
@@ -1972,7 +1902,7 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(`Order #${selectedOrder?.order_number || String(orderId).slice(0, 8)} marked ${nextStatus}.`)
     } catch (error) {
       console.error('Order status update error:', error)
-      alert(`Unable to update order: ${error.message || 'Unknown error'}`)
+      appNotice(`Unable to update order: ${error.message || 'Unknown error'}`)
     }
   }
 
@@ -1999,7 +1929,7 @@ export default function RestaurantManagerDashboard({ params }) {
           : 'Restaurant is now closed. New orders are paused.'
       )
     } catch (error) {
-      alert(
+      appNotice(
         `Unable to update restaurant status: ${
           error?.message || 'Please try again.'
         }`
@@ -2011,13 +1941,13 @@ export default function RestaurantManagerDashboard({ params }) {
 
   const handleSwiggySync = async (event) => {
     event.preventDefault()
-    if (!swiggyDataInput.trim()) return alert('Paste valid menu JSON data.')
+    if (!swiggyDataInput.trim()) return appNotice('Paste valid menu JSON data.')
     let items
     try {
       items = JSON.parse(swiggyDataInput)
       if (!Array.isArray(items)) throw new Error('JSON must be an array.')
     } catch (error) {
-      return alert(`Invalid JSON: ${error.message}`)
+      return appNotice(`Invalid JSON: ${error.message}`)
     }
 
     setSyncingSwiggy(true)
@@ -2042,234 +1972,11 @@ export default function RestaurantManagerDashboard({ params }) {
       notify(`${imported.length || rows.length} menu items imported.`)
     } catch (error) {
       console.error(error)
-      alert(`Unable to sync menu: ${error.message}`)
+      appNotice(`Unable to sync menu: ${error.message}`)
     } finally {
       setSyncingSwiggy(false)
     }
   }
-
-  const formatOrderHistoryDate = (dateValue) => {
-    if (!dateValue) return ''
-
-    const [year, month, day] = String(dateValue)
-      .split('-')
-      .map(Number)
-
-    if (!year || !month || !day) {
-      return String(dateValue)
-    }
-
-    const date = new Date(
-      year,
-      month - 1,
-      day
-    )
-
-    if (Number.isNaN(date.getTime())) {
-      return String(dateValue)
-    }
-
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    })
-  }
-
-  const getOrderHistoryDayBounds = (dateValue) => {
-    const [year, month, day] = String(dateValue)
-      .split('-')
-      .map(Number)
-
-    if (!year || !month || !day) {
-      throw new Error(
-        'Please select a valid date.'
-      )
-    }
-
-    const start = new Date(
-      year,
-      month - 1,
-      day,
-      0,
-      0,
-      0,
-      0
-    )
-
-    if (
-      Number.isNaN(start.getTime()) ||
-      start.getFullYear() !== year ||
-      start.getMonth() !== month - 1 ||
-      start.getDate() !== day
-    ) {
-      throw new Error(
-        'Please select a valid date.'
-      )
-    }
-
-    const end = new Date(
-      year,
-      month - 1,
-      day + 1,
-      0,
-      0,
-      0,
-      0
-    )
-
-    return { start, end }
-  }
-
-  const handleLifetimeOrderSearch = async () => {
-    if (orderHistoryLoading) return
-
-    if (!orderHistoryDate) {
-      setOrderHistoryError(
-        'Please select a date to search.'
-      )
-      setOrderHistorySearched(false)
-      return
-    }
-
-    setOrderHistoryLoading(true)
-    setOrderHistoryError('')
-    setOrderHistorySearched(false)
-    setOrderHistoryOrders([])
-    setOrderHistoryVisibleCount(20)
-
-    try {
-      const { start, end } =
-        getOrderHistoryDayBounds(
-          orderHistoryDate
-        )
-
-      /*
-       * IMPORTANT:
-       * Manager authentication is not bypassed here.
-       * `orders` comes from the existing secure Manager dashboard
-       * RPC/session for this restaurant. We only filter that
-       * authorized lifetime data for the selected calendar day.
-       */
-      const foundOrders = orders
-        .filter((order) => {
-          if (!order?.created_at) {
-            return false
-          }
-
-          const createdAt =
-            new Date(order.created_at)
-
-          if (
-            Number.isNaN(
-              createdAt.getTime()
-            )
-          ) {
-            return false
-          }
-
-          return (
-            createdAt >= start &&
-            createdAt < end
-          )
-        })
-        .sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() -
-            new Date(b.created_at).getTime()
-        )
-
-      setOrderHistoryOrders(
-        foundOrders
-      )
-      setOrderHistorySearched(true)
-    } catch (error) {
-      console.error(
-        '[MANAGER ORDER HISTORY] Search error:',
-        error
-      )
-
-      setOrderHistoryError(
-        error?.message ||
-          'Unable to search historical orders.'
-      )
-      setOrderHistorySearched(true)
-    } finally {
-      setOrderHistoryLoading(false)
-    }
-  }
-
-  const clearLifetimeOrderSearch = () => {
-    setOrderHistoryDate('')
-    setOrderHistoryOrders([])
-    setOrderHistoryError('')
-    setOrderHistorySearched(false)
-    setOrderHistoryVisibleCount(20)
-  }
-
-  const orderHistoryRevenue = useMemo(
-    () =>
-      orderHistoryOrders.reduce(
-        (sum, order) =>
-          String(
-            order?.status || ''
-          ).toLowerCase() ===
-          'cancelled'
-            ? sum
-            : sum +
-              Number(
-                order?.total_amount ??
-                  order?.total ??
-                  0
-              ),
-        0
-      ),
-    [orderHistoryOrders]
-  )
-
-  const orderHistoryCancelledCount =
-    useMemo(
-      () =>
-        orderHistoryOrders.filter(
-          (order) =>
-            String(
-              order?.status || ''
-            ).toLowerCase() ===
-            'cancelled'
-        ).length,
-      [orderHistoryOrders]
-    )
-
-  const orderHistoryCompletedCount =
-    useMemo(
-      () =>
-        orderHistoryOrders.filter(
-          (order) =>
-            [
-              'completed',
-              'delivered',
-              'served',
-            ].includes(
-              String(
-                order?.status || ''
-              ).toLowerCase()
-            )
-        ).length,
-      [orderHistoryOrders]
-    )
-
-  const visibleOrderHistory =
-    useMemo(
-      () =>
-        orderHistoryOrders.slice(
-          0,
-          orderHistoryVisibleCount
-        ),
-      [
-        orderHistoryOrders,
-        orderHistoryVisibleCount,
-      ]
-    )
 
   const reportOrders = useMemo(() => {
     const now = new Date()
@@ -2371,7 +2078,7 @@ export default function RestaurantManagerDashboard({ params }) {
     const cleanName = String(profileName || '').trim()
 
     if (cleanName.length < 2 || cleanName.length > 80) {
-      alert('Manager name must be between 2 and 80 characters.')
+      appNotice('Manager name must be between 2 and 80 characters.')
       return
     }
 
@@ -2414,7 +2121,7 @@ export default function RestaurantManagerDashboard({ params }) {
       notify('Profile updated successfully. ✅')
     } catch (error) {
       console.error('Manager profile update error:', error)
-      alert(`Unable to update profile: ${error.message || 'Please try again.'}`)
+      appNotice(`Unable to update profile: ${error.message || 'Please try again.'}`)
     } finally {
       setProfileSaving(false)
     }
@@ -2434,11 +2141,6 @@ export default function RestaurantManagerDashboard({ params }) {
     setAuthenticated(false)
     setManager(null)
     setOrders([])
-    setOrderHistoryDate('')
-    setOrderHistoryOrders([])
-    setOrderHistoryError('')
-    setOrderHistorySearched(false)
-    setOrderHistoryVisibleCount(20)
     setMenuItems([])
     setDailyOffers([])
     setRestaurantTables([])
@@ -2451,1061 +2153,930 @@ export default function RestaurantManagerDashboard({ params }) {
     setProfileOpen(false)
   }
 
-  const mobileSection = String(activeTab || 'home')
-  const moreSectionActive = ['staff', 'offers', 'settlements', 'swiggy-sync', 'resort'].includes(mobileSection)
+  useEffect(() => {
+    if (!authenticated) {
+      authenticatedOnceRef.current = false
+      setEntryLoading(false)
+      return undefined
+    }
 
-  const statusClass = (status) => {
-    const value = String(status || 'pending').toLowerCase()
-    if (value === 'ready') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-    if (value === 'completed' || value === 'delivered') return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
-    if (value === 'cancelled') return 'border-red-500/30 bg-red-500/10 text-red-300'
-    if (value === 'preparing') return 'border-violet-500/30 bg-violet-500/10 text-orange-300'
-    if (value === 'confirmed') return 'border-blue-500/30 bg-blue-500/10 text-blue-300'
-    return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-  }
+    if (authenticatedOnceRef.current) return undefined
 
-  const MobileSectionTitle = ({ eyebrow, title, subtitle, action = null }) => (
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        {eyebrow && (
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-400">{eyebrow}</p>
-        )}
-        <h2 className="mt-1 text-xl font-black text-white">{title}</h2>
-        {subtitle && <p className="mt-1 text-xs leading-relaxed text-neutral-500">{subtitle}</p>}
-      </div>
-      {action}
-    </div>
-  )
+    authenticatedOnceRef.current = true
+    setEntryLoading(true)
 
-  const MobileOrderCard = ({
-    order,
-    compact = false,
-    readOnly = false,
-  }) => {
-    const status = String(order?.status || 'pending').toLowerCase()
-    const items = Array.isArray(order?.items) ? order.items : []
-    const amount = Number(order?.total_amount ?? order?.total ?? 0)
-    const displayNumber = order?.order_number || String(order?.id || '').slice(0, 8)
-    const mode = String(order?.dining_mode || order?.order_type || 'dine-in')
+    const timer = window.setTimeout(() => {
+      setEntryLoading(false)
+    }, 4000)
 
-    return (
-      <article className="rounded-[26px] border border-neutral-800 bg-neutral-900 p-4 shadow-xl shadow-black/10">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base font-black text-white">Order #{displayNumber}</h3>
-              <span className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${statusClass(status)}`}>
-                {status}
-              </span>
-            </div>
-            <p className="mt-1 text-[11px] text-neutral-500">
-              {order?.created_at ? new Date(order.created_at).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) : 'Time unavailable'}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">Total</p>
-            <p className="mt-1 text-base font-black text-emerald-400">{money(amount)}</p>
-          </div>
-        </div>
-
-        <div className="mt-3 grid min-w-0 grid-cols-2 gap-2">
-          <div className="rounded-2xl bg-neutral-950 p-3">
-            <p className="text-[9px] font-black uppercase text-neutral-600">Customer</p>
-            <p className="mt-1 truncate text-xs font-bold text-neutral-200">{order?.customer_name || order?.name || 'Guest'}</p>
-          </div>
-          <div className="rounded-2xl bg-neutral-950 p-3">
-            <p className="text-[9px] font-black uppercase text-neutral-600">Order Type</p>
-            <p className="mt-1 truncate text-xs font-bold capitalize text-neutral-200">
-              {mode}{order?.table_number ? ` · T${order.table_number}` : ''}
-            </p>
-          </div>
-        </div>
-
-        {!compact && (
-          <>
-            <div className="mt-3 space-y-2 rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3">
-              {items.length === 0 ? (
-                <p className="text-xs text-neutral-600">No item details available.</p>
-              ) : (
-                items.slice(0, 8).map((item, index) => (
-                  <div key={`${item?.id || item?.menu_item_id || item?.name || 'item'}-${index}`} className="flex items-start justify-between gap-3 text-xs">
-                    <div className="min-w-0">
-                      <p className="font-bold text-neutral-200">{Number(item?.qty || item?.quantity || 1)} × {item?.name || 'Item'}</p>
-                      {item?.addons && <p className="mt-0.5 truncate text-[10px] text-neutral-600">{Array.isArray(item.addons) ? item.addons.join(', ') : String(item.addons)}</p>}
-                    </div>
-                    <span className="shrink-0 font-black text-neutral-400">{money(item?.price || 0)}</span>
-                  </div>
-                ))
-              )}
-              {items.length > 8 && <p className="text-[10px] font-bold text-neutral-600">+{items.length - 8} more items</p>}
-            </div>
-
-            {!readOnly && (
-              <div className="mt-3">
-                <label className="mb-1 block text-[9px] font-black uppercase tracking-wider text-neutral-500">Update status</label>
-                <select
-                  value={status}
-                  onChange={(event) => updateOrderStatus(order.id, event.target.value)}
-                  className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-orange-500"
-                >
-                  <option value="pending">Pending</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="preparing">Preparing</option>
-                  <option value="ready">Ready</option>
-                  <option value="completed">Completed</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-            )}
-
-            {readOnly && (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-3 py-2.5">
-                <div>
-                  <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
-                    Historical Order
-                  </p>
-                  <p className="mt-0.5 text-[10px] font-bold text-neutral-400">
-                    Read-only result
-                  </p>
-                </div>
-
-                <span className="rounded-full border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-[8px] font-black text-neutral-500">
-                  ARCHIVE
-                </span>
-              </div>
-            )}
-          </>
-        )}
-      </article>
-    )
-  }
+    return () => window.clearTimeout(timer)
+  }, [authenticated])
 
   if (sessionChecking) {
     return (
-      <main className="flex min-h-[100dvh] w-full max-w-full items-center justify-center overflow-x-hidden bg-neutral-950 p-4 text-neutral-100">
-        <div className="w-full max-w-sm rounded-[30px] border border-neutral-800 bg-neutral-900 p-8 text-center shadow-2xl">
-          <div className="mx-auto h-11 w-11 animate-spin rounded-full border-4 border-neutral-800 border-t-orange-500" />
-          <h1 className="mt-5 text-lg font-black">Opening Manager App</h1>
-          <p className="mt-2 text-xs text-neutral-500">Checking your secure Digital Dine staff session...</p>
-        </div>
-      </main>
+      <DashboardEntryLoader
+        portalLabel="Manager Portal"
+        detail="Checking your secure Digital Dining staff session..."
+      />
     )
   }
 
   if (!authenticated) {
     return (
-      <main className="flex min-h-[100dvh] w-full max-w-full items-center justify-center overflow-x-hidden bg-neutral-950 p-4 text-neutral-100">
-        <form onSubmit={handleLogin} className="w-full max-w-sm space-y-4 rounded-[32px] border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
-          <div className="pb-2 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500 text-3xl shadow-lg shadow-orange-500/20">🧑‍💼</div>
-            <h1 className="mt-4 text-2xl font-black">Manager App</h1>
-            <p className="mt-1 text-xs text-neutral-500">Digital Dine mobile operations</p>
+      <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-4 text-neutral-100">
+        <form onSubmit={handleLogin} className="w-full max-w-sm space-y-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-8 shadow-2xl">
+          <div className="mb-6 text-center">
+            <div className="mb-3 text-5xl">🧑‍💼</div>
+            <h1 className="text-2xl font-black">Restaurant Manager</h1>
+            <p className="mt-2 text-xs text-neutral-500">Sign in to manage restaurant operations</p>
           </div>
-          <input value={restaurantCode} onChange={(e) => setRestaurantCode(e.target.value.replace(/\D/g, '').slice(0, 5))} placeholder="5-digit Restaurant Code" inputMode="numeric" maxLength={5} required className="w-full rounded-2xl border border-orange-500/30 bg-neutral-950 px-4 py-3.5 text-sm font-mono tracking-widest text-white outline-none focus:border-orange-500" />
-          <input value={loginUserId} onChange={(e) => setLoginUserId(e.target.value)} placeholder="Manager User ID" autoComplete="username" required className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3.5 text-sm text-white outline-none focus:border-orange-500" />
-          <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Password / PIN" autoComplete="current-password" required className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3.5 text-sm text-white outline-none focus:border-orange-500" />
-          <button disabled={loginLoading} className="w-full rounded-2xl bg-orange-500 py-3.5 text-sm font-black uppercase text-white shadow-lg shadow-orange-500/20 disabled:opacity-50">
-            {loginLoading ? 'Signing in...' : 'Open Manager App'}
+          <input value={restaurantCode} onChange={(e) => setRestaurantCode(e.target.value.replace(/\D/g, '').slice(0, 5))} placeholder="5-digit Restaurant Code" inputMode="numeric" maxLength={5} required className="w-full rounded-xl border border-orange-500/30 bg-neutral-950 px-4 py-3 text-sm font-mono tracking-widest text-white outline-none focus:border-orange-500" />
+          <input value={loginUserId} onChange={(e) => setLoginUserId(e.target.value)} placeholder="Manager User ID" autoComplete="username" required className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-orange-500" />
+          <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Password / PIN" autoComplete="current-password" required className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-orange-500" />
+          <button disabled={loginLoading} className="w-full rounded-xl bg-orange-500 py-3 text-sm font-black uppercase text-white disabled:opacity-50">
+            {loginLoading ? 'Signing in...' : 'Open Manager Dashboard'}
           </button>
         </form>
       </main>
     )
   }
 
-  if (
-    dashboardMode === 'delivery' &&
-    deliveryModuleEnabled
-  ) {
+  if (entryLoading) {
     return (
-      <main className="min-h-[100dvh] w-full overflow-x-hidden bg-[#0f0f10] text-neutral-100">
-        <div className="mx-auto min-h-[100dvh] w-full max-w-[520px] bg-[#0f0f10] pb-[max(2rem,env(safe-area-inset-bottom))]">
-          <header className="sticky top-0 z-40 border-b border-neutral-800 bg-[#0f0f10]/96 px-4 pb-3 pt-[max(0.8rem,env(safe-area-inset-top))] backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold text-emerald-400">
-                  Manager Delivery workspace
-                </p>
-                <h1 className="mt-0.5 truncate text-lg font-semibold text-white">
-                  {restaurant?.name || 'Delivery'}
-                </h1>
-                <p className="mt-0.5 truncate text-[11px] text-neutral-500">
-                  {manager?.name || manager?.user_id} · {currentPlanDisplay}
-                </p>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                {restaurantModuleEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardMode('restaurant')
-                      setActiveTab('home')
-                    }}
-                    className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2.5 text-[9px] font-black text-neutral-300"
-                  >
-                    Restaurant
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-[9px] font-black text-red-300"
-                >
-                  Log Out
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <div className="space-y-4 px-3 py-4 sm:px-4">
-            {restaurantModuleEnabled && (
-              <div className="grid grid-cols-2 gap-2 rounded-2xl border border-neutral-800 bg-neutral-900 p-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDashboardMode('restaurant')
-                    setActiveTab('home')
-                  }}
-                  className="rounded-xl px-3 py-3 text-[10px] font-black text-neutral-500"
-                >
-                  🍽️ Restaurant
-                </button>
-
-                <button
-                  type="button"
-                  className="rounded-xl bg-emerald-600 px-3 py-3 text-[10px] font-black text-white"
-                >
-                  🚚 Delivery
-                </button>
-              </div>
-            )}
-
-            <ManagerDeliveryManagement
-              restaurantId={restaurantId}
-              restaurantCode={restaurantCode}
-              sessionToken={sessionToken}
-              sessionMode={sessionMode}
-              userId={loginUserId}
-              password={loginPassword}
-              restaurant={restaurant}
-            />
-          </div>
-
-          <RestaurantChatWidget
-            restaurantId={restaurantId}
-          />
-        </div>
-      </main>
+      <DashboardEntryLoader
+        portalLabel="Manager Portal"
+        detail="Preparing live orders, tables, menu and staff tools..."
+      />
     )
   }
 
   return (
-    // Mobile-only shell:
-    // - 100dvh follows the real phone viewport height
-    // - 100svw prevents horizontal overflow on small screens
-    // - safe-area env() keeps controls clear of Android/iOS system areas
-    <main className="dd-mobile-themeable dd-human-manager min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#0f0f10] text-neutral-100">
+    <main className="dd-light-dashboard dd-manager-dashboard min-h-screen bg-[#f5f6f8] p-3 text-neutral-900 sm:p-6">
       <style jsx global>{`
-        .dd-human-manager { background: #0f0f10 !important; }
-        .dd-human-manager .font-black { font-weight: 700 !important; }
-        .dd-human-manager .shadow-xl,
-        .dd-human-manager .shadow-2xl { box-shadow: 0 8px 24px rgba(0,0,0,.18) !important; }
-        .dd-human-manager [class*="rounded-[30px]"],
-        .dd-human-manager [class*="rounded-[28px]"],
-        .dd-human-manager [class*="rounded-[26px]"],
-        .dd-human-manager [class*="rounded-[24px]"],
-        .dd-human-manager [class*="rounded-[22px]"] { border-radius: 16px !important; }
-        .dd-human-manager .dd-human-nav button { border-radius: 10px !important; }
-        .dd-human-manager .dd-human-nav .dd-nav-indicator { transition: opacity .16s ease, transform .16s ease; }
-        .dd-human-manager button, .dd-human-manager input, .dd-human-manager select, .dd-human-manager textarea { -webkit-tap-highlight-color: transparent; }
-        @media (prefers-reduced-motion: reduce) {
-          .dd-human-manager * { scroll-behavior: auto !important; }
+
+                /*
+         * Dashboard shell only.
+         * The existing ThemeToggle writes data-theme="light|dark" on <html>.
+         * These rules keep the new sidebar layout while allowing both themes.
+         */
+        .dd-light-dashboard,
+        .dd-dashboard-header,
+        .dd-dashboard-sidebar {
+          transition:
+            background-color 70ms linear,
+            border-color 70ms linear,
+            color 70ms linear;
+        }
+
+        :root[data-theme='light'] .dd-light-dashboard {
+          background: #f5f6f8 !important;
+          color: #171717 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard {
+          background: #09090b !important;
+          color: #f5f5f5 !important;
+        }
+
+        :root[data-theme='light'] .dd-dashboard-header {
+          background: rgba(255, 255, 255, 0.97) !important;
+          border-color: #e5e7eb !important;
+          box-shadow: 0 1px 0 rgba(17, 24, 39, 0.04) !important;
+        }
+
+        :root[data-theme='dark'] .dd-dashboard-header {
+          background: rgba(17, 17, 19, 0.97) !important;
+          border-color: #2a2a2e !important;
+          box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+        }
+
+        :root[data-theme='light'] .dd-dashboard-header [class~='text-white'] {
+          color: #111827 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='bg-white'] {
+          background-color: #111113 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='bg-neutral-50'] {
+          background-color: #18181b !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='border-neutral-200'],
+        :root[data-theme='dark'] .dd-light-dashboard [class~='border-neutral-300'] {
+          border-color: #2f3035 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-900'],
+        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-800'],
+        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-700'] {
+          color: #f4f4f5 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard [class~='text-neutral-600'] {
+          color: #a1a1aa !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard input,
+        :root[data-theme='dark'] .dd-light-dashboard select,
+        :root[data-theme='dark'] .dd-light-dashboard textarea {
+          color: #f4f4f5 !important;
+        }
+
+        :root[data-theme='dark'] .dd-light-dashboard option {
+          background: #111113;
+          color: #f4f4f5;
+        }
+
+        .dd-light-dashboard .rounded-3xl {
+          border-radius: 18px !important;
+        }
+
+        .dd-light-dashboard .rounded-2xl {
+          border-radius: 14px !important;
+        }
+
+        .dd-dashboard-sidebar {
+          scrollbar-width: none;
+        }
+
+        .dd-dashboard-sidebar::-webkit-scrollbar {
+          display: none;
+        }
+
+        .dd-dashboard-sidebar button {
+          box-shadow: none !important;
+        }
+
+        :root[data-theme='light']
+          .dd-dashboard-sidebar
+          button:not([class*='bg-orange-500']) {
+          background: transparent !important;
+          border-color: transparent !important;
+          color: #525252 !important;
+        }
+
+        :root[data-theme='light']
+          .dd-dashboard-sidebar
+          button[class*='bg-orange-500'] {
+          background: #fff3e8 !important;
+          border-color: transparent !important;
+          color: #ea580c !important;
+        }
+
+        :root[data-theme='dark']
+          .dd-dashboard-sidebar
+          button:not([class*='bg-orange-500']) {
+          background: transparent !important;
+          border-color: transparent !important;
+          color: #a1a1aa !important;
+        }
+
+        :root[data-theme='dark']
+          .dd-dashboard-sidebar
+          button[class*='bg-orange-500'] {
+          background: rgba(249, 115, 22, 0.13) !important;
+          border-color: rgba(249, 115, 22, 0.18) !important;
+          color: #fb923c !important;
+        }
+
+        .dd-dashboard-intro {
+          margin-bottom: 2px;
+        }
+
+        @media (min-width: 1024px) {
+          .dd-owner-dashboard .dd-dashboard-main {
+            max-width: none !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            padding-left: 244px !important;
+            padding-right: 24px !important;
+          }
+
+          .dd-owner-dashboard .dd-dashboard-sidebar {
+            position: fixed;
+            left: 0;
+            top: 82px;
+            bottom: 0;
+            z-index: 20;
+            width: 220px;
+            display: flex !important;
+            flex-direction: column;
+            gap: 4px !important;
+            overflow-y: auto;
+            border-right: 1px solid;
+            border-bottom: 0 !important;
+            padding: 18px 12px;
+          }
+
+          :root[data-theme='light']
+            .dd-owner-dashboard
+            .dd-dashboard-sidebar {
+            background: #ffffff !important;
+            border-right-color: #e5e7eb !important;
+          }
+
+          :root[data-theme='dark']
+            .dd-owner-dashboard
+            .dd-dashboard-sidebar {
+            background: #111113 !important;
+            border-right-color: #2a2a2e !important;
+          }
+
+          .dd-manager-dashboard {
+            padding-left: 240px !important;
+          }
+
+          .dd-manager-dashboard .dd-manager-inner {
+            max-width: none !important;
+            margin: 0 !important;
+          }
+
+          .dd-manager-dashboard .dd-dashboard-header {
+            margin-left: -240px;
+            padding-left: 264px !important;
+            padding-right: 24px !important;
+          }
+
+          .dd-manager-dashboard .dd-dashboard-sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 30;
+            width: 220px;
+            display: flex !important;
+            flex-direction: column;
+            gap: 4px !important;
+            overflow-y: auto;
+            border-right: 1px solid;
+            border-bottom: 0 !important;
+            padding: 84px 12px 18px;
+          }
+
+          :root[data-theme='light']
+            .dd-manager-dashboard
+            .dd-dashboard-sidebar {
+            background: #ffffff !important;
+            border-right-color: #e5e7eb !important;
+          }
+
+          :root[data-theme='dark']
+            .dd-manager-dashboard
+            .dd-dashboard-sidebar {
+            background: #111113 !important;
+            border-right-color: #2a2a2e !important;
+          }
+
+          .dd-manager-dashboard .dd-dashboard-sidebar::before {
+            content: 'Digital Dining';
+            position: absolute;
+            left: 20px;
+            top: 24px;
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: -0.01em;
+          }
+
+          :root[data-theme='light']
+            .dd-manager-dashboard
+            .dd-dashboard-sidebar::before {
+            color: #111827;
+          }
+
+          :root[data-theme='dark']
+            .dd-manager-dashboard
+            .dd-dashboard-sidebar::before {
+            color: #f4f4f5;
+          }
+
+          .dd-dashboard-sidebar button {
+            width: 100%;
+            justify-content: flex-start !important;
+            text-align: left !important;
+            border-radius: 12px !important;
+            padding: 11px 12px !important;
+            font-size: 11px !important;
+            line-height: 1.3 !important;
+            text-transform: none !important;
+            letter-spacing: 0 !important;
+          }
+        }
+
+        @media (max-width: 1023px) {
+          .dd-dashboard-sidebar {
+            display: flex;
+            overflow-x: auto;
+            gap: 8px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid;
+          }
+
+          :root[data-theme='light'] .dd-dashboard-sidebar {
+            border-bottom-color: #e5e7eb !important;
+          }
+
+          :root[data-theme='dark'] .dd-dashboard-sidebar {
+            border-bottom-color: #2a2a2e !important;
+          }
+
+          .dd-dashboard-sidebar button {
+            flex: 0 0 auto;
+          }
         }
       `}</style>
-      <div className="mx-auto min-h-[100dvh] w-full max-w-[480px] overflow-x-hidden bg-[#0f0f10] pb-[calc(7rem+env(safe-area-inset-bottom))]">
-        <header className="sticky top-0 z-40 w-full border-b border-neutral-800 bg-[#0f0f10]/96 px-4 pb-3 pt-[max(0.8rem,env(safe-area-inset-top))] backdrop-blur-xl">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-orange-400">Manager workspace</p>
-              <h1 className="mt-0.5 truncate text-lg font-semibold text-white">{restaurant?.name || 'Restaurant'}</h1>
-              <p className="mt-0.5 truncate text-[11px] text-neutral-500">{manager?.name || manager?.user_id} · {currentPlanDisplay}</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={storeOpen}
-                disabled={savingStoreStatus}
-                onClick={handleStoreToggle}
-                className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-2xl border px-2.5 text-[8px] font-black transition disabled:cursor-wait disabled:opacity-60 ${
+      <div className="dd-manager-inner mx-auto max-w-7xl space-y-5">
+        <header className="dd-dashboard-header flex flex-col justify-between gap-4 border-b border-neutral-200 bg-white px-4 py-4 shadow-sm lg:flex-row lg:items-center sm:px-6">
+          <div>
+            <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">Restaurant Manager Portal</span>
+            <h1 className="mt-3 text-2xl font-black sm:text-3xl">{restaurant?.name || 'Restaurant'} Manager Dashboard</h1>
+            <p className="mt-1 text-xs text-neutral-500">Manage live orders, tables, menu and staff operations from one place.</p>
+            <p className="mt-2 inline-flex rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black font-mono tracking-widest text-orange-300">Restaurant Code: {restaurant?.restaurant_code || restaurantCode || '-----'}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <ThemeToggle />
+            <button
+              type="button"
+              role="switch"
+              aria-checked={storeOpen}
+              disabled={savingStoreStatus}
+              onClick={handleStoreToggle}
+              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black transition disabled:cursor-wait disabled:opacity-60 ${
+                storeOpen
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600'
+                  : 'border-red-500/30 bg-red-500/10 text-red-600'
+              }`}
+            >
+              <span
+                className={`relative h-6 w-11 rounded-full transition ${
                   storeOpen
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                    : 'border-red-500/30 bg-red-500/10 text-red-300'
+                    ? 'bg-emerald-500'
+                    : 'bg-red-500'
                 }`}
-                aria-label={
-                  storeOpen
-                    ? 'Close restaurant'
-                    : 'Open restaurant'
-                }
-                title={
-                  storeOpen
-                    ? 'Restaurant open'
-                    : 'Restaurant closed'
-                }
               >
                 <span
-                  className={`relative h-5 w-9 rounded-full ${
+                  className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
                     storeOpen
-                      ? 'bg-emerald-500'
-                      : 'bg-red-500'
+                      ? 'translate-x-6'
+                      : 'translate-x-1'
                   }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                      storeOpen
-                        ? 'translate-x-[18px]'
-                        : 'translate-x-0.5'
-                    }`}
-                  />
-                </span>
-                <span className="hidden min-[390px]:inline">
-                  {savingStoreStatus
-                    ? 'Saving'
-                    : storeOpen
-                      ? 'Open'
-                      : 'Closed'}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={fetchDashboard}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-neutral-300 transition active:bg-neutral-800"
-                aria-label="Refresh"
-              >
-                {loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-600 border-t-white" /> : <AppIcon name="refresh" className="h-5 w-5" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => setProfileOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-neutral-300 transition active:bg-neutral-800"
-                aria-label="Profile"
-              >
-                <AppIcon name="user" className="h-5 w-5" />
-              </button>
-            </div>
+                />
+              </span>
+
+              <span>
+                {savingStoreStatus
+                  ? 'Saving...'
+                  : storeOpen
+                    ? 'Restaurant Open'
+                    : 'Restaurant Closed'}
+              </span>
+            </button>
+            <button onClick={fetchDashboard} className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-black">{loading ? 'Refreshing...' : '↻ Refresh'}</button>
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              className="rounded-xl border border-orange-500/20 bg-orange-500/10 px-4 py-2.5 text-xs font-black text-orange-300"
+            >
+              👤 Profile
+            </button>
+            <button onClick={logout} className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs font-black text-red-400">Log Out ⎋</button>
           </div>
         </header>
 
-        {notice && (
-          <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+4.75rem)] z-[70] w-[calc(100svw-1rem)] max-w-[448px] -translate-x-1/2 rounded-2xl border border-emerald-500/20 bg-emerald-600 px-4 py-3 text-center text-xs font-bold text-white shadow-2xl">
-            {notice}
-          </div>
-        )}
-
-        {deliveryModuleEnabled && restaurantModuleEnabled && (
-          <div className="px-3 pt-3 sm:px-4">
-            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-neutral-800 bg-neutral-900 p-2">
-              <button
-                type="button"
-                className="rounded-xl bg-orange-500 px-3 py-3 text-[10px] font-black text-white"
-              >
-                🍽️ Restaurant
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setDashboardMode('delivery')
-                }
-                className="rounded-xl px-3 py-3 text-[10px] font-black text-neutral-500 transition active:bg-neutral-800"
-              >
-                🚚 Delivery
-              </button>
-            </div>
-          </div>
-        )}
-
-        <section className="min-w-0 space-y-5 px-3 py-4 sm:px-4">
-          {mobileSection === 'home' && (
-            <>
-              <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-semibold text-neutral-400">Today</p>
-                    <h2 className="mt-1 text-2xl font-semibold tracking-tight text-white">{money(todayOrders.reduce((sum, order) => sum + Number(order.total_amount ?? order.total ?? 0), 0))}</h2>
-                    <p className="mt-1 text-xs text-neutral-400">Revenue from today's non-cancelled orders</p>
-                  </div>
-                  <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black ${storeOpen ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
-                    {storeOpen ? 'OPEN' : 'CLOSED'}
+        {profileOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">
+                    Staff Account
                   </span>
+                  <h2 className="mt-3 text-xl font-black text-white">Manager Profile</h2>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Update your display name. Login ID, role, and password remain unchanged.
+                  </p>
                 </div>
-
-                <div className="mt-5 grid grid-cols-3 gap-2">
-                  <div className="rounded-2xl border border-neutral-800/80 bg-neutral-950/70 p-3">
-                    <p className="text-[9px] font-black uppercase text-neutral-600">Orders</p>
-                    <p className="mt-1 text-xl font-black text-white">{todayOrders.length}</p>
-                  </div>
-                  <div className="rounded-2xl border border-neutral-800/80 bg-neutral-950/70 p-3">
-                    <p className="text-[9px] font-black uppercase text-neutral-600">Active</p>
-                    <p className="mt-1 text-xl font-black text-orange-400">{activeOrders.length}</p>
-                  </div>
-                  <div className="rounded-2xl border border-neutral-800/80 bg-neutral-950/70 p-3">
-                    <p className="text-[9px] font-black uppercase text-neutral-600">Tables Free</p>
-                    <p className="mt-1 text-xl font-black text-emerald-400">{availableTableCount}</p>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
+                  className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-black text-neutral-400 hover:text-white"
+                >
+                  ✕
+                </button>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 shadow-sm">
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-500/20 bg-neutral-800 text-orange-300">
-                          <AppIcon name="search" className="h-5 w-5" />
-                        </span>
+              <form onSubmit={saveManagerProfile} className="space-y-4">
+                <div>
+                  <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Manager Name</label>
+                  <input
+                    type="text"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    maxLength={80}
+                    autoComplete="name"
+                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-white outline-none focus:border-orange-500"
+                  />
+                </div>
 
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-semibold text-neutral-400">
-                            Lifetime Order Search
-                          </p>
-
-                          <h3 className="mt-0.5 text-base font-semibold text-white">
-                            Find orders by date
-                          </h3>
-                        </div>
-                      </div>
-
-                      <p className="mt-3 text-[11px] leading-5 text-neutral-500">
-                        Select any calendar date to view the orders recorded for that day from the same secure Manager order history.
-                      </p>
-                    </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                    <p className="text-[10px] font-black uppercase text-neutral-500">User ID</p>
+                    <p className="mt-1 break-all text-sm font-mono font-black text-white">{manager?.user_id || loginUserId}</p>
                   </div>
-
-                  <div className="mt-4 rounded-[22px] border border-neutral-800 bg-neutral-950/80 p-3">
-                    <label className="block text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                      Order Date
-                    </label>
-
-                    <div className="mt-2 grid grid-cols-1 gap-2 min-[380px]:grid-cols-[1fr_auto]">
-                      <input
-                        type="date"
-                        value={orderHistoryDate}
-                        onChange={(event) => {
-                          setOrderHistoryDate(
-                            event.target.value
-                          )
-                          setOrderHistoryError('')
-                        }}
-                        className="min-h-12 min-w-0 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 text-base font-black text-white outline-none transition focus:border-orange-500"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={handleLifetimeOrderSearch}
-                        disabled={
-                          orderHistoryLoading ||
-                          !orderHistoryDate
-                        }
-                        className="min-h-12 rounded-2xl bg-orange-500 px-5 text-[10px] font-black text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {orderHistoryLoading
-                          ? 'Searching...'
-                          : 'Search Orders'}
-                      </button>
-                    </div>
-
-                    {orderHistoryDate && (
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        <p className="text-[9px] font-bold text-neutral-600">
-                          Selected: {formatOrderHistoryDate(orderHistoryDate)}
-                        </p>
-
-                        <button
-                          type="button"
-                          onClick={clearLifetimeOrderSearch}
-                          disabled={orderHistoryLoading}
-                          className="text-[9px] font-black text-orange-300 disabled:opacity-50"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    )}
+                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                    <p className="text-[10px] font-black uppercase text-neutral-500">Role</p>
+                    <p className="mt-1 text-sm font-black capitalize text-white">{manager?.role || 'manager'}</p>
                   </div>
                 </div>
 
-                <div className="border-t border-neutral-800 p-4">
-                  {orderHistoryError && (
-                    <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-3 text-[10px] font-bold leading-5 text-red-300">
-                      {orderHistoryError}
-                    </div>
-                  )}
-
-                  {!orderHistorySearched &&
-                    !orderHistoryLoading &&
-                    !orderHistoryError && (
-                      <div className="py-3 text-center">
-                        <div className="text-3xl">
-                          📅
-                        </div>
-
-                        <p className="mt-2 text-xs font-black text-white">
-                          Search historical orders
-                        </p>
-
-                        <p className="mx-auto mt-1 max-w-[310px] text-[10px] leading-5 text-neutral-600">
-                          Example: choose 11/12/2000 if an order exists on that date.
-                        </p>
-                      </div>
-                    )}
-
-                  {orderHistoryLoading && (
-                    <div className="flex items-center justify-center gap-3 py-7">
-                      <div className="h-7 w-7 animate-spin rounded-full border-4 border-neutral-800 border-t-orange-500" />
-
-                      <div>
-                        <p className="text-[10px] font-black text-white">
-                          Searching order history
-                        </p>
-
-                        <p className="mt-0.5 text-[9px] text-neutral-600">
-                          Looking at {formatOrderHistoryDate(orderHistoryDate)}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {orderHistorySearched &&
-                    !orderHistoryLoading &&
-                    !orderHistoryError && (
-                      <>
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-300">
-                              Search Result
-                            </p>
-
-                            <h4 className="mt-1 text-base font-black text-white">
-                              {formatOrderHistoryDate(orderHistoryDate)}
-                            </h4>
-                          </div>
-
-                          <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[8px] font-black text-orange-300">
-                            {orderHistoryOrders.length} ORDER{orderHistoryOrders.length === 1 ? '' : 'S'}
-                          </span>
-                        </div>
-
-                        <div className="mt-4 grid grid-cols-2 gap-2">
-                          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-                            <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
-                              Revenue
-                            </p>
-
-                            <p className="mt-1 text-base font-black text-emerald-400">
-                              {money(orderHistoryRevenue)}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-3">
-                            <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
-                              Completed
-                            </p>
-
-                            <p className="mt-1 text-base font-black text-sky-300">
-                              {orderHistoryCompletedCount}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3">
-                            <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
-                              Total Orders
-                            </p>
-
-                            <p className="mt-1 text-base font-black text-amber-300">
-                              {orderHistoryOrders.length}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-3">
-                            <p className="text-[8px] font-black uppercase tracking-wider text-neutral-600">
-                              Cancelled
-                            </p>
-
-                            <p className="mt-1 text-base font-black text-red-300">
-                              {orderHistoryCancelledCount}
-                            </p>
-                          </div>
-                        </div>
-
-                        {orderHistoryOrders.length === 0 ? (
-                          <div className="py-8 text-center">
-                            <div className="text-4xl">
-                              🧾
-                            </div>
-
-                            <p className="mt-3 text-xs font-black text-white">
-                              No orders found
-                            </p>
-
-                            <p className="mt-1 text-[10px] leading-5 text-neutral-600">
-                              No saved orders were returned for {formatOrderHistoryDate(orderHistoryDate)}.
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="mt-4 space-y-3">
-                            {visibleOrderHistory.map(
-                              (order) => (
-                                <MobileOrderCard
-                                  key={order.id}
-                                  order={order}
-                                  readOnly
-                                />
-                              )
-                            )}
-
-                            {orderHistoryVisibleCount <
-                              orderHistoryOrders.length && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setOrderHistoryVisibleCount(
-                                    (current) =>
-                                      current + 20
-                                  )
-                                }
-                                className="w-full rounded-2xl border border-orange-500/20 bg-orange-500/5 py-3 text-[10px] font-black text-orange-300"
-                              >
-                                Show 20 More Orders
-                              </button>
-                            )}
-
-                            {orderHistoryOrders.length >
-                              20 && (
-                              <p className="pt-1 text-center text-[8px] font-semibold text-neutral-600">
-                                Showing {Math.min(orderHistoryVisibleCount, orderHistoryOrders.length)} of {orderHistoryOrders.length} orders
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
+                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">Restaurant</p>
+                  <p className="mt-1 text-sm font-black text-white">{restaurant?.name || 'Restaurant'}</p>
+                  <p className="mt-2 text-[10px] font-mono text-neutral-500">Code: {restaurant?.restaurant_code || restaurantCode || '-----'}</p>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => setActiveTab('live-orders')} className="rounded-[26px] border border-red-500/20 bg-red-500/5 p-4 text-left active:scale-[0.98]">
-                  <div className="text-2xl">🔴</div>
-                  <p className="mt-3 font-black text-white">Live Orders</p>
-                  <p className="mt-1 text-[10px] text-neutral-500">{activeOrders.length} active right now</p>
-                </button>
-                <button type="button" onClick={() => setActiveTab('tables')} className="rounded-[26px] border border-emerald-500/20 bg-emerald-500/5 p-4 text-left active:scale-[0.98]">
-                  <div className="text-2xl">🪑</div>
-                  <p className="mt-3 font-black text-white">Tables</p>
-                  <p className="mt-1 text-[10px] text-neutral-500">{availableTableCount}/{configuredTableNumbers.length} available</p>
-                </button>
-                <button type="button" onClick={() => setActiveTab('menu')} className="rounded-[26px] border border-amber-500/20 bg-amber-500/5 p-4 text-left active:scale-[0.98]">
-                  <div className="text-2xl">🍔</div>
-                  <p className="mt-3 font-black text-white">Menu</p>
-                  <p className="mt-1 text-[10px] text-neutral-500">{menuItems.length} items</p>
-                </button>
-                <button type="button" onClick={() => setActiveTab('staff')} className="rounded-[26px] border border-sky-500/20 bg-sky-500/5 p-4 text-left active:scale-[0.98]">
-                  <div className="text-2xl">👥</div>
-                  <p className="mt-3 font-black text-white">Staff</p>
-                  <p className="mt-1 text-[10px] text-neutral-500">{staffList.length} accounts</p>
-                </button>
-              </div>
-
-              {hasResortAccess && (
-                <button type="button" onClick={() => setActiveTab('resort')} className="w-full rounded-[28px] border border-sky-500/20 bg-gradient-to-r from-sky-500/10 to-violet-500/10 p-4 text-left active:scale-[0.99]">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-300">Restaurant + Resort</p>
-                      <h3 className="mt-0.5 text-base font-semibold text-white">🏨 Open Resort Workspace</h3>
-                      <p className="mt-1 text-[11px] text-neutral-500">Separate mobile workspace for resort operations.</p>
-                    </div>
-                    <span className="text-2xl text-neutral-500">›</span>
-                  </div>
-                </button>
-              )}
-
-              <div className="space-y-3">
-                <MobileSectionTitle
-                  eyebrow="Live"
-                  title="Recent Active Orders"
-                  subtitle="Updates are synchronized with the same manager backend."
-                  action={<button type="button" onClick={() => setActiveTab('live-orders')} className="rounded-xl bg-neutral-900 px-3 py-2 text-[10px] font-black text-orange-300">View all</button>}
-                />
-                {activeOrders.length === 0 ? (
-                  <div className="rounded-[26px] border border-neutral-800 bg-neutral-900 p-8 text-center">
-                    <div className="text-3xl">✅</div>
-                    <p className="mt-3 text-sm font-black text-white">No active orders</p>
-                    <p className="mt-1 text-xs text-neutral-500">New QR orders will appear here automatically.</p>
-                  </div>
-                ) : (
-                  activeOrders.slice(0, 3).map((order) => <MobileOrderCard key={order.id} order={order} compact />)
-                )}
-              </div>
-            </>
-          )}
-
-          {mobileSection === 'live-orders' && (
-            <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Real-time" title="Live Orders" subtitle="Manage order status with large mobile controls." />
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-3 text-center"><p className="text-lg font-black text-orange-300">{activeOrders.length}</p><p className="text-[9px] font-black uppercase text-neutral-600">Active</p></div>
-                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-center"><p className="text-lg font-black text-amber-300">{orders.filter((o) => String(o.status || 'pending').toLowerCase() === 'pending').length}</p><p className="text-[9px] font-black uppercase text-neutral-600">Pending</p></div>
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-center"><p className="text-lg font-black text-emerald-300">{orders.filter((o) => String(o.status || '').toLowerCase() === 'ready').length}</p><p className="text-[9px] font-black uppercase text-neutral-600">Ready</p></div>
-              </div>
-              {activeOrders.length === 0 ? (
-                <div className="rounded-[26px] border border-neutral-800 bg-neutral-900 p-10 text-center text-sm text-neutral-500">No active orders.</div>
-              ) : (
-                activeOrders.map((order) => <MobileOrderCard key={order.id} order={order} />)
-              )}
+                <div className="flex gap-2 pt-1">
+                  <button type="button" onClick={() => setProfileOpen(false)} className="flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs font-black text-neutral-300">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={profileSaving} className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-xs font-black text-white disabled:opacity-50">
+                    {profileSaving ? 'Saving...' : 'Save Profile'}
+                  </button>
+                </div>
+              </form>
             </div>
-          )}
+          </div>
+        )}
 
-          {mobileSection === 'tables' && (
-            <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Floor" title="Table Availability" subtitle="Occupied status is calculated from active dine-in orders." />
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-3 text-center"><p className="text-lg font-black">{configuredTableNumbers.length}</p><p className="text-[9px] uppercase text-neutral-600">Total</p></div>
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-center"><p className="text-lg font-black text-emerald-300">{availableTableCount}</p><p className="text-[9px] uppercase text-neutral-600">Available</p></div>
-                <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-3 text-center"><p className="text-lg font-black text-red-300">{occupiedTableCount}</p><p className="text-[9px] uppercase text-neutral-600">Occupied</p></div>
-              </div>
+        {notice && <div className="fixed right-5 top-5 z-50 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice}</div>}
+
+        {deliveryModuleEnabled && authenticated && (
+          <NativeDeliveryPush
+            restaurantId={String(restaurantId || '')}
+            role="manager"
+            enabled={deliveryModuleEnabled}
+            managerSessionToken={
+              sessionMode ? sessionToken : ''
+            }
+            managerCredentials={{
+              restaurantCode,
+              userId: loginUserId,
+              password: loginPassword,
+            }}
+            dashboardPath={`/manager/${restaurantId}?module=delivery`}
+          />
+        )}
+
+        <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
+          <div
+            className={`grid gap-2 ${
+              enabledModuleCount >= 3
+                ? 'grid-cols-1 sm:grid-cols-3'
+                : enabledModuleCount === 2
+                  ? 'grid-cols-2'
+                  : 'grid-cols-1'
+            }`}
+          >
+            {restaurantModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('restaurant')}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                  dashboardMode === 'restaurant'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                }`}
+              >
+                🍽️ Restaurant Dashboard
+              </button>
+            )}
+
+            {hasResortAccess && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('resort')}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                  dashboardMode === 'resort'
+                    ? 'bg-sky-600 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                }`}
+              >
+                🏨 Resort Dashboard
+              </button>
+            )}
+
+            {deliveryModuleEnabled && (
+              <button
+                type="button"
+                onClick={() => setDashboardMode('delivery')}
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                  dashboardMode === 'delivery'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                }`}
+              >
+                🚚 Delivery Dashboard
+              </button>
+            )}
+          </div>
+        </div>
+
+        {dashboardMode === 'resort' && hasResortAccess && (
+          <ResortManagement
+            restaurant={restaurant}
+            planCode={currentPlanCode}
+            advancedFeaturesEnabled={hasAdvancedResort}
+            allowPaymentSettings={false}
+          />
+        )}
+
+        {dashboardMode === 'delivery' && deliveryModuleEnabled && (
+          <ManagerDeliveryManagement
+            restaurantId={restaurantId}
+            restaurantCode={restaurantCode}
+            sessionToken={sessionToken}
+            sessionMode={sessionMode}
+            userId={loginUserId}
+            password={loginPassword}
+            restaurant={restaurant}
+          />
+        )}
+
+        {dashboardMode === 'restaurant' && restaurantModuleEnabled && (<>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Stat title="Total Revenue" value={money(totalRevenue)} />
+          <Stat title="Orders Today" value={todayOrders.length} accent="text-emerald-400" />
+          <Stat title="Active Orders" value={activeOrders.length} accent="text-orange-400" />
+          <Stat title="Menu Items" value={`${menuItems.length}/${maxMenuAllowed === Infinity ? '∞' : maxMenuAllowed}`} accent="text-amber-400" />
+          <Stat title="Partner Tier" value={currentPlanDisplay} accent="text-amber-400" />
+        </div>
+
+        <nav className="dd-dashboard-sidebar flex gap-2 overflow-x-auto border-b border-neutral-200 pb-3">
+          {[
+            ['live-orders', `▣ Live Orders (${activeOrders.length})`],
+            ['tables', `⌁ Tables (${availableTableCount}/${configuredTableNumbers.length})`],
+            ['settlements', '⌂ Dashboard & Reports'],
+            ['menu', `≡ Menu (${menuItems.length})`],
+            ['staff', `◎ Staff (${staffList.length})`],
+            ['offers', `★ Offers (${dailyOffers.filter((item) => item.is_active !== false).length})`],
+            ['swiggy-sync', '↻ Menu Import / Sync']
+          ]
+            .filter(([id]) => id !== 'settlements' || hasAdvancedAnalytics)
+            .map(([id, label]) => (
+            <button key={id} onClick={() => setActiveTab(id)} className={`whitespace-nowrap rounded-2xl border px-4 py-2.5 text-xs font-black uppercase ${activeTab === id ? 'border-orange-500 bg-orange-500 text-white' : 'border-neutral-800 bg-neutral-900 text-neutral-400'}`}>
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {activeTab === 'tables' && (
+          <section className="space-y-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Stat title="Total Tables" value={configuredTableNumbers.length} />
+              <Stat title="Available Tables" value={`${availableTableCount}/${configuredTableNumbers.length}`} accent="text-emerald-400" />
+              <Stat title="Occupied Tables" value={occupiedTableCount} accent="text-red-400" />
+            </div>
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+              <h2 className="text-xl font-black">Table Status</h2>
+              <p className="mt-1 text-xs text-neutral-500">A table is occupied while it has an active dine-in order.</p>
               {configuredTableNumbers.length === 0 ? (
-                <div className="rounded-[26px] border border-neutral-800 bg-neutral-900 p-10 text-center text-sm text-neutral-500">No registered table QR inventory.</div>
+                <p className="py-10 text-center text-sm text-neutral-500">No table QR codes have been registered by the restaurant owner.</p>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                   {configuredTableNumbers.map((number) => {
                     const occupied = occupiedTableNumbers.has(number)
-                    return (
-                      <div key={number} className={`rounded-[26px] border p-5 text-center ${occupied ? 'border-red-500/20 bg-red-500/5' : 'border-emerald-500/20 bg-emerald-500/5'}`}>
-                        <div className="text-3xl">{occupied ? '🔴' : '🟢'}</div>
-                        <p className="mt-3 text-base font-black text-white">Table {number}</p>
-                        <p className={`mt-1 text-[10px] font-black uppercase ${occupied ? 'text-red-300' : 'text-emerald-300'}`}>{occupied ? 'Occupied' : 'Available'}</p>
-                      </div>
-                    )
+                    return <div key={number} className={`rounded-2xl border p-4 text-center ${occupied ? 'border-red-500/30 bg-red-500/10' : 'border-emerald-500/30 bg-emerald-500/10'}`}><div className="text-2xl">{occupied ? '🔴' : '🟢'}</div><p className="mt-2 font-black">Table {number}</p><p className={`mt-1 text-[10px] font-black uppercase ${occupied ? 'text-red-400' : 'text-emerald-400'}`}>{occupied ? 'Occupied' : 'Available'}</p></div>
                   })}
                 </div>
               )}
             </div>
-          )}
+          </section>
+        )}
 
-          {mobileSection === 'menu' && (
-            <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Catalog" title="Menu Management" subtitle={`${menuItems.length}/${maxMenuAllowed === Infinity ? '∞' : maxMenuAllowed} items used`} />
-
-              <form onSubmit={saveDish} className="space-y-3 rounded-[28px] border border-neutral-800 bg-neutral-900 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-black text-white">{editingDishId ? 'Edit Dish' : 'Add Dish'}</h3>
-                  {editingDishId && <button type="button" onClick={resetDish} className="rounded-xl bg-neutral-800 px-3 py-2 text-[10px] font-black text-neutral-300">Cancel</button>}
-                </div>
-                <Input label="Dish Name" value={dish.name} onChange={(value) => setDish({ ...dish, name: value })} placeholder="Chicken Biryani" />
-                <div className="grid grid-cols-2 gap-3">
-                  <Input label="Price" type="number" value={dish.price} onChange={(value) => setDish({ ...dish, price: value })} placeholder="299" />
-                  <Input label="Category" value={dish.category} onChange={(value) => setDish({ ...dish, category: value })} placeholder="Main Course" />
-                </div>
-                <Input label="Description" value={dish.description} onChange={(value) => setDish({ ...dish, description: value })} placeholder="Dish description" />
-                <Input label="Image URL" value={dish.image_url} onChange={(value) => setDish({ ...dish, image_url: value })} placeholder="https://..." />
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Food Type</label>
-                    <select value={dish.food_type} onChange={(e) => setDish({ ...dish, food_type: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs text-white outline-none">
-                      <option value="veg">Veg</option>
-                      <option value="non-veg">Non-Veg</option>
-                      <option value="egg">Egg</option>
-                      <option value="beverage">Beverage</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  <Input label="Add-ons" value={dish.addons} onChange={(value) => setDish({ ...dish, addons: value })} placeholder="Cheese, Extra gravy" />
-                </div>
-                {hasAdvancedMenuControls ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Input label="Original Price" type="number" value={dish.original_price} onChange={(value) => setDish({ ...dish, original_price: value })} placeholder="Optional" />
-                      <Input label="Offer Price" type="number" value={dish.offer_price} onChange={(value) => setDish({ ...dish, offer_price: value })} placeholder="Optional" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Highly Reordered</label>
-                      <select value={dish.reorder_mode} onChange={(e) => setDish({ ...dish, reorder_mode: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs text-white">
-                        <option value="auto">Automatic</option>
-                        <option value="on">Always On</option>
-                        <option value="off">Off</option>
-                      </select>
-                    </div>
-                  </>
-                ) : (
-                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] font-bold text-amber-300">Advanced pricing and Highly Reordered controls require Restaurant Pro.</div>
-                )}
-                <button disabled={savingDish} className="w-full rounded-2xl bg-orange-500 py-3 text-xs font-black uppercase text-white disabled:opacity-50">{savingDish ? 'Saving...' : editingDishId ? 'Update Dish' : 'Add Dish'}</button>
-              </form>
-
-              <div className="space-y-3">
-                {menuItems.map((item) => (
-                  <article key={item.id} className="rounded-[26px] border border-neutral-800 bg-neutral-900 p-4">
-                    <div className="flex gap-3">
-                      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
-                        {item.image_url ? <img src={item.image_url} alt={item.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-2xl">🍽️</div>}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate font-black text-white">{item.name}</p>
-                            <p className="mt-1 text-[10px] text-neutral-500">{item.category || 'Other'} · {item.food_type || (item.is_veg ? 'veg' : 'non-veg')}</p>
-                          </div>
-                          <p className="shrink-0 font-black text-emerald-400">{money(item.offer_price ?? item.price)}</p>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {isHighlyReordered(item) && <span className="rounded-full bg-violet-500/10 px-2 py-1 text-[9px] font-black text-orange-300">Highly Reordered</span>}
-                          <span className={`rounded-full px-2 py-1 text-[9px] font-black ${item.is_available === false ? 'bg-red-500/10 text-red-300' : 'bg-emerald-500/10 text-emerald-300'}`}>{item.is_available === false ? 'Unavailable' : 'Available'}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      <button type="button" onClick={() => startEditDish(item)} className="rounded-xl border border-neutral-800 bg-neutral-950 py-2.5 text-[10px] font-black text-neutral-300">Edit</button>
-                      <button type="button" onClick={() => toggleAvailability(item)} className="rounded-xl border border-neutral-800 bg-neutral-950 py-2.5 text-[10px] font-black text-neutral-300">{item.is_available === false ? 'Enable' : 'Disable'}</button>
-                      <button type="button" onClick={() => deleteDish(item)} className="rounded-xl border border-red-500/20 bg-red-500/5 py-2.5 text-[10px] font-black text-red-300">Delete</button>
-                    </div>
-                  </article>
-                ))}
+        {activeTab === 'live-orders' && (
+          <section className="space-y-5">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+              <div>
+                <span className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-red-400">
+                  Real-time Order Monitor
+                </span>
+                <h2 className="mt-3 text-2xl font-black">Live Orders</h2>
+                <p className="mt-2 text-xs text-neutral-400">
+                  New orders appear automatically without refreshing this page.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[10px] font-black text-emerald-300">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                  LIVE
+                </span>
+                <button
+                  onClick={fetchDashboard}
+                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-black"
+                >
+                  ↻ Refresh
+                </button>
               </div>
             </div>
-          )}
 
-          {mobileSection === 'staff' && (
-            <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Team" title="Waiter & Kitchen Staff" subtitle="Create and revoke operational accounts." />
-              <form onSubmit={saveStaff} className="space-y-3 rounded-[28px] border border-neutral-800 bg-neutral-900 p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Stat title="Active Orders" value={activeOrders.length} accent="text-orange-400" />
+              <Stat title="Pending Orders" value={orders.filter((order) => String(order.status || 'pending').toLowerCase() === 'pending').length} accent="text-amber-400" />
+              <Stat title="Ready Orders" value={orders.filter((order) => String(order.status || '').toLowerCase() === 'ready').length} accent="text-emerald-400" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              {activeOrders.map((order) => {
+                const status = String(order.status || 'pending').toLowerCase()
+                const orderItems = Array.isArray(order.items) ? order.items : []
+                const orderAmount = Number(order.total_amount ?? order.total ?? 0)
+
+                return (
+                  <article
+                    key={order.id}
+                    className="rounded-3xl border border-orange-500/30 bg-neutral-900 p-5 shadow-lg shadow-orange-500/5"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-lg font-black text-white">
+                          Order #{String(order.id).slice(0, 8)}
+                        </p>
+                        <p className="mt-1 text-[11px] text-neutral-500">
+                          {order.created_at
+                            ? new Date(order.created_at).toLocaleString('en-IN')
+                            : 'Time unavailable'}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-orange-500/15 px-3 py-1.5 text-[10px] font-black uppercase text-orange-300">
+                        {status}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 text-xs">
+                      <div>
+                        <p className="text-[10px] uppercase text-neutral-500">Customer</p>
+                        <p className="mt-1 font-bold">{order.customer_name || order.name || 'Guest'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase text-neutral-500">Payment</p>
+                        <p className="mt-1 font-bold">{order.payment_mode || order.payment_method || 'Not specified'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase text-neutral-500">Dining Mode</p>
+                        <p className="mt-1 font-bold">{order.dining_mode || order.order_type || 'Dine-in'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase text-neutral-500">Total</p>
+                        <p className="mt-1 font-black text-emerald-400">{money(orderAmount)}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                        Items
+                      </p>
+                      <div className="space-y-2">
+                        {orderItems.length ? orderItems.map((item, index) => (
+                          <div
+                            key={`${order.id}-item-${index}`}
+                            className="flex items-center justify-between gap-3 rounded-xl bg-neutral-950 px-3 py-2 text-xs"
+                          >
+                            <span className="font-semibold">
+                              {item.qty || item.quantity || 1} × {item.name || item.title || 'Item'}
+                            </span>
+                            <span className="text-neutral-400">
+                              {money(Number(item.price || 0) * Number(item.qty || item.quantity || 1))}
+                            </span>
+                          </div>
+                        )) : (
+                          <p className="text-xs text-neutral-500">Item details unavailable.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap items-center gap-2">
+                      <label className="text-[10px] font-black uppercase text-neutral-500">Update status</label>
+                      <select
+                        value={order.status || 'pending'}
+                        onChange={(event) => updateOrderStatus(order.id, event.target.value)}
+                        className="flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs text-white"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="confirmed">Confirmed</option>
+                        <option value="preparing">Preparing</option>
+                        <option value="ready">Ready</option>
+                        <option value="completed">Completed</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+
+            {!activeOrders.length && (
+              <div className="rounded-3xl border border-dashed border-neutral-800 bg-neutral-900 p-14 text-center">
+                <div className="text-5xl">🧾</div>
+                <h3 className="mt-4 text-lg font-black">No active orders</h3>
+                <p className="mt-2 text-xs text-neutral-500">
+                  New customer orders will appear here instantly.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === 'settlements' && hasAdvancedAnalytics && (
+          <section className="space-y-5">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+              <div>
+                <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-400">Restaurant Analytics</span>
+                <h2 className="mt-3 text-2xl font-black">Sales & Order Reports</h2>
+                <p className="mt-2 text-xs text-neutral-400">Review order volume, revenue, average order value, and order timing.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <select value={reportTimeframe} onChange={(e) => setReportTimeframe(e.target.value)} className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2.5 text-xs text-white">
+                  <option value="daily">Today</option>
+                  <option value="weekly">This Week</option>
+                  <option value="monthly">This Month</option>
+                  <option value="yearly">This Year</option>
+                </select>
+                <button onClick={downloadReport} className="rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-black">Generate CSV 📥</button>
+                <button onClick={() => window.print()} className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-black">Print 🖨️</button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Stat title="Orders Generated" value={reportStats.orders} />
+              <Stat title="Sales Generated" value={money(reportStats.sales)} accent="text-emerald-400" />
+              <Stat title="Average Order Value" value={money(reportStats.average)} accent="text-orange-400" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+                <h3 className="font-black">Orders by Hour</h3>
+                <p className="mt-1 text-xs text-neutral-500">Order activity during the selected period.</p>
+                {!hourlyData.length ? <p className="py-12 text-center text-sm text-neutral-500">No orders in this period.</p> : (
+                  <div className="mt-5 space-y-3">
+                    {hourlyData.map((item) => {
+                      const maximum = Math.max(...hourlyData.map((value) => value.orders), 1)
+                      return (
+                        <div key={item.hour}>
+                          <div className="mb-1 flex justify-between text-xs"><span>{String(item.hour).padStart(2, '0')}:00–{String((item.hour + 1) % 24).padStart(2, '0')}:00</span><span>{item.orders} orders · {money(item.sales)}</span></div>
+                          <div className="h-3 overflow-hidden rounded-full bg-neutral-950"><div className="h-full rounded-full bg-orange-500" style={{ width: `${Math.max(5, (item.orders / maximum) * 100)}%` }} /></div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                {peakHour && <div className="mt-5 rounded-xl border border-orange-500/20 bg-orange-500/10 p-3 text-xs text-orange-300">Peak order time: <strong>{String(peakHour.hour).padStart(2, '0')}:00–{String((peakHour.hour + 1) % 24).padStart(2, '0')}:00</strong></div>}
+              </div>
+
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+                <h3 className="font-black">Order Report Details</h3>
+                <div className="mt-4 space-y-3">
+                  {reportOrders.slice(0, 20).map((order) => (
+                    <div key={order.id} className="flex justify-between gap-3 border-b border-neutral-800 pb-3">
+                      <div>
+                        <p className="text-xs font-bold">Order #{String(order.id).slice(0, 8)}</p>
+                        <p className="mt-1 text-[11px] text-neutral-500">{new Date(order.created_at).toLocaleString('en-IN')} · {order.payment_mode || 'Payment not specified'}</p>
+                      </div>
+                      <span className="text-xs font-black">{money(order.total_amount ?? order.total)}</span>
+                    </div>
+                  ))}
+                  {!reportOrders.length && <p className="py-12 text-center text-sm text-neutral-500">No report records available.</p>}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+              <h3 className="font-black">Recent Orders & Status Management</h3>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[650px] text-left text-xs">
+                  <thead className="border-b border-neutral-800 text-neutral-500"><tr><th className="p-3">Order</th><th className="p-3">Date</th><th className="p-3">Amount</th><th className="p-3">Status</th><th className="p-3">Update</th></tr></thead>
+                  <tbody>
+                    {orders.slice(0, 30).map((order) => (
+                      <tr key={order.id} className="border-b border-neutral-800/70">
+                        <td className="p-3 font-bold">#{String(order.id).slice(0, 8)}</td>
+                        <td className="p-3 text-neutral-400">{order.created_at ? new Date(order.created_at).toLocaleString('en-IN') : '—'}</td>
+                        <td className="p-3 font-black">{money(order.total_amount ?? order.total)}</td>
+                        <td className="p-3">{order.status || 'pending'}</td>
+                        <td className="p-3"><select value={order.status || 'pending'} onChange={(e) => updateOrderStatus(order.id, e.target.value)} className="rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs"><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="preparing">Preparing</option><option value="ready">Ready</option><option value="completed">Completed</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option></select></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!orders.length && <p className="py-10 text-center text-sm text-neutral-500">No orders found.</p>}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'menu' && (
+          <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div className="h-fit space-y-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-6">
+              <div className="flex items-center justify-between"><h2 className="font-black">{editingDishId ? 'Edit Dish' : 'Add New Dish'}</h2><span className="text-[10px] text-neutral-500">{menuItems.length}/{maxMenuAllowed === Infinity ? '∞' : maxMenuAllowed}</span></div>
+              {!hasAdvancedMenuControls && (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[11px] font-bold text-amber-300">
+                  🔒 Advanced pricing and Highly Reordered manual controls require Restaurant Pro or Restaurant + Resort Pro. Basic menu management remains available.
+                </div>
+              )}
+              <form onSubmit={saveDish} className="space-y-3">
+                <Input label="Dish Name" value={dish.name} onChange={(value) => setDish({ ...dish, name: value })} placeholder="Chicken Biryani" />
+                <Input label="Price" type="number" value={dish.price} onChange={(value) => setDish({ ...dish, price: value })} placeholder="180" />
+                <Input label="Original Price (Pro)" type="number" value={dish.original_price} onChange={(value) => hasAdvancedMenuControls && setDish({ ...dish, original_price: value })} placeholder={hasAdvancedMenuControls ? "Optional" : "Pro plan required"} />
+                <Input label="Offer Price (Pro)" type="number" value={dish.offer_price} onChange={(value) => hasAdvancedMenuControls && setDish({ ...dish, offer_price: value })} placeholder={hasAdvancedMenuControls ? "Optional" : "Pro plan required"} />
+                <Input label="Category" value={dish.category} onChange={(value) => setDish({ ...dish, category: value })} placeholder="Main Course" />
+                <Input label="Image URL" value={dish.image_url} onChange={(value) => setDish({ ...dish, image_url: value })} placeholder="https://..." />
+                <Input label="Add-ons comma separated" value={dish.addons} onChange={(value) => setDish({ ...dish, addons: value })} placeholder="Extra rice, Raita" />
+                <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Food Type</label><select value={dish.food_type} onChange={(e) => setDish({ ...dish, food_type: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs"><option value="veg">Veg</option><option value="non-veg">Non-Veg</option><option value="egg">Egg</option><option value="beverage">Beverage</option><option value="other">Other</option></select></div>
+                <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Highly Reordered</label><select value={dish.reorder_mode} onChange={(e) => hasAdvancedMenuControls && setDish({ ...dish, reorder_mode: e.target.value })} disabled={!hasAdvancedMenuControls} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs disabled:opacity-50"><option value="auto">Automatic</option><option value="on">Always On</option><option value="off">Off</option></select></div>
+                <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Description</label><textarea rows={3} value={dish.description} onChange={(e) => setDish({ ...dish, description: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs" /></div>
+                <div className="flex gap-2"><button disabled={savingDish} className="rounded-xl bg-orange-500 px-5 py-3 text-xs font-black">{savingDish ? 'Saving...' : editingDishId ? 'Update Dish' : 'Add Dish'}</button>{editingDishId && <button type="button" onClick={resetDish} className="rounded-xl bg-neutral-800 px-5 py-3 text-xs font-black">Cancel</button>}</div>
+              </form>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:col-span-2 sm:grid-cols-2">
+              {menuItems.map((item) => (
+                <div key={item.id} className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+                  {item.image_url && <img src={item.image_url} alt={item.name} className="h-36 w-full rounded-xl object-cover" />}
+                  <div className="flex justify-between gap-3"><div><h3 className="font-black">{item.name}</h3><p className="text-[11px] text-neutral-500">{item.category || 'Other'} · {item.food_type || 'veg'}</p></div><span className="font-black text-orange-400">{money(item.offer_price ?? item.price)}</span></div>
+                  {item.description && <p className="text-xs text-neutral-400">{item.description}</p>}
+                  {isHighlyReordered(item) && <span className="inline-block rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-black text-amber-300">⭐ Highly Reordered</span>}
+                  <div className="flex flex-wrap gap-2"><button onClick={() => startEditDish(item)} className="rounded-lg bg-neutral-800 px-3 py-2 text-[11px] font-bold">Edit</button><button onClick={() => toggleAvailability(item)} className={`rounded-lg px-3 py-2 text-[11px] font-bold ${item.is_available === false ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}`}>{item.is_available === false ? 'Unavailable' : 'Available'}</button><button onClick={() => deleteDish(item)} className="rounded-lg bg-red-500/10 px-3 py-2 text-[11px] font-bold text-red-300">Delete</button></div>
+                </div>
+              ))}
+              {!menuItems.length && <p className="py-12 text-center text-sm text-neutral-500">No menu items found.</p>}
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'staff' && (
+          <section className="space-y-5">
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-6">
+              <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">Operational Staff</span>
+              <h2 className="mt-3 text-xl font-black">Create Waiter and Kitchen Accounts</h2>
+              <p className="mt-2 text-xs text-neutral-400">Manager account creation is intentionally unavailable here. This section is only for operational staff.</p>
+              <div className="mt-4 inline-flex flex-col rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-orange-400">Restaurant Code</span>
+                <span className="mt-1 font-mono text-2xl font-black tracking-[0.22em] text-white">{restaurant?.restaurant_code || restaurantCode || '-----'}</span>
+              </div>
+              <form onSubmit={saveStaff} className="mt-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <Input label="Staff Name" value={staffName} onChange={setStaffName} placeholder="Staff name" />
                 <Input label="User ID" value={staffUserId} onChange={setStaffUserId} placeholder="waiter01" />
                 <Input label="Password / PIN" type="password" value={staffPassword} onChange={setStaffPassword} placeholder="Minimum 4 characters" />
-                <div>
-                  <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Role</label>
-                  <select value={staffRole} onChange={(e) => setStaffRole(e.target.value)} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white">
-                    <option value="waiter">Waiter</option>
-                    <option value="kitchen">Kitchen</option>
-                  </select>
-                </div>
-                <button disabled={savingStaff} className="w-full rounded-2xl bg-orange-500 py-3 text-xs font-black uppercase text-white disabled:opacity-50">{savingStaff ? 'Creating...' : 'Create Staff Account'}</button>
-              </form>
-              <div className="space-y-3">
-                {staffList.map((staff) => (
-                  <article key={staff.id} className="flex items-center justify-between gap-3 rounded-[24px] border border-neutral-800 bg-neutral-900 p-4">
-                    <div className="min-w-0">
-                      <p className="truncate font-black text-white">{staff.name || staff.user_id}</p>
-                      <p className="mt-1 text-[10px] text-neutral-500">{staff.user_id} · <span className="capitalize">{staff.role}</span></p>
-                    </div>
-                    <button type="button" onClick={() => revokeStaff(staff)} className="shrink-0 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-[10px] font-black text-red-300">Revoke</button>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {mobileSection === 'offers' && (
-            <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Promotions" title="Offers of the Day" subtitle="Manage offers shown on the QR menu." />
-              <form onSubmit={saveOffer} className="space-y-3 rounded-[28px] border border-neutral-800 bg-neutral-900 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-black text-white">{editingOfferId ? 'Edit Offer' : 'Create Offer'}</h3>
-                  {editingOfferId && <button type="button" onClick={resetOffer} className="rounded-xl bg-neutral-800 px-3 py-2 text-[10px] font-black text-neutral-300">Cancel</button>}
-                </div>
-                <Input label="Title" value={offer.title} onChange={(value) => setOffer({ ...offer, title: value })} placeholder="Weekend Special" />
-                <Input label="Description" value={offer.description} onChange={(value) => setOffer({ ...offer, description: value })} placeholder="Offer description" />
-                <div className="grid grid-cols-2 gap-3">
-                  <Input label="Original Price" type="number" value={offer.original_price} onChange={(value) => setOffer({ ...offer, original_price: value })} placeholder="299" />
-                  <Input label="Offer Price" type="number" value={offer.offer_price} onChange={(value) => setOffer({ ...offer, offer_price: value })} placeholder="199" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input label="Badge" value={offer.discount_text} onChange={(value) => setOffer({ ...offer, discount_text: value })} placeholder="33% OFF" />
-                  <Input label="Date" type="date" value={offer.offer_date} onChange={(value) => setOffer({ ...offer, offer_date: value })} />
-                </div>
-                <Input label="Image URL" value={offer.image_url} onChange={(value) => setOffer({ ...offer, image_url: value })} placeholder="https://..." />
-                <button disabled={savingOffer} className="w-full rounded-2xl bg-orange-500 py-3 text-xs font-black uppercase text-white disabled:opacity-50">{savingOffer ? 'Saving...' : editingOfferId ? 'Update Offer' : 'Publish Offer'}</button>
-              </form>
-              <div className="space-y-3">
-                {dailyOffers.map((item) => (
-                  <article key={item.id} className="rounded-[26px] border border-neutral-800 bg-neutral-900 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate font-black text-white">{item.title}</p>
-                        <p className="mt-1 text-[10px] text-neutral-500">{item.offer_date || item.date || 'No date'} · {item.discount_text || 'Offer'}</p>
-                      </div>
-                      <p className="font-black text-emerald-400">{money(item.offer_price)}</p>
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      <button type="button" onClick={() => editOffer(item)} className="rounded-xl border border-neutral-800 bg-neutral-950 py-2.5 text-[10px] font-black">Edit</button>
-                      <button type="button" onClick={() => toggleOffer(item)} className="rounded-xl border border-neutral-800 bg-neutral-950 py-2.5 text-[10px] font-black">{item.is_active === false ? 'Enable' : 'Disable'}</button>
-                      <button type="button" onClick={() => deleteOffer(item)} className="rounded-xl border border-red-500/20 bg-red-500/5 py-2.5 text-[10px] font-black text-red-300">Delete</button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {mobileSection === 'settlements' && hasAdvancedAnalytics && (
-            <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Pro Analytics" title="Reports" subtitle="Sales performance from your existing order data." />
-              <div className="grid grid-cols-4 gap-2 rounded-2xl border border-neutral-800 bg-neutral-900 p-2">
-                {['daily', 'weekly', 'monthly', 'yearly'].map((period) => (
-                  <button key={period} type="button" onClick={() => setReportTimeframe(period)} className={`rounded-xl py-2 text-[9px] font-black uppercase ${reportTimeframe === period ? 'bg-orange-500 text-white' : 'text-neutral-500'}`}>{period}</button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4"><p className="text-[9px] font-black uppercase text-neutral-600">Sales</p><p className="mt-2 text-xl font-black text-emerald-400">{money(reportStats.sales)}</p></div>
-                <div className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4"><p className="text-[9px] font-black uppercase text-neutral-600">Orders</p><p className="mt-2 text-xl font-black text-white">{reportStats.orders}</p></div>
-                <div className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4"><p className="text-[9px] font-black uppercase text-neutral-600">Average</p><p className="mt-2 text-xl font-black text-amber-400">{money(reportStats.average)}</p></div>
-                <div className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4"><p className="text-[9px] font-black uppercase text-neutral-600">Peak Hour</p><p className="mt-2 text-xl font-black text-orange-300">{peakHour ? `${String(peakHour.hour).padStart(2, '0')}:00` : '—'}</p></div>
-              </div>
-              <button type="button" onClick={downloadReport} className="w-full rounded-2xl border border-orange-500/20 bg-orange-500/10 py-3 text-xs font-black text-orange-300">Download CSV Report</button>
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
-                <p className="text-xs font-black uppercase tracking-wider text-neutral-500">Hourly Activity</p>
-                <div className="mt-4 space-y-3">
-                  {hourlyData.length === 0 ? <p className="text-xs text-neutral-600">No order activity in this period.</p> : hourlyData.map((item) => (
-                    <div key={item.hour} className="flex items-center justify-between gap-3 rounded-2xl bg-neutral-950 p-3 text-xs"><span className="font-black text-neutral-300">{String(item.hour).padStart(2, '0')}:00</span><span className="text-neutral-500">{item.orders} orders</span><span className="font-black text-emerald-400">{money(item.sales)}</span></div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {mobileSection === 'settlements' && !hasAdvancedAnalytics && (
-            <div className="rounded-[28px] border border-amber-500/20 bg-amber-500/5 p-6 text-center">
-              <div className="text-3xl">🔒</div>
-              <h2 className="mt-3 text-lg font-black text-white">Pro Analytics</h2>
-              <p className="mt-2 text-xs text-neutral-500">Analytics and downloadable reports require Restaurant Pro or Resort Pro.</p>
-            </div>
-          )}
-
-          {mobileSection === 'swiggy-sync' && (
-            <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Import" title="Menu JSON Import" subtitle="Keeps the existing manager menu import workflow available in the mobile app." />
-              <form onSubmit={handleSwiggySync} className="space-y-3 rounded-[28px] border border-neutral-800 bg-neutral-900 p-4">
-                <textarea rows={12} value={swiggyDataInput} onChange={(e) => setSwiggyDataInput(e.target.value)} placeholder='[{"name":"Chicken Biryani","price":320,"category":"Main Course"}]' className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 p-4 font-mono text-xs text-white outline-none focus:border-orange-500" required />
-                <button disabled={syncingSwiggy} className="w-full rounded-2xl bg-orange-500 py-3 text-xs font-black uppercase text-white disabled:opacity-50">{syncingSwiggy ? 'Importing...' : 'Import Menu'}</button>
+                <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Role</label><select value={staffRole} onChange={(e) => setStaffRole(e.target.value)} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs"><option value="waiter">Waiter</option><option value="kitchen">Kitchen</option></select></div>
+                <button disabled={savingStaff} className="rounded-xl bg-orange-500 px-4 py-3 text-xs font-black">{savingStaff ? 'Creating...' : 'Create Account'}</button>
               </form>
             </div>
-          )}
-
-          {mobileSection === 'resort' && hasResortAccess && (
-            <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Resort Workspace" title="Resort Manager" subtitle="Separate from restaurant operations and visible only on Resort plans." />
-              <div className="rounded-[28px] border border-sky-500/20 bg-gradient-to-br from-sky-500/10 to-violet-500/5 p-5">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">{currentPlanDisplay}</p>
-                <h3 className="mt-2 text-xl font-black text-white">🏨 {restaurant?.name || 'Resort'}</h3>
-                <p className="mt-2 text-xs leading-relaxed text-neutral-400">This mobile UI is ready for the same resort data layer used by Digital Dining. No duplicate resort database should be created.</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  ['🏨', 'Rooms', 'Inventory & status'],
-                  ['📅', 'Bookings', 'Reservations'],
-                  ['🧳', 'Guests', 'Stay information'],
-                  ['🔑', 'Check-In', 'Arrivals'],
-                  ['🚪', 'Check-Out', 'Departures'],
-                  ['🧹', 'Housekeeping', 'Room readiness'],
-                  ['💳', 'Billing', 'Stay payments'],
-                  ['📊', 'Reports', hasAdvancedResort ? 'Advanced reports' : 'Standard reports'],
-                ].map(([icon, title, subtitle]) => (
-                  <div key={title} className="rounded-[24px] border border-neutral-800 bg-neutral-900 p-4">
-                    <div className="text-2xl">{icon}</div>
-                    <p className="mt-3 font-black text-white">{title}</p>
-                    <p className="mt-1 text-[10px] text-neutral-600">{subtitle}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs leading-relaxed text-amber-200">
-                The current Manager source does not yet expose secure manager-session Resort CRUD RPCs, so these cards are UI-only until that existing Resort backend is connected for Manager access.
-              </div>
+            <div className="overflow-x-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+              <table className="w-full min-w-[760px] text-left text-xs"><thead className="border-b border-neutral-800 text-neutral-500"><tr><th className="p-3">Name</th><th className="p-3">User ID</th><th className="p-3">Password / PIN</th><th className="p-3">Role</th><th className="p-3">Created</th><th className="p-3">Action</th></tr></thead><tbody>{staffList.map((staff) => <tr key={staff.id} className="border-b border-neutral-800/70"><td className="p-3 font-bold">{staff.name}</td><td className="p-3 font-mono">{staff.user_id}</td><td className="p-3 font-mono text-neutral-300">{staff.password || '••••••'}</td><td className="p-3 uppercase text-orange-400">{staff.role}</td><td className="p-3 text-neutral-500">{staff.created_at ? new Date(staff.created_at).toLocaleDateString('en-IN') : '—'}</td><td className="p-3"><button onClick={() => revokeStaff(staff)} className="rounded-lg bg-red-500/10 px-3 py-2 font-bold text-red-300">Revoke</button></td></tr>)}</tbody></table>
+              {!staffList.length && <p className="py-10 text-center text-sm text-neutral-500">No waiter or kitchen accounts found.</p>}
             </div>
-          )}
-
-          {mobileSection === 'more' && (
-            <div className="space-y-4">
-              <MobileSectionTitle eyebrow="Manager" title="More" subtitle="Account, staff, reporting and app settings." />
-              <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900">
-                {[
-                  ['users', 'Staff Accounts', 'Manage waiter and kitchen logins', 'staff'],
-                  ['tag', 'Offers of the Day', 'QR-menu promotions', 'offers'],
-                  ['chart', 'Analytics & Reports', hasAdvancedAnalytics ? 'Sales and CSV reports' : 'Pro plan feature', 'settlements'],
-                  ['sync', 'Menu Import', 'Import menu JSON', 'swiggy-sync'],
-                  ['settings', 'App Settings', 'Appearance and notifications', 'experience-settings'],
-                  ...(hasResortAccess ? [['hotel', 'Resort Dashboard', 'Separate resort workspace', 'resort']] : []),
-                ].map(([icon, title, subtitle, target]) => (
-                  <button key={target} type="button" onClick={() => target === 'experience-settings' ? setExperienceOpen(true) : setActiveTab(target)} className="flex w-full items-center gap-3 border-b border-neutral-800 px-4 py-3.5 text-left last:border-b-0 active:bg-neutral-800/70">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-neutral-300"><AppIcon name={icon} className="h-5 w-5" /></span>
-                    <span className="min-w-0 flex-1"><span className="block text-[13px] font-semibold text-white">{title}</span><span className="mt-0.5 block truncate text-[10px] text-neutral-500">{subtitle}</span></span>
-                    <AppIcon name="chevron" className="h-4 w-4 text-neutral-600" />
-                  </button>
-                ))}
-              </div>
-
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
-                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neutral-600">Restaurant</p>
-                <p className="mt-2 font-black text-white">{restaurant?.name || 'Restaurant'}</p>
-                <p className="mt-1 text-[10px] font-mono text-neutral-500">Code: {restaurant?.restaurant_code || restaurantCode || '-----'}</p>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setProfileOpen(true)} className="rounded-2xl border border-neutral-800 bg-neutral-950 py-3 text-xs font-black text-neutral-300">Profile</button>
-                  <button type="button" onClick={logout} className="rounded-2xl border border-red-500/20 bg-red-500/5 py-3 text-xs font-black text-red-300">Log Out</button>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {profileOpen && (
-          <div className="fixed inset-0 z-[80] flex min-h-[100dvh] w-full items-end justify-center overflow-x-hidden bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-            <div className="max-h-[92dvh] w-full max-w-[480px] overflow-y-auto rounded-t-2xl border border-neutral-800 bg-neutral-900 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-2xl">
-              <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-700 sm:hidden" />
-              <div className="flex items-start justify-between gap-4">
-                <div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-400">Manager Profile</p><h2 className="mt-1 text-xl font-black text-white">Account</h2></div>
-                <button type="button" onClick={() => setProfileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 text-neutral-400"><AppIcon name="close" className="h-4 w-4" /></button>
-              </div>
-              <form onSubmit={saveManagerProfile} className="mt-5 space-y-4">
-                <Input label="Manager Name" value={profileName} onChange={setProfileName} placeholder="Manager name" />
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3"><p className="text-[9px] font-black uppercase text-neutral-600">User ID</p><p className="mt-1 truncate text-xs font-black text-white">{manager?.user_id || loginUserId}</p></div>
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3"><p className="text-[9px] font-black uppercase text-neutral-600">Role</p><p className="mt-1 text-xs font-black capitalize text-white">{manager?.role || 'manager'}</p></div>
-                </div>
-                <button disabled={profileSaving} className="w-full rounded-2xl bg-orange-500 py-3 text-xs font-black uppercase text-white disabled:opacity-50">{profileSaving ? 'Saving...' : 'Save Profile'}</button>
-              </form>
-            </div>
-          </div>
+          </section>
         )}
 
-        <MobileExperienceSettings open={experienceOpen} onClose={() => setExperienceOpen(false)} portal="Manager" />
+        {activeTab === 'offers' && (
+          <section className="space-y-5">
+            <div><h2 className="text-xl font-black">🔥 Offers of the Day</h2><p className="mt-1 text-xs text-neutral-500">Create and maintain offers displayed on the QR menu.</p></div>
+            <form onSubmit={saveOffer} className="grid grid-cols-1 gap-3 rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:grid-cols-2 lg:grid-cols-4">
+              <Input label="Offer Title" value={offer.title} onChange={(value) => setOffer({ ...offer, title: value })} placeholder="Biryani Special" />
+              <Input label="Discount Text" value={offer.discount_text} onChange={(value) => setOffer({ ...offer, discount_text: value })} placeholder="20% OFF" />
+              <Input label="Original Price" type="number" value={offer.original_price} onChange={(value) => setOffer({ ...offer, original_price: value })} placeholder="250" />
+              <Input label="Offer Price" type="number" value={offer.offer_price} onChange={(value) => setOffer({ ...offer, offer_price: value })} placeholder="200" />
+              <Input label="Offer Date" type="date" value={offer.offer_date} onChange={(value) => setOffer({ ...offer, offer_date: value })} />
+              <Input label="Image URL" value={offer.image_url} onChange={(value) => setOffer({ ...offer, image_url: value })} placeholder="https://..." />
+              <div className="sm:col-span-2"><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Description</label><textarea rows={2} value={offer.description} onChange={(e) => setOffer({ ...offer, description: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs" /></div>
+              <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4"><button disabled={savingOffer} className="rounded-xl bg-orange-500 px-5 py-3 text-xs font-black">{savingOffer ? 'Saving...' : editingOfferId ? 'Update Offer' : 'Create Offer'}</button>{editingOfferId && <button type="button" onClick={resetOffer} className="rounded-xl bg-neutral-800 px-5 py-3 text-xs font-black">Cancel</button>}</div>
+            </form>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {dailyOffers.map((item) => <div key={item.id} className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">{item.image_url && <img src={item.image_url} alt={item.title} className="h-36 w-full rounded-xl object-cover" />}<div className="flex justify-between gap-3"><h3 className="font-black">{item.title}</h3><span className="font-black text-orange-400">{money(item.offer_price)}</span></div><p className="text-xs text-neutral-400">{item.description}</p><p className="text-[11px] text-neutral-500">{item.offer_date || '—'} {item.discount_text && `· ${item.discount_text}`}</p><div className="flex flex-wrap gap-2"><button onClick={() => editOffer(item)} className="rounded-lg bg-neutral-800 px-3 py-2 text-[11px] font-bold">Edit</button><button onClick={() => toggleOffer(item)} className={`rounded-lg px-3 py-2 text-[11px] font-bold ${item.is_active === false ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}`}>{item.is_active === false ? 'Inactive' : 'Active'}</button><button onClick={() => deleteOffer(item)} className="rounded-lg bg-red-500/10 px-3 py-2 text-[11px] font-bold text-red-300">Delete</button></div></div>)}
+              {!dailyOffers.length && <p className="py-12 text-center text-sm text-neutral-500">No offers found.</p>}
+            </div>
+          </section>
+        )}
 
-        <nav className="dd-human-nav fixed bottom-0 left-1/2 z-50 w-[100svw] max-w-[480px] -translate-x-1/2 border-t border-neutral-800 bg-[#111112]/96 px-2 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
-          <div className="grid grid-cols-5 gap-1">
-            {[
-              ['home', 'home', 'Home'],
-              ['live-orders', 'orders', 'Orders'],
-              ['tables', 'tables', 'Tables'],
-              ['menu', 'menu', 'Menu'],
-              ['more', 'more', 'More'],
-            ].map(([id, icon, label]) => {
-              const selected = id === 'more' ? moreSectionActive || mobileSection === 'more' : mobileSection === id
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setActiveTab(id)}
-                  className={`relative flex min-h-[58px] flex-col items-center justify-center px-1 text-center transition active:opacity-70 ${selected ? 'text-orange-400' : 'text-neutral-500'}`}
-                >
-                  <span className={`dd-nav-indicator absolute top-0 h-0.5 w-5 rounded-full bg-orange-400 ${selected ? 'opacity-100' : 'opacity-0'}`} />
-                  <AppIcon name={icon} className="h-5 w-5" strokeWidth={selected ? 2.1 : 1.8} />
-                  <span className={`mt-1 text-[10px] ${selected ? 'font-semibold' : 'font-medium'}`}>{label}</span>
-                </button>
-              )
-            })}
-          </div>
-        </nav>
+        {activeTab === 'swiggy-sync' && (
+          <section className="mx-auto max-w-3xl space-y-5">
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-6">
+              <h2 className="text-xl font-black">🟠 Menu Import / Sync</h2>
+              <p className="mt-2 text-xs text-neutral-400">Import menu JSON into your restaurant menu. This does not connect to or use Swiggy APIs.</p>
+              <form onSubmit={handleSwiggySync} className="mt-5 space-y-4">
+                <textarea rows={12} value={swiggyDataInput} onChange={(e) => setSwiggyDataInput(e.target.value)} placeholder={'[\n  {\n    "name": "Chicken Biryani",\n    "price": 320,\n    "category": "Main Course",\n    "is_veg": false,\n    "food_type": "non-veg",\n    "description": "Aromatic biryani"\n  }\n]'} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 p-4 font-mono text-xs text-white outline-none focus:border-orange-500" />
+                <button disabled={syncingSwiggy} className="rounded-xl bg-orange-500 px-5 py-3 text-xs font-black">{syncingSwiggy ? 'Importing...' : 'Import Menu JSON'}</button>
+              </form>
+            </div>
+          </section>
+        )}
 
-        <RestaurantChatWidget restaurantId={restaurantId} />
+        </>)}
+
+        <footer className="border-t border-neutral-800 pt-5 text-center text-[10px] text-neutral-600">
+          Manager can operate the subscribed Restaurant, Resort and Delivery modules. Payment gateway credentials, tax settings, subscription, billing, manager account creation, and Delivery Driver Portal passwords remain Owner-only.
+        </footer>
       </div>
+      <RestaurantChatWidget restaurantId={restaurantId} />
     </main>
   )
 }

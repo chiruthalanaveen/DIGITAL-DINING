@@ -15,6 +15,8 @@ import {
 } from 'react'
 
 import { supabase } from '@/lib/supabase'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+import { appConfirm } from '@/lib/appDialog'
 
 
 
@@ -236,13 +238,33 @@ function DeliveryResultPanel({
 
 
 
-    const confirmation = window.confirm(
+    const confirmation = await appConfirm(
 
       result === 'delivered'
 
         ? `Confirm ${order.order_code} was delivered?`
 
-        : `Submit a Not Delivered attempt for ${order.order_code}?`
+        : `Submit a Not Delivered attempt for ${order.order_code}?`,
+
+      {
+
+        title:
+
+          result === 'delivered'
+
+            ? 'Confirm Delivery'
+
+            : 'Submit Delivery Attempt',
+
+        confirmText:
+
+          result === 'delivered'
+
+            ? 'Confirm Delivered'
+
+            : 'Submit Attempt',
+
+      }
 
     )
 
@@ -653,6 +675,7 @@ export default function DeliveryDriverPortal({
 }) {
 
   const unwrappedParams = use(params)
+  useMobileViewportLock()
 
 
 
@@ -1204,7 +1227,7 @@ export default function DeliveryDriverPortal({
 
     const confirmation =
 
-      window.confirm(
+      await appConfirm(
 
         nextStatus ===
 
@@ -1212,7 +1235,27 @@ export default function DeliveryDriverPortal({
 
           ? `Start delivery for ${order.order_code}?`
 
-          : `Mark ${order.order_code} as delivered?`
+          : `Mark ${order.order_code} as delivered?`,
+
+        {
+
+          title:
+
+            nextStatus === 'out_for_delivery'
+
+              ? 'Start Delivery'
+
+              : 'Confirm Delivered',
+
+          confirmText:
+
+            nextStatus === 'out_for_delivery'
+
+              ? 'Start Delivery'
+
+              : 'Mark Delivered',
+
+        }
 
       )
 
@@ -1420,9 +1463,9 @@ export default function DeliveryDriverPortal({
 
     return (
 
-      <main className="min-h-screen bg-neutral-950 px-4 py-10 text-white">
+      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 px-3 py-6 text-white sm:px-4 sm:py-10">
 
-        <div className="mx-auto max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-8 text-center">
+        <div className="mx-auto w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-center sm:p-8">
 
           Loading Driver Portal...
 
@@ -1446,11 +1489,11 @@ export default function DeliveryDriverPortal({
 
     return (
 
-      <main className="min-h-screen bg-neutral-950 px-4 py-10 text-neutral-100">
+      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 px-3 py-6 text-neutral-100 sm:px-4 sm:py-10">
 
-        <div className="mx-auto max-w-md">
+        <div className="mx-auto w-full max-w-md">
 
-          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
+          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl sm:p-6">
 
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl">
 
@@ -1642,11 +1685,11 @@ export default function DeliveryDriverPortal({
 
   return (
 
-    <main className="min-h-screen bg-neutral-950 pb-10 text-neutral-100">
+    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 pb-[max(2.5rem,env(safe-area-inset-bottom))] text-neutral-100">
 
       <header className="sticky top-0 z-30 border-b border-neutral-800 bg-neutral-950/95 backdrop-blur">
 
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-4">
 
           <div className="min-w-0">
 
@@ -1690,9 +1733,9 @@ export default function DeliveryDriverPortal({
 
 
 
-      <div className="mx-auto max-w-3xl space-y-4 px-4 py-5">
+      <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-5">
 
-        <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+        <section className="min-w-0 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
 
           <div className="flex items-start justify-between gap-4">
 
@@ -1904,13 +1947,13 @@ export default function DeliveryDriverPortal({
 
                 const mapUrl = hasLiveLocation
 
-                  ? `https\://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
 
                       `${order.latitude},${order.longitude}`
 
                     )}`
 
-                  : `https\://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
 
                       address
 
@@ -1936,7 +1979,7 @@ export default function DeliveryDriverPortal({
 
                     key={order.id}
 
-                    className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
+                    className="min-w-0 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5"
 
                   >
 

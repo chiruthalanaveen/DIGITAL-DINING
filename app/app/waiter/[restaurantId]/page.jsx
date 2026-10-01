@@ -1,1909 +1,4397 @@
 'use client'
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+
+
+import { useState, useEffect, use, useCallback, useRef } from 'react'
+
 import { supabase } from '@/lib/supabase'
+import { appNotice } from '@/lib/appDialog'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+
+
+
+
+const ALARM_SOUND_URL =
+
+  'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'
+
+
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
-const SOUND_MAP = {
-  'waiter-default': '/sounds/waiter-default.mp3',
-  'waiter-1': '/sounds/waiter-1.mp3',
-  'waiter-2': '/sounds/waiter-2.mp3',
-  'waiter-3': '/sounds/waiter-3.mp3',
-  'waiter-4': '/sounds/waiter-4.mp3',
-  'waiter-5': '/sounds/waiter-5.mp3',
-  'waiter-6': '/sounds/waiter-6.mp3',
-  'waiter-7': '/sounds/waiter-7.mp3',
-  'waiter-8': '/sounds/waiter-8.mp3',
-  'waiter-9': '/sounds/waiter-9.mp3',
-}
 
-const money = (value) =>
-  `₹${Number(value || 0).toLocaleString('en-IN', {
-    maximumFractionDigits: 2,
-  })}`
 
-export default function WaiterMobileApp({ params }) {
-  const router = useRouter()
-  const routeParams = use(params)
+export default function WaiterPortal({ params }) {
+  useMobileViewportLock()
+
+  const unwrappedParams = use(params)
+
+
 
   const restaurantId = String(
-    routeParams?.restaurantId ||
-      routeParams?.restaurantid ||
-      routeParams?.restaurant_id ||
-      routeParams?.id ||
+
+    unwrappedParams?.restaurantid ||
+
+      unwrappedParams?.restaurantId ||
+
+      unwrappedParams?.restaurant_id ||
+
+      unwrappedParams?.id ||
+
       ''
+
   ).trim()
 
-  const [sessionChecking, setSessionChecking] = useState(true)
+
+
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [sessionMode, setSessionMode] = useState(false)
-  const [sessionToken, setSessionToken] = useState('')
 
   const [restaurantCode, setRestaurantCode] = useState('')
-  const [restaurantName, setRestaurantName] = useState('')
+
   const [userId, setUserId] = useState('')
+
   const [password, setPassword] = useState('')
+
   const [waiterName, setWaiterName] = useState('')
 
-  const [menuItems, setMenuItems] = useState([])
-  const [readyOrders, setReadyOrders] = useState([])
-  const [tableNumber, setTableNumber] = useState('Table 1')
-  const [cart, setCart] = useState([])
+  const [showProfile, setShowProfile] = useState(false)
 
-  const [activeTab, setActiveTab] = useState('home')
-  const [showCart, setShowCart] = useState(false)
-  const [menuSearch, setMenuSearch] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [placingOrder, setPlacingOrder] = useState(false)
-  const [notice, setNotice] = useState('')
 
-  const [soundEnabled, setSoundEnabled] = useState(false)
-  const [alarmActive, setAlarmActive] = useState(false)
-  const [alarmSoundUrl, setAlarmSoundUrl] = useState(
-    SOUND_MAP['waiter-default']
-  )
-  const [alarmSettingEnabled, setAlarmSettingEnabled] = useState(true)
-  const [alarmVolume, setAlarmVolume] = useState(1)
+
+  /*
+
+   * Session login
+
+   */
+
+  const [sessionToken, setSessionToken] = useState('')
+
+  const [sessionMode, setSessionMode] = useState(false)
+
+  const [sessionChecking, setSessionChecking] = useState(true)
+
+
+
+  /*
+
+   * Refs are used so polling/realtime callbacks always have
+
+   * the newest authentication values.
+
+   */
 
   const sessionTokenRef = useRef('')
+
   const sessionModeRef = useRef(false)
+
+
+
   const restaurantCodeRef = useRef('')
+
   const userIdRef = useRef('')
+
   const passwordRef = useRef('')
 
+
+
+  const [menuItems, setMenuItems] = useState([])
+
+  const [tableNumber, setTableNumber] = useState('Table 1')
+
+  const [cart, setCart] = useState([])
+
+  const [readyOrders, setReadyOrders] = useState([])
+
+
+
+  const [soundEnabled, setSoundEnabled] = useState(false)
+
+  const [alarmActive, setAlarmActive] = useState(false)
+
+
+
   const alarmAudioRef = useRef(null)
+
   const soundEnabledRef = useRef(false)
+
   const alarmActiveRef = useRef(false)
 
-  const notify = useCallback((message) => {
-    setNotice(message)
-    window.setTimeout(() => setNotice(''), 3000)
-  }, [])
 
-  const clearSavedWaiterSession = useCallback(() => {
-    if (typeof window === 'undefined') return
 
-    try {
-      const raw = localStorage.getItem(SESSION_STORAGE_KEY)
-      if (!raw) return
+  /*
 
-      const saved = JSON.parse(raw)
+   * ---------------------------------------------------------
 
-      if (
-        String(saved?.role || '').toLowerCase() === 'waiter' &&
-        String(saved?.restaurantId || '') === String(restaurantId)
-      ) {
-        localStorage.removeItem(SESSION_STORAGE_KEY)
-      }
-    } catch {
-      localStorage.removeItem(SESSION_STORAGE_KEY)
-    }
-  }, [restaurantId])
+   * KEEP AUTH REFS CURRENT
 
-  // =========================================================
-  // ALARM
-  // =========================================================
+   * ---------------------------------------------------------
 
-  const initializeAlarmAudio = useCallback(() => {
-    if (typeof window === 'undefined') return null
+   */
 
-    if (!alarmAudioRef.current) {
-      const audio = new Audio(alarmSoundUrl)
-      audio.preload = 'auto'
-      audio.loop = true
-      alarmAudioRef.current = audio
-    }
 
-    const audio = alarmAudioRef.current
-
-    if (audio.src !== new URL(alarmSoundUrl, window.location.href).href) {
-      try {
-        audio.pause()
-        audio.currentTime = 0
-      } catch {}
-
-      audio.src = alarmSoundUrl
-      audio.load()
-    }
-
-    audio.volume = Math.min(
-      1,
-      Math.max(0, Number(alarmVolume) || 0)
-    )
-
-    return audio
-  }, [alarmSoundUrl, alarmVolume])
-
-  const stopAlarm = useCallback(() => {
-    alarmActiveRef.current = false
-
-    const audio = alarmAudioRef.current
-
-    if (audio) {
-      try {
-        audio.pause()
-        audio.currentTime = 0
-      } catch {}
-    }
-
-    setAlarmActive(false)
-  }, [])
-
-  const startAlarm = useCallback(async () => {
-    if (
-      !alarmSettingEnabled ||
-      !soundEnabledRef.current ||
-      alarmActiveRef.current
-    ) {
-      return
-    }
-
-    const audio = initializeAlarmAudio()
-    if (!audio) return
-
-    try {
-      audio.loop = true
-      audio.volume = Math.min(
-        1,
-        Math.max(0, Number(alarmVolume) || 0)
-      )
-      audio.currentTime = 0
-      await audio.play()
-
-      alarmActiveRef.current = true
-      setAlarmActive(true)
-    } catch (error) {
-      console.error('[WAITER MOBILE] Alarm could not start:', error)
-      alarmActiveRef.current = false
-      setAlarmActive(false)
-    }
-  }, [initializeAlarmAudio, alarmSettingEnabled, alarmVolume])
-
-  const enableAlarmSound = async () => {
-    if (!alarmSettingEnabled) {
-      notify('Waiter alarm is disabled in Owner Alarm Settings.')
-      return
-    }
-
-    const audio = initializeAlarmAudio()
-    if (!audio) return
-
-    try {
-      audio.loop = false
-      audio.currentTime = 0
-      audio.volume = 0.01
-
-      await audio.play()
-
-      window.setTimeout(() => {
-        try {
-          audio.pause()
-          audio.currentTime = 0
-          audio.volume = Math.min(
-            1,
-            Math.max(0, Number(alarmVolume) || 0)
-          )
-          audio.loop = true
-        } catch {}
-      }, 150)
-
-      soundEnabledRef.current = true
-      setSoundEnabled(true)
-
-      if (readyOrders.length > 0) {
-        window.setTimeout(() => {
-          startAlarm()
-        }, 200)
-      }
-
-      notify('Order alarm enabled.')
-    } catch (error) {
-      console.error('[WAITER MOBILE] Unable to enable alarm:', error)
-      alert(
-        'The phone blocked audio playback. Tap Enable Alarm again and make sure media sound is enabled.'
-      )
-    }
-  }
-
-  // =========================================================
-  // PORTAL DATA
-  // =========================================================
-
-  const fetchPortalData = useCallback(async ({ silent = false } = {}) => {
-    if (!restaurantId) return
-
-    const usingSession = Boolean(
-      sessionModeRef.current && sessionTokenRef.current
-    )
-
-    const code = String(restaurantCodeRef.current || '').trim()
-    const waiterUserId = String(userIdRef.current || '')
-      .trim()
-      .toLowerCase()
-    const waiterPassword = String(passwordRef.current || '').trim()
-
-    if (
-      !usingSession &&
-      (!code || !waiterUserId || !waiterPassword)
-    ) {
-      return
-    }
-
-    if (!silent) setLoading(true)
-
-    try {
-      let response
-
-      if (usingSession) {
-        response = await supabase.rpc(
-          'get_waiter_portal_data_session',
-          {
-            p_session_token: sessionTokenRef.current,
-          }
-        )
-      } else {
-        response = await supabase.rpc('get_waiter_portal_data', {
-          p_restaurant_id: String(restaurantId),
-          p_restaurant_code: code,
-          p_user_id: waiterUserId,
-          p_password: waiterPassword,
-        })
-      }
-
-      const { data, error } = response
-
-      if (error) throw error
-
-      if (!data?.success) {
-        if (usingSession) {
-          clearSavedWaiterSession()
-          sessionTokenRef.current = ''
-          sessionModeRef.current = false
-          setSessionToken('')
-          setSessionMode(false)
-          setIsAuthenticated(false)
-        }
-
-        throw new Error(
-          data?.message || 'Unable to load waiter portal.'
-        )
-      }
-
-      if (
-        data?.restaurantId &&
-        String(data.restaurantId) !== String(restaurantId)
-      ) {
-        throw new Error(
-          'This waiter session belongs to another restaurant.'
-        )
-      }
-
-      const nextMenu = Array.isArray(data?.menuItems)
-        ? data.menuItems
-        : []
-
-      const nextReadyOrders = Array.isArray(data?.readyOrders)
-        ? data.readyOrders
-        : []
-
-      setMenuItems(nextMenu)
-      setReadyOrders(nextReadyOrders)
-
-      if (data?.restaurant?.name) {
-        setRestaurantName(String(data.restaurant.name))
-      }
-
-      const waiterSoundKey =
-        data?.restaurant?.waiter_alarm_sound || 'waiter-default'
-
-      const nextAlarmUrl =
-        SOUND_MAP[waiterSoundKey] || SOUND_MAP['waiter-default']
-
-      const nextAlarmEnabled =
-        data?.restaurant?.waiter_alarm_enabled ?? true
-
-      const nextAlarmVolume = Math.min(
-        1,
-        Math.max(
-          0,
-          Number(data?.restaurant?.waiter_alarm_volume ?? 1)
-        )
-      )
-
-      setAlarmSoundUrl(nextAlarmUrl)
-      setAlarmSettingEnabled(nextAlarmEnabled)
-      setAlarmVolume(nextAlarmVolume)
-
-      if (!nextAlarmEnabled) {
-        stopAlarm()
-      } else if (
-        nextReadyOrders.length > 0 &&
-        soundEnabledRef.current
-      ) {
-        startAlarm()
-      }
-
-      if (nextReadyOrders.length === 0) {
-        stopAlarm()
-      }
-    } catch (error) {
-      console.error('[WAITER MOBILE] Portal loading error:', error)
-
-      if (!silent) {
-        setNotice(error?.message || 'Unable to refresh waiter data.')
-      }
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }, [
-    restaurantId,
-    clearSavedWaiterSession,
-    startAlarm,
-    stopAlarm,
-  ])
-
-  // =========================================================
-  // MANUAL LOGIN FALLBACK
-  // =========================================================
-
-  const handleLogin = async (event) => {
-    event.preventDefault()
-
-    if (
-      !restaurantId ||
-      !restaurantCode.trim() ||
-      !userId.trim() ||
-      !password.trim()
-    ) {
-      alert(
-        'Enter the 5-digit Restaurant Code, Waiter User ID, and password.'
-      )
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      const cleanCode = String(restaurantCode).trim()
-      const cleanUserId = String(userId).trim().toLowerCase()
-      const cleanPassword = String(password).trim()
-
-      const { data, error } = await supabase.rpc(
-        'authenticate_staff_login',
-        {
-          p_restaurant_id: String(restaurantId),
-          p_restaurant_code: cleanCode,
-          p_user_id: cleanUserId,
-          p_password: cleanPassword,
-          p_role: 'waiter',
-        }
-      )
-
-      if (error) throw error
-
-      if (!data?.success) {
-        throw new Error(
-          data?.message || 'Invalid restaurant credentials.'
-        )
-      }
-
-      if (String(data.restaurantId) !== String(restaurantId)) {
-        throw new Error(
-          'These credentials do not belong to this restaurant.'
-        )
-      }
-
-      sessionTokenRef.current = ''
-      sessionModeRef.current = false
-      restaurantCodeRef.current = String(
-        data.restaurantCode || cleanCode
-      ).trim()
-      userIdRef.current = cleanUserId
-      passwordRef.current = cleanPassword
-
-      setSessionToken('')
-      setSessionMode(false)
-      setRestaurantCode(restaurantCodeRef.current)
-      setUserId(cleanUserId)
-      setWaiterName(
-        data.staff?.name || data.staff?.user_id || cleanUserId
-      )
-      setIsAuthenticated(true)
-
-      await fetchPortalData()
-    } catch (error) {
-      console.error('[WAITER MOBILE] Login error:', error)
-      setIsAuthenticated(false)
-      alert(error?.message || 'Unable to sign in.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // =========================================================
-  // RESTORE /APP SECURE SESSION
-  // =========================================================
 
   useEffect(() => {
-    let active = true
 
-    const restoreSession = async () => {
-      if (typeof window === 'undefined') return
+    sessionTokenRef.current = sessionToken
+
+  }, [sessionToken])
+
+
+
+  useEffect(() => {
+
+    sessionModeRef.current = sessionMode
+
+  }, [sessionMode])
+
+
+
+  useEffect(() => {
+
+    restaurantCodeRef.current = restaurantCode
+
+  }, [restaurantCode])
+
+
+
+  useEffect(() => {
+
+    userIdRef.current = userId
+
+  }, [userId])
+
+
+
+  useEffect(() => {
+
+    passwordRef.current = password
+
+  }, [password])
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * ALARM SOUND
+
+   * ---------------------------------------------------------
+
+   */
+
+
+
+  const initializeAlarmAudio = useCallback(() => {
+
+    if (typeof window === 'undefined') return null
+
+
+
+    if (!alarmAudioRef.current) {
+
+      const audio = new Audio(ALARM_SOUND_URL)
+
+
+
+      audio.preload = 'auto'
+
+      audio.loop = true
+
+      audio.volume = 1.0
+
+
+
+      alarmAudioRef.current = audio
+
+    }
+
+
+
+    return alarmAudioRef.current
+
+  }, [])
+
+
+
+  const stopAlarm = useCallback(() => {
+
+    alarmActiveRef.current = false
+
+
+
+    const audio = alarmAudioRef.current
+
+
+
+    if (audio) {
 
       try {
-        const rawSession = localStorage.getItem(
-          SESSION_STORAGE_KEY
+
+        audio.pause()
+
+        audio.currentTime = 0
+
+      } catch {}
+
+    }
+
+
+
+    setAlarmActive(false)
+
+  }, [])
+
+
+
+  const startAlarm = useCallback(
+
+    async () => {
+
+      if (!soundEnabledRef.current) return
+
+
+
+      const audio = initializeAlarmAudio()
+
+
+
+      if (!audio) return
+
+      if (alarmActiveRef.current) return
+
+
+
+      try {
+
+        audio.loop = true
+
+        audio.currentTime = 0
+
+
+
+        await audio.play()
+
+
+
+        alarmActiveRef.current = true
+
+        setAlarmActive(true)
+
+      } catch (error) {
+
+        console.error(
+
+          'Waiter alarm could not start:',
+
+          error
+
         )
 
-        if (!rawSession) return
+
+
+        setAlarmActive(false)
+
+        alarmActiveRef.current = false
+
+      }
+
+    },
+
+    [initializeAlarmAudio]
+
+  )
+
+
+
+  const enableAlarmSound = async () => {
+
+    const audio = initializeAlarmAudio()
+
+
+
+    if (!audio) return
+
+
+
+    try {
+
+      /*
+
+       * This function is called directly from a button click.
+
+       * That user gesture unlocks audio playback on mobile Chrome.
+
+       */
+
+
+
+      audio.loop = false
+
+      audio.currentTime = 0
+
+      audio.volume = 0.01
+
+
+
+      await audio.play()
+
+
+
+      setTimeout(() => {
+
+        try {
+
+          audio.pause()
+
+          audio.currentTime = 0
+
+          audio.volume = 1.0
+
+          audio.loop = true
+
+        } catch {}
+
+      }, 150)
+
+
+
+      soundEnabledRef.current = true
+
+      setSoundEnabled(true)
+
+
+
+      /*
+
+       * If ready orders already exist,
+
+       * start alarming immediately.
+
+       */
+
+
+
+      if (readyOrders.length > 0) {
+
+        setTimeout(() => {
+
+          startAlarm()
+
+        }, 200)
+
+      }
+
+    } catch (error) {
+
+      console.error(
+
+        'Unable to enable waiter alarm:',
+
+        error
+
+      )
+
+
+
+      appNotice(
+
+        'Chrome blocked the alarm sound. Please tap Enable Alarm again and make sure your phone is not in silent mode.'
+
+      )
+
+    }
+
+  }
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * CLEAR SAVED STAFF SESSION
+
+   * ---------------------------------------------------------
+
+   */
+
+
+
+  const clearSavedSession = useCallback(() => {
+
+    if (typeof window === 'undefined') return
+
+
+
+    try {
+
+      localStorage.removeItem(
+
+        SESSION_STORAGE_KEY
+
+      )
+
+    } catch (error) {
+
+      console.error(
+
+        '[WAITER] Unable to clear saved session:',
+
+        error
+
+      )
+
+    }
+
+  }, [])
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * APPLY SESSION PORTAL DATA
+
+   * ---------------------------------------------------------
+
+   */
+
+
+
+  const applyPortalData = useCallback(
+
+    (data) => {
+
+      if (!data?.success) return
+
+
+
+      const nextMenuItems =
+
+        Array.isArray(data.menuItems)
+
+          ? data.menuItems
+
+          : []
+
+
+
+      const nextReadyOrders =
+
+        Array.isArray(data.readyOrders)
+
+          ? data.readyOrders
+
+          : []
+
+
+
+      setMenuItems(nextMenuItems)
+
+      setReadyOrders(nextReadyOrders)
+
+
+
+      if (
+
+        nextReadyOrders.length > 0 &&
+
+        soundEnabledRef.current
+
+      ) {
+
+        startAlarm()
+
+      }
+
+
+
+      if (nextReadyOrders.length === 0) {
+
+        stopAlarm()
+
+      }
+
+    },
+
+    [startAlarm, stopAlarm]
+
+  )
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * SESSION PORTAL DATA
+
+   * ---------------------------------------------------------
+
+   */
+
+
+
+  const fetchSessionPortalData =
+
+    useCallback(
+
+      async (token) => {
+
+        const cleanToken =
+
+          String(token || '').trim()
+
+
+
+        if (!cleanToken) {
+
+          throw new Error(
+
+            'Staff session is unavailable.'
+
+          )
+
+        }
+
+
+
+        const { data, error } =
+
+          await supabase.rpc(
+
+            'get_waiter_portal_data_session',
+
+            {
+
+              p_session_token: cleanToken,
+
+            }
+
+          )
+
+
+
+        if (error) {
+
+          throw error
+
+        }
+
+
+
+        if (!data?.success) {
+
+          throw new Error(
+
+            data?.message ||
+
+              'Invalid or expired staff session.'
+
+          )
+
+        }
+
+
+
+        if (
+
+          data.restaurantId &&
+
+          String(data.restaurantId) !==
+
+            String(restaurantId)
+
+        ) {
+
+          throw new Error(
+
+            'This staff session belongs to another restaurant.'
+
+          )
+
+        }
+
+
+
+        applyPortalData(data)
+
+
+
+        return data
+
+      },
+
+      [restaurantId, applyPortalData]
+
+    )
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * AUTOMATIC /APP SESSION LOGIN
+
+   * ---------------------------------------------------------
+
+   */
+
+
+
+  useEffect(() => {
+
+    let active = true
+
+
+
+    const restoreSession = async () => {
+
+      if (typeof window === 'undefined') {
+
+        return
+
+      }
+
+
+
+      try {
+
+        const rawSession =
+
+          localStorage.getItem(
+
+            SESSION_STORAGE_KEY
+
+          )
+
+
+
+        /*
+
+         * No /app session.
+
+         * Keep the existing manual login screen.
+
+         */
+
+
+
+        if (!rawSession) {
+
+          return
+
+        }
+
+
 
         let savedSession
 
+
+
         try {
-          savedSession = JSON.parse(rawSession)
+
+          savedSession =
+
+            JSON.parse(rawSession)
+
         } catch {
-          clearSavedWaiterSession()
+
+          clearSavedSession()
+
           return
+
         }
 
-        const token = String(
-          savedSession?.sessionToken || ''
-        ).trim()
 
-        const role = String(savedSession?.role || '')
-          .trim()
-          .toLowerCase()
 
-        const savedRestaurantId = String(
-          savedSession?.restaurantId || ''
-        ).trim()
+        const savedToken =
+
+          String(
+
+            savedSession?.sessionToken || ''
+
+          ).trim()
+
+
+
+        const savedRole =
+
+          String(
+
+            savedSession?.role || ''
+
+          )
+
+            .trim()
+
+            .toLowerCase()
+
+
+
+        const savedRestaurantId =
+
+          String(
+
+            savedSession?.restaurantId || ''
+
+          ).trim()
+
+
+
+        /*
+
+         * Do not use another role's session.
+
+         */
+
+
+
+        if (savedRole !== 'waiter') {
+
+          return
+
+        }
+
+
+
+        /*
+
+         * Do not use another restaurant's session.
+
+         */
+
+
 
         if (
-          role !== 'waiter' ||
-          savedRestaurantId !== String(restaurantId)
+
+          !savedRestaurantId ||
+
+          savedRestaurantId !==
+
+            String(restaurantId)
+
         ) {
+
           return
+
         }
 
-        if (!token) {
-          clearSavedWaiterSession()
+
+
+        if (!savedToken) {
+
+          clearSavedSession()
+
           return
+
         }
 
-        const { data, error } = await supabase.rpc(
+
+
+        /*
+
+         * Validate the session first.
+
+         */
+
+
+
+        const {
+
+          data: validation,
+
+          error: validationError,
+
+        } = await supabase.rpc(
+
           'validate_staff_app_session',
+
           {
-            p_session_token: token,
+
+            p_session_token: savedToken,
+
             p_required_role: 'waiter',
+
           }
+
         )
 
-        if (error) throw error
 
-        if (!data?.success) {
-          throw new Error(
-            data?.message || 'Waiter session expired.'
-          )
+
+        if (validationError) {
+
+          throw validationError
+
         }
+
+
+
+        if (!validation?.success) {
+
+          clearSavedSession()
+
+          return
+
+        }
+
+
 
         if (
-          String(data.restaurantId) !== String(restaurantId)
+
+          String(validation.restaurantId) !==
+
+          String(restaurantId)
+
         ) {
-          throw new Error(
-            'This waiter session belongs to another restaurant.'
-          )
+
+          clearSavedSession()
+
+          return
+
         }
+
+
 
         if (!active) return
 
-        const restoredCode = String(
-          data.restaurantCode ||
-            savedSession?.restaurantCode ||
-            ''
-        ).trim()
 
-        const restoredUserId = String(
-          data.userId || savedSession?.userId || ''
-        )
-          .trim()
-          .toLowerCase()
 
-        const restoredWaiter =
-          savedSession?.staff || {
-            user_id: restoredUserId,
-            name: restoredUserId,
-            role: 'waiter',
-          }
+        /*
 
-        sessionTokenRef.current = token
+         * Store session authentication in state + refs.
+
+         */
+
+
+
+        sessionTokenRef.current =
+
+          savedToken
+
+
+
         sessionModeRef.current = true
-        restaurantCodeRef.current = restoredCode
-        userIdRef.current = restoredUserId
+
+
+
+        setSessionToken(savedToken)
+
+        setSessionMode(true)
+
+
+
+        const restoredRestaurantCode =
+
+          String(
+
+            validation.restaurantCode ||
+
+              savedSession.restaurantCode ||
+
+              ''
+
+          ).trim()
+
+
+
+        const restoredUserId =
+
+          String(
+
+            validation.userId ||
+
+              savedSession.userId ||
+
+              ''
+
+          )
+
+            .trim()
+
+            .toLowerCase()
+
+
+
+        restaurantCodeRef.current =
+
+          restoredRestaurantCode
+
+
+
+        userIdRef.current =
+
+          restoredUserId
+
+
+
         passwordRef.current = ''
 
-        setSessionToken(token)
-        setSessionMode(true)
-        setRestaurantCode(restoredCode)
-        setRestaurantName(
-          String(savedSession?.restaurantName || '')
+
+
+        setRestaurantCode(
+
+          restoredRestaurantCode
+
         )
+
+
+
         setUserId(restoredUserId)
+
+
+
+        /*
+
+         * Password is intentionally not restored.
+
+         */
+
+
+
         setPassword('')
-        setWaiterName(
-          String(
-            restoredWaiter?.name ||
-              restoredWaiter?.user_id ||
-              restoredUserId
+
+
+
+        const restoredName =
+
+          savedSession?.staff?.name ||
+
+          savedSession?.staff?.user_id ||
+
+          restoredUserId ||
+
+          'Waiter'
+
+
+
+        setWaiterName(restoredName)
+
+
+
+        /*
+
+         * Load the actual waiter data using
+
+         * the secure session RPC.
+
+         */
+
+
+
+        const portalData =
+
+          await fetchSessionPortalData(
+
+            savedToken
+
           )
-        )
+
+
+
+        if (!active) return
+
+
+
+        /*
+
+         * If backend provides user/restaurant details,
+
+         * prefer those values.
+
+         */
+
+
+
+        if (portalData?.restaurantCode) {
+
+          const code =
+
+            String(
+
+              portalData.restaurantCode
+
+            ).trim()
+
+
+
+          restaurantCodeRef.current = code
+
+          setRestaurantCode(code)
+
+        }
+
+
+
+        if (portalData?.userId) {
+
+          const id =
+
+            String(portalData.userId)
+
+              .trim()
+
+              .toLowerCase()
+
+
+
+          userIdRef.current = id
+
+          setUserId(id)
+
+        }
+
+
+
         setIsAuthenticated(true)
 
-        await fetchPortalData()
-      } catch (error) {
-        console.error(
-          '[WAITER MOBILE] Session restore error:',
-          error
+
+
+        console.log(
+
+          '[WAITER] Secure staff session restored.'
+
         )
 
-        clearSavedWaiterSession()
+      } catch (error) {
+
+        console.error(
+
+          '[WAITER] Session restore error:',
+
+          error
+
+        )
+
+
+
+        /*
+
+         * An invalid/expired saved waiter session
+
+         * should not block the original login page.
+
+         */
+
+
+
+        clearSavedSession()
+
+
 
         sessionTokenRef.current = ''
+
         sessionModeRef.current = false
-        restaurantCodeRef.current = ''
-        userIdRef.current = ''
-        passwordRef.current = ''
+
+
 
         setSessionToken('')
+
         setSessionMode(false)
-        setRestaurantCode('')
-        setRestaurantName('')
-        setUserId('')
-        setPassword('')
-        setWaiterName('')
+
         setIsAuthenticated(false)
+
       } finally {
-        if (active) setSessionChecking(false)
+
+        if (active) {
+
+          setSessionChecking(false)
+
+        }
+
       }
+
     }
+
+
 
     restoreSession()
 
+
+
     return () => {
+
       active = false
+
     }
+
   }, [
+
     restaurantId,
-    clearSavedWaiterSession,
-    fetchPortalData,
+
+    clearSavedSession,
+
+    fetchSessionPortalData,
+
   ])
 
-  // =========================================================
-  // REALTIME + 5 SECOND REFRESH
-  // =========================================================
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * MANUAL LOGIN
+
+   * ---------------------------------------------------------
+
+   *
+
+   * Existing login is preserved as a fallback.
+
+   */
+
+
+
+  const handleLogin = async (e) => {
+
+    e.preventDefault()
+
+
+
+    if (
+
+      !restaurantId ||
+
+      !restaurantCode.trim() ||
+
+      !userId.trim() ||
+
+      !password.trim()
+
+    ) {
+
+      appNotice(
+
+        'Enter the 5-digit Restaurant Code, Waiter User ID, and password.'
+
+      )
+
+
+
+      return
+
+    }
+
+
+
+    try {
+
+      const cleanRestaurantCode =
+
+        String(restaurantCode).trim()
+
+
+
+      const cleanUserId =
+
+        String(userId)
+
+          .trim()
+
+          .toLowerCase()
+
+
+
+      const cleanPassword =
+
+        String(password).trim()
+
+
+
+      const { data, error } =
+
+        await supabase.rpc(
+
+          'authenticate_staff_login',
+
+          {
+
+            p_restaurant_id:
+
+              String(restaurantId),
+
+
+
+            p_restaurant_code:
+
+              cleanRestaurantCode,
+
+
+
+            p_user_id:
+
+              cleanUserId,
+
+
+
+            p_password:
+
+              cleanPassword,
+
+
+
+            p_role: 'waiter',
+
+          }
+
+        )
+
+
+
+      if (error) throw error
+
+
+
+      if (!data?.success) {
+
+        throw new Error(
+
+          data?.message ||
+
+            'Invalid restaurant credentials.'
+
+        )
+
+      }
+
+
+
+      if (
+
+        String(data.restaurantId) !==
+
+        String(restaurantId)
+
+      ) {
+
+        throw new Error(
+
+          'These credentials do not belong to this restaurant.'
+
+        )
+
+      }
+
+
+
+      /*
+
+       * Manual fallback uses the original
+
+       * password-based RPCs.
+
+       */
+
+
+
+      sessionTokenRef.current = ''
+
+      sessionModeRef.current = false
+
+
+
+      setSessionToken('')
+
+      setSessionMode(false)
+
+
+
+      restaurantCodeRef.current =
+
+        String(
+
+          data.restaurantCode ||
+
+            cleanRestaurantCode
+
+        ).trim()
+
+
+
+      userIdRef.current =
+
+        cleanUserId
+
+
+
+      passwordRef.current =
+
+        cleanPassword
+
+
+
+      setWaiterName(
+
+        data.staff?.name ||
+
+          data.staff?.user_id ||
+
+          ''
+
+      )
+
+
+
+      setRestaurantCode(
+
+        restaurantCodeRef.current
+
+      )
+
+
+
+      setUserId(cleanUserId)
+
+      setIsAuthenticated(true)
+
+
+
+      /*
+
+       * Load initial data directly using
+
+       * the same credentials.
+
+       */
+
+
+
+      const {
+
+        data: portalData,
+
+        error: portalError,
+
+      } = await supabase.rpc(
+
+        'get_waiter_portal_data',
+
+        {
+
+          p_restaurant_id:
+
+            String(restaurantId),
+
+
+
+          p_restaurant_code:
+
+            restaurantCodeRef.current,
+
+
+
+          p_user_id:
+
+            cleanUserId,
+
+
+
+          p_password:
+
+            cleanPassword,
+
+        }
+
+      )
+
+
+
+      if (portalError) {
+
+        console.error(
+
+          '[WAITER] Initial portal load error:',
+
+          portalError
+
+        )
+
+      } else if (portalData?.success) {
+
+        applyPortalData(portalData)
+
+      }
+
+    } catch (err) {
+
+      console.error(
+
+        '[WAITER] Login error:',
+
+        err
+
+      )
+
+
+
+      setIsAuthenticated(false)
+
+
+
+      appNotice(
+
+        err.message ||
+
+          'Unable to login.'
+
+      )
+
+    }
+
+  }
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * MENU
+
+   * ---------------------------------------------------------
+
+   */
+
+
+
+  const fetchMenu = async () => {
+
+    /*
+
+     * Secure /app session mode
+
+     */
+
+
+
+    if (
+
+      sessionModeRef.current &&
+
+      sessionTokenRef.current
+
+    ) {
+
+      try {
+
+        const data =
+
+          await fetchSessionPortalData(
+
+            sessionTokenRef.current
+
+          )
+
+
+
+        setMenuItems(
+
+          Array.isArray(data.menuItems)
+
+            ? data.menuItems
+
+            : []
+
+        )
+
+      } catch (error) {
+
+        console.error(
+
+          'Waiter session menu loading error:',
+
+          error
+
+        )
+
+      }
+
+
+
+      return
+
+    }
+
+
+
+    /*
+
+     * Existing manual login mode
+
+     */
+
+
+
+    const code =
+
+      restaurantCodeRef.current ||
+
+      restaurantCode
+
+
+
+    const id =
+
+      userIdRef.current ||
+
+      userId
+
+
+
+    const pass =
+
+      passwordRef.current ||
+
+      password
+
+
+
+    if (
+
+      !restaurantId ||
+
+      !code ||
+
+      !id ||
+
+      !pass
+
+    ) {
+
+      return
+
+    }
+
+
+
+    const { data, error } =
+
+      await supabase.rpc(
+
+        'get_waiter_portal_data',
+
+        {
+
+          p_restaurant_id:
+
+            String(restaurantId),
+
+
+
+          p_restaurant_code:
+
+            String(code).trim(),
+
+
+
+          p_user_id:
+
+            String(id)
+
+              .trim()
+
+              .toLowerCase(),
+
+
+
+          p_password:
+
+            String(pass).trim(),
+
+        }
+
+      )
+
+
+
+    if (error) {
+
+      console.error(
+
+        'Waiter menu loading error:',
+
+        error
+
+      )
+
+
+
+      return
+
+    }
+
+
+
+    if (!data?.success) {
+
+      console.error(
+
+        'Waiter portal rejected:',
+
+        data?.message
+
+      )
+
+
+
+      return
+
+    }
+
+
+
+    setMenuItems(
+
+      Array.isArray(data.menuItems)
+
+        ? data.menuItems
+
+        : []
+
+    )
+
+  }
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * READY ORDERS
+
+   * ---------------------------------------------------------
+
+   */
+
+
+
+  const fetchReadyOrders = async () => {
+
+    /*
+
+     * Secure /app session mode
+
+     */
+
+
+
+    if (
+
+      sessionModeRef.current &&
+
+      sessionTokenRef.current
+
+    ) {
+
+      try {
+
+        const data =
+
+          await fetchSessionPortalData(
+
+            sessionTokenRef.current
+
+          )
+
+
+
+        const ordersData =
+
+          Array.isArray(data.readyOrders)
+
+            ? data.readyOrders
+
+            : []
+
+
+
+        setReadyOrders(ordersData)
+
+
+
+        if (
+
+          ordersData.length > 0 &&
+
+          soundEnabledRef.current
+
+        ) {
+
+          startAlarm()
+
+        }
+
+
+
+        if (
+
+          ordersData.length === 0
+
+        ) {
+
+          stopAlarm()
+
+        }
+
+      } catch (error) {
+
+        console.error(
+
+          '[WAITER] Session ready orders fetch error:',
+
+          error
+
+        )
+
+      }
+
+
+
+      return
+
+    }
+
+
+
+    /*
+
+     * Existing manual login mode
+
+     */
+
+
+
+    const code =
+
+      restaurantCodeRef.current ||
+
+      restaurantCode
+
+
+
+    const id =
+
+      userIdRef.current ||
+
+      userId
+
+
+
+    const pass =
+
+      passwordRef.current ||
+
+      password
+
+
+
+    if (
+
+      !restaurantId ||
+
+      !code ||
+
+      !id ||
+
+      !pass
+
+    ) {
+
+      setReadyOrders([])
+
+      return
+
+    }
+
+
+
+    const { data, error } =
+
+      await supabase.rpc(
+
+        'get_waiter_portal_data',
+
+        {
+
+          p_restaurant_id:
+
+            String(restaurantId),
+
+
+
+          p_restaurant_code:
+
+            String(code).trim(),
+
+
+
+          p_user_id:
+
+            String(id)
+
+              .trim()
+
+              .toLowerCase(),
+
+
+
+          p_password:
+
+            String(pass).trim(),
+
+        }
+
+      )
+
+
+
+    if (error) {
+
+      console.error(
+
+        '[WAITER] Ready orders fetch error:',
+
+        error
+
+      )
+
+
+
+      return
+
+    }
+
+
+
+    if (!data?.success) {
+
+      console.error(
+
+        '[WAITER] Ready orders rejected:',
+
+        data?.message
+
+      )
+
+
+
+      return
+
+    }
+
+
+
+    const ordersData =
+
+      Array.isArray(data.readyOrders)
+
+        ? data.readyOrders
+
+        : []
+
+
+
+    setReadyOrders(ordersData)
+
+
+
+    if (
+
+      ordersData.length > 0 &&
+
+      soundEnabledRef.current
+
+    ) {
+
+      startAlarm()
+
+    }
+
+
+
+    if (
+
+      ordersData.length === 0
+
+    ) {
+
+      stopAlarm()
+
+    }
+
+  }
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * REALTIME READY ORDERS
+
+   * ---------------------------------------------------------
+
+   */
+
+
 
   useEffect(() => {
-    if (!isAuthenticated || !restaurantId) return undefined
+
+    if (
+
+      !isAuthenticated ||
+
+      !restaurantId
+
+    ) {
+
+      return undefined
+
+    }
+
+
+
+    let mounted = true
+
+
 
     const channel = supabase
-      .channel(`waiter-mobile-orders-${restaurantId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        () => {
-          fetchPortalData({ silent: true })
-        }
+
+      .channel(
+
+        `waiter-orders-${restaurantId}`
+
       )
-      .subscribe()
+
+      .on(
+
+        'postgres_changes',
+
+        {
+
+          event: '*',
+
+          schema: 'public',
+
+          table: 'orders',
+
+          filter:
+
+            `restaurant_id=eq.${restaurantId}`,
+
+        },
+
+        (payload) => {
+
+          if (!mounted) return
+
+
+
+          const changedOrder =
+
+            payload.new
+
+
+
+          const changedOrderId =
+
+            payload.old?.id ||
+
+            changedOrder?.id
+
+
+
+          if (
+
+            payload.eventType ===
+
+            'DELETE'
+
+          ) {
+
+            setReadyOrders(
+
+              (current) =>
+
+                current.filter(
+
+                  (order) =>
+
+                    String(order.id) !==
+
+                    String(
+
+                      changedOrderId
+
+                    )
+
+                )
+
+            )
+
+
+
+            return
+
+          }
+
+
+
+          if (!changedOrder?.id) {
+
+            return
+
+          }
+
+
+
+          if (
+
+            String(
+
+              changedOrder.status || ''
+
+            ).toLowerCase() ===
+
+            'ready'
+
+          ) {
+
+            setReadyOrders(
+
+              (current) => {
+
+                const exists =
+
+                  current.some(
+
+                    (order) =>
+
+                      String(
+
+                        order.id
+
+                      ) ===
+
+                      String(
+
+                        changedOrder.id
+
+                      )
+
+                  )
+
+
+
+                if (exists) {
+
+                  return current.map(
+
+                    (order) =>
+
+                      String(
+
+                        order.id
+
+                      ) ===
+
+                      String(
+
+                        changedOrder.id
+
+                      )
+
+                        ? changedOrder
+
+                        : order
+
+                  )
+
+                }
+
+
+
+                return [
+
+                  changedOrder,
+
+                  ...current,
+
+                ]
+
+              }
+
+            )
+
+
+
+            if (
+
+              soundEnabledRef.current
+
+            ) {
+
+              startAlarm()
+
+            }
+
+          } else {
+
+            /*
+
+             * Remove orders that were handed over
+
+             * or changed away from READY.
+
+             */
+
+
+
+            setReadyOrders(
+
+              (current) =>
+
+                current.filter(
+
+                  (order) =>
+
+                    String(order.id) !==
+
+                    String(
+
+                      changedOrder.id
+
+                    )
+
+                )
+
+            )
+
+          }
+
+        }
+
+      )
+
+      .subscribe((status) => {
+
+        if (
+
+          status ===
+
+            'CHANNEL_ERROR' ||
+
+          status ===
+
+            'TIMED_OUT'
+
+        ) {
+
+          console.error(
+
+            'Waiter realtime subscription error:',
+
+            status
+
+          )
+
+        }
+
+      })
+
+
 
     return () => {
+
+      mounted = false
+
       supabase.removeChannel(channel)
+
     }
-  }, [isAuthenticated, restaurantId, fetchPortalData])
+
+  }, [
+
+    isAuthenticated,
+
+    restaurantId,
+
+    startAlarm,
+
+  ])
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * DATABASE POLLING FALLBACK
+
+   * ---------------------------------------------------------
+
+   */
+
+
 
   useEffect(() => {
-    if (!isAuthenticated) return undefined
 
-    const refresh = () => {
-      if (document.visibilityState === 'visible') {
-        fetchPortalData({ silent: true })
-      }
-    }
-
-    const intervalId = window.setInterval(refresh, 5000)
-
-    window.addEventListener('online', refresh)
-    document.addEventListener('visibilitychange', refresh)
-
-    return () => {
-      window.clearInterval(intervalId)
-      window.removeEventListener('online', refresh)
-      document.removeEventListener('visibilitychange', refresh)
-    }
-  }, [isAuthenticated, fetchPortalData])
-
-  useEffect(() => {
     if (
-      readyOrders.length > 0 &&
-      soundEnabledRef.current
+
+      !isAuthenticated ||
+
+      !restaurantId
+
     ) {
-      startAlarm()
+
+      return undefined
+
     }
 
-    if (readyOrders.length === 0) {
-      stopAlarm()
-    }
-  }, [readyOrders.length, startAlarm, stopAlarm])
 
-  useEffect(() => {
-    const recoverAudio = () => {
+
+    let active = true
+
+
+
+    const sync = async () => {
+
       if (
-        soundEnabledRef.current &&
-        readyOrders.length > 0 &&
-        !alarmActiveRef.current
+
+        !active ||
+
+        document.visibilityState ===
+
+          'hidden'
+
       ) {
-        startAlarm()
+
+        return
+
       }
+
+
+
+      await fetchReadyOrders()
+
     }
 
-    window.addEventListener('focus', recoverAudio)
+
+
+    const intervalId =
+
+      window.setInterval(
+
+        sync,
+
+        5000
+
+      )
+
+
+
+    const onVisible = () => {
+
+      if (
+
+        document.visibilityState ===
+
+        'visible'
+
+      ) {
+
+        sync()
+
+      }
+
+    }
+
+
+
+    const onOnline = () => {
+
+      sync()
+
+    }
+
+
+
     document.addEventListener(
+
       'visibilitychange',
-      recoverAudio
+
+      onVisible
+
     )
 
+
+
+    window.addEventListener(
+
+      'online',
+
+      onOnline
+
+    )
+
+
+
     return () => {
-      window.removeEventListener('focus', recoverAudio)
-      document.removeEventListener(
-        'visibilitychange',
-        recoverAudio
+
+      active = false
+
+
+
+      window.clearInterval(
+
+        intervalId
+
       )
+
+
+
+      document.removeEventListener(
+
+        'visibilitychange',
+
+        onVisible
+
+      )
+
+
+
+      window.removeEventListener(
+
+        'online',
+
+        onOnline
+
+      )
+
     }
-  }, [readyOrders.length, startAlarm])
+
+  }, [
+
+    isAuthenticated,
+
+    restaurantId,
+
+    restaurantCode,
+
+    userId,
+
+    password,
+
+    sessionMode,
+
+    sessionToken,
+
+  ])
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * KEEP ALARM IN SYNC
+
+   * ---------------------------------------------------------
+
+   */
+
+
 
   useEffect(() => {
-    return () => {
-      if (alarmAudioRef.current) {
-        try {
-          alarmAudioRef.current.pause()
-          alarmAudioRef.current.currentTime = 0
-        } catch {}
-      }
+
+    if (!isAuthenticated) {
+
+      stopAlarm()
+
+      return
+
     }
+
+
+
+    if (
+
+      readyOrders.length > 0 &&
+
+      soundEnabledRef.current
+
+    ) {
+
+      startAlarm()
+
+    }
+
+
+
+    if (
+
+      readyOrders.length === 0
+
+    ) {
+
+      stopAlarm()
+
+    }
+
+  }, [
+
+    readyOrders,
+
+    isAuthenticated,
+
+    startAlarm,
+
+    stopAlarm,
+
+  ])
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * MOBILE CHROME AUDIO RECOVERY
+
+   * ---------------------------------------------------------
+
+   *
+
+   * If Chrome temporarily suspends the audio session,
+
+   * another user touch can resume it.
+
+   */
+
+
+
+  useEffect(() => {
+
+    if (!isAuthenticated) return
+
+
+
+    const recoverAudio = () => {
+
+      if (
+
+        soundEnabledRef.current &&
+
+        readyOrders.length > 0
+
+      ) {
+
+        const audio =
+
+          alarmAudioRef.current
+
+
+
+        if (
+
+          audio &&
+
+          audio.paused
+
+        ) {
+
+          audio
+
+            .play()
+
+            .catch(() => {})
+
+        }
+
+      }
+
+    }
+
+
+
+    window.addEventListener(
+
+      'pointerdown',
+
+      recoverAudio,
+
+      { passive: true }
+
+    )
+
+
+
+    window.addEventListener(
+
+      'touchstart',
+
+      recoverAudio,
+
+      { passive: true }
+
+    )
+
+
+
+    return () => {
+
+      window.removeEventListener(
+
+        'pointerdown',
+
+        recoverAudio
+
+      )
+
+
+
+      window.removeEventListener(
+
+        'touchstart',
+
+        recoverAudio
+
+      )
+
+    }
+
+  }, [
+
+    isAuthenticated,
+
+    readyOrders.length,
+
+  ])
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * CLEANUP
+
+   * ---------------------------------------------------------
+
+   */
+
+
+
+  useEffect(() => {
+
+    return () => {
+
+      if (
+
+        alarmAudioRef.current
+
+      ) {
+
+        try {
+
+          alarmAudioRef.current.pause()
+
+          alarmAudioRef.current.currentTime =
+
+            0
+
+        } catch {}
+
+      }
+
+    }
+
   }, [])
 
-  // =========================================================
-  // HANDOVER
-  // =========================================================
 
-  const handleHandover = async (orderId) => {
-    if (!orderId || !restaurantId) return
 
-    try {
-      let response
+  /*
 
-      if (
-        sessionModeRef.current &&
-        sessionTokenRef.current
-      ) {
-        response = await supabase.rpc(
-          'waiter_update_order_status_session',
-          {
-            p_session_token: sessionTokenRef.current,
-            p_order_id: String(orderId),
-            p_new_status: 'completed',
-          }
-        )
-      } else {
-        response = await supabase.rpc(
-          'staff_update_order_status',
-          {
-            p_restaurant_id: String(restaurantId),
-            p_restaurant_code: String(
-              restaurantCodeRef.current
-            ).trim(),
-            p_user_id: String(userIdRef.current)
-              .trim()
-              .toLowerCase(),
-            p_password: String(
-              passwordRef.current
-            ).trim(),
-            p_role: 'waiter',
-            p_order_id: String(orderId),
-            p_new_status: 'completed',
-          }
-        )
-      }
+   * ---------------------------------------------------------
 
-      const { data, error } = response
+   * HANDOVER
 
-      if (error) throw error
+   * ---------------------------------------------------------
 
-      if (!data?.success) {
-        throw new Error(
-          data?.message || 'Unable to record handover.'
-        )
-      }
+   */
 
-      setReadyOrders((current) =>
-        current.filter(
-          (order) => String(order.id) !== String(orderId)
-        )
-      )
 
-      if (readyOrders.length <= 1) {
-        stopAlarm()
-      }
 
-      notify('Order handed over successfully.')
-    } catch (error) {
-      console.error(
-        '[WAITER MOBILE] Handover error:',
-        error
-      )
+  const handleHandover =
 
-      alert(
-        `Unable to record handover: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-    }
-  }
-
-  // =========================================================
-  // CART / DIRECT ORDER
-  // =========================================================
-
-  const addToCart = (item) => {
-    if (item?.is_available === false) return
-
-    setCart((current) => {
-      const existing = current.find(
-        (cartItem) =>
-          String(cartItem.id) === String(item.id)
-      )
-
-      if (existing) {
-        return current.map((cartItem) =>
-          String(cartItem.id) === String(item.id)
-            ? {
-                ...cartItem,
-                qty: Number(cartItem.qty || 0) + 1,
-              }
-            : cartItem
-        )
-      }
-
-      return [
-        ...current,
-        {
-          ...item,
-          qty: 1,
-        },
-      ]
-    })
-  }
-
-  const changeCartQty = (itemId, delta) => {
-    setCart((current) =>
-      current
-        .map((item) =>
-          String(item.id) === String(itemId)
-            ? {
-                ...item,
-                qty: Math.max(
-                  0,
-                  Number(item.qty || 0) + delta
-                ),
-              }
-            : item
-        )
-        .filter((item) => Number(item.qty || 0) > 0)
-    )
-  }
-
-  const cartCount = useMemo(
-    () =>
-      cart.reduce(
-        (total, item) =>
-          total + Number(item.qty || 0),
-        0
-      ),
-    [cart]
-  )
-
-  const cartTotal = useMemo(
-    () =>
-      cart.reduce(
-        (total, item) =>
-          total +
-          Number(item.price || 0) *
-            Number(item.qty || 0),
-        0
-      ),
-    [cart]
-  )
-
-  const handlePlaceOrder = async () => {
-    if (!cart.length || placingOrder) return
-
-    setPlacingOrder(true)
-
-    try {
-      let response
+    async (orderId) => {
 
       if (
-        sessionModeRef.current &&
-        sessionTokenRef.current
+
+        !orderId ||
+
+        !restaurantId
+
       ) {
-        response = await supabase.rpc(
-          'waiter_place_direct_order_session',
-          {
-            p_session_token: sessionTokenRef.current,
-            p_table_number: String(tableNumber),
-            p_items: cart,
-            p_total_amount: cartTotal,
-          }
-        )
-      } else {
-        response = await supabase.rpc(
-          'waiter_place_direct_order',
-          {
-            p_restaurant_id: String(restaurantId),
-            p_restaurant_code: String(
-              restaurantCodeRef.current
-            ).trim(),
-            p_user_id: String(userIdRef.current)
-              .trim()
-              .toLowerCase(),
-            p_password: String(
-              passwordRef.current
-            ).trim(),
-            p_table_number: String(tableNumber),
-            p_items: cart,
-            p_total_amount: cartTotal,
-          }
-        )
+
+        return
+
       }
 
-      const { data, error } = response
 
-      if (error) throw error
 
-      if (!data?.success) {
-        throw new Error(
-          data?.message ||
-            'Unable to send order to kitchen.'
+      try {
+
+        let data
+
+        let error
+
+
+
+        /*
+
+         * Secure /app session
+
+         */
+
+
+
+        if (
+
+          sessionModeRef.current &&
+
+          sessionTokenRef.current
+
+        ) {
+
+          const response =
+
+            await supabase.rpc(
+
+              'waiter_update_order_status_session',
+
+              {
+
+                p_session_token:
+
+                  sessionTokenRef.current,
+
+
+
+                p_order_id:
+
+                  String(orderId),
+
+
+
+                p_new_status:
+
+                  'completed',
+
+              }
+
+            )
+
+
+
+          data = response.data
+
+          error = response.error
+
+        } else {
+
+          /*
+
+           * Existing manual login fallback
+
+           */
+
+
+
+          const response =
+
+            await supabase.rpc(
+
+              'staff_update_order_status',
+
+              {
+
+                p_restaurant_id:
+
+                  String(
+
+                    restaurantId
+
+                  ),
+
+
+
+                p_restaurant_code:
+
+                  String(
+
+                    restaurantCodeRef.current ||
+
+                      restaurantCode
+
+                  ).trim(),
+
+
+
+                p_user_id:
+
+                  String(
+
+                    userIdRef.current ||
+
+                      userId
+
+                  )
+
+                    .trim()
+
+                    .toLowerCase(),
+
+
+
+                p_password:
+
+                  String(
+
+                    passwordRef.current ||
+
+                      password
+
+                  ).trim(),
+
+
+
+                p_role: 'waiter',
+
+
+
+                p_order_id:
+
+                  String(orderId),
+
+
+
+                p_new_status:
+
+                  'completed',
+
+              }
+
+            )
+
+
+
+          data = response.data
+
+          error = response.error
+
+        }
+
+
+
+        if (error) {
+
+          throw error
+
+        }
+
+
+
+        if (!data?.success) {
+
+          throw new Error(
+
+            data?.message ||
+
+              'Unable to record handover.'
+
+          )
+
+        }
+
+
+
+        setReadyOrders(
+
+          (current) =>
+
+            current.filter(
+
+              (order) =>
+
+                String(order.id) !==
+
+                String(orderId)
+
+            )
+
         )
+
+
+
+        if (
+
+          readyOrders.length <= 1
+
+        ) {
+
+          stopAlarm()
+
+        }
+
+
+
+        appNotice(
+
+          'Handover recorded successfully! ✅'
+
+        )
+
+      } catch (error) {
+
+        console.error(
+
+          'Handover error:',
+
+          error
+
+        )
+
+
+
+        appNotice(
+
+          `Unable to record handover: ${error.message}`
+
+        )
+
       }
 
-      setCart([])
-      setShowCart(false)
-      setActiveTab('home')
-
-      notify('Order sent to kitchen.')
-    } catch (error) {
-      console.error(
-        '[WAITER MOBILE] Direct order error:',
-        error
-      )
-
-      alert(
-        `Unable to send order to kitchen: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-    } finally {
-      setPlacingOrder(false)
     }
-  }
 
-  // =========================================================
-  // LOGOUT
-  // =========================================================
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * DIRECT ORDER
+
+   * ---------------------------------------------------------
+
+   */
+
+
+
+  const handlePlaceOrder =
+
+    async () => {
+
+      if (
+
+        cart.length === 0
+
+      ) {
+
+        return
+
+      }
+
+
+
+      const total =
+
+        cart.reduce(
+
+          (sum, i) =>
+
+            sum +
+
+            Number(
+
+              i.price || 0
+
+            ) *
+
+              Number(
+
+                i.qty || 0
+
+              ),
+
+          0
+
+        )
+
+
+
+      try {
+
+        let data
+
+        let error
+
+
+
+        /*
+
+         * Secure /app session
+
+         */
+
+
+
+        if (
+
+          sessionModeRef.current &&
+
+          sessionTokenRef.current
+
+        ) {
+
+          const response =
+
+            await supabase.rpc(
+
+              'waiter_place_direct_order_session',
+
+              {
+
+                p_session_token:
+
+                  sessionTokenRef.current,
+
+
+
+                p_table_number:
+
+                  String(
+
+                    tableNumber
+
+                  ),
+
+
+
+                p_items:
+
+                  cart,
+
+
+
+                p_total_amount:
+
+                  total,
+
+              }
+
+            )
+
+
+
+          data = response.data
+
+          error = response.error
+
+        } else {
+
+          /*
+
+           * Existing manual login fallback
+
+           */
+
+
+
+          const response =
+
+            await supabase.rpc(
+
+              'waiter_place_direct_order',
+
+              {
+
+                p_restaurant_id:
+
+                  String(
+
+                    restaurantId
+
+                  ),
+
+
+
+                p_restaurant_code:
+
+                  String(
+
+                    restaurantCodeRef.current ||
+
+                      restaurantCode
+
+                  ).trim(),
+
+
+
+                p_user_id:
+
+                  String(
+
+                    userIdRef.current ||
+
+                      userId
+
+                  )
+
+                    .trim()
+
+                    .toLowerCase(),
+
+
+
+                p_password:
+
+                  String(
+
+                    passwordRef.current ||
+
+                      password
+
+                  ).trim(),
+
+
+
+                p_table_number:
+
+                  String(
+
+                    tableNumber
+
+                  ),
+
+
+
+                p_items:
+
+                  cart,
+
+
+
+                p_total_amount:
+
+                  total,
+
+              }
+
+            )
+
+
+
+          data = response.data
+
+          error = response.error
+
+        }
+
+
+
+        if (error) {
+
+          throw error
+
+        }
+
+
+
+        if (!data?.success) {
+
+          throw new Error(
+
+            data?.message ||
+
+              'Unable to send order to kitchen.'
+
+          )
+
+        }
+
+
+
+        appNotice(
+
+          'Order sent to kitchen! 🍳'
+
+        )
+
+
+
+        setCart([])
+
+      } catch (error) {
+
+        console.error(
+
+          'Direct order error:',
+
+          error
+
+        )
+
+
+
+        appNotice(
+
+          `Unable to send order to kitchen: ${error.message}`
+
+        )
+
+      }
+
+    }
+
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * LOGOUT
+
+   * ---------------------------------------------------------
+
+   */
+
+
 
   const handleLogout = () => {
+
     stopAlarm()
 
-    const returnRestaurantCode = String(
-      restaurantCodeRef.current ||
-        restaurantCode ||
-        ''
-    )
-      .replace(/\D/g, '')
-      .slice(0, 5)
 
-    // Remove the secure staff session created by /app.
-    clearSavedWaiterSession()
-
-    sessionTokenRef.current = ''
-    sessionModeRef.current = false
-    restaurantCodeRef.current = ''
-    userIdRef.current = ''
-    passwordRef.current = ''
 
     soundEnabledRef.current = false
 
+
+
+    /*
+
+     * Remove /app session from this device.
+
+     */
+
+
+
+    if (
+
+      sessionModeRef.current
+
+    ) {
+
+      clearSavedSession()
+
+    }
+
+
+
+    sessionTokenRef.current = ''
+
+    sessionModeRef.current = false
+
+
+
+    restaurantCodeRef.current = ''
+
+    userIdRef.current = ''
+
+    passwordRef.current = ''
+
+
+
     setSessionToken('')
+
     setSessionMode(false)
+
+
+
     setSoundEnabled(false)
+
     setRestaurantCode('')
-    setRestaurantName('')
-    setUserId('')
-    setPassword('')
-    setWaiterName('')
-    setMenuItems([])
-    setReadyOrders([])
-    setCart([])
-    setShowCart(false)
-    setActiveTab('home')
+
     setIsAuthenticated(false)
 
-    // Return to /app and automatically reopen the same restaurant.
-    router.replace(
-      returnRestaurantCode
-        ? `/app?code=${encodeURIComponent(
-            returnRestaurantCode
-          )}`
-        : '/app'
-    )
+    setReadyOrders([])
+
+    setCart([])
+
+    setMenuItems([])
+
+    setUserId('')
+
+    setPassword('')
+
+    setWaiterName('')
+
+    setShowProfile(false)
+
   }
 
-  // =========================================================
-  // FILTERED MENU
-  // =========================================================
 
-  const filteredMenuItems = useMemo(() => {
-    const search = menuSearch.trim().toLowerCase()
 
-    return menuItems.filter((item) => {
-      if (item?.is_available === false) return false
-      if (!search) return true
+  /*
 
-      return [
-        item?.name,
-        item?.category,
-        item?.description,
-      ].some((value) =>
-        String(value || '')
-          .toLowerCase()
-          .includes(search)
-      )
-    })
-  }, [menuItems, menuSearch])
+   * ---------------------------------------------------------
 
-  // =========================================================
-  // SESSION CHECK
-  // =========================================================
+   * SESSION LOADING SCREEN
+
+   * ---------------------------------------------------------
+
+   */
+
+
 
   if (sessionChecking) {
+
     return (
-      <main className="flex min-h-[100dvh] w-full max-w-full items-center justify-center overflow-x-hidden bg-neutral-950 p-4 text-neutral-100">
-        <div className="w-full max-w-sm rounded-[28px] border border-neutral-800 bg-neutral-900 p-7 text-center shadow-2xl">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-neutral-800 border-t-orange-500" />
+
+      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4">
+
+        <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-sm w-full text-center">
+
+          <div className="mx-auto h-10 w-10 rounded-full border-4 border-neutral-800 border-t-orange-500 animate-spin" />
+
+
 
           <h1 className="mt-5 text-lg font-black">
-            Opening Waiter App
+
+            Opening Waiter Portal
+
           </h1>
 
-          <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+
+
+          <p className="text-xs text-neutral-500 mt-2">
+
             Checking your Digital Dine staff session...
+
           </p>
+
         </div>
-      </main>
+
+      </div>
+
     )
+
   }
 
-  // =========================================================
-  // MANUAL LOGIN
-  // =========================================================
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * LOGIN SCREEN
+
+   * ---------------------------------------------------------
+
+   */
+
+
 
   if (!isAuthenticated) {
+
     return (
-      <main className="flex min-h-[100dvh] w-full max-w-full items-center justify-center overflow-x-hidden bg-neutral-950 p-4 text-neutral-100">
+
+      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4">
+
         <form
+
           onSubmit={handleLogin}
-          className="w-full max-w-sm space-y-4 rounded-[30px] border border-neutral-800 bg-neutral-900 p-6 shadow-2xl"
+
+          className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-sm w-full space-y-4"
+
         >
-          <div className="pb-2 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500/10 text-3xl">
-              🧑‍🍳
+
+          <div className="text-center mb-5">
+
+            <div className="text-4xl mb-3">
+
+              👨‍🍳
+
             </div>
 
-            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.22em] text-orange-400">
-              Digital Dine Staff
-            </p>
 
-            <h1 className="mt-2 text-2xl font-black">
+
+            <h1 className="text-xl font-black">
+
               Waiter Sign In
+
             </h1>
 
-            <p className="mt-2 text-xs text-neutral-500">
-              Use your restaurant staff credentials.
+
+
+            <p className="text-xs text-neutral-500 mt-1">
+
+              Sign in to manage waiter orders
+
             </p>
+
           </div>
 
+
+
           <input
+
             type="text"
-            inputMode="numeric"
-            maxLength={5}
-            value={restaurantCode}
-            onChange={(event) =>
-              setRestaurantCode(
-                event.target.value
-                  .replace(/\D/g, '')
-                  .slice(0, 5)
-              )
-            }
+
             placeholder="5-digit Restaurant Code"
+
+            value={restaurantCode}
+
+            onChange={(e) =>
+
+              setRestaurantCode(
+
+                e.target.value
+
+                  .replace(/\D/g, '')
+
+                  .slice(0, 5)
+
+              )
+
+            }
+
+            inputMode="numeric"
+
+            maxLength={5}
+
             required
-            className="w-full rounded-2xl border border-orange-500/30 bg-neutral-950 px-4 py-3.5 text-sm font-mono tracking-widest text-white outline-none focus:border-orange-500"
+
+            className="w-full bg-neutral-950 border border-orange-500/30 p-3 rounded-xl text-xs font-mono tracking-widest"
+
           />
 
+
+
           <input
+
             type="text"
+
+            placeholder="User ID"
+
             value={userId}
-            onChange={(event) =>
-              setUserId(event.target.value)
+
+            onChange={(e) =>
+
+              setUserId(
+
+                e.target.value
+
+              )
+
             }
-            placeholder="Waiter User ID"
-            autoComplete="username"
+
             required
-            className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3.5 text-sm text-white outline-none focus:border-orange-500"
+
+            autoComplete="username"
+
+            className="w-full bg-neutral-950 border border-neutral-800 p-3 rounded-xl text-xs font-mono"
+
           />
 
+
+
           <input
+
             type="password"
+
+            placeholder="Password"
+
             value={password}
-            onChange={(event) =>
-              setPassword(event.target.value)
+
+            onChange={(e) =>
+
+              setPassword(
+
+                e.target.value
+
+              )
+
             }
-            placeholder="Password / PIN"
-            autoComplete="current-password"
+
             required
-            className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3.5 text-sm text-white outline-none focus:border-orange-500"
+
+            autoComplete="current-password"
+
+            className="w-full bg-neutral-950 border border-neutral-800 p-3 rounded-xl text-xs font-mono"
+
           />
+
+
 
           <button
+
             type="submit"
-            disabled={loading}
-            className="w-full rounded-2xl bg-orange-500 py-3.5 text-sm font-black text-white shadow-lg shadow-orange-500/20 disabled:opacity-50"
+
+            className="w-full bg-orange-500 hover:bg-orange-600 font-bold p-3 rounded-xl text-xs uppercase"
+
           >
-            {loading
-              ? 'Signing in...'
-              : 'Open Waiter App'}
+
+            Open Terminal ➔
+
           </button>
+
         </form>
-      </main>
+
+      </div>
+
     )
+
   }
 
-  // =========================================================
-  // MOBILE APP
-  // =========================================================
+
+
+  /*
+
+   * ---------------------------------------------------------
+
+   * WAITER SCREEN
+
+   * ---------------------------------------------------------
+
+   */
+
+
 
   return (
-    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 text-neutral-100">
-      <div className="mx-auto min-h-[100dvh] w-full max-w-[480px] overflow-x-hidden bg-neutral-950 pb-[calc(6.75rem+env(safe-area-inset-bottom))]">
-        {/* HEADER */}
-        <header className="sticky top-0 z-40 w-full border-b border-neutral-800/90 bg-neutral-950/95 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-4">
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-[10px] font-black uppercase tracking-[0.18em] text-orange-400">
-                Digital Dine · Waiter
-              </p>
 
-              <h1 className="mt-1 truncate text-lg font-black text-white">
-                {restaurantName ||
-                  'Restaurant Service'}
-              </h1>
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-6 space-y-6">
 
-              <p className="mt-0.5 truncate text-[11px] text-neutral-500">
-                {waiterName || userId}
-                {restaurantCode
-                  ? ` · Code ${restaurantCode}`
-                  : ''}
-              </p>
+
+
+      {/* PROFILE MODAL */}
+
+
+
+      {showProfile && (
+
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+
+          <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl">
+
+
+
+            <div className="flex items-center justify-between border-b border-neutral-800 p-5">
+
+              <div>
+
+                <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">
+
+                  Staff Profile
+
+                </p>
+
+
+
+                <h2 className="mt-1 text-lg font-black text-white">
+
+                  Waiter Profile
+
+                </h2>
+
+              </div>
+
+
+
+              <button
+
+                type="button"
+
+                onClick={() =>
+
+                  setShowProfile(
+
+                    false
+
+                  )
+
+                }
+
+                className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-bold text-neutral-400 hover:text-white"
+
+              >
+
+                ✕
+
+              </button>
+
             </div>
+
+
+
+            <div className="space-y-4 p-5">
+
+
+
+              <div>
+
+                <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+
+                  Waiter Name
+
+                </p>
+
+
+
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm font-bold text-white">
+
+                  {waiterName ||
+
+                    'Waiter'}
+
+                </div>
+
+              </div>
+
+
+
+              <div>
+
+                <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+
+                  Restaurant Code
+
+                </p>
+
+
+
+                <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-4 text-center">
+
+                  <span className="font-mono text-2xl font-black tracking-[0.35em] text-orange-300">
+
+                    {restaurantCode ||
+
+                      '-----'}
+
+                  </span>
+
+                </div>
+
+
+
+                <p className="mt-2 text-[10px] text-neutral-500">
+
+                  This is the 5-digit restaurant code used for this waiter portal.
+
+                </p>
+
+              </div>
+
+
+
+              <div className="grid grid-cols-2 gap-3">
+
+
+
+                <div>
+
+                  <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+
+                    User ID
+
+                  </p>
+
+
+
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-mono text-white break-all">
+
+                    {userId || '—'}
+
+                  </div>
+
+                </div>
+
+
+
+                <div>
+
+                  <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+
+                    Role
+
+                  </p>
+
+
+
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-emerald-300">
+
+                    Waiter
+
+                  </div>
+
+                </div>
+
+
+
+              </div>
+
+
+
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 px-4 py-3 text-[10px] leading-5 text-neutral-500">
+
+                🔒 Your password is never displayed in the profile section.
+
+              </div>
+
+
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+
+
+      {/* HEADER */}
+
+
+
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 border-b border-neutral-800 pb-4">
+
+
+
+        <div>
+
+          <h1 className="text-xl font-black">
+
+            Waiter Portal
+
+          </h1>
+
+
+
+          <p className="text-xs text-neutral-400 mt-1">
+
+            Logged in:{' '}
+
+            <strong className="text-orange-400">
+
+              {waiterName}
+
+            </strong>
+
+          </p>
+
+
+
+          <p className="inline-flex mt-2 rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[10px] font-black font-mono tracking-widest text-orange-300">
+
+            Restaurant Code:{' '}
+
+            {restaurantCode ||
+
+              '-----'}
+
+          </p>
+
+        </div>
+
+
+
+        <div className="flex items-center gap-2 flex-wrap">
+
+
+
+          <button
+
+            type="button"
+
+            onClick={() =>
+
+              setShowProfile(
+
+                true
+
+              )
+
+            }
+
+            className="bg-neutral-900 border border-neutral-800 hover:border-orange-500/40 text-orange-300 text-xs px-4 py-2.5 rounded-xl font-bold"
+
+          >
+
+            👤 Profile
+
+          </button>
+
+
+
+          {!soundEnabled && (
 
             <button
-              type="button"
-              onClick={() =>
-                fetchPortalData()
+
+              onClick={
+
+                enableAlarmSound
+
               }
-              disabled={loading}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900 text-base disabled:opacity-50"
-              aria-label="Refresh waiter app"
+
+              className="bg-orange-500 hover:bg-orange-600 border border-orange-400 text-white text-xs px-4 py-2.5 rounded-xl font-black shadow-lg animate-pulse"
+
             >
-              {loading ? '…' : '↻'}
+
+              🔊 ENABLE ALARM SOUND
+
             </button>
-          </div>
 
-          <div className="mt-3 flex min-w-0 items-center gap-2">
-            {!alarmSettingEnabled ? (
-              <div className="min-w-0 flex-1 rounded-2xl border border-neutral-700 bg-neutral-900 px-3 py-2.5 text-center text-[10px] font-black uppercase text-neutral-500">
-                🔕 Alarm disabled by Owner
-              </div>
-            ) : !soundEnabled ? (
-              <button
-                type="button"
-                onClick={enableAlarmSound}
-                className="min-w-0 flex-1 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2.5 text-[10px] font-black uppercase text-orange-300"
-              >
-                🔊 Enable order alarm
-              </button>
-            ) : (
-              <div
-                className={`min-w-0 flex-1 rounded-2xl border px-3 py-2.5 text-center text-[10px] font-black uppercase ${
-                  alarmActive
-                    ? 'border-red-500/40 bg-red-500/15 text-red-300'
-                    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                }`}
-              >
-                {alarmActive
-                  ? '🚨 Ready order alarm'
-                  : '🔊 Alarm enabled'}
-              </div>
-            )}
+          )}
 
-            <div className="shrink-0 rounded-2xl border border-neutral-800 bg-neutral-900 px-3 py-2.5 text-center">
-              <p className="text-[9px] font-black uppercase text-neutral-500">
-                Ready
-              </p>
-              <p className="text-sm font-black text-emerald-400">
-                {readyOrders.length}
-              </p>
+
+
+          {soundEnabled && (
+
+            <div
+
+              className={`text-xs px-4 py-2.5 rounded-xl font-black border ${
+
+                alarmActive
+
+                  ? 'bg-red-600 border-red-500 text-white animate-pulse'
+
+                  : 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400'
+
+              }`}
+
+            >
+
+              {alarmActive
+
+                ? '🚨 ALARM ACTIVE'
+
+                : '🔊 SOUND ENABLED'}
+
             </div>
-          </div>
-        </header>
 
-        {/* NOTICE */}
-        {notice && (
-          <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+5.25rem)] z-[70] w-[calc(100svw-1rem)] max-w-[448px] -translate-x-1/2 rounded-2xl border border-emerald-500/20 bg-emerald-600 px-4 py-3 text-center text-xs font-bold text-white shadow-2xl">
-            {notice}
-          </div>
-        )}
-
-        {/* ALARM BANNER */}
-        {alarmActive &&
-          readyOrders.length > 0 && (
-            <div className="mx-3 mt-3 rounded-3xl border-2 border-red-500 bg-red-950/50 p-4 text-center shadow-lg shadow-red-500/10">
-              <p className="text-lg font-black text-red-300">
-                🚨 ORDER READY
-              </p>
-              <p className="mt-1 text-[11px] text-red-200/80">
-                Handover all ready orders to stop the alarm.
-              </p>
-            </div>
           )}
 
-        <div className="min-w-0 space-y-4 px-3 py-4 sm:px-4">
-          {/* HOME */}
-          {activeTab === 'home' && (
-            <>
-              <section className="overflow-hidden rounded-[28px] border border-orange-500/20 bg-gradient-to-br from-orange-500/15 via-neutral-900 to-neutral-900 p-5">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-400">
-                  Service Dashboard
-                </p>
 
-                <h2 className="mt-2 text-2xl font-black text-white">
-                  Good service starts here.
-                </h2>
 
-                <p className="mt-2 text-xs leading-relaxed text-neutral-400">
-                  Take table orders, send them to kitchen, and hand over ready orders from one mobile screen.
-                </p>
+          <button
 
-                <div className="mt-5 grid grid-cols-3 gap-2">
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-3 text-center">
-                    <p className="text-xl font-black text-white">
-                      {menuItems.length}
-                    </p>
-                    <p className="mt-1 text-[9px] font-black uppercase text-neutral-500">
-                      Menu
-                    </p>
-                  </div>
+            onClick={
 
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-3 text-center">
-                    <p className="text-xl font-black text-orange-400">
-                      {cartCount}
-                    </p>
-                    <p className="mt-1 text-[9px] font-black uppercase text-neutral-500">
-                      Cart
-                    </p>
-                  </div>
+              handleLogout
 
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-3 text-center">
-                    <p className="text-xl font-black text-emerald-400">
-                      {readyOrders.length}
-                    </p>
-                    <p className="mt-1 text-[9px] font-black uppercase text-neutral-500">
-                      Ready
-                    </p>
-                  </div>
-                </div>
-              </section>
+            }
 
-              {readyOrders.length > 0 ? (
-                <section className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
-                        Kitchen Ready
-                      </p>
-                      <h3 className="mt-1 text-lg font-black">
-                        Orders to hand over
-                      </h3>
-                    </div>
+            className="bg-neutral-900 border border-neutral-800 text-xs px-4 py-2.5 rounded-xl text-red-400 font-bold"
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setActiveTab('ready')
-                      }
-                      className="text-xs font-black text-orange-400"
-                    >
-                      View all →
-                    </button>
-                  </div>
+          >
 
-                  {readyOrders
-                    .slice(0, 2)
-                    .map((order) => (
-                      <ReadyOrderCard
-                        key={order.id}
-                        order={order}
-                        onHandover={
-                          handleHandover
-                        }
-                      />
-                    ))}
-                </section>
-              ) : (
-                <section className="rounded-[28px] border border-neutral-800 bg-neutral-900 p-6 text-center">
-                  <div className="text-4xl">
-                    ✅
-                  </div>
-                  <h3 className="mt-3 font-black">
-                    No ready orders
-                  </h3>
-                  <p className="mt-2 text-xs leading-relaxed text-neutral-500">
-                    Kitchen-ready orders will appear here automatically.
-                  </p>
-                </section>
-              )}
+            Log Out ⎋
 
-              <section className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveTab('order')
-                  }
-                  className="rounded-[26px] border border-orange-500/20 bg-orange-500/10 p-5 text-left"
-                >
-                  <div className="text-3xl">
-                    📝
-                  </div>
-                  <p className="mt-4 font-black text-white">
-                    Take Order
-                  </p>
-                  <p className="mt-1 text-[10px] leading-relaxed text-neutral-500">
-                    Select table and add menu items.
-                  </p>
-                </button>
+          </button>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveTab('ready')
-                  }
-                  className="rounded-[26px] border border-emerald-500/20 bg-emerald-500/10 p-5 text-left"
-                >
-                  <div className="text-3xl">
-                    🍽️
-                  </div>
-                  <p className="mt-4 font-black text-white">
-                    Ready Orders
-                  </p>
-                  <p className="mt-1 text-[10px] leading-relaxed text-neutral-500">
-                    Approve and hand over kitchen orders.
-                  </p>
-                </button>
-              </section>
-            </>
-          )}
 
-          {/* TAKE ORDER */}
-          {activeTab === 'order' && (
-            <>
-              <section className="rounded-[28px] border border-neutral-800 bg-neutral-900 p-4">
-                <div className="flex min-w-0 items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">
-                      Direct Order
-                    </p>
-                    <h2 className="mt-1 truncate text-lg font-black">
-                      Choose table & dishes
-                    </h2>
-                  </div>
 
-                  <select
-                    value={tableNumber}
-                    onChange={(event) =>
-                      setTableNumber(
-                        event.target.value
-                      )
-                    }
-                    className="max-w-[120px] shrink-0 rounded-2xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-black text-white outline-none"
-                  >
-                    {[...Array(15)].map(
-                      (_, index) => (
-                        <option
-                          key={index + 1}
-                          value={`Table ${
-                            index + 1
-                          }`}
-                        >
-                          Table {index + 1}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </div>
-
-                <input
-                  type="search"
-                  value={menuSearch}
-                  onChange={(event) =>
-                    setMenuSearch(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Search menu..."
-                  className="mt-4 w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-orange-500"
-                />
-              </section>
-
-              {filteredMenuItems.length === 0 ? (
-                <div className="rounded-[28px] border border-neutral-800 bg-neutral-900 p-8 text-center">
-                  <p className="text-3xl">🍽️</p>
-                  <p className="mt-3 font-black">
-                    No menu items found
-                  </p>
-                </div>
-              ) : (
-                <section className="grid grid-cols-2 gap-3">
-                  {filteredMenuItems.map(
-                    (item) => {
-                      const inCart =
-                        cart.find(
-                          (cartItem) =>
-                            String(
-                              cartItem.id
-                            ) ===
-                            String(item.id)
-                        )
-
-                      return (
-                        <button
-                          type="button"
-                          key={item.id}
-                          onClick={() =>
-                            addToCart(item)
-                          }
-                          className="min-w-0 overflow-hidden rounded-[24px] border border-neutral-800 bg-neutral-900 p-3 text-left active:scale-[0.98]"
-                        >
-                          {item.image_url ? (
-                            <img
-                              src={
-                                item.image_url
-                              }
-                              alt={item.name}
-                              className="h-24 w-full rounded-2xl object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-24 w-full items-center justify-center rounded-2xl bg-neutral-950 text-3xl">
-                              🍴
-                            </div>
-                          )}
-
-                          <div className="mt-3 min-w-0">
-                            <p className="line-clamp-2 min-h-9 text-xs font-black text-white">
-                              {item.name}
-                            </p>
-
-                            <div className="mt-2 flex items-center justify-between gap-2">
-                              <p className="truncate text-xs font-black text-orange-400">
-                                {money(
-                                  item.price
-                                )}
-                              </p>
-
-                              {inCart && (
-                                <span className="shrink-0 rounded-full bg-orange-500 px-2 py-1 text-[9px] font-black text-white">
-                                  ×
-                                  {inCart.qty}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      )
-                    }
-                  )}
-                </section>
-              )}
-
-              {cartCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowCart(true)
-                  }
-                  className="sticky bottom-[calc(5.4rem+env(safe-area-inset-bottom))] z-30 flex w-full items-center justify-between gap-3 rounded-2xl bg-orange-500 px-4 py-3.5 text-white shadow-2xl shadow-orange-500/25"
-                >
-                  <div className="text-left">
-                    <p className="text-xs font-black">
-                      {cartCount}{' '}
-                      {cartCount === 1
-                        ? 'item'
-                        : 'items'}
-                    </p>
-                    <p className="text-[10px] text-orange-100">
-                      {tableNumber}
-                    </p>
-                  </div>
-
-                  <p className="text-sm font-black">
-                    View Cart ·{' '}
-                    {money(cartTotal)}
-                  </p>
-                </button>
-              )}
-            </>
-          )}
-
-          {/* READY */}
-          {activeTab === 'ready' && (
-            <section className="space-y-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
-                  Kitchen Handover
-                </p>
-
-                <h2 className="mt-1 text-xl font-black">
-                  Ready Orders
-                </h2>
-
-                <p className="mt-1 text-xs text-neutral-500">
-                  Tap handover after the food reaches the customer.
-                </p>
-              </div>
-
-              {readyOrders.length === 0 ? (
-                <div className="rounded-[28px] border border-neutral-800 bg-neutral-900 p-8 text-center">
-                  <div className="text-4xl">
-                    🍽️
-                  </div>
-                  <h3 className="mt-3 font-black">
-                    Nothing waiting
-                  </h3>
-                  <p className="mt-2 text-xs text-neutral-500">
-                    Ready kitchen orders will appear here automatically.
-                  </p>
-                </div>
-              ) : (
-                readyOrders.map((order) => (
-                  <ReadyOrderCard
-                    key={order.id}
-                    order={order}
-                    onHandover={
-                      handleHandover
-                    }
-                  />
-                ))
-              )}
-            </section>
-          )}
-
-          {/* PROFILE */}
-          {activeTab === 'profile' && (
-            <section className="space-y-4">
-              <div className="rounded-[28px] border border-neutral-800 bg-neutral-900 p-5">
-                <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500/10 text-3xl">
-                  👤
-                </div>
-
-                <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-orange-400">
-                  Waiter Profile
-                </p>
-
-                <h2 className="mt-1 text-xl font-black text-white">
-                  {waiterName || 'Waiter'}
-                </h2>
-
-                <div className="mt-5 space-y-3">
-                  <ProfileRow
-                    label="Restaurant"
-                    value={
-                      restaurantName ||
-                      'Restaurant'
-                    }
-                  />
-
-                  <ProfileRow
-                    label="Restaurant Code"
-                    value={
-                      restaurantCode ||
-                      '-----'
-                    }
-                    mono
-                  />
-
-                  <ProfileRow
-                    label="User ID"
-                    value={userId || '—'}
-                    mono
-                  />
-
-                  <ProfileRow
-                    label="Role"
-                    value="Waiter"
-                  />
-
-                  <ProfileRow
-                    label="Login"
-                    value={
-                      sessionMode
-                        ? 'Secure App Session'
-                        : 'Manual Login'
-                    }
-                  />
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4 text-[10px] leading-relaxed text-neutral-500">
-                  🔒 Your password is never displayed or stored by this profile screen.
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="w-full rounded-2xl border border-red-500/20 bg-red-500/10 py-3.5 text-sm font-black text-red-400"
-              >
-                Log Out
-              </button>
-            </section>
-          )}
         </div>
 
-        {/* CART BOTTOM SHEET */}
-        {showCart && (
-          <div
-            className="fixed inset-0 z-[90] flex min-h-[100dvh] w-full items-end justify-center overflow-x-hidden bg-black/75 backdrop-blur-sm"
-            onClick={() =>
-              setShowCart(false)
-            }
-          >
-            <div
-              className="max-h-[86dvh] w-full max-w-[480px] overflow-y-auto rounded-t-[32px] border border-neutral-800 bg-neutral-900 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
-              onClick={(event) =>
-                event.stopPropagation()
-              }
-            >
-              <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-700" />
+      </div>
 
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-orange-400">
-                    Active Ticket
-                  </p>
-                  <h2 className="mt-1 text-xl font-black">
-                    {tableNumber}
-                  </h2>
-                </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowCart(false)
+
+      {/* SOUND INSTRUCTION */}
+
+
+
+      {!soundEnabled && (
+
+        <div className="bg-orange-950/30 border border-orange-500/30 rounded-2xl p-4 text-center">
+
+
+
+          <p className="text-sm font-black text-orange-300">
+
+            🔊 Enable Order Alarm
+
+          </p>
+
+
+
+          <p className="text-[10px] text-orange-200/70 mt-1">
+
+            Tap “Enable Alarm Sound” once on this phone.
+
+            The alarm will then continue until ready orders
+
+            are handed over.
+
+          </p>
+
+
+
+        </div>
+
+      )}
+
+
+
+      {/* ACTIVE ALARM */}
+
+
+
+      {alarmActive &&
+
+        readyOrders.length >
+
+          0 && (
+
+          <div className="bg-red-950/60 border-2 border-red-500 rounded-2xl p-5 text-center animate-pulse">
+
+
+
+            <p className="text-xl sm:text-2xl font-black text-red-300">
+
+              🚨 ORDER READY 🚨
+
+            </p>
+
+
+
+            <p className="text-xs text-red-200 mt-1">
+
+              Please accept / handover the order
+
+            </p>
+
+
+
+            <p className="text-[10px] text-red-200/60 mt-2">
+
+              Alarm continues until all ready orders are handed over.
+
+            </p>
+
+
+
+          </div>
+
+        )}
+
+
+
+      {/* READY ORDERS */}
+
+
+
+      {readyOrders.length >
+
+        0 && (
+
+        <div className="bg-neutral-900 border-2 border-emerald-500/40 p-5 rounded-3xl space-y-3">
+
+
+
+          <h2 className="text-sm font-black text-emerald-400 uppercase tracking-wider">
+
+            🔔 Kitchen Orders Ready for Handover ({readyOrders.length})
+
+          </h2>
+
+
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+
+
+
+            {readyOrders.map(
+
+              (order) => (
+
+                <div
+
+                  key={
+
+                    order.id
+
                   }
-                  className="flex h-10 w-10 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-950 text-neutral-400"
+
+                  className="bg-neutral-950 border border-neutral-800 p-4 rounded-2xl flex flex-col justify-between space-y-3"
+
                 >
-                  ✕
-                </button>
-              </div>
 
-              <div className="mt-5 space-y-3">
-                {cart.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-black text-white">
-                        {item.name}
-                      </p>
 
-                      <p className="mt-1 text-[10px] font-bold text-orange-400">
-                        {money(item.price)} each
-                      </p>
-                    </div>
 
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          changeCartQty(
-                            item.id,
-                            -1
-                          )
+                  <div>
+
+
+
+                    <div className="flex justify-between items-center">
+
+
+
+                      <span className="font-black text-white text-base">
+
+                        {
+
+                          order.table_number
+
                         }
-                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-lg font-black"
-                      >
-                        −
-                      </button>
 
-                      <span className="w-5 text-center text-sm font-black">
-                        {item.qty}
                       </span>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          changeCartQty(
-                            item.id,
-                            1
-                          )
-                        }
-                        className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 text-lg font-black text-white"
-                      >
-                        +
-                      </button>
+
+
+                      <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold uppercase">
+
+                        Ready
+
+                      </span>
+
+
+
                     </div>
+
+
+
+                    <div className="mt-2 text-xs space-y-1 text-neutral-300">
+
+
+
+                      {order.items?.map(
+
+                        (
+
+                          item,
+
+                          idx
+
+                        ) => (
+
+                          <p
+
+                            key={
+
+                              idx
+
+                            }
+
+                          >
+
+                            •{' '}
+
+                            {
+
+                              item.name
+
+                            }{' '}
+
+                            ×
+
+                            {item.qty ||
+
+                              item.quantity}
+
+                          </p>
+
+                        )
+
+                      )}
+
+
+
+                    </div>
+
                   </div>
-                ))}
-              </div>
 
-              <div className="mt-5 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-neutral-400">
-                    Total
-                  </span>
-                  <span className="text-xl font-black text-white">
-                    {money(cartTotal)}
-                  </span>
+
+
+                  <button
+
+                    onClick={() =>
+
+                      handleHandover(
+
+                        order.id
+
+                      )
+
+                    }
+
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl text-xs uppercase tracking-wider transition"
+
+                  >
+
+                    Approve & Handover 🚀
+
+                  </button>
+
+
+
                 </div>
-              </div>
 
-              <button
-                type="button"
-                onClick={handlePlaceOrder}
-                disabled={
-                  placingOrder ||
-                  cart.length === 0
-                }
-                className="mt-4 w-full rounded-2xl bg-orange-500 py-4 text-sm font-black text-white shadow-lg shadow-orange-500/20 disabled:opacity-50"
-              >
-                {placingOrder
-                  ? 'Sending to Kitchen...'
-                  : 'Send to Kitchen 🍳'}
-              </button>
-            </div>
+              )
+
+            )}
+
+
+
           </div>
-        )}
 
-        {/* BOTTOM NAVIGATION */}
-        <nav className="fixed bottom-0 left-1/2 z-50 w-[100svw] max-w-[480px] -translate-x-1/2 border-t border-neutral-800 bg-neutral-950/95 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
-          <div className="grid grid-cols-4 gap-1">
-            <MobileNavButton
-              active={activeTab === 'home'}
-              icon="⌂"
-              label="Home"
-              onClick={() =>
-                setActiveTab('home')
-              }
-            />
-
-            <MobileNavButton
-              active={activeTab === 'order'}
-              icon="＋"
-              label="Order"
-              badge={
-                cartCount > 0
-                  ? cartCount
-                  : null
-              }
-              onClick={() =>
-                setActiveTab('order')
-              }
-            />
-
-            <MobileNavButton
-              active={activeTab === 'ready'}
-              icon="✓"
-              label="Ready"
-              badge={
-                readyOrders.length > 0
-                  ? readyOrders.length
-                  : null
-              }
-              onClick={() =>
-                setActiveTab('ready')
-              }
-            />
-
-            <MobileNavButton
-              active={
-                activeTab === 'profile'
-              }
-              icon="♙"
-              label="Profile"
-              onClick={() =>
-                setActiveTab('profile')
-              }
-            />
-          </div>
-        </nav>
-      </div>
-    </main>
-  )
-}
-
-function ReadyOrderCard({
-  order,
-  onHandover,
-}) {
-  const items = Array.isArray(order?.items)
-    ? order.items
-    : []
-
-  return (
-    <article className="min-w-0 overflow-hidden rounded-[26px] border border-emerald-500/25 bg-neutral-900 p-4">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
-            Ready for Service
-          </p>
-
-          <h3 className="mt-1 truncate text-lg font-black text-white">
-            {order?.table_number ||
-              'Table Order'}
-          </h3>
-
-          <p className="mt-1 text-[10px] text-neutral-500">
-            Order #
-            {order?.order_number ||
-              String(order?.id || '').slice(
-                0,
-                8
-              )}
-          </p>
         </div>
 
-        <span className="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-black uppercase text-emerald-300">
-          Ready
-        </span>
-      </div>
+      )}
 
-      <div className="mt-4 space-y-2 rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
-        {items.length === 0 ? (
-          <p className="text-xs text-neutral-500">
-            Order item details unavailable.
-          </p>
-        ) : (
-          items.map((item, index) => (
-            <div
-              key={`${item?.id || item?.name || 'item'}-${index}`}
-              className="flex min-w-0 items-start justify-between gap-3 text-xs"
+
+
+      {/* MENU */}
+
+
+
+      <div className="flex flex-col md:flex-row gap-6">
+
+
+
+        <div className="flex-1 space-y-4">
+
+
+
+          <div className="flex justify-between items-center">
+
+
+
+            <h2 className="text-sm font-bold text-neutral-400 uppercase">
+
+              Take Direct Order
+
+            </h2>
+
+
+
+            <select
+
+              value={
+
+                tableNumber
+
+              }
+
+              onChange={(e) =>
+
+                setTableNumber(
+
+                  e.target.value
+
+                )
+
+              }
+
+              className="bg-neutral-900 border border-neutral-800 text-xs font-bold p-2 rounded-xl text-white"
+
             >
-              <span className="min-w-0 flex-1 text-neutral-300">
-                {item?.name || 'Item'}
-              </span>
 
-              <span className="shrink-0 font-black text-white">
-                ×
-                {item?.qty ||
-                  item?.quantity ||
-                  1}
-              </span>
+              {[...Array(15)].map(
+
+                (_, i) => (
+
+                  <option
+
+                    key={
+
+                      i + 1
+
+                    }
+
+                    value={`Table ${
+
+                      i + 1
+
+                    }`}
+
+                  >
+
+                    Table{' '}
+
+                    {i + 1}
+
+                  </option>
+
+                )
+
+              )}
+
+            </select>
+
+
+
+          </div>
+
+
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+
+
+
+            {menuItems.map(
+
+              (item) => (
+
+                <div
+
+                  key={
+
+                    item.id
+
+                  }
+
+                  onClick={() =>
+
+                    setCart(
+
+                      (prev) => {
+
+                        const ex =
+
+                          prev.find(
+
+                            (x) =>
+
+                              x.id ===
+
+                              item.id
+
+                          )
+
+
+
+                        return ex
+
+                          ? prev.map(
+
+                              (
+
+                                x
+
+                              ) =>
+
+                                x.id ===
+
+                                item.id
+
+                                  ? {
+
+                                      ...x,
+
+                                      qty:
+
+                                        x.qty +
+
+                                        1,
+
+                                    }
+
+                                  : x
+
+                            )
+
+                          : [
+
+                              ...prev,
+
+                              {
+
+                                ...item,
+
+                                qty: 1,
+
+                              },
+
+                            ]
+
+                      }
+
+                    )
+
+                  }
+
+                  className="bg-neutral-900 border border-neutral-800 p-3 rounded-2xl cursor-pointer hover:border-orange-500 space-y-1"
+
+                >
+
+
+
+                  <p className="text-xs font-bold text-white">
+
+                    {
+
+                      item.name
+
+                    }
+
+                  </p>
+
+
+
+                  <p className="text-xs font-mono text-orange-400 font-bold">
+
+                    ₹
+
+                    {
+
+                      item.price
+
+                    }
+
+                  </p>
+
+
+
+                </div>
+
+              )
+
+            )}
+
+
+
+          </div>
+
+        </div>
+
+
+
+        {/* CART */}
+
+
+
+        <div className="w-full md:w-80 bg-neutral-900 border border-neutral-800 p-5 rounded-3xl flex flex-col justify-between space-y-4">
+
+
+
+          <div>
+
+
+
+            <h2 className="text-xs font-bold text-white uppercase border-b border-neutral-800 pb-2">
+
+              Active Ticket ({tableNumber})
+
+            </h2>
+
+
+
+            <div className="space-y-2 mt-3 max-h-60 overflow-y-auto">
+
+
+
+              {cart.map(
+
+                (item) => (
+
+                  <div
+
+                    key={
+
+                      item.id
+
+                    }
+
+                    className="flex justify-between text-xs bg-neutral-950 p-2.5 rounded-xl"
+
+                  >
+
+
+
+                    <span>
+
+                      {
+
+                        item.name
+
+                      }{' '}
+
+                      ×
+
+                      {
+
+                        item.qty
+
+                      }
+
+                    </span>
+
+
+
+                    <span className="font-mono text-orange-400 font-bold">
+
+                      ₹
+
+                      {item.price *
+
+                        item.qty}
+
+                    </span>
+
+
+
+                  </div>
+
+                )
+
+              )}
+
+
+
             </div>
-          ))
-        )}
+
+          </div>
+
+
+
+          <button
+
+            onClick={
+
+              handlePlaceOrder
+
+            }
+
+            disabled={
+
+              cart.length ===
+
+              0
+
+            }
+
+            className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-black py-3 rounded-xl text-xs uppercase"
+
+          >
+
+            Send to Kitchen 🍳
+
+          </button>
+
+
+
+        </div>
+
       </div>
 
-      <button
-        type="button"
-        onClick={() =>
-          onHandover(order.id)
-        }
-        className="mt-4 w-full rounded-2xl bg-emerald-600 py-3.5 text-xs font-black uppercase tracking-wider text-white active:scale-[0.99]"
-      >
-        Approve & Handover
-      </button>
-    </article>
-  )
-}
-
-function ProfileRow({
-  label,
-  value,
-  mono = false,
-}) {
-  return (
-    <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-      <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">
-        {label}
-      </p>
-
-      <p
-        className={`mt-1 break-all text-sm font-black text-white ${
-          mono ? 'font-mono' : ''
-        }`}
-      >
-        {value}
-      </p>
     </div>
+
   )
-}
 
-function MobileNavButton({
-  active,
-  icon,
-  label,
-  badge,
-  onClick,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative flex min-w-0 flex-col items-center justify-center rounded-2xl px-2 py-2.5 transition ${
-        active
-          ? 'bg-orange-500/15 text-orange-400'
-          : 'text-neutral-500'
-      }`}
-    >
-      <span className="text-lg leading-none">
-        {icon}
-      </span>
-
-      <span className="mt-1 text-[9px] font-black uppercase tracking-wide">
-        {label}
-      </span>
-
-      {badge !== null &&
-        badge !== undefined && (
-          <span className="absolute right-2 top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-black text-white">
-            {badge}
-          </span>
-        )}
-    </button>
-  )
 }
