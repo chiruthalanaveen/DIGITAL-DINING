@@ -514,6 +514,11 @@ export default function DeliveryManagement({
             .from('delivery_orders')
             .select('*')
             .eq('restaurant_id', restaurantId)
+            // COD is operational immediately.
+            // Razorpay becomes operational only after verified payment.
+            .or(
+              'payment_method.eq.cod,payment_status.eq.paid'
+            )
             .order('created_at', {
               ascending: false,
             })
@@ -703,7 +708,13 @@ export default function DeliveryManagement({
           .from('delivery_orders')
           .select('*')
           .eq('restaurant_id', restaurantId)
-          .order('created_at', { ascending: false })
+          // Never surface a pending/failed Razorpay payment attempt.
+          .or(
+            'payment_method.eq.cod,payment_status.eq.paid'
+          )
+          .order('created_at', {
+            ascending: false,
+          })
           .limit(200)
 
         if (error) throw error
@@ -1872,6 +1883,20 @@ export default function DeliveryManagement({
     order,
     driverId
   ) => {
+    if (
+      String(
+        order?.payment_method || ''
+      ).toLowerCase() === 'razorpay' &&
+      String(
+        order?.payment_status || ''
+      ).toLowerCase() !== 'paid'
+    ) {
+      await appNotice(
+        'Online-payment orders can be assigned only after successful payment verification.'
+      )
+      return
+    }
+
     const cleanDriverId =
       driverId || null
 
@@ -1915,6 +1940,20 @@ export default function DeliveryManagement({
           nextStatus
         )
       ) {
+        return
+      }
+
+      if (
+        String(
+          order?.payment_method || ''
+        ).toLowerCase() === 'razorpay' &&
+        String(
+          order?.payment_status || ''
+        ).toLowerCase() !== 'paid'
+      ) {
+        await appNotice(
+          'Online-payment orders can be updated only after successful payment verification.'
+        )
         return
       }
 
@@ -2328,19 +2367,6 @@ export default function DeliveryManagement({
               {alarmEnabled
                 ? '🔔 Alarm ON'
                 : '🔕 Enable Alarm'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                loadDelivery(true)
-              }
-              disabled={refreshing}
-              className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-[10px] font-black text-neutral-300 disabled:opacity-50"
-            >
-              {refreshing
-                ? 'Refreshing...'
-                : '↻ Refresh'}
             </button>
           </div>
         </div>
