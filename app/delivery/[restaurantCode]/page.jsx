@@ -139,6 +139,8 @@ export default function DeliveryStorePage({
 
   const settings =
     storeData?.settings || {}
+  const surge =
+    storeData?.surge || {}
   const coverage =
     storeData?.coverage || {}
   const restaurant =
@@ -408,43 +410,87 @@ export default function DeliveryStorePage({
       0
     )
 
-  const previewDeliveryFee =
-    settings.free_delivery_above !=
-      null &&
-    subtotal >=
+  const minimumOrderAmount =
+    Math.max(
+      0,
       Number(
-        settings.free_delivery_above
+        settings.minimum_order_amount || 0
       )
-      ? 0
-      : Number(
-          settings.delivery_fee || 0
-        )
-
-  const previewPacking =
-    Number(
-      settings.packing_charge || 0
     )
 
-  const previewTax =
+  const configuredDeliveryFee =
+    Math.max(
+      0,
+      Number(
+        settings.delivery_fee || 0
+      )
+    )
+
+  const previewDeliveryFee =
+    minimumOrderAmount > 0
+      ? subtotal < minimumOrderAmount
+        ? configuredDeliveryFee
+        : 0
+      : settings.free_delivery_above != null &&
+          Number(settings.free_delivery_above) > 0 &&
+          subtotal >= Number(settings.free_delivery_above)
+        ? 0
+        : configuredDeliveryFee
+
+  const previewPacking =
+    Math.max(
+      0,
+      Number(
+        settings.packing_charge || 0
+      )
+    )
+
+  const previewHandling =
+    Math.max(
+      0,
+      Number(
+        settings.handling_charge || 0
+      )
+    )
+
+  const previewSurge =
+    Boolean(surge.active)
+      ? Math.max(
+          0,
+          Number(
+            surge.charge ||
+              settings.surge_charge ||
+              0
+          )
+        )
+      : 0
+
+  const previewSgst =
     settings.tax_enabled
       ? (
           subtotal *
-          (
-            Number(
-              settings.sgst_rate || 0
-            ) +
-            Number(
-              settings.cgst_rate || 0
-            )
-          )
-        ) /
-        100
+          Number(settings.sgst_rate || 0)
+        ) / 100
       : 0
+
+  const previewCgst =
+    settings.tax_enabled
+      ? (
+          subtotal *
+          Number(settings.cgst_rate || 0)
+        ) / 100
+      : 0
+
+  const previewTax =
+    previewSgst +
+    previewCgst
 
   const previewTotal =
     subtotal +
     previewDeliveryFee +
     previewPacking +
+    previewHandling +
+    previewSurge +
     previewTax
 
   const updateQuantity = (
@@ -873,21 +919,6 @@ export default function DeliveryStorePage({
     if (!cartRows.length) {
       setMessage(
         'Your cart is empty.'
-      )
-      return
-    }
-
-    if (
-      subtotal <
-      Number(
-        settings.minimum_order_amount ||
-          0
-      )
-    ) {
-      setMessage(
-        `Minimum order is ${money(
-          settings.minimum_order_amount
-        )}.`
       )
       return
     }
@@ -1337,20 +1368,32 @@ export default function DeliveryStorePage({
                   Delivery fee
                 </p>
                 <p className="mt-1 text-sm font-black text-neutral-950">
-                  {Number(settings.delivery_fee || 0) === 0
+                  {previewDeliveryFee === 0
                     ? 'FREE'
-                    : money(settings.delivery_fee)}
+                    : money(previewDeliveryFee)}
                 </p>
+                {minimumOrderAmount > 0 &&
+                  subtotal > 0 &&
+                  subtotal < minimumOrderAmount && (
+                    <p className="mt-1 text-[9px] font-semibold text-neutral-400">
+                      Free above {money(minimumOrderAmount)}
+                    </p>
+                  )}
               </div>
 
               <div className="rounded-2xl bg-neutral-50 px-3 py-3">
                 <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
-                  Minimum order
+                  Free delivery from
                 </p>
                 <p className="mt-1 text-sm font-black text-neutral-950">
-                  {Number(settings.minimum_order_amount || 0) > 0
-                    ? money(settings.minimum_order_amount)
-                    : 'No minimum'}
+                  {minimumOrderAmount > 0
+                    ? money(minimumOrderAmount)
+                    : settings.free_delivery_above != null &&
+                        Number(settings.free_delivery_above) > 0
+                      ? money(settings.free_delivery_above)
+                      : Number(settings.delivery_fee || 0) === 0
+                        ? 'Always FREE'
+                        : 'Standard fee'}
                 </p>
               </div>
 
@@ -1884,57 +1927,104 @@ export default function DeliveryStorePage({
               )}
             </div>
 
+            {settings.surge_enabled && (
+              <div
+                className={`mb-3 rounded-2xl border px-4 py-3 ${
+                  surge.active
+                    ? 'border-orange-200 bg-orange-50'
+                    : 'border-emerald-200 bg-emerald-50'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p
+                      className={`text-[10px] font-black uppercase tracking-wider ${
+                        surge.active
+                          ? 'text-orange-600'
+                          : 'text-emerald-600'
+                      }`}
+                    >
+                      {surge.active
+                        ? 'High Delivery Demand'
+                        : 'Normal Delivery Demand'}
+                    </p>
+                    <p className="mt-1 text-[10px] leading-4 text-neutral-500">
+                      {Number(surge.active_delivery_boys || 0)} active delivery boys ·{' '}
+                      {Number(surge.orders_last_hour || 0)} orders in the last hour
+                    </p>
+                  </div>
+
+                  {surge.active && Number(surge.charge || 0) > 0 && (
+                    <span className="shrink-0 rounded-lg bg-orange-100 px-2.5 py-1.5 text-[10px] font-black text-orange-700">
+                      +{money(surge.charge)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="mt-5 rounded-[22px] border border-neutral-200 bg-neutral-50 p-4 text-xs">
               <BillRow
-                label="Subtotal"
-                value={money(
-                  subtotal
-                )}
+                label="Item Subtotal"
+                value={money(subtotal)}
               />
 
               <BillRow
-                label="GST"
-                value={money(
-                  previewTax
-                )}
+                label="Delivery Fee"
+                value={previewDeliveryFee === 0 ? 'FREE' : money(previewDeliveryFee)}
               />
 
               <BillRow
-                label="Packing"
-                value={money(
-                  previewPacking
-                )}
+                label="Handling Charge"
+                value={money(previewHandling)}
               />
 
               <BillRow
-                label="Delivery"
-                value={
-                  previewDeliveryFee ===
-                  0
-                    ? 'FREE'
-                    : money(
-                        previewDeliveryFee
-                      )
-                }
+                label="Packing Charge"
+                value={money(previewPacking)}
               />
+
+              {previewSurge > 0 && (
+                <BillRow
+                  label="High Demand Charge"
+                  value={money(previewSurge)}
+                />
+              )}
+
+              {settings.tax_enabled && (
+                <>
+                  <BillRow
+                    label={`SGST (${Number(settings.sgst_rate || 0)}%)`}
+                    value={money(previewSgst)}
+                  />
+                  <BillRow
+                    label={`CGST (${Number(settings.cgst_rate || 0)}%)`}
+                    value={money(previewCgst)}
+                  />
+                </>
+              )}
 
               <div className="mt-3 flex items-center justify-between border-t border-neutral-200 pt-3 text-sm font-black">
-                <span>
-                  Estimated Total
-                </span>
-
-                <span>
-                  {money(
-                    previewTotal
-                  )}
-                </span>
+                <span>Estimated Total</span>
+                <span>{money(previewTotal)}</span>
               </div>
 
-              <p className="mt-2 text-[10px] leading-4 text-neutral-400">
-                The server recalculates
-                item prices, GST, packing
-                and delivery charges before
-                the order is created.
+              {minimumOrderAmount > 0 &&
+                subtotal > 0 &&
+                subtotal < minimumOrderAmount && (
+                  <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[10px] font-semibold leading-4 text-amber-700">
+                    Add {money(Math.max(0, minimumOrderAmount - subtotal))} more for free delivery.
+                  </div>
+                )}
+
+              {Boolean(surge.active) && previewSurge > 0 && (
+                <div className="mt-2 rounded-xl bg-orange-50 px-3 py-2 text-[10px] font-semibold leading-4 text-orange-700">
+                  High demand is active right now. The current demand charge is {money(previewSurge)}.
+                </div>
+              )}
+
+              <p className="mt-3 text-[10px] leading-4 text-neutral-400">
+                Item prices, delivery fee, handling, packing, demand charges and taxes are recalculated securely when the order is placed.
               </p>
             </div>
 

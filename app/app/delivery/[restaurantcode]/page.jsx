@@ -135,6 +135,8 @@ export default function DeliveryStorePage({
 
   const settings =
     storeData?.settings || {}
+    const surge =
+  storeData?.surge || {}
   const coverage =
     storeData?.coverage || {}
   const restaurant =
