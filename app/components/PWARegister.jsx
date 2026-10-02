@@ -4,7 +4,7 @@ import {
   useEffect,
 } from 'react'
 
-export default function PwaRegistration() {
+export default function PwaRegister() {
   useEffect(() => {
     if (
       typeof window ===
@@ -17,26 +17,32 @@ export default function PwaRegistration() {
       return
     }
 
-    const registerWorker =
+    const register =
       async () => {
         try {
-          await navigator
-            .serviceWorker
-            .register(
-              '/sw.js',
-              {
-                scope: '/',
-              }
-            )
+          const registration =
+            await navigator
+              .serviceWorker
+              .register(
+                '/sw.js',
+                {
+                  scope: '/',
+                }
+              )
+
+          console.log(
+            '[DIGITAL DINE PWA] Service worker registered:',
+            registration.scope
+          )
         } catch (error) {
           console.error(
-            'Digital Dine PWA registration failed:',
+            '[DIGITAL DINE PWA] Registration failed:',
             error
           )
         }
       }
 
-    registerWorker()
+    register()
   }, [])
 
   return null
