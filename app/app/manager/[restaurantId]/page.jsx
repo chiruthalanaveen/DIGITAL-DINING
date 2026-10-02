@@ -28,14 +28,16 @@ const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
 
 function Input({ label, value, onChange, type = 'text', placeholder = '' }) {
   return (
-    <div>
-      <label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">{label}</label>
+    <div className="min-w-0">
+      <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">
+        {label}
+      </label>
       <input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs text-white outline-none focus:border-orange-500"
+        className="min-h-12 w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-base text-white outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 sm:text-sm"
       />
     </div>
   )
@@ -43,9 +45,13 @@ function Input({ label, value, onChange, type = 'text', placeholder = '' }) {
 
 function Stat({ title, value, accent = 'text-white' }) {
   return (
-    <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-      <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">{title}</p>
-      <p className={`mt-2 text-2xl font-black ${accent}`}>{value}</p>
+    <div className="dd-stat-card min-w-0 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+      <p className="truncate text-[9px] font-black uppercase tracking-[0.14em] text-neutral-500 sm:text-[10px]">
+        {title}
+      </p>
+      <p className={`mt-2 break-words text-xl font-black tracking-[-0.03em] sm:text-2xl ${accent}`}>
+        {value}
+      </p>
     </div>
   )
 }
@@ -493,7 +499,7 @@ function RestaurantChatWidget({ restaurantId }) {
   const isClosed = status === 'closed'
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 font-sans">
+    <div className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-3 z-50 font-sans sm:right-4 lg:bottom-6 lg:right-6">
       {!isOpen ? (
         <button
           onClick={handleOpen}
@@ -505,7 +511,7 @@ function RestaurantChatWidget({ restaurantId }) {
           </span>
         </button>
       ) : (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(390px,calc(100vw-2rem))] h-[560px] shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex h-[min(72dvh,560px)] w-[min(390px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[24px] border border-neutral-800 bg-neutral-900 shadow-2xl">
           <div className="bg-neutral-950 p-4 border-b border-neutral-800">
             <div className="flex justify-between items-start gap-3">
               <div>
@@ -1070,6 +1076,7 @@ export default function RestaurantManagerDashboard({ params }) {
 
   // Manager Profile
   const [profileOpen, setProfileOpen] = useState(false)
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const [profileName, setProfileName] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
   const [restaurantCode, setRestaurantCode] = useState('')
@@ -2183,19 +2190,100 @@ restaurantModuleEnabled,
 
   if (!authenticated) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-4 text-neutral-100">
-        <form onSubmit={handleLogin} className="w-full max-w-sm space-y-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-8 shadow-2xl">
-          <div className="mb-6 text-center">
-            <div className="mb-3 text-5xl">🧑‍💼</div>
-            <h1 className="text-2xl font-black">Restaurant Manager</h1>
-            <p className="mt-2 text-xs text-neutral-500">Sign in to manage restaurant operations</p>
+      <main className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-[#f4f5f7] px-4 py-8 text-neutral-900">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(circle_at_top,rgba(249,115,22,0.13),transparent_68%)]" />
+
+        <form
+          onSubmit={handleLogin}
+          className="relative w-full max-w-sm rounded-[28px] border border-neutral-200 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.10)] sm:p-7"
+        >
+          <div className="mb-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-black text-white shadow-lg shadow-orange-500/20">
+                D
+              </div>
+
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Secure portal
+              </span>
+            </div>
+
+            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
+              Digital Dining
+            </p>
+            <h1 className="mt-1 text-2xl font-black tracking-[-0.035em] text-neutral-950">
+              Manager sign in
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-neutral-500">
+              Open the Restaurant, Delivery or Resort workspace assigned to your manager account.
+            </p>
           </div>
-          <input value={restaurantCode} onChange={(e) => setRestaurantCode(e.target.value.replace(/\D/g, '').slice(0, 5))} placeholder="5-digit Restaurant Code" inputMode="numeric" maxLength={5} required className="w-full rounded-xl border border-orange-500/30 bg-neutral-950 px-4 py-3 text-sm font-mono tracking-widest text-white outline-none focus:border-orange-500" />
-          <input value={loginUserId} onChange={(e) => setLoginUserId(e.target.value)} placeholder="Manager User ID" autoComplete="username" required className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-orange-500" />
-          <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Password / PIN" autoComplete="current-password" required className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-orange-500" />
-          <button disabled={loginLoading} className="w-full rounded-xl bg-orange-500 py-3 text-sm font-black uppercase text-white disabled:opacity-50">
-            {loginLoading ? 'Signing in...' : 'Open Manager Dashboard'}
+
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">
+                Restaurant Code
+              </span>
+              <input
+                value={restaurantCode}
+                onChange={(e) =>
+                  setRestaurantCode(
+                    e.target.value
+                      .replace(/\D/g, '')
+                      .slice(0, 5)
+                  )
+                }
+                placeholder="00000"
+                inputMode="numeric"
+                maxLength={5}
+                required
+                className="min-h-12 w-full rounded-2xl border border-orange-200 bg-orange-50/70 px-4 py-3 text-center font-mono text-lg font-black tracking-[0.28em] text-neutral-950 outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">
+                Manager User ID
+              </span>
+              <input
+                value={loginUserId}
+                onChange={(e) => setLoginUserId(e.target.value)}
+                placeholder="manager01"
+                autoComplete="username"
+                required
+                className="min-h-12 w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-base text-neutral-950 outline-none transition focus:border-orange-500 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">
+                Password / PIN
+              </span>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="Enter password"
+                autoComplete="current-password"
+                required
+                className="min-h-12 w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-base text-neutral-950 outline-none transition focus:border-orange-500 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+              />
+            </label>
+          </div>
+
+          <button
+            disabled={loginLoading}
+            className="mt-5 min-h-12 w-full rounded-2xl bg-neutral-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-neutral-950/10 transition active:scale-[0.99] disabled:cursor-wait disabled:opacity-50"
+          >
+            {loginLoading
+              ? 'Signing in...'
+              : 'Open Manager Dashboard'}
           </button>
+
+          <p className="mt-4 text-center text-[10px] font-semibold leading-5 text-neutral-400">
+            Your role and subscribed modules are verified securely before the dashboard opens.
+          </p>
         </form>
       </main>
     )
@@ -2211,7 +2299,7 @@ restaurantModuleEnabled,
   }
 
   return (
-    <main className="dd-light-dashboard dd-manager-dashboard min-h-screen bg-[#f5f6f8] p-3 text-neutral-900 sm:p-6">
+    <main className="dd-light-dashboard dd-manager-dashboard min-h-[100dvh] overflow-x-hidden bg-[#f5f6f8] px-3 pb-[calc(7.25rem+env(safe-area-inset-bottom))] pt-2 text-neutral-900 sm:px-4 sm:pt-4 lg:pb-8">
       <style jsx global>{`
 
                 /*
@@ -2484,40 +2572,234 @@ restaurantModuleEnabled,
             flex: 0 0 auto;
           }
         }
+
+
+        /* 2026 mobile-first manager shell */
+        .dd-manager-dashboard {
+          --dd-card-radius: 20px;
+          --dd-touch: 44px;
+        }
+
+        .dd-manager-dashboard button,
+        .dd-manager-dashboard a,
+        .dd-manager-dashboard select {
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .dd-manager-dashboard button:not(:disabled):active {
+          transform: scale(.985);
+        }
+
+        .dd-manager-dashboard input,
+        .dd-manager-dashboard select,
+        .dd-manager-dashboard textarea {
+          font-size: 16px;
+        }
+
+        .dd-manager-dashboard .dd-stat-card {
+          box-shadow: 0 1px 2px rgba(15, 23, 42, .035);
+        }
+
+        .dd-mobile-scroll {
+          scrollbar-width: none;
+          overscroll-behavior-inline: contain;
+        }
+
+        .dd-mobile-scroll::-webkit-scrollbar {
+          display: none;
+        }
+
+        .dd-mobile-module-switch {
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+        }
+
+        .dd-mobile-dock {
+          padding-bottom: max(.45rem, env(safe-area-inset-bottom));
+          background: rgba(255, 255, 255, .96);
+          box-shadow: 0 -12px 32px rgba(15, 23, 42, .08);
+          backdrop-filter: blur(22px);
+          -webkit-backdrop-filter: blur(22px);
+        }
+
+        .dd-mobile-dock button {
+          min-width: 58px;
+          min-height: 54px;
+        }
+
+        .dd-mobile-sheet {
+          padding-bottom: max(1rem, env(safe-area-inset-bottom));
+        }
+
+        :root[data-theme='light'] .dd-manager-dashboard .bg-neutral-900 {
+          background-color: #ffffff !important;
+        }
+
+        :root[data-theme='light'] .dd-manager-dashboard .bg-neutral-950 {
+          background-color: #f8fafc !important;
+        }
+
+        :root[data-theme='light'] .dd-manager-dashboard .border-neutral-800 {
+          border-color: #e5e7eb !important;
+        }
+
+        :root[data-theme='light'] .dd-manager-dashboard .text-white {
+          color: #111827 !important;
+        }
+
+        :root[data-theme='light'] .dd-manager-dashboard .text-neutral-100,
+        :root[data-theme='light'] .dd-manager-dashboard .text-neutral-200,
+        :root[data-theme='light'] .dd-manager-dashboard .text-neutral-300 {
+          color: #374151 !important;
+        }
+
+        :root[data-theme='light'] .dd-manager-dashboard .text-neutral-400 {
+          color: #6b7280 !important;
+        }
+
+        :root[data-theme='light'] .dd-manager-dashboard .text-neutral-500 {
+          color: #71717a !important;
+        }
+
+        :root[data-theme='light'] .dd-manager-dashboard select {
+          color: #111827 !important;
+        }
+
+        :root[data-theme='dark'] .dd-manager-dashboard .dd-mobile-dock,
+        :root[data-theme='dark'] .dd-manager-dashboard .dd-mobile-sheet {
+          background: rgba(17, 17, 19, .96) !important;
+          border-color: #2a2a2e !important;
+        }
+
+        :root[data-theme='light'] .dd-manager-dashboard .dd-mobile-dock,
+        :root[data-theme='light'] .dd-manager-dashboard .dd-mobile-sheet {
+          background: rgba(255, 255, 255, .96) !important;
+          border-color: #e5e7eb !important;
+        }
+
+        @media (max-width: 1023px) {
+          .dd-manager-dashboard {
+            padding-left: .75rem !important;
+            padding-right: .75rem !important;
+          }
+
+          .dd-manager-dashboard .dd-manager-inner {
+            width: 100%;
+          }
+
+          .dd-manager-dashboard .dd-dashboard-header {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            margin-left: -.75rem;
+            margin-right: -.75rem;
+            border-radius: 0 0 22px 22px;
+            border-left: 0;
+            border-right: 0;
+            padding:
+              max(.65rem, env(safe-area-inset-top))
+              .85rem
+              .8rem !important;
+          }
+
+          .dd-manager-dashboard .dd-dashboard-sidebar {
+            display: none !important;
+          }
+
+          .dd-manager-dashboard section {
+            scroll-margin-top: 120px;
+          }
+
+          .dd-manager-dashboard table {
+            font-size: 12px;
+          }
+
+          .dd-manager-dashboard .rounded-3xl {
+            border-radius: var(--dd-card-radius) !important;
+          }
+
+          .dd-manager-dashboard .rounded-2xl {
+            border-radius: 16px !important;
+          }
+        }
+
+        @media (min-width: 640px) {
+          .dd-manager-dashboard input,
+          .dd-manager-dashboard select,
+          .dd-manager-dashboard textarea {
+            font-size: 13px;
+          }
+        }
       `}</style>
-      <div className="dd-manager-inner mx-auto max-w-7xl space-y-5">
-        <header className="dd-dashboard-header flex flex-col justify-between gap-4 border-b border-neutral-200 bg-white px-4 py-4 shadow-sm lg:flex-row lg:items-center sm:px-6">
-          <div>
-            <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">Restaurant Manager Portal</span>
-            <h1 className="mt-3 text-2xl font-black sm:text-3xl">{restaurant?.name || 'Restaurant'} Manager Dashboard</h1>
-            <p className="mt-1 text-xs text-neutral-500">Manage live orders, tables, menu and staff operations from one place.</p>
-            <p className="mt-2 inline-flex rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-[11px] font-black font-mono tracking-widest text-orange-300">Restaurant Code: {restaurant?.restaurant_code || restaurantCode || '-----'}</p>
+      <div className="dd-manager-inner mx-auto max-w-7xl space-y-4 sm:space-y-5">
+        <header className="dd-dashboard-header border-b border-neutral-200 bg-white/95 shadow-sm backdrop-blur-xl lg:flex lg:items-center lg:justify-between lg:gap-5 lg:rounded-2xl lg:border lg:px-5 lg:py-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-sm font-black text-white shadow-lg shadow-orange-500/20">
+                D
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[9px] font-black uppercase tracking-[0.16em] text-orange-500">
+                    Manager Portal
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-emerald-600">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                    Live
+                  </span>
+                </div>
+
+                <h1 className="mt-0.5 truncate text-lg font-black tracking-[-0.025em] sm:text-2xl">
+                  {restaurant?.name || 'Restaurant'}
+                </h1>
+              </div>
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2 pl-[52px]">
+              <span className="rounded-lg border border-orange-500/15 bg-orange-500/10 px-2.5 py-1 text-[9px] font-black font-mono tracking-[0.12em] text-orange-600">
+                Code {restaurant?.restaurant_code || restaurantCode || '-----'}
+              </span>
+              <span className="hidden text-[10px] font-semibold text-neutral-500 sm:inline">
+                Restaurant · Resort · Delivery operations
+              </span>
+
+              <span className="inline-flex rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider text-neutral-500 lg:hidden">
+                {dashboardMode === 'delivery'
+                  ? 'Delivery'
+                  : dashboardMode === 'resort'
+                    ? 'Resort'
+                    : 'Restaurant'}
+              </span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+
+          <div className="mt-3 hidden items-center gap-2 lg:mt-0 lg:flex lg:justify-end">
             <ThemeToggle />
+
             <button
               type="button"
               role="switch"
               aria-checked={storeOpen}
               disabled={savingStoreStatus}
               onClick={handleStoreToggle}
-              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black transition disabled:cursor-wait disabled:opacity-60 ${
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border px-3 text-[9px] font-black transition sm:flex-none ${
                 storeOpen
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600'
-                  : 'border-red-500/30 bg-red-500/10 text-red-600'
-              }`}
+                  ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600'
+                  : 'border-red-500/25 bg-red-500/10 text-red-600'
+              } disabled:cursor-wait disabled:opacity-60`}
             >
               <span
-                className={`relative h-6 w-11 rounded-full transition ${
+                className={`relative h-5 w-9 rounded-full transition ${
                   storeOpen
                     ? 'bg-emerald-500'
                     : 'bg-red-500'
                 }`}
               >
                 <span
-                  className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                  className={`absolute top-1 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${
                     storeOpen
-                      ? 'translate-x-6'
+                      ? 'translate-x-5'
                       : 'translate-x-1'
                   }`}
                 />
@@ -2525,27 +2807,36 @@ restaurantModuleEnabled,
 
               <span>
                 {savingStoreStatus
-                  ? 'Saving...'
+                  ? 'Saving'
                   : storeOpen
-                    ? 'Restaurant Open'
-                    : 'Restaurant Closed'}
+                    ? 'Open'
+                    : 'Closed'}
               </span>
             </button>
-            <button onClick={fetchDashboard} className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-black">{loading ? 'Refreshing...' : '↻ Refresh'}</button>
+
             <button
               type="button"
               onClick={() => setProfileOpen(true)}
-              className="rounded-xl border border-orange-500/20 bg-orange-500/10 px-4 py-2.5 text-xs font-black text-orange-300"
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-neutral-200 bg-white px-3 text-sm font-black text-neutral-700 shadow-sm"
+              aria-label="Open manager profile"
             >
-              👤 Profile
+              👤
+              <span className="ml-2 hidden sm:inline">Profile</span>
             </button>
-            <button onClick={logout} className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs font-black text-red-400">Log Out ⎋</button>
+
+            <button
+              type="button"
+              onClick={logout}
+              className="hidden min-h-11 items-center justify-center rounded-2xl border border-red-500/15 bg-red-500/10 px-3 text-[10px] font-black text-red-500 sm:inline-flex"
+            >
+              Log Out
+            </button>
           </div>
         </header>
 
         {profileOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
+          <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 backdrop-blur-sm sm:items-center sm:p-4">
+            <div className="dd-mobile-sheet w-full max-w-md rounded-t-[28px] border border-neutral-800 bg-neutral-900 p-5 shadow-2xl sm:rounded-3xl sm:p-6">
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
                   <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">
@@ -2608,7 +2899,11 @@ restaurantModuleEnabled,
           </div>
         )}
 
-        {notice && <div className="fixed right-5 top-5 z-50 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice}</div>}
+        {notice && (
+          <div className="fixed left-1/2 top-[max(.75rem,env(safe-area-inset-top))] z-[80] w-[calc(100%-1.5rem)] max-w-sm -translate-x-1/2 rounded-2xl bg-emerald-600 px-4 py-3 text-center text-xs font-bold text-white shadow-2xl sm:left-auto sm:right-5 sm:top-5 sm:w-auto sm:translate-x-0">
+            {notice}
+          </div>
+        )}
 
         {deliveryModuleEnabled && authenticated && (
           <NativeDeliveryPush
@@ -2627,11 +2922,11 @@ restaurantModuleEnabled,
           />
         )}
 
-        <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
+        <div className="dd-mobile-module-switch hidden rounded-3xl border border-neutral-800 bg-neutral-900/95 p-1.5 shadow-sm lg:block">
           <div
-            className={`grid gap-2 ${
+            className={`grid gap-1.5 ${
               enabledModuleCount >= 3
-                ? 'grid-cols-1 sm:grid-cols-3'
+                ? 'grid-cols-3'
                 : enabledModuleCount === 2
                   ? 'grid-cols-2'
                   : 'grid-cols-1'
@@ -2641,13 +2936,14 @@ restaurantModuleEnabled,
               <button
                 type="button"
                 onClick={() => setDashboardMode('restaurant')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                className={`min-h-11 rounded-2xl px-2 py-2 text-[9px] font-black transition sm:px-4 sm:text-xs ${
                   dashboardMode === 'restaurant'
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                    ? 'bg-orange-500 text-white shadow-md shadow-orange-500/15'
+                    : 'text-neutral-500 hover:bg-neutral-950/50'
                 }`}
               >
-                🍽️ Restaurant Dashboard
+                <span className="block text-base sm:inline sm:text-sm">🍽️</span>
+                <span className="mt-0.5 block sm:ml-1 sm:inline">Restaurant</span>
               </button>
             )}
 
@@ -2655,13 +2951,14 @@ restaurantModuleEnabled,
               <button
                 type="button"
                 onClick={() => setDashboardMode('resort')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                className={`min-h-11 rounded-2xl px-2 py-2 text-[9px] font-black transition sm:px-4 sm:text-xs ${
                   dashboardMode === 'resort'
-                    ? 'bg-sky-600 text-white'
-                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-600/15'
+                    : 'text-neutral-500 hover:bg-neutral-950/50'
                 }`}
               >
-                🏨 Resort Dashboard
+                <span className="block text-base sm:inline sm:text-sm">🏨</span>
+                <span className="mt-0.5 block sm:ml-1 sm:inline">Resort</span>
               </button>
             )}
 
@@ -2669,13 +2966,14 @@ restaurantModuleEnabled,
               <button
                 type="button"
                 onClick={() => setDashboardMode('delivery')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
+                className={`min-h-11 rounded-2xl px-2 py-2 text-[9px] font-black transition sm:px-4 sm:text-xs ${
                   dashboardMode === 'delivery'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/15'
+                    : 'text-neutral-500 hover:bg-neutral-950/50'
                 }`}
               >
-                🚚 Delivery Dashboard
+                <span className="block text-base sm:inline sm:text-sm">🚚</span>
+                <span className="mt-0.5 block sm:ml-1 sm:inline">Delivery</span>
               </button>
             )}
           </div>
@@ -2703,7 +3001,7 @@ restaurantModuleEnabled,
         )}
 
         {dashboardMode === 'restaurant' && restaurantModuleEnabled && (<>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Stat title="Total Revenue" value={money(totalRevenue)} />
           <Stat title="Orders Today" value={todayOrders.length} accent="text-emerald-400" />
           <Stat title="Active Orders" value={activeOrders.length} accent="text-orange-400" />
@@ -2711,7 +3009,7 @@ restaurantModuleEnabled,
           <Stat title="Partner Tier" value={currentPlanDisplay} accent="text-amber-400" />
         </div>
 
-        <nav className="dd-dashboard-sidebar flex gap-2 overflow-x-auto border-b border-neutral-200 pb-3">
+        <nav className="dd-dashboard-sidebar hidden gap-2 overflow-x-auto border-b border-neutral-200 pb-3 lg:flex">
           {[
             ['live-orders', `▣ Live Orders (${activeOrders.length})`],
             ['tables', `⌁ Tables (${availableTableCount}/${configuredTableNumbers.length})`],
@@ -2736,7 +3034,7 @@ restaurantModuleEnabled,
               <Stat title="Available Tables" value={`${availableTableCount}/${configuredTableNumbers.length}`} accent="text-emerald-400" />
               <Stat title="Occupied Tables" value={occupiedTableCount} accent="text-red-400" />
             </div>
-            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
               <h2 className="text-xl font-black">Table Status</h2>
               <p className="mt-1 text-xs text-neutral-500">A table is occupied while it has an active dine-in order.</p>
               {configuredTableNumbers.length === 0 ? (
@@ -2755,12 +3053,12 @@ restaurantModuleEnabled,
 
         {activeTab === 'live-orders' && (
           <section className="space-y-5">
-            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+            <div className="flex items-end justify-between gap-3">
               <div>
                 <span className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-red-400">
                   Real-time Order Monitor
                 </span>
-                <h2 className="mt-3 text-2xl font-black">Live Orders</h2>
+                <h2 className="mt-3 text-xl font-black tracking-tight sm:text-2xl">Live Orders</h2>
                 <p className="mt-2 text-xs text-neutral-400">
                   New orders appear automatically without refreshing this page.
                 </p>
@@ -2770,12 +3068,7 @@ restaurantModuleEnabled,
                   <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
                   LIVE
                 </span>
-                <button
-                  onClick={fetchDashboard}
-                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-black"
-                >
-                  ↻ Refresh
-                </button>
+
               </div>
             </div>
 
@@ -2794,7 +3087,7 @@ restaurantModuleEnabled,
                 return (
                   <article
                     key={order.id}
-                    className="rounded-3xl border border-orange-500/30 bg-neutral-900 p-5 shadow-lg shadow-orange-500/5"
+                    className="rounded-3xl border border-orange-500/25 bg-neutral-900 p-4 shadow-sm sm:p-5"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -2812,7 +3105,7 @@ restaurantModuleEnabled,
                       </span>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 text-xs">
+                    <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 text-xs sm:gap-3">
                       <div>
                         <p className="text-[10px] uppercase text-neutral-500">Customer</p>
                         <p className="mt-1 font-bold">{order.customer_name || order.name || 'Guest'}</p>
@@ -2914,7 +3207,7 @@ restaurantModuleEnabled,
             </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
                 <h3 className="font-black">Orders by Hour</h3>
                 <p className="mt-1 text-xs text-neutral-500">Order activity during the selected period.</p>
                 {!hourlyData.length ? <p className="py-12 text-center text-sm text-neutral-500">No orders in this period.</p> : (
@@ -2933,7 +3226,7 @@ restaurantModuleEnabled,
                 {peakHour && <div className="mt-5 rounded-xl border border-orange-500/20 bg-orange-500/10 p-3 text-xs text-orange-300">Peak order time: <strong>{String(peakHour.hour).padStart(2, '0')}:00–{String((peakHour.hour + 1) % 24).padStart(2, '0')}:00</strong></div>}
               </div>
 
-              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
                 <h3 className="font-black">Order Report Details</h3>
                 <div className="mt-4 space-y-3">
                   {reportOrders.slice(0, 20).map((order) => (
@@ -2950,7 +3243,7 @@ restaurantModuleEnabled,
               </div>
             </div>
 
-            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
               <h3 className="font-black">Recent Orders & Status Management</h3>
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[650px] text-left text-xs">
@@ -2975,7 +3268,7 @@ restaurantModuleEnabled,
 
         {activeTab === 'menu' && (
           <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            <div className="h-fit space-y-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-6">
+            <div className="h-fit space-y-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
               <div className="flex items-center justify-between"><h2 className="font-black">{editingDishId ? 'Edit Dish' : 'Add New Dish'}</h2><span className="text-[10px] text-neutral-500">{menuItems.length}/{maxMenuAllowed === Infinity ? '∞' : maxMenuAllowed}</span></div>
               {!hasAdvancedMenuControls && (
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[11px] font-bold text-amber-300">
@@ -2993,7 +3286,7 @@ restaurantModuleEnabled,
                 <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Food Type</label><select value={dish.food_type} onChange={(e) => setDish({ ...dish, food_type: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs"><option value="veg">Veg</option><option value="non-veg">Non-Veg</option><option value="egg">Egg</option><option value="beverage">Beverage</option><option value="other">Other</option></select></div>
                 <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Highly Reordered</label><select value={dish.reorder_mode} onChange={(e) => hasAdvancedMenuControls && setDish({ ...dish, reorder_mode: e.target.value })} disabled={!hasAdvancedMenuControls} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs disabled:opacity-50"><option value="auto">Automatic</option><option value="on">Always On</option><option value="off">Off</option></select></div>
                 <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Description</label><textarea rows={3} value={dish.description} onChange={(e) => setDish({ ...dish, description: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs" /></div>
-                <div className="flex gap-2"><button disabled={savingDish} className="rounded-xl bg-orange-500 px-5 py-3 text-xs font-black">{savingDish ? 'Saving...' : editingDishId ? 'Update Dish' : 'Add Dish'}</button>{editingDishId && <button type="button" onClick={resetDish} className="rounded-xl bg-neutral-800 px-5 py-3 text-xs font-black">Cancel</button>}</div>
+                <div className="flex gap-2"><button disabled={savingDish} className="min-h-11 rounded-2xl bg-orange-500 px-5 py-3 text-xs font-black text-white shadow-sm transition active:scale-[0.99]">{savingDish ? 'Saving...' : editingDishId ? 'Update Dish' : 'Add Dish'}</button>{editingDishId && <button type="button" onClick={resetDish} className="rounded-xl bg-neutral-800 px-5 py-3 text-xs font-black">Cancel</button>}</div>
               </form>
             </div>
 
@@ -3014,7 +3307,7 @@ restaurantModuleEnabled,
 
         {activeTab === 'staff' && (
           <section className="space-y-5">
-            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-6">
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
               <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">Operational Staff</span>
               <h2 className="mt-3 text-xl font-black">Create Waiter and Kitchen Accounts</h2>
               <p className="mt-2 text-xs text-neutral-400">Manager account creation is intentionally unavailable here. This section is only for operational staff.</p>
@@ -3027,10 +3320,10 @@ restaurantModuleEnabled,
                 <Input label="User ID" value={staffUserId} onChange={setStaffUserId} placeholder="waiter01" />
                 <Input label="Password / PIN" type="password" value={staffPassword} onChange={setStaffPassword} placeholder="Minimum 4 characters" />
                 <div><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Role</label><select value={staffRole} onChange={(e) => setStaffRole(e.target.value)} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs"><option value="waiter">Waiter</option><option value="kitchen">Kitchen</option></select></div>
-                <button disabled={savingStaff} className="rounded-xl bg-orange-500 px-4 py-3 text-xs font-black">{savingStaff ? 'Creating...' : 'Create Account'}</button>
+                <button disabled={savingStaff} className="min-h-11 rounded-2xl bg-orange-500 px-4 py-3 text-xs font-black text-white shadow-sm transition active:scale-[0.99]">{savingStaff ? 'Creating...' : 'Create Account'}</button>
               </form>
             </div>
-            <div className="overflow-x-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+            <div className="overflow-x-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
               <table className="w-full min-w-[760px] text-left text-xs"><thead className="border-b border-neutral-800 text-neutral-500"><tr><th className="p-3">Name</th><th className="p-3">User ID</th><th className="p-3">Password / PIN</th><th className="p-3">Role</th><th className="p-3">Created</th><th className="p-3">Action</th></tr></thead><tbody>{staffList.map((staff) => <tr key={staff.id} className="border-b border-neutral-800/70"><td className="p-3 font-bold">{staff.name}</td><td className="p-3 font-mono">{staff.user_id}</td><td className="p-3 font-mono text-neutral-300">{staff.password || '••••••'}</td><td className="p-3 uppercase text-orange-400">{staff.role}</td><td className="p-3 text-neutral-500">{staff.created_at ? new Date(staff.created_at).toLocaleDateString('en-IN') : '—'}</td><td className="p-3"><button onClick={() => revokeStaff(staff)} className="rounded-lg bg-red-500/10 px-3 py-2 font-bold text-red-300">Revoke</button></td></tr>)}</tbody></table>
               {!staffList.length && <p className="py-10 text-center text-sm text-neutral-500">No waiter or kitchen accounts found.</p>}
             </div>
@@ -3040,7 +3333,7 @@ restaurantModuleEnabled,
         {activeTab === 'offers' && (
           <section className="space-y-5">
             <div><h2 className="text-xl font-black">🔥 Offers of the Day</h2><p className="mt-1 text-xs text-neutral-500">Create and maintain offers displayed on the QR menu.</p></div>
-            <form onSubmit={saveOffer} className="grid grid-cols-1 gap-3 rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:grid-cols-2 lg:grid-cols-4">
+            <form onSubmit={saveOffer} className="grid grid-cols-1 gap-3 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5 sm:grid-cols-2 lg:grid-cols-4">
               <Input label="Offer Title" value={offer.title} onChange={(value) => setOffer({ ...offer, title: value })} placeholder="Biryani Special" />
               <Input label="Discount Text" value={offer.discount_text} onChange={(value) => setOffer({ ...offer, discount_text: value })} placeholder="20% OFF" />
               <Input label="Original Price" type="number" value={offer.original_price} onChange={(value) => setOffer({ ...offer, original_price: value })} placeholder="250" />
@@ -3048,7 +3341,7 @@ restaurantModuleEnabled,
               <Input label="Offer Date" type="date" value={offer.offer_date} onChange={(value) => setOffer({ ...offer, offer_date: value })} />
               <Input label="Image URL" value={offer.image_url} onChange={(value) => setOffer({ ...offer, image_url: value })} placeholder="https://..." />
               <div className="sm:col-span-2"><label className="mb-1 block text-[10px] font-black uppercase text-neutral-400">Description</label><textarea rows={2} value={offer.description} onChange={(e) => setOffer({ ...offer, description: e.target.value })} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-xs" /></div>
-              <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4"><button disabled={savingOffer} className="rounded-xl bg-orange-500 px-5 py-3 text-xs font-black">{savingOffer ? 'Saving...' : editingOfferId ? 'Update Offer' : 'Create Offer'}</button>{editingOfferId && <button type="button" onClick={resetOffer} className="rounded-xl bg-neutral-800 px-5 py-3 text-xs font-black">Cancel</button>}</div>
+              <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4"><button disabled={savingOffer} className="min-h-11 rounded-2xl bg-orange-500 px-5 py-3 text-xs font-black text-white shadow-sm transition active:scale-[0.99]">{savingOffer ? 'Saving...' : editingOfferId ? 'Update Offer' : 'Create Offer'}</button>{editingOfferId && <button type="button" onClick={resetOffer} className="rounded-xl bg-neutral-800 px-5 py-3 text-xs font-black">Cancel</button>}</div>
             </form>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {dailyOffers.map((item) => <div key={item.id} className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">{item.image_url && <img src={item.image_url} alt={item.title} className="h-36 w-full rounded-xl object-cover" />}<div className="flex justify-between gap-3"><h3 className="font-black">{item.title}</h3><span className="font-black text-orange-400">{money(item.offer_price)}</span></div><p className="text-xs text-neutral-400">{item.description}</p><p className="text-[11px] text-neutral-500">{item.offer_date || '—'} {item.discount_text && `· ${item.discount_text}`}</p><div className="flex flex-wrap gap-2"><button onClick={() => editOffer(item)} className="rounded-lg bg-neutral-800 px-3 py-2 text-[11px] font-bold">Edit</button><button onClick={() => toggleOffer(item)} className={`rounded-lg px-3 py-2 text-[11px] font-bold ${item.is_active === false ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}`}>{item.is_active === false ? 'Inactive' : 'Active'}</button><button onClick={() => deleteOffer(item)} className="rounded-lg bg-red-500/10 px-3 py-2 text-[11px] font-bold text-red-300">Delete</button></div></div>)}
@@ -3059,12 +3352,12 @@ restaurantModuleEnabled,
 
         {activeTab === 'swiggy-sync' && (
           <section className="mx-auto max-w-3xl space-y-5">
-            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-6">
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
               <h2 className="text-xl font-black">🟠 Menu Import / Sync</h2>
               <p className="mt-2 text-xs text-neutral-400">Import menu JSON into your restaurant menu. This does not connect to or use Swiggy APIs.</p>
               <form onSubmit={handleSwiggySync} className="mt-5 space-y-4">
                 <textarea rows={12} value={swiggyDataInput} onChange={(e) => setSwiggyDataInput(e.target.value)} placeholder={'[\n  {\n    "name": "Chicken Biryani",\n    "price": 320,\n    "category": "Main Course",\n    "is_veg": false,\n    "food_type": "non-veg",\n    "description": "Aromatic biryani"\n  }\n]'} className="w-full rounded-xl border border-neutral-800 bg-neutral-950 p-4 font-mono text-xs text-white outline-none focus:border-orange-500" />
-                <button disabled={syncingSwiggy} className="rounded-xl bg-orange-500 px-5 py-3 text-xs font-black">{syncingSwiggy ? 'Importing...' : 'Import Menu JSON'}</button>
+                <button disabled={syncingSwiggy} className="min-h-11 rounded-2xl bg-orange-500 px-5 py-3 text-xs font-black text-white shadow-sm transition active:scale-[0.99]">{syncingSwiggy ? 'Importing...' : 'Import Menu JSON'}</button>
               </form>
             </div>
           </section>
@@ -3072,7 +3365,375 @@ restaurantModuleEnabled,
 
         </>)}
 
-        <footer className="border-t border-neutral-800 pt-5 text-center text-[10px] text-neutral-600">
+        {/* =====================================================
+            2026 MOBILE BOTTOM NAVIGATION
+            Primary navigation/actions stay at the bottom on phones.
+            Desktop keeps the existing header/module/tab navigation.
+           ===================================================== */}
+        <nav className="dd-mobile-dock fixed inset-x-0 bottom-0 z-[55] border-t px-2 pt-2 lg:hidden">
+          {dashboardMode === 'restaurant' && restaurantModuleEnabled ? (
+            <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+              {[
+                ['live-orders', '◉', 'Orders'],
+                ['tables', '⌁', 'Tables'],
+                ['menu', '≡', 'Menu'],
+                ['staff', '◎', 'Staff'],
+              ].map(([id, icon, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(id)
+                    setMobileMoreOpen(false)
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }}
+                  className={`flex min-w-0 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-[9px] font-black transition ${
+                    activeTab === id
+                      ? 'bg-orange-500/12 text-orange-500'
+                      : 'text-neutral-500'
+                  }`}
+                  aria-label={label}
+                >
+                  <span className="text-lg leading-none">{icon}</span>
+                  <span className="mt-1 truncate">{label}</span>
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setMobileMoreOpen(true)}
+                className={`flex min-w-0 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-[9px] font-black transition ${
+                  ['offers', 'settlements', 'swiggy-sync'].includes(activeTab) ||
+                  mobileMoreOpen
+                    ? 'bg-orange-500/12 text-orange-500'
+                    : 'text-neutral-500'
+                }`}
+                aria-label="More manager tools"
+              >
+                <span className="text-lg leading-none">•••</span>
+                <span className="mt-1">More</span>
+              </button>
+            </div>
+          ) : (
+            <div className="mx-auto flex max-w-md items-stretch gap-1">
+              {restaurantModuleEnabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDashboardMode('restaurant')
+                    setMobileMoreOpen(false)
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }}
+                  className={`flex min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-[9px] font-black ${
+                    dashboardMode === 'restaurant'
+                      ? 'bg-orange-500/12 text-orange-500'
+                      : 'text-neutral-500'
+                  }`}
+                >
+                  <span className="text-lg leading-none">🍽️</span>
+                  <span className="mt-1 truncate">Restaurant</span>
+                </button>
+              )}
+
+              {hasResortAccess && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDashboardMode('resort')
+                    setMobileMoreOpen(false)
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }}
+                  className={`flex min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-[9px] font-black ${
+                    dashboardMode === 'resort'
+                      ? 'bg-sky-500/12 text-sky-500'
+                      : 'text-neutral-500'
+                  }`}
+                >
+                  <span className="text-lg leading-none">🏨</span>
+                  <span className="mt-1 truncate">Resort</span>
+                </button>
+              )}
+
+              {deliveryModuleEnabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDashboardMode('delivery')
+                    setMobileMoreOpen(false)
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }}
+                  className={`flex min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-[9px] font-black ${
+                    dashboardMode === 'delivery'
+                      ? 'bg-emerald-500/12 text-emerald-500'
+                      : 'text-neutral-500'
+                  }`}
+                >
+                  <span className="text-lg leading-none">🚚</span>
+                  <span className="mt-1 truncate">Delivery</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setProfileOpen(true)}
+                className="flex min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-[9px] font-black text-neutral-500"
+                aria-label="Manager profile"
+              >
+                <span className="text-lg leading-none">👤</span>
+                <span className="mt-1">Profile</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMobileMoreOpen(true)}
+                className={`flex min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-[9px] font-black ${
+                  mobileMoreOpen
+                    ? 'bg-orange-500/12 text-orange-500'
+                    : 'text-neutral-500'
+                }`}
+                aria-label="More manager tools"
+              >
+                <span className="text-lg leading-none">•••</span>
+                <span className="mt-1">More</span>
+              </button>
+            </div>
+          )}
+        </nav>
+
+        {mobileMoreOpen && (
+          <div
+            className="fixed inset-0 z-[65] flex items-end bg-black/45 backdrop-blur-sm lg:hidden"
+            onClick={() => setMobileMoreOpen(false)}
+          >
+            <div
+              className="dd-mobile-sheet max-h-[82dvh] w-full overflow-y-auto rounded-t-[30px] border border-neutral-800 bg-neutral-900 p-4 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-neutral-300/60" />
+
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-500">
+                    Manager controls
+                  </p>
+                  <h3 className="mt-1 text-lg font-black">Quick actions</h3>
+                  <p className="mt-1 text-[10px] leading-5 text-neutral-500">
+                    Modules, reports, store controls and account actions.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setMobileMoreOpen(false)}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-950 text-sm font-black text-neutral-500"
+                  aria-label="Close more actions"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {enabledModuleCount > 1 && (
+                <div className="mt-5">
+                  <p className="mb-2 text-[9px] font-black uppercase tracking-[0.15em] text-neutral-500">
+                    Switch workspace
+                  </p>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {restaurantModuleEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDashboardMode('restaurant')
+                          setMobileMoreOpen(false)
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        }}
+                        className={`min-h-16 rounded-2xl border p-3 text-center text-[10px] font-black ${
+                          dashboardMode === 'restaurant'
+                            ? 'border-orange-500/30 bg-orange-500/10 text-orange-500'
+                            : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                        }`}
+                      >
+                        <span className="mb-1 block text-xl">🍽️</span>
+                        Restaurant
+                      </button>
+                    )}
+
+                    {hasResortAccess && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDashboardMode('resort')
+                          setMobileMoreOpen(false)
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        }}
+                        className={`min-h-16 rounded-2xl border p-3 text-center text-[10px] font-black ${
+                          dashboardMode === 'resort'
+                            ? 'border-sky-500/30 bg-sky-500/10 text-sky-500'
+                            : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                        }`}
+                      >
+                        <span className="mb-1 block text-xl">🏨</span>
+                        Resort
+                      </button>
+                    )}
+
+                    {deliveryModuleEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDashboardMode('delivery')
+                          setMobileMoreOpen(false)
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        }}
+                        className={`min-h-16 rounded-2xl border p-3 text-center text-[10px] font-black ${
+                          dashboardMode === 'delivery'
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+                            : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                        }`}
+                      >
+                        <span className="mb-1 block text-xl">🚚</span>
+                        Delivery
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {restaurantModuleEnabled && (
+                <div className="mt-5">
+                  <p className="mb-2 text-[9px] font-black uppercase tracking-[0.15em] text-neutral-500">
+                    Restaurant tools
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {hasAdvancedAnalytics && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDashboardMode('restaurant')
+                          setActiveTab('settlements')
+                          setMobileMoreOpen(false)
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        }}
+                        className="min-h-16 rounded-2xl border border-neutral-800 bg-neutral-950 p-3 text-left text-xs font-black"
+                      >
+                        <span className="block text-lg">⌂</span>
+                        Reports
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDashboardMode('restaurant')
+                        setActiveTab('offers')
+                        setMobileMoreOpen(false)
+                        window.scrollTo({ top: 0, behavior: 'smooth' })
+                      }}
+                      className="min-h-16 rounded-2xl border border-neutral-800 bg-neutral-950 p-3 text-left text-xs font-black"
+                    >
+                      <span className="block text-lg">★</span>
+                      Offers
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDashboardMode('restaurant')
+                        setActiveTab('swiggy-sync')
+                        setMobileMoreOpen(false)
+                        window.scrollTo({ top: 0, behavior: 'smooth' })
+                      }}
+                      className="min-h-16 rounded-2xl border border-neutral-800 bg-neutral-950 p-3 text-left text-xs font-black"
+                    >
+                      <span className="block text-lg">⇩</span>
+                      Menu Import
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDashboardMode('restaurant')
+                        setActiveTab('tables')
+                        setMobileMoreOpen(false)
+                        window.scrollTo({ top: 0, behavior: 'smooth' })
+                      }}
+                      className="min-h-16 rounded-2xl border border-neutral-800 bg-neutral-950 p-3 text-left text-xs font-black"
+                    >
+                      <span className="block text-lg">⌁</span>
+                      Tables
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5">
+                <p className="mb-2 text-[9px] font-black uppercase tracking-[0.15em] text-neutral-500">
+                  Account & appearance
+                </p>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMoreOpen(false)
+                      setProfileOpen(true)
+                    }}
+                    className="min-h-16 rounded-2xl border border-neutral-800 bg-neutral-950 p-3 text-left text-xs font-black"
+                  >
+                    <span className="block text-lg">👤</span>
+                    Profile
+                  </button>
+
+                  <div className="flex min-h-16 items-center justify-between rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
+                    <div>
+                      <span className="block text-lg">◐</span>
+                      <span className="mt-1 block text-xs font-black">Theme</span>
+                    </div>
+                    <ThemeToggle />
+                  </div>
+                </div>
+
+                {restaurantModuleEnabled && (
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={storeOpen}
+                    disabled={savingStoreStatus}
+                    onClick={handleStoreToggle}
+                    className={`mt-2 flex min-h-14 w-full items-center justify-between rounded-2xl border px-4 text-xs font-black ${
+                      storeOpen
+                        ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-500'
+                        : 'border-red-500/25 bg-red-500/10 text-red-500'
+                    } disabled:opacity-50`}
+                  >
+                    <span>Restaurant Store</span>
+                    <span>
+                      {savingStoreStatus
+                        ? 'Saving...'
+                        : storeOpen
+                          ? 'OPEN'
+                          : 'CLOSED'}
+                    </span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMoreOpen(false)
+                    logout()
+                  }}
+                  className="mt-2 min-h-14 w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-4 text-xs font-black text-red-500"
+                >
+                  Log Out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <footer className="mt-3 border-t border-neutral-800 px-2 pt-5 text-center text-[9px] leading-5 text-neutral-500 sm:text-[10px]">
           Manager can operate the subscribed Restaurant, Resort and Delivery modules. Payment gateway credentials, tax settings, subscription, billing, manager account creation, and Delivery Driver Portal passwords remain Owner-only.
         </footer>
       </div>

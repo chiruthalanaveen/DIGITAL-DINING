@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
+import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 
 const EMPTY_CHECKOUT = {
   customerName: '',
@@ -128,6 +129,8 @@ export default function DeliveryStorePage({
     useState([])
   const [locationLoading, setLocationLoading] =
     useState(false)
+  const [addressLoading, setAddressLoading] =
+    useState(false)
   const [locationError, setLocationError] =
     useState('')
   const [locationConfirmed, setLocationConfirmed] =
@@ -197,7 +200,9 @@ export default function DeliveryStorePage({
       selectedDistanceKm > coverageRadiusKm
   )
 
-  const loadStore = async () => {
+  const loadStore = async (
+    quiet = false
+  ) => {
     if (!restaurantCode) {
       setError(
         'Delivery store code is missing.'
@@ -206,8 +211,10 @@ export default function DeliveryStorePage({
       return
     }
 
-    setLoading(true)
-    setError('')
+    if (!quiet) {
+      setLoading(true)
+      setError('')
+    }
 
     try {
       const {
@@ -262,18 +269,20 @@ export default function DeliveryStorePage({
         coverage: coverageData,
       })
 
-      if (
-        data?.settings
-          ?.cod_enabled
-      ) {
-        setPaymentMethod('cod')
-      } else if (
-        data?.settings
-          ?.online_payment_enabled
-      ) {
-        setPaymentMethod(
-          'razorpay'
-        )
+      if (!quiet) {
+        if (
+          data?.settings
+            ?.cod_enabled
+        ) {
+          setPaymentMethod('cod')
+        } else if (
+          data?.settings
+            ?.online_payment_enabled
+        ) {
+          setPaymentMethod(
+            'razorpay'
+          )
+        }
       }
     } catch (loadError) {
       console.error(
@@ -281,12 +290,16 @@ export default function DeliveryStorePage({
         loadError
       )
 
-      setError(
-        loadError?.message ||
-          'Unable to load Delivery store.'
-      )
+      if (!quiet) {
+        setError(
+          loadError?.message ||
+            'Unable to load Delivery store.'
+        )
+      }
     } finally {
-      setLoading(false)
+      if (!quiet) {
+        setLoading(false)
+      }
     }
   }
 
@@ -294,6 +307,12 @@ export default function DeliveryStorePage({
     loadStore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantCode])
+
+  useLiveDeliveryRefresh(
+    () => loadStore(true),
+    Boolean(restaurantCode && storeData),
+    1000
+  )
 
   const categories =
     useMemo(() => {
@@ -600,12 +619,98 @@ export default function DeliveryStorePage({
     }
   }
 
-  const chooseLiveLocation = () => {
-    if (locationLoading) return
+  const fillAddressFromLocation =
+    async (latitude, longitude) => {
+      const lat = Number(latitude)
+      const lng = Number(longitude)
 
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng)
+      ) {
+        return false
+      }
+
+      setAddressLoading(true)
+
+      try {
+        const response = await fetch(
+          `/api/location/reverse?lat=${encodeURIComponent(
+            lat
+          )}&lng=${encodeURIComponent(
+            lng
+          )}`,
+          {
+            method: 'GET',
+            cache: 'no-store',
+          }
+        )
+
+        const data = await response
+          .json()
+          .catch(() => ({}))
+
+        if (!response.ok || !data?.success) {
+          throw new Error(
+            data?.message ||
+              'Unable to identify this address.'
+          )
+        }
+
+        const address = data.address || {}
+
+        setCheckout((current) => ({
+          ...current,
+          addressLine1:
+            address.addressLine1 ||
+            current.addressLine1,
+          addressLine2:
+            address.addressLine2 ||
+            current.addressLine2,
+          landmark:
+            address.landmark ||
+            current.landmark,
+          city:
+            address.city ||
+            current.city,
+          state:
+            address.state ||
+            current.state,
+          pincode: digits(
+            address.pincode ||
+              current.pincode,
+            6
+          ),
+        }))
+
+        return true
+      } catch (addressError) {
+        console.error(
+          'Automatic address lookup error:',
+          addressError
+        )
+
+        setLocationError(
+          'Your location pin was found, but the written address could not be filled automatically. You can enter it manually.'
+        )
+
+        return false
+      } finally {
+        setAddressLoading(false)
+      }
+    }
+
+  const chooseLiveLocation = () => {
+    if (locationLoading || addressLoading) {
+      return
+    }
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.geolocation
+    ) {
       setLocationError(
-        'Live location is not supported on this device/browser. Please open the Delivery page in a modern browser and allow location access.'
+        'Live location is not supported on this device/browser. Please allow location access or choose your location on the map.'
       )
       return
     }
@@ -614,28 +719,48 @@ export default function DeliveryStorePage({
     setLocationError('')
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const latitude = Number(position.coords.latitude)
-        const longitude = Number(position.coords.longitude)
-        const accuracy = Number(position.coords.accuracy || 0)
+      async (position) => {
+        const latitude = Number(
+          position.coords.latitude
+        )
+
+        const longitude = Number(
+          position.coords.longitude
+        )
+
+        const accuracy = Number(
+          position.coords.accuracy || 0
+        )
 
         setCheckout((current) => ({
           ...current,
           latitude: latitude.toFixed(7),
           longitude: longitude.toFixed(7),
-          locationAccuracy: accuracy ? accuracy.toFixed(2) : '',
+          locationAccuracy: accuracy
+            ? accuracy.toFixed(2)
+            : '',
         }))
+
         setLocationConfirmed(false)
 
+        await fillAddressFromLocation(
+          latitude,
+          longitude
+        )
+
         setLocationLoading(false)
-        setLocationError('')
       },
       (geoError) => {
-        console.error('Customer geolocation error:', geoError)
+        console.error(
+          'Customer geolocation error:',
+          geoError
+        )
+
         setLocationLoading(false)
+
         setLocationError(
           geoError?.code === 1
-            ? 'Location permission was denied. Allow location access and tap Use Current Location again.'
+            ? 'Location permission was denied. Allow location access and tap Use My Current Location again.'
             : 'Unable to read your current location. Check GPS/location services and try again.'
         )
       },
@@ -1880,7 +2005,7 @@ export default function DeliveryStorePage({
                         1. Pin Your Delivery Location
                       </p>
                       <p className="mt-1 text-xs leading-5 text-emerald-900/70">
-                        Use your current GPS location or tap/drag the pin on the map to the exact delivery point. Confirm the pin first, then enter the written address manually.
+                        Use your current GPS location or tap/drag the pin on the map to the exact delivery point. We will try to fill the written address automatically, and you can edit it before ordering.
                       </p>
                     </div>
 
@@ -1969,15 +2094,35 @@ export default function DeliveryStorePage({
 
                         <button
                           type="button"
-                          disabled={outsideDeliveryRadius}
-                          onClick={() => {
-                            if (outsideDeliveryRadius) return
+                          disabled={
+                            outsideDeliveryRadius ||
+                            addressLoading
+                          }
+                          onClick={async () => {
+                            if (
+                              outsideDeliveryRadius ||
+                              addressLoading
+                            ) {
+                              return
+                            }
+
+                            const addressFilled =
+                              await fillAddressFromLocation(
+                                checkout.latitude,
+                                checkout.longitude
+                              )
+
                             setLocationConfirmed(true)
-                            setLocationError('')
+
+                            if (addressFilled) {
+                              setLocationError('')
+                            }
                           }}
                           className="shrink-0 rounded-xl bg-neutral-950 px-4 py-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-neutral-300"
                         >
-                          Confirm Delivery Pin
+                          {addressLoading
+                            ? 'Finding Address...'
+                            : 'Confirm Delivery Pin'}
                         </button>
                       </div>
                     </div>
@@ -1994,10 +2139,10 @@ export default function DeliveryStorePage({
                   <>
                     <div className="sm:col-span-2 mt-1">
                       <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                        2. Enter Delivery Address Manually
+                        2. Confirm Your Delivery Address
                       </p>
                       <p className="mt-1 text-[10px] leading-4 text-neutral-400">
-                        The map pin is used for navigation. Enter house, street and landmark details so the driver can identify the exact door/building.
+                        We filled what we could from your selected location. Check the house, street, locality and landmark details and edit anything that needs correction.
                       </p>
                     </div>
 

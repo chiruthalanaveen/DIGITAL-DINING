@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import PaymentGatewayConfigCard from '@/app/components/PaymentGatewayConfigCard'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
+import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 
 
 const ORDER_STATUSES = [
@@ -735,15 +736,16 @@ export default function DeliveryManagement({
       )
       .subscribe()
 
-    const interval = window.setInterval(() => {
-      refreshOrdersOnly(true)
-    }, 60_000)
-
     return () => {
-      window.clearInterval(interval)
       supabase.removeChannel(channel)
     }
   }, [restaurantId, refreshOrdersOnly])
+
+  useLiveDeliveryRefresh(
+    () => refreshOrdersOnly(true),
+    Boolean(restaurantId),
+    1000
+  )
 
 
   const stats = useMemo(() => {

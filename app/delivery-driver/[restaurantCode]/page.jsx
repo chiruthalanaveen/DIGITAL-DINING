@@ -33,8 +33,9 @@ import {
 import { supabase } from '@/lib/supabase'
 
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
-import { appConfirm } from '@/lib/appDialog'
+import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 
+import { appConfirm } from '@/lib/appDialog'
 
 
 
@@ -490,7 +491,47 @@ function DeliveryResultPanel({
 
 
 
-        : `Submit a Not Delivered attempt for ${order.order_code}?`
+        : `Submit a Not Delivered attempt for ${order.order_code}?`,
+
+
+
+      {
+
+
+
+        title:
+
+
+
+          result === 'delivered'
+
+
+
+            ? 'Confirm Delivery'
+
+
+
+            : 'Submit Delivery Attempt',
+
+
+
+        confirmText:
+
+
+
+          result === 'delivered'
+
+
+
+            ? 'Confirm Delivered'
+
+
+
+            : 'Submit Attempt',
+
+
+
+      }
 
 
 
@@ -1324,7 +1365,11 @@ export default function DeliveryDriverPortal({
 
 
 
-    unwrappedParams?.restaurantCode || ''
+    unwrappedParams?.restaurantCode ||
+
+      unwrappedParams?.restaurantcode ||
+
+      ''
 
 
 
@@ -1769,98 +1814,20 @@ export default function DeliveryDriverPortal({
 
 
   useEffect(() => {
-
-
-
     if (!sessionToken) {
-
-
-
-      return undefined
-
-
-
+      return
     }
-
-
-
-
-
-
 
     loadPortal()
 
-
-
-
-
-
-
-    const interval =
-
-
-
-      window.setInterval(
-
-
-
-        () => {
-
-
-
-          loadPortal()
-
-
-
-        },
-
-
-
-        60_000
-
-
-
-      )
-
-
-
-
-
-
-
-    return () => {
-
-
-
-      window.clearInterval(
-
-
-
-        interval
-
-
-
-      )
-
-
-
-    }
-
-
-
-
-
-
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
-
-
-
   }, [sessionToken])
 
-
-
-
+  useLiveDeliveryRefresh(
+    () => loadPortal(),
+    Boolean(sessionToken),
+    1000
+  )
 
 
 
@@ -2428,7 +2395,47 @@ export default function DeliveryDriverPortal({
 
 
 
-          : `Mark ${order.order_code} as delivered?`
+          : `Mark ${order.order_code} as delivered?`,
+
+
+
+        {
+
+
+
+          title:
+
+
+
+            nextStatus === 'out_for_delivery'
+
+
+
+              ? 'Start Delivery'
+
+
+
+              : 'Confirm Delivered',
+
+
+
+          confirmText:
+
+
+
+            nextStatus === 'out_for_delivery'
+
+
+
+              ? 'Start Delivery'
+
+
+
+              : 'Mark Delivered',
+
+
+
+        }
 
 
 

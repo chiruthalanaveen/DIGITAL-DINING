@@ -3346,15 +3346,27 @@ restaurantModuleEnabled,
     setLoading(false)
   }
 
-  const handleCreateStaff = async (e) => {
+  const handleCreateStaff = async (
+    e,
+    forcedRole = ''
+  ) => {
     e.preventDefault()
 
-    // Delivery-only subscriptions may create Manager access here,
-    // but must not create Restaurant Waiter/Kitchen accounts.
+    const requestedRole = String(
+      forcedRole || ''
+    )
+      .trim()
+      .toLowerCase()
+
+    // The dedicated Delivery Manager form always creates role=manager.
+    // The normal Restaurant staff form keeps its existing role selection.
     const roleToCreate =
-      currentPlanCode === 'delivery'
-        ? 'manager'
-        : staffRole
+      requestedRole ||
+      (
+        currentPlanCode === 'delivery'
+          ? 'manager'
+          : staffRole
+      )
 
     if (
       !staffName.trim() ||
@@ -3396,7 +3408,7 @@ restaurantModuleEnabled,
       if (error) throw error
 
       appNotice(
-        `${roleToCreate === 'waiter' ? 'Waiter' : roleToCreate === 'kitchen' ? 'Kitchen' : 'Restaurant Manager'} account created successfully! 🎉`
+        `${roleToCreate === 'waiter' ? 'Waiter' : roleToCreate === 'kitchen' ? 'Kitchen' : 'Delivery Manager'} account created successfully! 🎉`
       )
 
       setStaffName('')
@@ -5983,7 +5995,7 @@ restaurantModuleEnabled,
               planCode={currentPlanCode}
             />
 
-            {currentPlanCode === 'delivery' && (
+            {deliveryModuleEnabled && (
               <section className="rounded-[24px] border border-sky-500/20 bg-neutral-900 p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -6006,7 +6018,12 @@ restaurantModuleEnabled,
                 </div>
 
                 <form
-                  onSubmit={handleCreateStaff}
+                  onSubmit={(event) =>
+                    handleCreateStaff(
+                      event,
+                      'manager'
+                    )
+                  }
                   className="mt-4 grid grid-cols-1 gap-3"
                 >
                   <input
