@@ -12,7 +12,7 @@ import PaymentGatewayConfigCard from '@/app/components/PaymentGatewayConfigCard'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
-
+import InstallAppButton from '@/app/components/InstallAppButton'
 
 const ORDER_STATUSES = [
   'received',
@@ -3613,6 +3613,8 @@ export default function DeliveryManagement({
                   className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-white"
                 >
                   Open Driver Portal
+
+    
                 </a>
               </div>
             )}
@@ -4726,7 +4728,9 @@ export default function DeliveryManagement({
                 >
                   Open Delivery Website
                 </a>
-              )}
+              )}<InstallAppButton
+  label="Add App"
+/>
             </div>
           </div>
         </div>

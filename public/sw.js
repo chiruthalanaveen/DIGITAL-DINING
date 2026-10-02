@@ -1,49 +1,49 @@
-const CACHE_NAME = 'digital-dine-v1'
+const CACHE_NAME =
+  'digital-dine-v1'
 
-const STATIC_CACHE = [
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-]
+self.addEventListener(
+  'install',
+  () => {
+    self.skipWaiting()
+  }
+)
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_CACHE)
-    })
-  )
+self.addEventListener(
+  'activate',
+  (event) => {
+    event.waitUntil(
+      self.clients.claim()
+    )
+  }
+)
 
-  self.skipWaiting()
-})
+self.addEventListener(
+  'fetch',
+  (event) => {
+    const request =
+      event.request
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((cacheName) => cacheName !== CACHE_NAME)
-          .map((cacheName) => caches.delete(cacheName))
+    if (
+      request.method !==
+      'GET'
+    ) {
+      return
+    }
+
+    /*
+     * Network-first.
+     *
+     * Digital Dine is a live operations
+     * application, so stale order data
+     * should not be preferred.
+     */
+    event.respondWith(
+      fetch(request).catch(
+        () =>
+          caches.match(
+            request
+          )
       )
-    })
-  )
-
-  self.clients.claim()
-})
-
-self.addEventListener('fetch', (event) => {
-  const request = event.request
-
-  if (request.method !== 'GET') {
-    return
+    )
   }
-
-  const url = new URL(request.url)
-
-  if (url.origin !== self.location.origin) {
-    return
-  }
-
-  event.respondWith(
-    fetch(request).catch(() => caches.match(request))
-  )
-})
+)

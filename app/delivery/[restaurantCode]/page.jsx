@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
+import InstallAppButton from '@/app/components/InstallAppButton'
 
 const EMPTY_CHECKOUT = {
   customerName: '',
@@ -1223,28 +1224,44 @@ export default function DeliveryStorePage({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={openTracking}
-              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 sm:px-3 text-[10px] font-black text-neutral-800 shadow-sm transition active:scale-[0.98]"
-            >
-              <span aria-hidden="true">⌖</span>
-              Track
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <InstallAppButton
+                label="App"
+                className="!h-10 !min-h-10 !rounded-xl !px-2.5 sm:!px-3"
+              />
 
-            <button
-              type="button"
-              onClick={() => setCheckoutOpen(true)}
-              className="relative flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-neutral-950 px-2.5 sm:px-3.5 text-[10px] font-black text-white shadow-sm transition active:scale-[0.98]"
-            >
-              <span aria-hidden="true">🛒</span>
-              Cart
-              {cartCount > 0 && (
-                <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black text-white ring-2 ring-white">
-                  {cartCount}
+              <button
+                type="button"
+                onClick={openTracking}
+                className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 sm:px-3 text-[10px] font-black text-neutral-800 shadow-sm transition active:scale-[0.98]"
+                aria-label="Track order"
+              >
+                <span aria-hidden="true">⌖</span>
+
+                <span className="hidden min-[390px]:inline">
+                  Track
                 </span>
-              )}
-            </button>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCheckoutOpen(true)}
+                className="relative flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-neutral-950 px-2.5 sm:px-3.5 text-[10px] font-black text-white shadow-sm transition active:scale-[0.98]"
+                aria-label="Open cart"
+              >
+                <span aria-hidden="true">🛒</span>
+
+                <span className="hidden min-[390px]:inline">
+                  Cart
+                </span>
+
+                {cartCount > 0 && (
+                  <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black text-white ring-2 ring-white">
+                    {cartCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="relative mt-3">
