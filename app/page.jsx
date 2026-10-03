@@ -7,7 +7,7 @@ import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 const CONTACT_EMAIL = 'digitaldining077@gmail.com'
 
 // Replace this one value with your real Digital Dine-In support number.
-const SUPPORT_PHONE = '+91 8499047735'
+const SUPPORT_PHONE = '+91XXXXXXXXXX'
 const SUPPORT_PHONE_LINK = SUPPORT_PHONE.replace(/[^\d+]/g, '')
 
 const modules = [
@@ -443,10 +443,17 @@ export default function LandingPage() {
 
           <div className="flex shrink-0 items-center gap-2">
             <Link
-              href="/restaurant-login"
+              href="/app"
               className="inline-flex min-h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-[9px] font-black text-white transition hover:border-orange-500/30 hover:bg-orange-500/[0.07] sm:px-4 sm:text-[10px]"
             >
               Restaurant Login
+            </Link>
+
+            <Link
+              href="/app"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 text-[9px] font-black text-orange-300 transition hover:bg-orange-500/15 sm:px-4 sm:text-[10px]"
+            >
+              APP
             </Link>
 
             <Link
@@ -494,10 +501,17 @@ export default function LandingPage() {
                 </Link>
 
                 <Link
-                  href="/restaurant-login"
+                  href="/app"
                   className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/10 px-6 text-xs font-black text-white transition hover:bg-white/[0.04]"
                 >
                   Restaurant Login
+                </Link>
+
+                <Link
+                  href="/app"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl border border-orange-500/30 bg-orange-500/10 px-6 text-xs font-black text-orange-300 transition hover:bg-orange-500/15"
+                >
+                  Open APP
                 </Link>
               </div>
 
@@ -738,7 +752,7 @@ export default function LandingPage() {
               </div>
 
               <Link
-                href="/restaurant-login"
+                href="/app"
                 className="inline-flex min-h-12 items-center justify-center rounded-xl bg-white px-6 text-xs font-black text-black transition hover:bg-neutral-200"
               >
                 Restaurant Login
@@ -799,7 +813,7 @@ export default function LandingPage() {
               </Link>
 
               <Link
-                href="/restaurant-login"
+                href="/app"
                 className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 px-5 text-[10px] font-black text-white"
               >
                 Restaurant Login

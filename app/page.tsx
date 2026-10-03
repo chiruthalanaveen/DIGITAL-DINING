@@ -2,118 +2,131 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+import InstallAppButton from '@/app/components/InstallAppButton'
 
 const CONTACT_EMAIL = 'digitaldining077@gmail.com'
 
-// Replace this one value with your real Digital Dine-In support number.
-const SUPPORT_PHONE = '+91 8499047735'
+// Replace this with your actual support number.
+const SUPPORT_PHONE = '+91XXXXXXXXXX'
 const SUPPORT_PHONE_LINK = SUPPORT_PHONE.replace(/[^\d+]/g, '')
 
 const modules = [
   {
+    number: '01',
     name: 'Restaurant',
+    eyebrow: 'Restaurant operations',
     description:
-      'QR ordering, Dine-In and Parcel, staff operations, billing, Razorpay and menu management.',
+      'QR ordering, Dine-In, Parcel, staff workflows, payments, billing and menu management in one connected workspace.',
     features: [
       'QR menu & mobile ordering',
       'Dine-In & Parcel',
       'Owner, Manager, Waiter & KDS',
       'Restaurant-specific Razorpay',
-      'GST-ready billing & invoices',
+      'GST-ready billing & digital invoices',
       'Offers, reports & Highly Reordered items',
+      'Realtime staff operations',
     ],
   },
   {
+    number: '02',
     name: 'Delivery',
+    eyebrow: 'Direct local delivery',
     description:
-      'Run your own local Delivery storefront, inventory, packing, dispatch, tracking and support.',
+      'Run your own Delivery storefront with inventory, packing, riders, payments, tracking, support and returns.',
     features: [
       'Food, Groceries, Fruits & Vegetables',
       'COD & Razorpay',
-      'Live-location & delivery radius',
-      'Inventory & barcode scanning',
+      'Customer address & two mobile numbers',
+      'Live location & delivery radius',
+      'Minimum order delivery fee',
+      'Handling & packing charges',
+      'Demand-based surge pricing',
       'Packer & Delivery Boy portals',
-      'Automatic assignment & live tracking',
+      'Automatic driver assignment',
+      'Live tracking & delivery proof',
+      'Inventory & barcode scanning',
       'Returns, replacements & Live Support',
       'COD cash reconciliation',
     ],
   },
   {
+    number: '03',
     name: 'Resort',
+    eyebrow: 'Hospitality operations',
     description:
-      'Manage Resort operations beside Restaurant and Delivery from the same business account.',
+      'Manage room inventory and bookings beside Restaurant and Delivery from the same business platform.',
     features: [
       'Resort workspace',
       'Room types & rooms',
       'Booking management',
       'Guest workflows',
       'Owner / Manager visibility',
-      'Combined hospitality operations',
+      'Combined Restaurant + Resort operation',
+      'Separate payment handling where configured',
     ],
   },
 ]
 
-const platformFeatures = [
+const featureItems = [
   {
     title: 'Restaurant Code Login',
     text:
-      'Enter the 5-digit Restaurant Code and show only the portals included in that active subscription.',
+      'Enter a 5-digit Restaurant Code and display only the portals included in the active subscription.',
   },
   {
-    title: 'Installable Web App',
+    title: 'Installable APP',
     text:
-      'Digital Dine-In can be installed as a PWA for faster Owner, Manager and staff access.',
+      'Digital Dine-In installs as a PWA and opens the dedicated mobile application area under /app.',
+  },
+  {
+    title: 'QR-first Ordering',
+    text:
+      'Guests scan the QR, browse the live menu, select Dine-In or Parcel and order from their phone.',
+  },
+  {
+    title: 'Role-based Portals',
+    text:
+      'Owner, Manager, Waiter, Kitchen, Packer and Delivery Boy access stays separated by role and plan.',
   },
   {
     title: 'Inventory & Opening Stock',
     text:
-      'Add packaged products with barcode, opening stock, available stock, low-stock threshold and restocking.',
+      'Track barcode, opening stock, available stock, reserved stock, low-stock threshold and restocking.',
   },
   {
     title: 'Barcode Packing',
     text:
-      'Packer verifies packaged products before an order can be marked packed.',
+      'Packer verifies packaged products before the order can be marked packed.',
   },
   {
     title: 'Stock Protection',
     text:
-      'Server-side stock reservation, consumption and release reduces overselling risk.',
+      'Server-side stock reservation, consumption and release helps reduce overselling.',
   },
   {
     title: 'Delivery Pricing Controls',
     text:
-      'Minimum-order delivery fee, packing charge, handling charge, CGST/SGST and demand-based surge pricing.',
+      'Minimum-order fee, handling charge, packing charge, CGST/SGST and demand-based surge pricing.',
   },
   {
     title: 'Live Delivery Operations',
     text:
-      'Automatic rider assignment, customer tracking, delivery proof and driver contact details.',
+      'Automatic rider assignment, tracking, delivery proof and driver contact information.',
   },
   {
-    title: 'Live Support',
+    title: 'Customer Live Support',
     text:
-      'Customers contact the Manager through Live Support instead of directly creating return or replacement requests.',
+      'Customers can contact the Manager through Live Support for order-related issues.',
   },
   {
     title: 'Return Pickup Workflow',
     text:
-      'Manager-approved returns become pickup tasks for the Delivery Boy before store verification and restocking.',
+      'Manager-approved returns create Delivery Boy pickup tasks before store verification and restocking.',
   },
   {
-    title: 'Replacement Workflow',
+    title: 'Billing & COD Reconciliation',
     text:
-      'Manager-controlled replacement flow with inventory protection for replacement stock.',
-  },
-  {
-    title: 'Delivery Billing',
-    text:
-      'Owner and Manager can generate Delivery bills using authoritative server-side order values.',
-  },
-  {
-    title: 'COD Cash Reconciliation',
-    text:
-      'Track rider COD liability, cash handover requests and Owner / Manager settlement approval.',
+      'Owner and Manager can generate Delivery bills and reconcile rider COD cash handovers.',
   },
 ]
 
@@ -121,11 +134,11 @@ const plans = [
   {
     code: 'restaurant_pro',
     name: 'Restaurant',
-    monthly: '₹1,499',
+    price: '₹1,499',
     sixMonths: '₹8,095',
     annual: '₹14,390',
     description:
-      'Complete Restaurant operations.',
+      'Complete Restaurant ordering and staff operations.',
     features: [
       'QR menu & table ordering',
       'Dine-In & Parcel',
@@ -138,16 +151,16 @@ const plans = [
   {
     code: 'delivery',
     name: 'Delivery',
-    monthly: '₹1,499',
+    price: '₹1,499',
     sixMonths: '₹8,095',
     annual: '₹14,390',
     description:
-      'Direct local ordering and dispatch.',
+      'Direct ordering, dispatch and delivery operations.',
     features: [
       'Customer Delivery storefront',
       'Food / Grocery / Fruits & Vegetables',
       'COD & Razorpay',
-      'Live location & delivery radius',
+      'Live location & radius',
       'Inventory & barcode workflow',
       'Packer & Delivery Boy portals',
       'Tracking, returns & Live Support',
@@ -156,28 +169,28 @@ const plans = [
   {
     code: 'restaurant_resort_pro',
     name: 'Restaurant + Resort',
-    monthly: '₹2,999',
+    price: '₹2,999',
     sixMonths: '₹16,195',
     annual: '₹28,790',
     description:
-      'Restaurant and hospitality operations.',
+      'Restaurant and Resort operations together.',
     features: [
       'Everything in Restaurant',
       'Resort workspace',
       'Room types & rooms',
       'Booking operations',
       'Guest workflows',
-      'Combined operational visibility',
+      'Combined visibility',
     ],
   },
   {
     code: 'restaurant_delivery',
     name: 'Restaurant + Delivery',
-    monthly: '₹2,999',
+    price: '₹2,999',
     sixMonths: '₹16,195',
     annual: '₹28,790',
     description:
-      'Restaurant plus your own Delivery operation.',
+      'Restaurant operations plus your own Delivery channel.',
     featured: true,
     features: [
       'Everything in Restaurant',
@@ -191,92 +204,129 @@ const plans = [
   {
     code: 'restaurant_resort_delivery',
     name: 'Restaurant + Resort + Delivery',
-    monthly: '₹3,999',
+    price: '₹3,999',
     sixMonths: '₹21,595',
     annual: '₹38,390',
     description:
-      'Complete Digital Dine-In platform.',
+      'The complete Digital Dine-In operations platform.',
     features: [
       'Restaurant module',
       'Delivery module',
       'Resort module',
       'All role-based portals',
       'Payments, billing & inventory',
-      'Tracking, support & operational reports',
+      'Tracking, support & reports',
     ],
   },
 ]
 
-function SectionTitle({
-  eyebrow,
-  title,
-  text,
+function Container({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode
+  className?: string
 }) {
   return (
-    <div className="max-w-2xl">
-      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-400">
-        {eyebrow}
-      </p>
-
-      <h2 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-4xl">
-        {title}
-      </h2>
-
-      {text && (
-        <p className="mt-3 text-sm leading-7 text-neutral-400">
-          {text}
-        </p>
-      )}
+    <div
+      className={`mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 ${className}`}
+    >
+      {children}
     </div>
   )
 }
 
-function PlanCard({ plan }) {
+function SectionHeading({
+  eyebrow,
+  title,
+  text,
+  centered = false,
+}: {
+  eyebrow: string
+  title: string
+  text?: string
+  centered?: boolean
+}) {
   return (
-    <article
-      className={`flex h-full flex-col rounded-[26px] border p-5 ${
-        plan.featured
-          ? 'border-orange-500/40 bg-orange-500/[0.05]'
-          : 'border-white/[0.08] bg-white/[0.025]'
-      }`}
+    <div
+      className={
+        centered
+          ? 'mx-auto max-w-2xl text-center'
+          : 'max-w-2xl'
+      }
     >
-      {plan.featured && (
-        <span className="mb-4 w-fit rounded-full bg-orange-500 px-3 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-black">
-          Popular
-        </span>
-      )}
-
-      <h3 className="text-xl font-black text-white">
-        {plan.name}
-      </h3>
-
-      <p className="mt-2 min-h-10 text-[11px] leading-5 text-neutral-500">
-        {plan.description}
+      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-orange-600">
+        {eyebrow}
       </p>
 
-      <div className="mt-5">
-        <p className="text-3xl font-black tracking-tight text-white">
-          {plan.monthly}
-          <span className="ml-1 text-[10px] font-bold text-neutral-600">
+      <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-neutral-950 sm:text-4xl">
+        {title}
+      </h2>
+
+      {text ? (
+        <p className="mt-4 text-sm leading-7 text-neutral-600">
+          {text}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function PlanCard({
+  plan,
+}: {
+  plan: (typeof plans)[number]
+}) {
+  return (
+    <article
+      className={`relative flex h-full flex-col rounded-[28px] border bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg ${
+        plan.featured
+          ? 'border-orange-500 ring-1 ring-orange-100'
+          : 'border-neutral-200'
+      }`}
+    >
+      {plan.featured ? (
+        <span className="absolute -top-3 left-5 rounded-full bg-neutral-950 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white">
+          Popular
+        </span>
+      ) : null}
+
+      <div className="pt-1">
+        <h3 className="text-lg font-black tracking-tight text-neutral-950">
+          {plan.name}
+        </h3>
+
+        <p className="mt-2 min-h-12 text-[11px] leading-5 text-neutral-500">
+          {plan.description}
+        </p>
+      </div>
+
+      <div className="mt-5 border-y border-neutral-100 py-5">
+        <div className="flex items-end gap-1">
+          <span className="text-3xl font-black tracking-[-0.04em] text-neutral-950">
+            {plan.price}
+          </span>
+
+          <span className="pb-1 text-[9px] font-bold text-neutral-400">
             / month
           </span>
-        </p>
+        </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 text-[9px]">
-          <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3">
-            <p className="font-black text-neutral-300">
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-xl bg-neutral-50 p-3">
+            <p className="text-[10px] font-black text-neutral-800">
               {plan.sixMonths}
             </p>
-            <p className="mt-1 text-neutral-600">
+            <p className="mt-1 text-[8px] font-bold text-neutral-400">
               6 months
             </p>
           </div>
 
-          <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3">
-            <p className="font-black text-neutral-300">
+          <div className="rounded-xl bg-neutral-50 p-3">
+            <p className="text-[10px] font-black text-neutral-800">
               {plan.annual}
             </p>
-            <p className="mt-1 text-neutral-600">
+            <p className="mt-1 text-[8px] font-bold text-neutral-400">
               12 months
             </p>
           </div>
@@ -284,47 +334,41 @@ function PlanCard({ plan }) {
       </div>
 
       <div className="mt-5 flex-1 space-y-2.5">
-        {plan.features.map(
-          (feature) => (
-            <div
-              key={feature}
-              className="flex gap-2"
-            >
-              <span className="mt-0.5 text-[10px] font-black text-orange-400">
-                ✓
-              </span>
+        {plan.features.map((feature) => (
+          <div
+            key={feature}
+            className="flex items-start gap-2.5"
+          >
+            <span className="mt-[2px] flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[9px] font-black text-orange-600">
+              ✓
+            </span>
 
-              <span className="text-[10px] leading-5 text-neutral-400">
-                {feature}
-              </span>
-            </div>
-          )
-        )}
+            <span className="text-[10px] leading-5 text-neutral-600">
+              {feature}
+            </span>
+          </div>
+        ))}
       </div>
 
       <Link
         href={`/register?plan=${encodeURIComponent(
           plan.code
-        )}`}
+        )}&offer=one-month-free`}
         className={`mt-6 inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-[10px] font-black transition ${
           plan.featured
-            ? 'bg-orange-500 text-black hover:bg-orange-400'
-            : 'bg-white text-black hover:bg-neutral-200'
+            ? 'bg-orange-500 text-neutral-950 hover:bg-orange-400'
+            : 'bg-neutral-950 text-white hover:bg-neutral-800'
         }`}
       >
-        Register for this plan
+        Start 1 Month Free
       </Link>
     </article>
   )
 }
 
 export default function LandingPage() {
-  useMobileViewportLock()
-
-  const [
-    privacyReady,
-    setPrivacyReady,
-  ] = useState(false)
+  const [privacyReady, setPrivacyReady] =
+    useState(false)
 
   const [
     showPrivacyNotice,
@@ -342,7 +386,7 @@ export default function LandingPage() {
         setShowPrivacyNotice(true)
       }
     } catch {
-      // Ignore unavailable storage.
+      // Ignore unavailable localStorage.
     }
 
     setPrivacyReady(true)
@@ -355,57 +399,79 @@ export default function LandingPage() {
         'true'
       )
     } catch {
-      // Ignore unavailable storage.
+      // Ignore unavailable localStorage.
     }
 
     setShowPrivacyNotice(false)
   }
 
   return (
-    <div className="min-h-screen bg-[#090909] text-white selection:bg-orange-500 selection:text-black">
-      {/* =================================================== */}
-      {/* FREE MONTH BANNER                                   */}
-      {/* =================================================== */}
+    <div className="min-h-screen bg-[#f7f7f5] text-neutral-950 selection:bg-orange-200 selection:text-neutral-950">
+      <style jsx global>{`
+        html {
+          scroll-behavior: smooth;
+        }
 
-      <div className="border-b border-orange-500/20 bg-orange-500/[0.08]">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-center gap-2 px-4 py-2.5 text-center sm:flex-row sm:px-6">
-          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-300">
-            Launch Offer
+        body {
+          margin: 0;
+          background: #f7f7f5;
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          html {
+            scroll-behavior: auto;
+          }
+
+          *,
+          *::before,
+          *::after {
+            transition: none !important;
+            animation: none !important;
+          }
+        }
+      `}</style>
+
+      {/* Offer */}
+      <div className="border-b border-orange-200 bg-orange-50">
+        <Container className="flex min-h-10 flex-col items-center justify-center gap-1 py-2 text-center sm:flex-row sm:gap-3">
+          <span className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-700">
+            New Customer Offer
           </span>
 
-          <span className="text-[10px] font-bold text-neutral-300">
-            New Digital Dine-In customers get their first month free.
+          <span className="text-[10px] font-bold text-neutral-700">
+            Get your first month free.
           </span>
 
           <Link
             href="/register?offer=one-month-free"
-            className="text-[10px] font-black text-white underline decoration-orange-500 underline-offset-4"
+            className="text-[10px] font-black text-neutral-950 underline decoration-orange-400 underline-offset-4"
           >
-            Claim 1 Month Free
+            Claim offer
           </Link>
-        </div>
+        </Container>
       </div>
 
-      {/* =================================================== */}
-      {/* HEADER                                              */}
-      {/* =================================================== */}
-
-      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#090909]/95 backdrop-blur-xl">
-        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+      {/* Header */}
+      <header className="sticky top-0 z-50 border-b border-neutral-200/80 bg-[#f7f7f5]/95 backdrop-blur-xl">
+        <Container className="flex min-h-16 items-center justify-between gap-2">
           <Link
             href="/"
-            className="flex min-w-0 items-center gap-3"
+            className="flex min-w-0 items-center gap-2.5"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[10px] font-black text-black">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-[10px] font-black text-white">
               DD
             </div>
 
             <div className="min-w-0">
-              <p className="truncate text-sm font-black">
+              <p className="truncate text-xs font-black sm:text-sm">
                 Digital Dine-In
               </p>
 
-              <p className="hidden text-[8px] font-bold uppercase tracking-[0.16em] text-neutral-600 sm:block">
+              <p className="hidden text-[8px] font-bold uppercase tracking-[0.14em] text-neutral-400 sm:block">
                 Restaurant · Delivery · Resort
               </p>
             </div>
@@ -414,230 +480,259 @@ export default function LandingPage() {
           <nav className="hidden items-center gap-6 text-[10px] font-bold text-neutral-500 lg:flex">
             <a
               href="#platform"
-              className="transition hover:text-white"
+              className="transition hover:text-neutral-950"
             >
               Platform
             </a>
 
             <a
               href="#features"
-              className="transition hover:text-white"
+              className="transition hover:text-neutral-950"
             >
               Features
             </a>
 
             <a
               href="#pricing"
-              className="transition hover:text-white"
+              className="transition hover:text-neutral-950"
             >
               Pricing
             </a>
 
             <a
-              href="#contact"
-              className="transition hover:text-white"
+              href="#support"
+              className="transition hover:text-neutral-950"
             >
               Support
             </a>
           </nav>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Link
-              href="/login"
-              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-[9px] font-black text-white transition hover:border-orange-500/30 hover:bg-orange-500/[0.07] sm:px-4 sm:text-[10px]"
+              href="/app"
+              className="inline-flex min-h-9 items-center justify-center rounded-lg border border-neutral-300 bg-white px-2.5 text-[8px] font-black text-neutral-900 transition hover:border-neutral-400 sm:min-h-10 sm:rounded-xl sm:px-4 sm:text-[10px]"
             >
-              Restaurant Login
+              Login
             </Link>
+
+            <InstallAppButton
+              label="Install APP"
+              className="min-h-9 rounded-lg bg-neutral-950 px-2.5 text-[8px] font-black text-white transition hover:bg-neutral-800 disabled:cursor-default disabled:opacity-70 sm:min-h-10 sm:rounded-xl sm:px-4 sm:text-[10px]"
+            />
 
             <Link
               href="/register"
-              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-white px-3 text-[9px] font-black text-black transition hover:bg-orange-500 sm:px-4 sm:text-[10px]"
+              className="inline-flex min-h-9 items-center justify-center rounded-lg bg-orange-500 px-2.5 text-[8px] font-black text-neutral-950 transition hover:bg-orange-400 sm:min-h-10 sm:rounded-xl sm:px-4 sm:text-[10px]"
             >
               Register
             </Link>
           </div>
-        </div>
+        </Container>
       </header>
 
       <main>
-        {/* ================================================= */}
-        {/* HERO                                              */}
-        {/* ================================================= */}
+        {/* Hero */}
+        <section className="border-b border-neutral-200">
+          <Container className="grid gap-10 py-14 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:py-24">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1.5 shadow-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
 
-        <section className="border-b border-white/[0.06]">
-          <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-24">
-            <div className="flex flex-col justify-center">
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-400">
-                One operational platform
-              </p>
+                <span className="text-[9px] font-black uppercase tracking-[0.16em] text-neutral-600">
+                  One operations platform
+                </span>
+              </div>
 
-              <h1 className="mt-4 max-w-3xl text-4xl font-black leading-[1.03] tracking-[-0.045em] sm:text-5xl lg:text-6xl">
-                Restaurant, Delivery
+              <h1 className="mt-6 max-w-3xl text-4xl font-black leading-[1.02] tracking-[-0.05em] text-neutral-950 sm:text-5xl lg:text-6xl">
+                Restaurant,
                 <br />
-                <span className="text-neutral-500">
-                  and Resort operations.
+                Delivery & Resort
+                <br />
+                <span className="text-neutral-400">
+                  without the clutter.
                 </span>
               </h1>
 
-              <p className="mt-6 max-w-2xl text-sm leading-7 text-neutral-400 sm:text-base">
+              <p className="mt-6 max-w-2xl text-sm leading-7 text-neutral-600 sm:text-base">
                 Digital Dine-In connects QR ordering, staff operations,
                 inventory, direct Delivery, dispatch, payments, billing,
-                support and Resort workflows in one simple platform.
+                support and Resort workflows in one clean system.
               </p>
 
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <Link
                   href="/register?offer=one-month-free"
-                  className="inline-flex min-h-12 items-center justify-center rounded-xl bg-orange-500 px-6 text-xs font-black text-black transition hover:bg-orange-400"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl bg-orange-500 px-6 text-xs font-black text-neutral-950 transition hover:bg-orange-400"
                 >
                   Start 1 Month Free
                 </Link>
 
+                <InstallAppButton
+                  label="Install APP"
+                  className="min-h-12 rounded-xl bg-neutral-950 px-6 text-xs font-black text-white transition hover:bg-neutral-800 disabled:cursor-default disabled:opacity-70"
+                />
+
                 <Link
-                  href="/login"
-                  className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/10 px-6 text-xs font-black text-white transition hover:bg-white/[0.04]"
+                  href="/app"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl border border-neutral-300 bg-white px-6 text-xs font-black text-neutral-900 transition hover:bg-neutral-50"
                 >
                   Restaurant Login
                 </Link>
               </div>
 
-              <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[9px] font-bold text-neutral-600">
-                <span>✓ QR ordering</span>
-                <span>✓ COD & Razorpay</span>
-                <span>✓ Inventory</span>
-                <span>✓ Role-based portals</span>
-                <span>✓ Installable PWA</span>
+              <div className="mt-7 flex flex-wrap gap-2">
+                {[
+                  'QR ordering',
+                  'COD & Razorpay',
+                  'Inventory',
+                  'Role portals',
+                  'Installable PWA',
+                ].map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-[9px] font-bold text-neutral-500"
+                  >
+                    {item}
+                  </span>
+                ))}
               </div>
             </div>
 
-            <div className="rounded-[30px] border border-white/[0.08] bg-white/[0.025] p-5 sm:p-6">
-              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neutral-600">
-                What Digital Dine-In connects
-              </p>
+            <div className="rounded-[32px] border border-neutral-200 bg-white p-5 shadow-[0_20px_60px_rgba(0,0,0,0.06)] sm:p-6">
+              <div className="flex items-center justify-between border-b border-neutral-100 pb-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.17em] text-orange-600">
+                    Digital Dine-In
+                  </p>
 
-              <div className="mt-5 space-y-3">
+                  <h2 className="mt-1 text-lg font-black">
+                    Business Overview
+                  </h2>
+                </div>
+
+                <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[8px] font-black text-emerald-700">
+                  LIVE
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-3">
                 {[
-                  [
-                    'Restaurant',
-                    'QR menu · Staff · Billing · Razorpay',
-                  ],
-                  [
-                    'Delivery',
-                    'Storefront · Inventory · Dispatch · Tracking',
-                  ],
-                  [
-                    'Resort',
-                    'Rooms · Bookings · Guest operations',
-                  ],
-                  [
-                    'App Access',
-                    'Restaurant Code · Plan-aware portals',
-                  ],
-                ].map(
-                  ([title, text]) => (
-                    <div
-                      key={title}
-                      className="rounded-2xl border border-white/[0.06] bg-black/20 p-4"
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <p className="text-xs font-black text-white">
-                          {title}
-                        </p>
+                  ['Restaurant', 'QR menu · Billing · Staff'],
+                  ['Delivery', 'Inventory · Dispatch · Tracking'],
+                  ['Resort', 'Rooms · Bookings · Guests'],
+                  ['APP', 'Restaurant Code · Role access'],
+                ].map(([title, description]) => (
+                  <div
+                    key={title}
+                    className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 p-4"
+                  >
+                    <div>
+                      <p className="text-xs font-black text-neutral-950">
+                        {title}
+                      </p>
 
-                        <span className="text-orange-400">
-                          →
-                        </span>
-                      </div>
-
-                      <p className="mt-1 text-[10px] leading-5 text-neutral-500">
-                        {text}
+                      <p className="mt-1 text-[9px] font-medium text-neutral-500">
+                        {description}
                       </p>
                     </div>
-                  )
-                )}
+
+                    <span className="text-sm font-black text-neutral-300">
+                      →
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          </Container>
         </section>
 
-        {/* ================================================= */}
-        {/* MODULES                                           */}
-        {/* ================================================= */}
-
+        {/* Platform */}
         <section
           id="platform"
-          className="border-b border-white/[0.06]"
+          className="scroll-mt-20 border-b border-neutral-200 bg-white"
         >
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
-            <SectionTitle
+          <Container className="py-14 sm:py-20">
+            <SectionHeading
               eyebrow="Platform"
               title="Three modules. One business account."
-              text="Use the modules your business needs today and keep operations connected as you grow."
+              text="Use only the modules your business needs while keeping operations connected."
             />
 
             <div className="mt-8 grid gap-4 lg:grid-cols-3">
-              {modules.map(
-                (module) => (
-                  <article
-                    key={module.name}
-                    className="rounded-[26px] border border-white/[0.08] bg-white/[0.02] p-5"
-                  >
-                    <h3 className="text-lg font-black">
-                      {module.name}
-                    </h3>
+              {modules.map((module) => (
+                <article
+                  key={module.name}
+                  className="rounded-[28px] border border-neutral-200 bg-[#fafaf8] p-6"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-[10px] font-black text-neutral-400">
+                      {module.number}
+                    </span>
 
-                    <p className="mt-2 min-h-16 text-[11px] leading-6 text-neutral-500">
-                      {module.description}
-                    </p>
+                    <span className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-neutral-500">
+                      {module.eyebrow}
+                    </span>
+                  </div>
 
-                    <div className="mt-4 space-y-2.5 border-t border-white/[0.06] pt-4">
-                      {module.features.map(
-                        (feature) => (
-                          <div
-                            key={feature}
-                            className="flex gap-2"
-                          >
-                            <span className="text-[10px] font-black text-orange-400">
-                              ✓
-                            </span>
+                  <h3 className="mt-5 text-2xl font-black tracking-tight">
+                    {module.name}
+                  </h3>
 
-                            <span className="text-[10px] leading-5 text-neutral-400">
-                              {feature}
-                            </span>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </article>
-                )
-              )}
+                  <p className="mt-3 text-[11px] leading-6 text-neutral-500">
+                    {module.description}
+                  </p>
+
+                  <div className="mt-5 space-y-2.5 border-t border-neutral-200 pt-5">
+                    {module.features.map((feature) => (
+                      <div
+                        key={feature}
+                        className="flex items-start gap-2.5"
+                      >
+                        <span className="mt-[2px] text-[10px] font-black text-orange-600">
+                          ✓
+                        </span>
+
+                        <span className="text-[10px] leading-5 text-neutral-600">
+                          {feature}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              ))}
             </div>
-          </div>
+          </Container>
         </section>
 
-        {/* ================================================= */}
-        {/* FEATURES / RECENT UPGRADES                        */}
-        {/* ================================================= */}
-
+        {/* Features */}
         <section
           id="features"
-          className="border-b border-white/[0.06]"
+          className="scroll-mt-20 border-b border-neutral-200"
         >
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
-            <SectionTitle
+          <Container className="py-14 sm:py-20">
+            <SectionHeading
               eyebrow="Current Platform"
-              title="Built for real daily operations."
-              text="The platform now goes well beyond QR menus, with inventory, Delivery controls, support, returns, billing and plan-aware staff access."
+              title="Built for daily operations."
+              text="A practical operational system for ordering, inventory, dispatch, staff access, customer support and billing."
             />
 
-            <div className="mt-8 grid gap-px overflow-hidden rounded-[26px] border border-white/[0.07] bg-white/[0.07] sm:grid-cols-2 lg:grid-cols-3">
-              {platformFeatures.map(
-                (feature) => (
+            <div className="mt-8 grid overflow-hidden rounded-[28px] border border-neutral-200 bg-neutral-200 sm:grid-cols-2 lg:grid-cols-3">
+              {featureItems.map(
+                (feature, index) => (
                   <article
                     key={feature.title}
-                    className="bg-[#0d0d0d] p-5"
+                    className="bg-white p-5"
                   >
-                    <h3 className="text-xs font-black text-white">
+                    <p className="text-[9px] font-black text-orange-600">
+                      {String(
+                        index + 1
+                      ).padStart(
+                        2,
+                        '0'
+                      )}
+                    </p>
+
+                    <h3 className="mt-3 text-sm font-black text-neutral-950">
                       {feature.title}
                     </h3>
 
@@ -648,211 +743,295 @@ export default function LandingPage() {
                 )
               )}
             </div>
-          </div>
+          </Container>
         </section>
 
-        {/* ================================================= */}
-        {/* FREE MONTH                                        */}
-        {/* ================================================= */}
+        {/* Offer */}
+        <section className="border-b border-neutral-200 bg-neutral-950 text-white">
+          <Container className="grid gap-6 py-12 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
+                New Customer Offer
+              </p>
 
-        <section className="border-b border-white/[0.06]">
-          <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-            <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/[0.06] p-6 sm:p-8">
-              <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
-                    New Customer Offer
-                  </p>
+              <h2 className="mt-2 text-3xl font-black tracking-tight">
+                Start with 1 month free.
+              </h2>
 
-                  <h2 className="mt-2 text-2xl font-black sm:text-3xl">
-                    First month free.
-                  </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-neutral-400">
+                New Digital Dine-In customers can use the launch offer to start
+                their first month free before continuing with a paid plan.
+              </p>
+            </div>
 
-                  <p className="mt-3 max-w-2xl text-sm leading-7 text-neutral-400">
-                    New Digital Dine-In customers can start with a 1-month free subscription offer and experience the platform before continuing with a paid plan.
-                  </p>
+            <Link
+              href="/register?offer=one-month-free"
+              className="inline-flex min-h-12 items-center justify-center rounded-xl bg-orange-500 px-6 text-xs font-black text-neutral-950 transition hover:bg-orange-400"
+            >
+              Claim Free Month
+            </Link>
+          </Container>
+        </section>
+
+        {/* Pricing */}
+        <section
+          id="pricing"
+          className="scroll-mt-20 border-b border-neutral-200 bg-white"
+        >
+          <Container className="py-14 sm:py-20">
+            <SectionHeading
+              eyebrow="Subscription Plans"
+              title="Simple plans for each operation."
+              text="Choose Restaurant, Delivery, Resort or a combined plan."
+              centered
+            />
+
+            <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {plans.map((plan) => (
+                <PlanCard
+                  key={plan.code}
+                  plan={plan}
+                />
+              ))}
+            </div>
+
+            <p className="mx-auto mt-6 max-w-3xl text-center text-[9px] leading-5 text-neutral-400">
+              Free-month eligibility and subscription activation should be
+              validated in the registration and subscription flow.
+            </p>
+          </Container>
+        </section>
+
+        {/* APP */}
+        <section className="border-b border-neutral-200">
+          <Container className="py-14 sm:py-20">
+            <div className="grid overflow-hidden rounded-[32px] border border-neutral-200 bg-white lg:grid-cols-[1fr_360px]">
+              <div className="p-6 sm:p-8 lg:p-10">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">
+                  Digital Dine-In APP
+                </p>
+
+                <h2 className="mt-3 max-w-2xl text-3xl font-black tracking-[-0.04em]">
+                  One app. Only the portals your plan includes.
+                </h2>
+
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-neutral-600">
+                  Open the APP, enter the 5-digit Restaurant Code and Digital
+                  Dine-In shows the allowed portals for that active
+                  subscription.
+                </p>
+
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {[
+                    'Owner',
+                    'Manager',
+                    'Waiter',
+                    'Kitchen',
+                    'Packer',
+                    'Delivery Boy',
+                  ].map((role) => (
+                    <span
+                      key={role}
+                      className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[9px] font-bold text-neutral-600"
+                    >
+                      {role}
+                    </span>
+                  ))}
                 </div>
+              </div>
+
+              <div className="flex flex-col justify-center gap-3 border-t border-neutral-200 bg-neutral-50 p-6 lg:border-l lg:border-t-0">
+                <InstallAppButton
+                  label="Install APP"
+                  className="min-h-12 rounded-xl bg-neutral-950 px-6 text-xs font-black text-white disabled:cursor-default disabled:opacity-70"
+                />
 
                 <Link
-                  href="/register?offer=one-month-free"
-                  className="inline-flex min-h-12 items-center justify-center rounded-xl bg-orange-500 px-6 text-xs font-black text-black transition hover:bg-orange-400"
+                  href="/app"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl border border-neutral-300 bg-white px-6 text-xs font-black text-neutral-900"
                 >
-                  Claim Free Month
+                  Restaurant Login
                 </Link>
               </div>
             </div>
-          </div>
+          </Container>
         </section>
 
-        {/* ================================================= */}
-        {/* PRICING                                           */}
-        {/* ================================================= */}
-
+        {/* Support */}
         <section
-          id="pricing"
-          className="border-b border-white/[0.06]"
+          id="support"
+          className="scroll-mt-20"
         >
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
-            <SectionTitle
-              eyebrow="Subscription Plans"
-              title="Choose the modules your business needs."
-              text="All five plans use the same Digital Dine-In account and role-based access model."
+          <Container className="py-14 sm:py-20">
+            <SectionHeading
+              eyebrow="Contact & Support"
+              title="Need help getting started?"
+              text="Contact Digital Dine-In for registration, subscription, setup and platform support."
             />
 
-            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              {plans.map(
-                (plan) => (
-                  <PlanCard
-                    key={plan.code}
-                    plan={plan}
-                  />
-                )
-              )}
-            </div>
-
-            <p className="mt-5 text-center text-[9px] leading-5 text-neutral-600">
-              New-customer free-month eligibility and final subscription activation should be confirmed during registration/subscription checkout.
-            </p>
-          </div>
-        </section>
-
-        {/* ================================================= */}
-        {/* LOGIN                                             */}
-        {/* ================================================= */}
-
-        <section className="border-b border-white/[0.06]">
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-            <div className="grid gap-8 rounded-[28px] border border-white/[0.08] bg-white/[0.02] p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
-                  Existing Customer
-                </p>
-
-                <h2 className="mt-2 text-2xl font-black sm:text-3xl">
-                  Open your business portals.
-                </h2>
-
-                <p className="mt-3 max-w-2xl text-sm leading-7 text-neutral-500">
-                  Enter your Restaurant Code. Digital Dine-In checks the active subscription and shows only the Owner, Manager, Waiter, Kitchen, Packer or Delivery Boy portals included in that plan.
-                </p>
-              </div>
-
-              <Link
-                href="/restaurant-login"
-                className="inline-flex min-h-12 items-center justify-center rounded-xl bg-white px-6 text-xs font-black text-black transition hover:bg-neutral-200"
-              >
-                Restaurant Login
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* ================================================= */}
-        {/* CONTACT                                           */}
-        {/* ================================================= */}
-
-        <section
-          id="contact"
-          className="border-b border-white/[0.06]"
-        >
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
-            <SectionTitle
-              eyebrow="Support"
-              title="Need help choosing or running a plan?"
-              text="Contact Digital Dine-In for registration, subscription and platform support."
-            />
-
-            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
-                className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 transition hover:border-white/15"
+                className="group rounded-[24px] border border-neutral-200 bg-white p-6 transition hover:border-neutral-300 hover:shadow-md"
               >
-                <p className="text-[9px] font-black uppercase tracking-[0.17em] text-neutral-600">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-neutral-400">
                   Email
                 </p>
 
-                <p className="mt-2 break-all text-sm font-black text-white">
+                <p className="mt-3 break-all text-sm font-black text-neutral-950">
                   {CONTACT_EMAIL}
+                </p>
+
+                <p className="mt-3 text-[10px] font-bold text-orange-600">
+                  Send email →
                 </p>
               </a>
 
               <a
                 href={`tel:${SUPPORT_PHONE_LINK}`}
-                className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 transition hover:border-white/15"
+                className="group rounded-[24px] border border-neutral-200 bg-white p-6 transition hover:border-neutral-300 hover:shadow-md"
               >
-                <p className="text-[9px] font-black uppercase tracking-[0.17em] text-neutral-600">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-neutral-400">
                   Support Number
                 </p>
 
-                <p className="mt-2 text-sm font-black text-white">
+                <p className="mt-3 text-sm font-black text-neutral-950">
                   {SUPPORT_PHONE}
+                </p>
+
+                <p className="mt-3 text-[10px] font-bold text-orange-600">
+                  Call support →
                 </p>
               </a>
             </div>
 
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Link
                 href="/register"
-                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-orange-500 px-5 text-[10px] font-black text-black"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-orange-500 px-5 text-[10px] font-black text-neutral-950"
               >
                 Register
               </Link>
 
+              <InstallAppButton
+                label="Install APP"
+                className="min-h-11 rounded-xl bg-neutral-950 px-5 text-[10px] font-black text-white disabled:cursor-default disabled:opacity-70"
+              />
+
               <Link
-                href="/restaurant-login"
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 px-5 text-[10px] font-black text-white"
+                href="/app"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-neutral-300 bg-white px-5 text-[10px] font-black text-neutral-900"
               >
                 Restaurant Login
               </Link>
             </div>
-          </div>
+          </Container>
         </section>
       </main>
 
-      {/* =================================================== */}
-      {/* FOOTER                                              */}
-      {/* =================================================== */}
+      {/* Footer */}
+      <footer className="border-t border-neutral-200 bg-white">
+        <Container className="flex flex-col gap-5 py-8 text-center md:flex-row md:items-center md:justify-between md:text-left">
+          <div className="flex items-center justify-center gap-3 md:justify-start">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-950 text-[9px] font-black text-white">
+              DD
+            </div>
 
-      <footer>
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-7 text-center sm:px-6 md:flex-row md:items-center md:justify-between md:text-left lg:px-8">
-          <div>
-            <p className="text-xs font-black">
-              Digital Dine-In
-            </p>
+            <div>
+              <p className="text-xs font-black">
+                Digital Dine-In
+              </p>
 
-            <p className="mt-1 text-[9px] text-neutral-700">
-              Restaurant · Delivery · Resort Operations
-            </p>
-          </div>
-
-          <p className="text-[9px] text-neutral-700">
-            © {new Date().getFullYear()} Digital Dine-In. All rights reserved.
-          </p>
-        </div>
-      </footer>
-
-      {/* =================================================== */}
-      {/* PRIVACY NOTICE                                      */}
-      {/* =================================================== */}
-
-      {privacyReady &&
-        showPrivacyNotice && (
-          <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-xl rounded-2xl border border-white/10 bg-[#151515] p-4 shadow-2xl sm:bottom-5">
-            <p className="text-[10px] leading-5 text-neutral-400">
-              Digital Dine-In uses necessary browser storage for preferences and application functionality.
-            </p>
-
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={acceptPrivacy}
-                className="rounded-xl bg-white px-4 py-2 text-[9px] font-black text-black"
-              >
-                Continue
-              </button>
+              <p className="mt-0.5 text-[8px] font-bold text-neutral-400">
+                Restaurant · Delivery · Resort
+              </p>
             </div>
           </div>
-        )}
+
+          <div className="flex flex-wrap justify-center gap-5 text-[9px] font-bold text-neutral-500">
+            <Link
+              href="/app"
+              className="hover:text-neutral-950"
+            >
+              Open APP
+            </Link>
+
+            <Link
+              href="/register"
+              className="hover:text-neutral-950"
+            >
+              Register
+            </Link>
+
+            <a
+              href="#pricing"
+              className="hover:text-neutral-950"
+            >
+              Pricing
+            </a>
+
+            <a
+              href="#support"
+              className="hover:text-neutral-950"
+            >
+              Support
+            </a>
+
+            <Link
+              href="/privacy-policy"
+              className="hover:text-neutral-950"
+            >
+              Privacy
+            </Link>
+          </div>
+
+          <p className="text-[9px] font-medium text-neutral-400">
+            © {new Date().getFullYear()} Digital Dine-In
+          </p>
+        </Container>
+      </footer>
+
+      {/* Privacy */}
+      {privacyReady &&
+      showPrivacyNotice ? (
+        <div className="fixed inset-x-3 bottom-3 z-[9999] mx-auto max-w-md">
+          <div className="rounded-[22px] border border-neutral-200 bg-white p-4 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-sm">
+                🔒
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black">
+                  Privacy
+                </p>
+
+                <p className="mt-1 text-[10px] leading-5 text-neutral-500">
+                  We use essential browser storage and security technologies
+                  required for Digital Dine-In. Read our{' '}
+                  <Link
+                    href="/privacy-policy"
+                    className="font-black text-orange-600"
+                  >
+                    Privacy Policy
+                  </Link>
+                  .
+                </p>
+
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={acceptPrivacy}
+                    className="rounded-lg bg-neutral-950 px-4 py-2 text-[10px] font-black text-white"
+                  >
+                    Accept
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

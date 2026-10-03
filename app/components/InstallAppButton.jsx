@@ -22,7 +22,7 @@ function isStandalone() {
   )
 }
 
-function isIOS() {
+function isIos() {
   if (
     typeof navigator ===
     'undefined'
@@ -52,211 +52,186 @@ export default function InstallAppButton({
   label = 'Install App',
   className = '',
 }) {
-  const [
-    deferredPrompt,
-    setDeferredPrompt,
-  ] = useState(null)
+  const [promptEvent, setPromptEvent] =
+    useState(null)
 
-  const [
-    installed,
-    setInstalled,
-  ] = useState(false)
+  const [installed, setInstalled] =
+    useState(false)
 
-  const [
-    installing,
-    setInstalling,
-  ] = useState(false)
+  const [helpOpen, setHelpOpen] =
+    useState(false)
 
-  const [
-    showHelp,
-    setShowHelp,
-  ] = useState(false)
+  const [installing, setInstalling] =
+    useState(false)
 
   useEffect(() => {
     setInstalled(
       isStandalone()
     )
 
-    /*
-     * Check whether instrumentation-client.js
-     * already captured the event before React loaded.
-     */
+    // The early instrumentation listener stores the event here.
     if (
       window
         .__digitalDineInstallPrompt
     ) {
-      setDeferredPrompt(
+      setPromptEvent(
         window
           .__digitalDineInstallPrompt
       )
     }
 
-    const handleInstallPrompt = (
+    const onPrompt = (
       event
     ) => {
-      console.log(
-        '[PWA] beforeinstallprompt received'
-      )
-
       event.preventDefault()
 
       window.__digitalDineInstallPrompt =
         event
 
-      setDeferredPrompt(
+      setPromptEvent(
         event
       )
     }
 
-    const handleInstallReady =
-      () => {
-        const saved =
+    const onReady = () => {
+      if (
+        window
+          .__digitalDineInstallPrompt
+      ) {
+        setPromptEvent(
           window
             .__digitalDineInstallPrompt
-
-        if (saved) {
-          setDeferredPrompt(
-            saved
-          )
-        }
-      }
-
-    const handleInstalled =
-      () => {
-        console.log(
-          '[PWA] appinstalled'
         )
+      }
+    }
 
+    const onInstalled =
+      () => {
         window.__digitalDineInstallPrompt =
           null
 
-        setDeferredPrompt(null)
+        setPromptEvent(null)
         setInstalled(true)
-        setInstalling(false)
-        setShowHelp(false)
+        setHelpOpen(false)
       }
 
     window.addEventListener(
       'beforeinstallprompt',
-      handleInstallPrompt
+      onPrompt
     )
 
     window.addEventListener(
       'digitaldine-install-ready',
-      handleInstallReady
+      onReady
     )
 
     window.addEventListener(
       'appinstalled',
-      handleInstalled
+      onInstalled
     )
 
-    const media =
+    window.addEventListener(
+      'digitaldine-app-installed',
+      onInstalled
+    )
+
+    const displayMode =
       window.matchMedia?.(
         '(display-mode: standalone)'
       )
 
-    const checkDisplayMode =
+    const onDisplayChange =
       () => {
         setInstalled(
           isStandalone()
         )
       }
 
-    media?.addEventListener?.(
+    displayMode?.addEventListener?.(
       'change',
-      checkDisplayMode
+      onDisplayChange
     )
 
     return () => {
       window.removeEventListener(
         'beforeinstallprompt',
-        handleInstallPrompt
+        onPrompt
       )
 
       window.removeEventListener(
         'digitaldine-install-ready',
-        handleInstallReady
+        onReady
       )
 
       window.removeEventListener(
         'appinstalled',
-        handleInstalled
+        onInstalled
       )
 
-      media?.removeEventListener?.(
+      window.removeEventListener(
+        'digitaldine-app-installed',
+        onInstalled
+      )
+
+      displayMode?.removeEventListener?.(
         'change',
-        checkDisplayMode
+        onDisplayChange
       )
     }
   }, [])
 
-  const handleInstall =
+  const install =
     async () => {
       if (installed) {
         return
       }
 
-      const prompt =
-        deferredPrompt ||
+      const deferred =
+        promptEvent ||
         window
           .__digitalDineInstallPrompt
 
-      /*
-       * Chrome did not supply its native
-       * install event.
-       *
-       * DO NOT disable the button.
-       * Give the browser-specific manual
-       * installation instructions instead.
-       */
-      if (!prompt) {
-        console.warn(
-          '[PWA] No beforeinstallprompt event available.'
-        )
-
-        setShowHelp(true)
+      if (!deferred) {
+        // Never disable the button just because Chromium did not
+        // expose beforeinstallprompt. Give the user a valid manual path.
+        setHelpOpen(true)
         return
       }
 
       setInstalling(true)
 
       try {
-        await prompt.prompt()
+        await deferred.prompt()
 
-        const choice =
-          await prompt.userChoice
+        const result =
+          await deferred.userChoice
 
-        console.log(
-          '[PWA] install result:',
-          choice?.outcome
-        )
-
-        /*
-         * One prompt event can only
-         * be used once.
-         */
+        // A BeforeInstallPromptEvent can only be used once.
         window.__digitalDineInstallPrompt =
           null
 
-        setDeferredPrompt(null)
+        setPromptEvent(null)
 
         if (
-          choice?.outcome ===
+          result?.outcome ===
           'accepted'
         ) {
-          setInstalled(true)
-          setShowHelp(false)
-        } else {
-          setShowHelp(true)
+          // The browser accepted the install request.
+          // `appinstalled` / standalone display mode is authoritative
+          // for showing the final Installed state.
+          setHelpOpen(false)
+          return
         }
+
+        // If dismissed, keep the button useful and show manual install.
+        setHelpOpen(true)
       } catch (error) {
         console.error(
-          '[PWA] install error:',
+          'PWA install prompt error:',
           error
         )
 
-        setShowHelp(true)
+        setHelpOpen(true)
       } finally {
         setInstalling(false)
       }
@@ -266,16 +241,24 @@ export default function InstallAppButton({
     <>
       <button
         type="button"
-        onClick={
-          handleInstall
-        }
+        onClick={install}
         disabled={
           installed ||
           installing
         }
         className={`inline-flex items-center justify-center gap-1.5 ${className}`}
+        aria-label={
+          installed
+            ? 'App installed'
+            : 'Install app'
+        }
+        title={
+          installed
+            ? 'App is installed'
+            : 'Install Digital Dine-In'
+        }
       >
-        <span>
+        <span aria-hidden="true">
           {installed
             ? '✓'
             : '⬇'}
@@ -290,102 +273,60 @@ export default function InstallAppButton({
         </span>
       </button>
 
-      {showHelp && (
-        <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-          <div className="w-full max-w-md rounded-t-[28px] bg-white p-5 text-neutral-950 shadow-2xl sm:rounded-[28px]">
-
+      {helpOpen && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60 p-0 backdrop-blur-[3px] sm:items-center sm:p-4">
+          <div className="w-full max-w-md rounded-t-[28px] border border-neutral-200 bg-white p-5 text-neutral-950 shadow-2xl sm:rounded-[28px]">
             <div className="flex items-start justify-between gap-4">
-
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-600">
-                  Digital Dine-In
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">
+                  Install Digital Dine-In
                 </p>
 
                 <h2 className="mt-1 text-xl font-black">
-                  Install App
+                  Add this site as an app
                 </h2>
               </div>
 
               <button
                 type="button"
                 onClick={() =>
-                  setShowHelp(false)
+                  setHelpOpen(false)
                 }
                 className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100 text-xs font-black"
               >
                 ✕
               </button>
-
             </div>
 
             <div className="mt-4 rounded-2xl bg-neutral-50 p-4 text-xs leading-6 text-neutral-700">
-
-              {isIOS() ? (
+              {isIos() ? (
                 <>
-                  <b>iPhone / iPad</b>
-                  <br />
-                  Open this website in Safari.
-                  <br />
-                  Tap <b>Share</b>.
-                  <br />
-                  Choose <b>Add to Home Screen</b>.
-                  <br />
-                  Tap <b>Add</b>.
+                  Open this page in Safari, tap <b>Share</b>, then choose <b>Add to Home Screen</b>.
                 </>
               ) : isAndroid() ? (
                 <>
-                  <b>Android Chrome</b>
-                  <br />
-                  Tap the <b>⋮</b> menu in Chrome.
-                  <br />
-                  Choose <b>Install app</b> or <b>Add to Home screen</b>.
-                  <br />
-                  Then confirm installation.
+                  In Chrome, tap <b>⋮</b> at the top-right, then choose <b>Install app</b> or <b>Add to Home screen</b>.
                 </>
               ) : (
                 <>
-                  <b>Chrome / Edge Desktop</b>
-                  <br />
-                  Open the browser menu.
-                  <br />
-                  Choose <b>Install Digital Dine-In</b>,
-                  <b> Install page as app</b>, or the install icon in the address bar.
+                  In Chrome or Edge, open the browser menu and choose <b>Install Digital Dine-In</b> / <b>Install page as app</b>. You may also see an install icon at the right side of the address bar.
                 </>
               )}
-
             </div>
 
-            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-
-              <p className="text-[10px] font-bold leading-5 text-amber-800">
-                Chrome has not supplied the automatic install prompt yet.
-                This can happen when the app was previously dismissed,
-                is already installed, or Chrome has not yet considered
-                this page installable.
-              </p>
-
-            </div>
+            <p className="mt-3 text-[10px] leading-5 text-neutral-500">
+              If Chrome previously dismissed the install prompt, it may temporarily stop showing the automatic prompt. The browser-menu method still works.
+            </p>
 
             <button
               type="button"
               onClick={() =>
-                window.location.reload()
+                setHelpOpen(false)
               }
-              className="mt-4 w-full rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-white"
+              className="mt-4 w-full rounded-xl bg-neutral-950 px-4 py-3 text-xs font-black text-white"
             >
-              ↻ Reload & Check Again
+              Got it
             </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                setShowHelp(false)
-              }
-              className="mt-2 w-full rounded-xl bg-neutral-950 px-4 py-3 text-xs font-black text-white"
-            >
-              Close
-            </button>
-
           </div>
         </div>
       )}
