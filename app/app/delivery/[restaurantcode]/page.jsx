@@ -1368,20 +1368,32 @@ export default function DeliveryStorePage({
                   Delivery fee
                 </p>
                 <p className="mt-1 text-sm font-black text-neutral-950">
-                  {Number(settings.delivery_fee || 0) === 0
+                  {previewDeliveryFee === 0
                     ? 'FREE'
-                    : money(settings.delivery_fee)}
+                    : money(previewDeliveryFee)}
                 </p>
+                {minimumOrderAmount > 0 &&
+                  subtotal > 0 &&
+                  subtotal < minimumOrderAmount && (
+                    <p className="mt-1 text-[9px] font-semibold text-neutral-400">
+                      Free above {money(minimumOrderAmount)}
+                    </p>
+                  )}
               </div>
 
               <div className="rounded-2xl bg-neutral-50 px-3 py-3">
                 <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
-                  Minimum order
+                  Free delivery from
                 </p>
                 <p className="mt-1 text-sm font-black text-neutral-950">
-                  {Number(settings.minimum_order_amount || 0) > 0
-                    ? money(settings.minimum_order_amount)
-                    : 'No minimum'}
+                  {minimumOrderAmount > 0
+                    ? money(minimumOrderAmount)
+                    : settings.free_delivery_above != null &&
+                        Number(settings.free_delivery_above) > 0
+                      ? money(settings.free_delivery_above)
+                      : Number(settings.delivery_fee || 0) === 0
+                        ? 'Always FREE'
+                        : 'Standard fee'}
                 </p>
               </div>
 
@@ -1923,11 +1935,7 @@ export default function DeliveryStorePage({
 
               <BillRow
                 label="Delivery Fee"
-                value={
-                  previewDeliveryFee === 0
-                    ? 'FREE'
-                    : money(previewDeliveryFee)
-                }
+                value={previewDeliveryFee === 0 ? 'FREE' : money(previewDeliveryFee)}
               />
 
               <BillRow
@@ -1953,7 +1961,6 @@ export default function DeliveryStorePage({
                     label={`SGST (${Number(settings.sgst_rate || 0)}%)`}
                     value={money(previewSgst)}
                   />
-
                   <BillRow
                     label={`CGST (${Number(settings.cgst_rate || 0)}%)`}
                     value={money(previewCgst)}

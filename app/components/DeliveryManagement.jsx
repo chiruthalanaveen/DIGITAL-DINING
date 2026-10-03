@@ -126,11 +126,32 @@ function orderTime(value) {
   }
 
   return date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: '2-digit',
     month: 'short',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function indiaDateKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value)
+
+  if (Number.isNaN(date.getTime())) return ''
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value])
+  )
+
+  return `${values.year}-${values.month}-${values.day}`
 }
 
 export default function DeliveryManagement({
@@ -161,6 +182,8 @@ export default function DeliveryManagement({
   const audioContextRef = useRef(null)
 
   const [search, setSearch] = useState('')
+  const [orderNumberSearch, setOrderNumberSearch] = useState('')
+  const [orderDateFilter, setOrderDateFilter] = useState('')
   const [orderStatusFilter, setOrderStatusFilter] =
     useState('active')
 
@@ -764,13 +787,12 @@ export default function DeliveryManagement({
 
 
   const stats = useMemo(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const todayKey = indiaDateKey()
 
     const todayOrders = orders.filter(
       (order) =>
         order.created_at &&
-        new Date(order.created_at) >= today
+        indiaDateKey(order.created_at) === todayKey
     )
 
     const activeOrders = orders.filter(
@@ -856,6 +878,25 @@ export default function DeliveryManagement({
         return false
       }
 
+      const numberTerm = orderNumberSearch.trim()
+
+      if (
+        numberTerm &&
+        String(order.order_number || '') !== numberTerm &&
+        !String(order.order_code || '')
+          .toLowerCase()
+          .includes(numberTerm.toLowerCase())
+      ) {
+        return false
+      }
+
+      if (
+        orderDateFilter &&
+        indiaDateKey(order.created_at) !== orderDateFilter
+      ) {
+        return false
+      }
+
       if (!term) return true
 
       return [
@@ -877,6 +918,8 @@ export default function DeliveryManagement({
   }, [
     orders,
     search,
+    orderNumberSearch,
+    orderDateFilter,
     orderStatusFilter,
   ])
 
@@ -2553,7 +2596,7 @@ export default function DeliveryManagement({
 
       {tab === 'orders' && (
         <div className="space-y-4">
-          <div className="grid gap-3 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:grid-cols-[1fr_auto]">
+          <div className="grid gap-3 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 md:grid-cols-2 xl:grid-cols-[1.4fr_0.7fr_0.8fr_auto_auto]">
             <input
               value={search}
               onChange={(event) =>
@@ -2561,8 +2604,30 @@ export default function DeliveryManagement({
                   event.target.value
                 )
               }
-              placeholder="Search order code, customer, mobile, city..."
+              placeholder="Search code, customer, mobile, city..."
               className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-white outline-none focus:border-emerald-500"
+            />
+
+            <input
+              type="text"
+              inputMode="numeric"
+              value={orderNumberSearch}
+              onChange={(event) =>
+                setOrderNumberSearch(
+                  event.target.value.replace(/[^0-9A-Za-z-]/g, '')
+                )
+              }
+              placeholder="Order No."
+              className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-white outline-none focus:border-emerald-500"
+            />
+
+            <input
+              type="date"
+              value={orderDateFilter}
+              onChange={(event) =>
+                setOrderDateFilter(event.target.value)
+              }
+              className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs font-bold text-white outline-none [color-scheme:dark]"
             />
 
             <select
@@ -2596,7 +2661,27 @@ export default function DeliveryManagement({
                 )
               )}
             </select>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('')
+                setOrderNumberSearch('')
+                setOrderDateFilter('')
+              }}
+              disabled={!search && !orderNumberSearch && !orderDateFilter}
+              className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-[10px] font-black text-neutral-300 disabled:opacity-40"
+            >
+              Clear Search
+            </button>
           </div>
+
+          {(orderNumberSearch || orderDateFilter) &&
+            orderStatusFilter === 'active' && (
+              <p className="px-1 text-[10px] font-semibold text-amber-400">
+                Searching Active orders only. Choose All to include delivered or cancelled orders.
+              </p>
+            )}
 
           <div className="space-y-3">
             {filteredOrders.map(
