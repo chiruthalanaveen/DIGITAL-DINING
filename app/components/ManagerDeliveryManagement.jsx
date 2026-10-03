@@ -403,6 +403,98 @@ function inventoryMovementTone(value) {
   return 'border-neutral-700 bg-neutral-800 text-neutral-300'
 }
 
+
+function deliveryOrderItemId(item) {
+  return String(
+    item?.id ||
+      item?.menu_item_id ||
+      ''
+  ).trim()
+}
+
+function deliveryOrderItemQuantity(item) {
+  const quantity = Number(
+    item?.quantity ??
+      item?.qty ??
+      1
+  )
+
+  return Number.isFinite(quantity) &&
+    quantity > 0
+    ? Math.floor(quantity)
+    : 1
+}
+
+function afterSalesNeedsItems(type) {
+  return [
+    'return',
+    'replacement',
+    'return_refund',
+    'failed_delivery',
+  ].includes(
+    String(type || '').toLowerCase()
+  )
+}
+
+function afterSalesTypeLabel(value) {
+  const type =
+    String(value || '').toLowerCase()
+
+  const labels = {
+    return: 'Return',
+    replacement: 'Replacement',
+    refund: 'Refund Only',
+    return_refund: 'Return + Refund',
+    failed_delivery: 'Failed Delivery',
+  }
+
+  return (
+    labels[type] ||
+    labelStatus(type)
+  )
+}
+
+function afterSalesStatusTone(value) {
+  const status =
+    String(value || '').toLowerCase()
+
+  if (
+    ['resolved', 'return_received'].includes(
+      status
+    )
+  ) {
+    return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+  }
+
+  if (
+    ['rejected', 'cancelled'].includes(
+      status
+    )
+  ) {
+    return 'border-red-500/20 bg-red-500/10 text-red-300'
+  }
+
+  if (
+    ['refund_pending', 'replacement_reserved'].includes(
+      status
+    )
+  ) {
+    return 'border-sky-500/20 bg-sky-500/10 text-sky-300'
+  }
+
+  return 'border-amber-500/20 bg-amber-500/10 text-amber-300'
+}
+
+function afterSalesIsClosed(value) {
+  return [
+    'resolved',
+    'rejected',
+    'cancelled',
+  ].includes(
+    String(value || '').toLowerCase()
+  )
+}
+
 export default function ManagerDeliveryManagement({
 
 
@@ -488,6 +580,17 @@ export default function ManagerDeliveryManagement({
   const [codLoading, setCodLoading] = useState(false)
   const [codError, setCodError] = useState('')
   const [codReviewId, setCodReviewId] = useState('')
+
+  const [afterSalesReport, setAfterSalesReport] = useState(null)
+  const [afterSalesLoading, setAfterSalesLoading] = useState(false)
+  const [afterSalesError, setAfterSalesError] = useState('')
+  const [afterSalesActionId, setAfterSalesActionId] = useState('')
+  const [afterSalesRefundingId, setAfterSalesRefundingId] = useState('')
+  const [afterSalesCreating, setAfterSalesCreating] = useState(false)
+  const [afterSalesCreateOrderId, setAfterSalesCreateOrderId] = useState('')
+  const [afterSalesCreateType, setAfterSalesCreateType] = useState('return')
+  const [afterSalesCreateReason, setAfterSalesCreateReason] = useState('')
+  const [afterSalesCreateItems, setAfterSalesCreateItems] = useState({})
 
 
 
@@ -4127,6 +4230,597 @@ export default function ManagerDeliveryManagement({
     loadCodReconciliation(false)
   }, [tab, loadCodReconciliation])
 
+
+  const getManagerAfterSales = useCallback(
+    async (caseId = '') => {
+      if (!restaurantId) {
+        throw new Error('Restaurant ID is missing.')
+      }
+
+      const result =
+        sessionMode && sessionToken
+          ? await supabase.rpc(
+              'manager_delivery_get_after_sales_session',
+              {
+                p_session_token: sessionToken,
+                p_case_id: caseId || null,
+              }
+            )
+          : await supabase.rpc(
+              'manager_delivery_get_after_sales',
+              {
+                p_restaurant_id: String(restaurantId),
+                p_restaurant_code: String(restaurantCode || '').trim(),
+                p_user_id: String(userId || '').trim().toLowerCase(),
+                p_password: String(password || ''),
+                p_case_id: caseId || null,
+              }
+            )
+
+      if (result.error) throw result.error
+
+      if (!result.data?.success) {
+        throw new Error(
+          result.data?.message || 'Unable to load after-sales cases.'
+        )
+      }
+
+      return result.data
+    },
+    [
+      restaurantId,
+      restaurantCode,
+      sessionMode,
+      sessionToken,
+      userId,
+      password,
+    ]
+  )
+
+  const loadAfterSales = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setAfterSalesLoading(true)
+      setAfterSalesError('')
+
+      try {
+        const data = await getManagerAfterSales('')
+        setAfterSalesReport(data)
+      } catch (loadError) {
+        console.error('Manager after-sales load error:', loadError)
+        setAfterSalesError(
+          loadError?.message || 'Unable to load after-sales cases.'
+        )
+      } finally {
+        setAfterSalesLoading(false)
+      }
+    },
+    [getManagerAfterSales]
+  )
+
+  const resetAfterSalesCreate = useCallback(() => {
+    setAfterSalesCreateOrderId('')
+    setAfterSalesCreateType('return')
+    setAfterSalesCreateReason('')
+    setAfterSalesCreateItems({})
+  }, [])
+
+  const openAfterSalesCreate = useCallback((order) => {
+    if (!order?.id) return
+
+    const status = String(order.order_status || '').toLowerCase()
+    const nextType =
+      status === 'out_for_delivery'
+        ? 'failed_delivery'
+        : 'return'
+
+    const quantities = {}
+
+    for (const item of Array.isArray(order.items) ? order.items : []) {
+      const id = deliveryOrderItemId(item)
+      if (id) quantities[id] = '0'
+    }
+
+    setAfterSalesCreateOrderId(order.id)
+    setAfterSalesCreateType(nextType)
+    setAfterSalesCreateReason('')
+    setAfterSalesCreateItems(quantities)
+    setTab('after_sales')
+  }, [])
+
+  const submitManagerAfterSalesCase = async () => {
+    if (!afterSalesCreateOrderId || afterSalesCreating) return
+
+    const order = orders.find(
+      (row) => String(row.id) === String(afterSalesCreateOrderId)
+    )
+
+    if (!order) {
+      appNotice('The Delivery order is no longer available.')
+      return
+    }
+
+    const reason = String(afterSalesCreateReason || '').trim()
+
+    if (!reason) {
+      appNotice('Enter the reason for this return / replacement / refund.')
+      return
+    }
+
+    const items = []
+
+    if (afterSalesNeedsItems(afterSalesCreateType)) {
+      for (const item of Array.isArray(order.items) ? order.items : []) {
+        const id = deliveryOrderItemId(item)
+        if (!id) continue
+
+        const orderedQty = deliveryOrderItemQuantity(item)
+        const requested = Number(afterSalesCreateItems[id] || 0)
+
+        if (!Number.isInteger(requested) || requested < 0 || requested > orderedQty) {
+          appNotice(
+            `Enter a valid quantity for ${item.name || 'the selected item'}.`
+          )
+          return
+        }
+
+        if (requested > 0) {
+          items.push({
+            id,
+            quantity: requested,
+          })
+        }
+      }
+
+      if (!items.length) {
+        appNotice('Select at least one item quantity.')
+        return
+      }
+    }
+
+    setAfterSalesCreating(true)
+    setAfterSalesError('')
+
+    try {
+      const result =
+        sessionMode && sessionToken
+          ? await supabase.rpc(
+              'manager_delivery_create_after_sales_case_session',
+              {
+                p_session_token: sessionToken,
+                p_order_id: order.id,
+                p_case_type: afterSalesCreateType,
+                p_items: items,
+                p_reason: reason,
+              }
+            )
+          : await supabase.rpc(
+              'manager_delivery_create_after_sales_case',
+              {
+                p_restaurant_id: String(restaurantId),
+                p_restaurant_code: String(restaurantCode || '').trim(),
+                p_user_id: String(userId || '').trim().toLowerCase(),
+                p_password: String(password || ''),
+                p_order_id: order.id,
+                p_case_type: afterSalesCreateType,
+                p_items: items,
+                p_reason: reason,
+              }
+            )
+
+      if (result.error) throw result.error
+      if (!result.data?.success) {
+        throw new Error(
+          result.data?.message || 'Unable to create after-sales case.'
+        )
+      }
+
+      setMessage(
+        `After-sales case ${result.data?.case?.case_code || ''} created.`
+      )
+      resetAfterSalesCreate()
+      await loadAfterSales(true)
+      await loadData(true)
+    } catch (createError) {
+      console.error('Manager after-sales create error:', createError)
+      setAfterSalesError(
+        createError?.message || 'Unable to create after-sales case.'
+      )
+      appNotice(
+        createError?.message || 'Unable to create after-sales case.'
+      )
+    } finally {
+      setAfterSalesCreating(false)
+    }
+  }
+
+  const callManagerAfterSalesAction = useCallback(
+    async (caseId, action, payload = {}) => {
+      const result =
+        sessionMode && sessionToken
+          ? await supabase.rpc(
+              'manager_delivery_after_sales_action_session',
+              {
+                p_session_token: sessionToken,
+                p_case_id: caseId,
+                p_action: action,
+                p_payload: payload,
+              }
+            )
+          : await supabase.rpc(
+              'manager_delivery_after_sales_action',
+              {
+                p_restaurant_id: String(restaurantId),
+                p_restaurant_code: String(restaurantCode || '').trim(),
+                p_user_id: String(userId || '').trim().toLowerCase(),
+                p_password: String(password || ''),
+                p_case_id: caseId,
+                p_action: action,
+                p_payload: payload,
+              }
+            )
+
+      if (result.error) throw result.error
+
+      if (!result.data?.success) {
+        throw new Error(
+          result.data?.message || 'After-sales action failed.'
+        )
+      }
+
+      return result.data
+    },
+    [
+      restaurantId,
+      restaurantCode,
+      sessionMode,
+      sessionToken,
+      userId,
+      password,
+    ]
+  )
+
+  const reviewManagerAfterSalesCase = async (caseRow, action) => {
+    if (!caseRow?.id || afterSalesActionId) return
+
+    let payload = {}
+    const type = String(caseRow.case_type || '').toLowerCase()
+
+    if (action === 'approve' && ['refund', 'return_refund'].includes(type)) {
+      const defaultAmount =
+        type === 'refund'
+          ? String(caseRow.order?.total_amount || '')
+          : ''
+
+      const rawAmount = await appPrompt(
+        'Approved refund amount (₹):',
+        defaultAmount
+      )
+
+      if (rawAmount === null) return
+
+      const refundAmount = Number(String(rawAmount).trim())
+
+      if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+        appNotice('Enter a refund amount greater than 0.')
+        return
+      }
+
+      payload.refund_amount = refundAmount
+    }
+
+    if (action === 'reject') {
+      const note = await appPrompt('Reason for rejecting this case:', '')
+      if (note === null) return
+      payload.note = String(note || '').trim()
+    }
+
+    if (action === 'cancel_case') {
+      const note = await appPrompt('Optional cancellation note:', '')
+      if (note === null) return
+
+      const confirmed = await appConfirm(
+        `Cancel after-sales case ${caseRow.case_code}?`,
+        {
+          title: 'Cancel After-Sales Case',
+          confirmText: 'Cancel Case',
+        }
+      )
+
+      if (!confirmed) return
+      payload.note = String(note || '').trim()
+    }
+
+    if (action === 'reattempt_failed_delivery') {
+      const note = await appPrompt(
+        'Optional reattempt note:',
+        'Return to Packed and reassign for another delivery attempt.'
+      )
+
+      if (note === null) return
+
+      const confirmed = await appConfirm(
+        `Move ${caseRow.order?.order_code || 'this order'} back to Packed for another delivery attempt?`,
+        {
+          title: 'Reattempt Delivery',
+          confirmText: 'Reattempt',
+        }
+      )
+
+      if (!confirmed) return
+      payload.note = String(note || '').trim()
+    }
+
+    if (action === 'dispatch_replacement') {
+      const note = await appPrompt(
+        'Optional replacement dispatch note:',
+        ''
+      )
+
+      if (note === null) return
+
+      const confirmed = await appConfirm(
+        `Dispatch the reserved replacement stock for ${caseRow.case_code}?`,
+        {
+          title: 'Dispatch Replacement',
+          confirmText: 'Dispatch',
+        }
+      )
+
+      if (!confirmed) return
+      payload.note = String(note || '').trim()
+    }
+
+    if (action === 'receive_return') {
+      const receivedItems = []
+
+      for (const item of Array.isArray(caseRow.items) ? caseRow.items : []) {
+        const remaining = Math.max(
+          0,
+          Number(item.approved_quantity || 0) -
+            Number(item.returned_quantity || 0)
+        )
+
+        if (remaining <= 0) continue
+
+        const rawQty = await appPrompt(
+          `${item.item_name}: physically returned quantity (remaining approved ${remaining})`,
+          String(remaining)
+        )
+
+        if (rawQty === null) return
+
+        const quantity = Number(String(rawQty).trim())
+
+        if (!Number.isInteger(quantity) || quantity < 0 || quantity > remaining) {
+          appNotice(`Invalid returned quantity for ${item.item_name}.`)
+          return
+        }
+
+        if (quantity === 0) continue
+
+        const rawRestock = await appPrompt(
+          `${item.item_name}: how many of the ${quantity} returned units are safe to put back into stock?`,
+          String(quantity)
+        )
+
+        if (rawRestock === null) return
+
+        const restockableQuantity = Number(String(rawRestock).trim())
+
+        if (
+          !Number.isInteger(restockableQuantity) ||
+          restockableQuantity < 0 ||
+          restockableQuantity > quantity
+        ) {
+          appNotice(`Invalid restockable quantity for ${item.item_name}.`)
+          return
+        }
+
+        const rawCondition = await appPrompt(
+          `${item.item_name}: condition (sealed, good, opened, damaged, spoiled, missing, other)`,
+          restockableQuantity === quantity ? 'good' : 'damaged'
+        )
+
+        if (rawCondition === null) return
+
+        const condition = String(rawCondition || '')
+          .trim()
+          .toLowerCase()
+
+        const allowedConditions = [
+          'sealed',
+          'good',
+          'opened',
+          'damaged',
+          'spoiled',
+          'missing',
+          'other',
+        ]
+
+        if (!allowedConditions.includes(condition)) {
+          appNotice(`Invalid return condition for ${item.item_name}.`)
+          return
+        }
+
+        receivedItems.push({
+          id: item.menu_item_id,
+          quantity,
+          restockable_quantity: restockableQuantity,
+          condition,
+        })
+      }
+
+      if (!receivedItems.length) {
+        appNotice('Enter at least one physically returned quantity.')
+        return
+      }
+
+      const note = await appPrompt('Optional return receiving note:', '')
+      if (note === null) return
+
+      payload = {
+        items: receivedItems,
+        note: String(note || '').trim(),
+      }
+    }
+
+    if (action === 'record_manual_refund') {
+      const remaining = Math.max(
+        0,
+        Number(caseRow.refund_amount || 0) -
+          Number(caseRow.refund_completed_amount || 0)
+      )
+
+      const rawAmount = await appPrompt(
+        'Cash / manual refund amount (₹):',
+        String(remaining)
+      )
+
+      if (rawAmount === null) return
+
+      const amount = Number(String(rawAmount).trim())
+
+      if (!Number.isFinite(amount) || amount <= 0 || amount > remaining) {
+        appNotice('Enter a valid refund amount within the remaining balance.')
+        return
+      }
+
+      const note = await appPrompt('Refund note / reference:', '')
+      if (note === null) return
+
+      payload = {
+        amount,
+        note: String(note || '').trim(),
+      }
+    }
+
+    if (action === 'approve') {
+      const confirmed = await appConfirm(
+        `Approve after-sales case ${caseRow.case_code}?`,
+        {
+          title: 'Approve After-Sales Case',
+          confirmText: 'Approve',
+        }
+      )
+
+      if (!confirmed) return
+    }
+
+    setAfterSalesActionId(caseRow.id)
+    setAfterSalesError('')
+
+    try {
+      const data = await callManagerAfterSalesAction(
+        caseRow.id,
+        action,
+        payload
+      )
+
+      setMessage(
+        data?.message ||
+          `After-sales case updated: ${labelStatus(data?.status || action)}.`
+      )
+
+      await Promise.all([
+        loadAfterSales(true),
+        loadData(true),
+        loadInventoryReport(true),
+      ])
+    } catch (actionError) {
+      console.error('Manager after-sales action error:', actionError)
+      setAfterSalesError(
+        actionError?.message || 'Unable to update after-sales case.'
+      )
+      appNotice(
+        actionError?.message || 'Unable to update after-sales case.'
+      )
+    } finally {
+      setAfterSalesActionId('')
+    }
+  }
+
+  const processManagerRazorpayRefund = async (caseRow) => {
+    if (!caseRow?.id || afterSalesRefundingId) return
+
+    const remaining = Math.max(
+      0,
+      Number(caseRow.refund_amount || 0) -
+        Number(caseRow.refund_completed_amount || 0)
+    )
+
+    const confirmed = await appConfirm(
+      caseRow.provider_refund_id
+        ? `Check the current Razorpay refund status for ${caseRow.case_code}?`
+        : `Refund ${money(remaining)} to the original Razorpay payment for ${caseRow.case_code}?`,
+      {
+        title: caseRow.provider_refund_id
+          ? 'Check Razorpay Refund'
+          : 'Process Razorpay Refund',
+        confirmText: caseRow.provider_refund_id
+          ? 'Check Status'
+          : 'Refund',
+      }
+    )
+
+    if (!confirmed) return
+
+    setAfterSalesRefundingId(caseRow.id)
+    setAfterSalesError('')
+
+    try {
+      const response = await fetch(
+        '/api/delivery/after-sales/refund',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            actorType: 'manager',
+            caseId: caseRow.id,
+            restaurantId: String(restaurantId),
+            restaurantCode: String(restaurantCode || '').trim(),
+            sessionToken:
+              sessionMode && sessionToken
+                ? sessionToken
+                : '',
+            userId: String(userId || '').trim().toLowerCase(),
+            password: String(password || ''),
+          }),
+        }
+      )
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || 'Unable to process Razorpay refund.'
+        )
+      }
+
+      setMessage(
+        data?.message || 'Razorpay refund updated.'
+      )
+
+      await loadAfterSales(true)
+    } catch (refundError) {
+      console.error('Manager Razorpay refund error:', refundError)
+      setAfterSalesError(
+        refundError?.message || 'Unable to process Razorpay refund.'
+      )
+      appNotice(
+        refundError?.message || 'Unable to process Razorpay refund.'
+      )
+    } finally {
+      setAfterSalesRefundingId('')
+    }
+  }
+
+  useEffect(() => {
+    if (tab !== 'after_sales') return
+    loadAfterSales(false)
+  }, [tab, loadAfterSales])
+
   const tabs = [
 
 
@@ -4147,6 +4841,8 @@ export default function ManagerDeliveryManagement({
     ['inventory', 'Inventory'],
 
     ['cod', `COD Cash (${Number(codReport?.summary?.pending_handover || 0) > 0 ? 'Pending' : 'Reconcile'})`],
+
+    ['after_sales', `Returns / Refunds (${(Array.isArray(afterSalesReport?.cases) ? afterSalesReport.cases : []).filter((row) => !afterSalesIsClosed(row.status)).length})`],
 
 ['offers', `Offers (${offers.length})`],
 
@@ -5415,6 +6111,22 @@ export default function ManagerDeliveryManagement({
                   </button>
                 </div>
 
+                {['delivered', 'out_for_delivery'].includes(
+                  String(order.order_status || '').toLowerCase()
+                ) && (
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => openAfterSalesCreate(order)}
+                      className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-[10px] font-black text-violet-300"
+                    >
+                      {String(order.order_status || '').toLowerCase() === 'out_for_delivery'
+                        ? '⚠ Failed Delivery / Reattempt'
+                        : '↩ Return / Replace / Refund'}
+                    </button>
+                  </div>
+                )}
+
               </article>
 
 
@@ -5462,6 +6174,30 @@ export default function ManagerDeliveryManagement({
 
 
 
+
+      {tab === 'after_sales' && (
+        <AfterSalesWorkspace
+          report={afterSalesReport}
+          loading={afterSalesLoading}
+          error={afterSalesError}
+          onRefresh={() => loadAfterSales(false)}
+          orders={orders}
+          createOrderId={afterSalesCreateOrderId}
+          createType={afterSalesCreateType}
+          setCreateType={setAfterSalesCreateType}
+          createReason={afterSalesCreateReason}
+          setCreateReason={setAfterSalesCreateReason}
+          createItems={afterSalesCreateItems}
+          setCreateItems={setAfterSalesCreateItems}
+          onSubmitCreate={submitManagerAfterSalesCase}
+          onCancelCreate={resetAfterSalesCreate}
+          creating={afterSalesCreating}
+          actionId={afterSalesActionId}
+          onAction={reviewManagerAfterSalesCase}
+          refundingId={afterSalesRefundingId}
+          onRazorpayRefund={processManagerRazorpayRefund}
+        />
+      )}
 
       {tab === 'menu' && (
         <div className="space-y-4">
@@ -7802,6 +8538,832 @@ export default function ManagerDeliveryManagement({
 
 
 
+
+
+function AfterSalesWorkspace({
+  report,
+  loading,
+  error,
+  onRefresh,
+  orders,
+  createOrderId,
+  createType,
+  setCreateType,
+  createReason,
+  setCreateReason,
+  createItems,
+  setCreateItems,
+  onSubmitCreate,
+  onCancelCreate,
+  creating,
+  actionId,
+  onAction,
+  refundingId,
+  onRazorpayRefund,
+}) {
+  const cases =
+    Array.isArray(report?.cases)
+      ? report.cases
+      : []
+
+  const createOrder =
+    orders.find(
+      (order) =>
+        String(order.id) ===
+        String(createOrderId)
+    ) || null
+
+  const createOrderItems =
+    Array.isArray(createOrder?.items)
+      ? createOrder.items
+      : []
+
+  const availableTypes =
+    String(
+      createOrder?.order_status || ''
+    ).toLowerCase() ===
+    'out_for_delivery'
+      ? [
+          [
+            'failed_delivery',
+            'Failed Delivery',
+          ],
+        ]
+      : [
+          ['return', 'Return'],
+          [
+            'replacement',
+            'Replacement',
+          ],
+          [
+            'refund',
+            'Refund Only',
+          ],
+          [
+            'return_refund',
+            'Return + Refund',
+          ],
+        ]
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-3xl border border-violet-500/20 bg-violet-500/10 p-5 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-violet-300">
+              Returns · Replacements · Refunds
+            </p>
+
+            <h3 className="mt-1 text-xl font-black text-white">
+              Delivery After-Sales
+            </h3>
+
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-neutral-400">
+              Returned stock is restored only after physical receipt is confirmed.
+              Replacement stock is reserved before dispatch. Razorpay refunds are
+              sent only through the secure server refund route.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onRefresh}
+            className="shrink-0 rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+          >
+            {loading
+              ? 'Refreshing...'
+              : '↻ Refresh Cases'}
+          </button>
+        </div>
+      </section>
+
+      {error && (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-300">
+          {error}
+        </div>
+      )}
+
+      {createOrder && (
+        <section className="rounded-3xl border border-emerald-500/20 bg-neutral-900 p-5 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                New After-Sales Case
+              </p>
+
+              <h3 className="mt-1 text-lg font-black text-white">
+                {createOrder.order_code}
+                {' · '}
+                {createOrder.customer_name}
+              </h3>
+
+              <p className="mt-1 text-xs text-neutral-500">
+                Order status:{' '}
+                {labelStatus(
+                  createOrder.order_status
+                )}
+                {' · '}
+                {String(
+                  createOrder.payment_method ||
+                    ''
+                ).toUpperCase()}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onCancelCreate}
+              className="rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-[10px] font-black text-neutral-300"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+                Case Type
+              </span>
+
+              <select
+                value={createType}
+                onChange={(event) =>
+                  setCreateType(
+                    event.target.value
+                  )
+                }
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-white"
+              >
+                {availableTypes.map(
+                  ([value, label]) => (
+                    <option
+                      key={value}
+                      value={value}
+                    >
+                      {label}
+                    </option>
+                  )
+                )}
+              </select>
+            </label>
+
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3">
+              <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                Order Total
+              </p>
+
+              <p className="mt-1 text-lg font-black text-white">
+                {money(
+                  createOrder.total_amount
+                )}
+              </p>
+            </div>
+          </div>
+
+          {afterSalesNeedsItems(
+            createType
+          ) && (
+            <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                Select Item Quantities
+              </p>
+
+              <div className="mt-3 space-y-2">
+                {createOrderItems.map(
+                  (item, index) => {
+                    const itemId =
+                      deliveryOrderItemId(
+                        item
+                      )
+
+                    const orderedQty =
+                      deliveryOrderItemQuantity(
+                        item
+                      )
+
+                    if (!itemId) {
+                      return null
+                    }
+
+                    return (
+                      <div
+                        key={
+                          itemId ||
+                          index
+                        }
+                        className="grid gap-2 rounded-xl border border-neutral-800 bg-neutral-900 p-3 sm:grid-cols-[1fr_120px]"
+                      >
+                        <div>
+                          <p className="text-xs font-black text-white">
+                            {item.name ||
+                              'Item'}
+                          </p>
+
+                          <p className="mt-1 text-[10px] text-neutral-500">
+                            Ordered:{' '}
+                            {orderedQty}
+                          </p>
+                        </div>
+
+                        <label>
+                          <span className="mb-1 block text-[9px] font-black uppercase text-neutral-600">
+                            Qty
+                          </span>
+
+                          <input
+                            type="number"
+                            min="0"
+                            max={orderedQty}
+                            step="1"
+                            value={
+                              createItems[
+                                itemId
+                              ] ?? '0'
+                            }
+                            onChange={(
+                              event
+                            ) => {
+                              const raw =
+                                event
+                                  .target
+                                  .value
+
+                              setCreateItems(
+                                (
+                                  current
+                                ) => ({
+                                  ...current,
+                                  [itemId]:
+                                    raw,
+                                })
+                              )
+                            }}
+                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-bold text-white"
+                          />
+                        </label>
+                      </div>
+                    )
+                  }
+                )}
+
+                {!createOrderItems.length && (
+                  <p className="py-4 text-center text-xs text-neutral-600">
+                    No item snapshot is available for this order.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <label className="mt-4 block">
+            <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+              Reason / Customer Issue
+            </span>
+
+            <textarea
+              rows={3}
+              value={createReason}
+              onChange={(event) =>
+                setCreateReason(
+                  event.target.value
+                )
+              }
+              placeholder="Example: Product damaged, wrong item, customer unavailable..."
+              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-white outline-none focus:border-emerald-500"
+            />
+          </label>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={creating}
+              onClick={onSubmitCreate}
+              className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-white disabled:opacity-50"
+            >
+              {creating
+                ? 'Creating Case...'
+                : 'Create After-Sales Case'}
+            </button>
+
+            <button
+              type="button"
+              disabled={creating}
+              onClick={onCancelCreate}
+              className="rounded-xl border border-neutral-700 bg-neutral-950 px-5 py-3 text-xs font-black text-neutral-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
+
+      <div className="space-y-3">
+        {cases.map((caseRow) => {
+          const status =
+            String(
+              caseRow.status || ''
+            ).toLowerCase()
+
+          const caseType =
+            String(
+              caseRow.case_type ||
+                ''
+            ).toLowerCase()
+
+          const items =
+            Array.isArray(
+              caseRow.items
+            )
+              ? caseRow.items
+              : []
+
+          const refundRemaining =
+            Math.max(
+              0,
+              Number(
+                caseRow.refund_amount ||
+                  0
+              ) -
+                Number(
+                  caseRow.refund_completed_amount ||
+                    0
+                )
+            )
+
+          const busy =
+            actionId ===
+            caseRow.id
+
+          const refundBusy =
+            refundingId ===
+            caseRow.id
+
+          return (
+            <article
+              key={caseRow.id}
+              className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 font-mono text-[9px] font-black text-violet-300">
+                      {caseRow.case_code}
+                    </span>
+
+                    <span className="rounded-full border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-[9px] font-black text-neutral-300">
+                      {afterSalesTypeLabel(
+                        caseType
+                      )}
+                    </span>
+
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${afterSalesStatusTone(
+                        status
+                      )}`}
+                    >
+                      {labelStatus(
+                        status
+                      )}
+                    </span>
+                  </div>
+
+                  <h3 className="mt-3 font-black text-white">
+                    {caseRow.order
+                      ?.order_code ||
+                      'Delivery Order'}
+                    {' · '}
+                    {caseRow.customer_name ||
+                      'Customer'}
+                  </h3>
+
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {caseRow.customer_mobile ||
+                      '—'}
+                    {' · '}
+                    Created{' '}
+                    {orderTime(
+                      caseRow.created_at
+                    )}
+                  </p>
+
+                  <p className="mt-3 max-w-3xl text-xs leading-5 text-neutral-300">
+                    {caseRow.reason ||
+                      'No reason entered.'}
+                  </p>
+                </div>
+
+                <div className="min-w-[220px] rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                    Original Order
+                  </p>
+
+                  <p className="mt-1 text-lg font-black text-white">
+                    {money(
+                      caseRow.order
+                        ?.total_amount
+                    )}
+                  </p>
+
+                  <p className="mt-1 text-[10px] text-neutral-500">
+                    {String(
+                      caseRow.order
+                        ?.payment_method ||
+                        ''
+                    ).toUpperCase()}
+                    {' · '}
+                    {labelStatus(
+                      caseRow.order
+                        ?.payment_status
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {items.length > 0 && (
+                <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                    Items
+                  </p>
+
+                  <div className="mt-3 grid gap-2">
+                    {items.map(
+                      (item) => (
+                        <div
+                          key={item.id}
+                          className="rounded-xl border border-neutral-800 bg-neutral-900 p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-black text-white">
+                              {
+                                item.item_name
+                              }
+                            </p>
+
+                            <span className="text-[10px] font-bold text-neutral-500">
+                              Requested{' '}
+                              {
+                                item.requested_quantity
+                              }
+                              {' · '}
+                              Approved{' '}
+                              {
+                                item.approved_quantity
+                              }
+                            </span>
+                          </div>
+
+                          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-neutral-600">
+                                Returned
+                              </p>
+                              <p className="mt-1 text-xs font-black text-white">
+                                {
+                                  item.returned_quantity
+                                }
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-neutral-600">
+                                Restocked
+                              </p>
+                              <p className="mt-1 text-xs font-black text-emerald-300">
+                                {
+                                  item.restocked_quantity
+                                }
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-neutral-600">
+                                Replacement Reserved
+                              </p>
+                              <p className="mt-1 text-xs font-black text-sky-300">
+                                {
+                                  item.replacement_reserved_quantity
+                                }
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-[9px] font-black uppercase text-neutral-600">
+                                Replacement Out
+                              </p>
+                              <p className="mt-1 text-xs font-black text-orange-300">
+                                {
+                                  item.replacement_dispatched_quantity
+                                }
+                              </p>
+                            </div>
+                          </div>
+
+                          {item.last_condition && (
+                            <p className="mt-2 text-[10px] text-neutral-500">
+                              Last condition:{' '}
+                              {labelStatus(
+                                item.last_condition
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {caseRow.refund_required && (
+                <div className="mt-4 rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-sky-300">
+                        Approved Refund
+                      </p>
+                      <p className="mt-1 text-sm font-black text-white">
+                        {money(
+                          caseRow.refund_amount
+                        )}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-sky-300">
+                        Refunded
+                      </p>
+                      <p className="mt-1 text-sm font-black text-emerald-300">
+                        {money(
+                          caseRow.refund_completed_amount
+                        )}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-sky-300">
+                        Remaining
+                      </p>
+                      <p className="mt-1 text-sm font-black text-amber-300">
+                        {money(
+                          refundRemaining
+                        )}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-sky-300">
+                        Status
+                      </p>
+                      <p className="mt-1 text-xs font-black text-white">
+                        {labelStatus(
+                          caseRow.refund_status
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {caseRow.provider_refund_id && (
+                    <p className="mt-3 break-all font-mono text-[9px] text-neutral-500">
+                      Razorpay Refund:{' '}
+                      {caseRow.provider_refund_id}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {status ===
+                  'requested' && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        onAction(
+                          caseRow,
+                          'approve'
+                        )
+                      }
+                      className="rounded-xl bg-emerald-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                    >
+                      {busy
+                        ? 'Processing...'
+                        : '✓ Approve'}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        onAction(
+                          caseRow,
+                          'reject'
+                        )
+                      }
+                      className="rounded-xl bg-red-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+
+                {caseType ===
+                  'failed_delivery' &&
+                  !afterSalesIsClosed(
+                    status
+                  ) &&
+                  status !==
+                    'return_received' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        onAction(
+                          caseRow,
+                          'reattempt_failed_delivery'
+                        )
+                      }
+                      className="rounded-xl bg-sky-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                    >
+                      ↻ Reattempt Delivery
+                    </button>
+                  )}
+
+                {status ===
+                  'awaiting_return' && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      onAction(
+                        caseRow,
+                        'receive_return'
+                      )
+                    }
+                    className="rounded-xl bg-violet-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                  >
+                    📦 Receive Physical Return
+                  </button>
+                )}
+
+                {status ===
+                  'replacement_reserved' && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      onAction(
+                        caseRow,
+                        'dispatch_replacement'
+                      )
+                    }
+                    className="rounded-xl bg-orange-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                  >
+                    🚚 Dispatch Replacement
+                  </button>
+                )}
+
+                {status ===
+                  'refund_pending' &&
+                  caseRow.refund_required &&
+                  refundRemaining >
+                    0 &&
+                  String(
+                    caseRow.refund_method ||
+                      ''
+                  ).toLowerCase() ===
+                    'razorpay' && (
+                    <button
+                      type="button"
+                      disabled={refundBusy}
+                      onClick={() =>
+                        onRazorpayRefund(
+                          caseRow
+                        )
+                      }
+                      className="rounded-xl bg-sky-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                    >
+                      {refundBusy
+                        ? 'Checking Razorpay...'
+                        : String(caseRow.refund_status || '').toLowerCase() === 'failed'
+                          ? '↻ Retry Razorpay Refund'
+                          : caseRow.provider_refund_id
+                            ? '↻ Check Razorpay Refund'
+                            : `₹ Process Razorpay Refund`}
+                    </button>
+                  )}
+
+                {status ===
+                  'refund_pending' &&
+                  caseRow.refund_required &&
+                  refundRemaining >
+                    0 &&
+                  String(
+                    caseRow.refund_method ||
+                      ''
+                  ).toLowerCase() !==
+                    'razorpay' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        onAction(
+                          caseRow,
+                          'record_manual_refund'
+                        )
+                      }
+                      className="rounded-xl bg-emerald-700 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                    >
+                      ₹ Record Cash / Manual Refund
+                    </button>
+                  )}
+
+                {[
+                  'requested',
+                  'approved',
+                  'awaiting_return',
+                  'replacement_reserved',
+                ].includes(
+                  status
+                ) && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      onAction(
+                        caseRow,
+                        'cancel_case'
+                      )
+                    }
+                    className="rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-[10px] font-black text-neutral-400 disabled:opacity-50"
+                  >
+                    Cancel Case
+                  </button>
+                )}
+              </div>
+
+              {Array.isArray(
+                caseRow.events
+              ) &&
+                caseRow.events.length >
+                  0 && (
+                  <div className="mt-4 border-t border-neutral-800 pt-4">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                      Recent Case Activity
+                    </p>
+
+                    <div className="mt-2 space-y-2">
+                      {caseRow.events
+                        .slice(0, 5)
+                        .map(
+                          (event) => (
+                            <div
+                              key={
+                                event.id
+                              }
+                              className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-[10px] font-black text-neutral-300">
+                                  {labelStatus(
+                                    event.event_type
+                                  )}
+                                </p>
+
+                                <span className="text-[9px] text-neutral-600">
+                                  {orderTime(
+                                    event.created_at
+                                  )}
+                                </span>
+                              </div>
+
+                              {event.note && (
+                                <p className="mt-1 text-[10px] leading-4 text-neutral-500">
+                                  {
+                                    event.note
+                                  }
+                                </p>
+                              )}
+                            </div>
+                          )
+                        )}
+                    </div>
+                  </div>
+                )}
+            </article>
+          )
+        })}
+
+        {!cases.length &&
+          !loading && (
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
+              No after-sales cases yet. Open a delivered order and choose Return / Replace / Refund.
+            </div>
+          )}
+      </div>
+    </div>
+  )
+}
 
 function InventoryHistoryPanel({
   item,
