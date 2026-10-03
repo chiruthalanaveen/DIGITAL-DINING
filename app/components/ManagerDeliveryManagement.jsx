@@ -38,6 +38,7 @@ import { supabase } from '@/lib/supabase'
 
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { scanBarcodeWithCamera } from '@/lib/barcodeScanner'
+import DeliveryManagerSupportChat from '@/app/components/DeliveryManagerSupportChat'
 
 
 
@@ -4842,6 +4843,8 @@ export default function ManagerDeliveryManagement({
 
     ['cod', `COD Cash (${Number(codReport?.summary?.pending_handover || 0) > 0 ? 'Pending' : 'Reconcile'})`],
 
+    ['support', 'Live Support'],
+
     ['after_sales', `Returns / Refunds (${(Array.isArray(afterSalesReport?.cases) ? afterSalesReport.cases : []).filter((row) => !afterSalesIsClosed(row.status)).length})`],
 
 ['offers', `Offers (${offers.length})`],
@@ -6174,6 +6177,21 @@ export default function ManagerDeliveryManagement({
 
 
 
+
+      {tab === 'support' && (
+        <DeliveryManagerSupportChat
+          restaurantId={restaurantId}
+          restaurantCode={restaurantCode}
+          sessionToken={sessionToken}
+          sessionMode={sessionMode}
+          userId={userId}
+          password={password}
+          drivers={drivers}
+          onOpenAfterSales={() =>
+            setTab('after_sales')
+          }
+        />
+      )}
 
       {tab === 'after_sales' && (
         <AfterSalesWorkspace
