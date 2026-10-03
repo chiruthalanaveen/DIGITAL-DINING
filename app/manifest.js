@@ -1,58 +1,50 @@
 export default function manifest() {
   return {
-    name: 'Digital Dine',
-    short_name: 'Digital Dine',
+    id: '/',
+    name: 'Digital Dine-In',
+    short_name: 'Digital Dine-In',
 
     description:
-      'Restaurant, Delivery and Resort operations with Digital Dine.',
+      'Digital Dine-In restaurant, delivery and hospitality platform.',
 
-    start_url: '/app',
-
+    start_url: '/',
     scope: '/',
 
     display: 'standalone',
 
-    orientation: 'portrait',
+    orientation: 'any',
 
-    background_color:
-      '#090909',
+    background_color: '#ffffff',
+    theme_color: '#111827',
 
-    theme_color:
-      '#f97316',
+    prefer_related_applications: false,
 
     categories: [
-      'business',
       'food',
-      'productivity',
+      'business',
+      'shopping',
     ],
 
     icons: [
       {
-        src:
-          '/icons/digital-dine-192.png',
-
-        sizes:
-          '192x192',
-
-        type:
-          'image/png',
-
-        purpose:
-          'any maskable',
+        src: '/icons/digital-dine-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any',
       },
 
       {
-        src:
-          '/icons/digital-dine-512.png',
+        src: '/icons/digital-dine-512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'any',
+      },
 
-        sizes:
-          '512x512',
-
-        type:
-          'image/png',
-
-        purpose:
-          'any maskable',
+      {
+        src: '/icons/digital-dine-512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
       },
     ],
   }
