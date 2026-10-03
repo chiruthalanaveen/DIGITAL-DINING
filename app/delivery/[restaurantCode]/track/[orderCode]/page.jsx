@@ -120,25 +120,6 @@ function distanceKm(lat1, lng1, lat2, lng2) {
 
 }
 
-function formatLocationAge(value) {
-
-  if (!value) return 'Waiting for update'
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Waiting for update'
-
-  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
-
-  if (seconds < 5) return 'Updated just now'
-  if (seconds < 60) return `Updated ${seconds}s ago`
-
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `Updated ${minutes} min ago`
-
-  return `Updated ${Math.floor(minutes / 60)} hr ago`
-
-}
-
 export default function DeliveryTrackingPage({
 
   params,
@@ -437,21 +418,7 @@ export default function DeliveryTrackingPage({
   const trackingAppearance = order?.tracking || {}
   const trackingAdvertisement = trackingAppearance?.advertisement || null
 
-  const liveDistanceKm = useMemo(() => {
-    if (!driverLiveLocation || !order) return null
 
-    return distanceKm(
-      driverLiveLocation.latitude,
-      driverLiveLocation.longitude,
-      order.latitude,
-      order.longitude
-    )
-  }, [
-    driverLiveLocation?.latitude,
-    driverLiveLocation?.longitude,
-    order?.latitude,
-    order?.longitude,
-  ])
 
   if (
 
@@ -877,109 +844,49 @@ export default function DeliveryTrackingPage({
 
         </section>
 
-        {order.order_status === 'out_for_delivery' && (
-          <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-wider text-sky-600">
-                  Live Driver Location
-                </p>
-
-                <h2 className="mt-1 text-lg font-black text-neutral-950">
-                  Your delivery is on the way
-                </h2>
-
-                <p className="mt-1 text-xs leading-5 text-neutral-500">
-                  The moving marker shows the latest GPS position shared by your delivery partner.
-                </p>
-              </div>
-
-              <span
-                className={`w-fit rounded-full px-3 py-1.5 text-[9px] font-black uppercase ${
-                  driverLiveLocation
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'bg-amber-50 text-amber-700'
-                }`}
-              >
-                {driverLiveLocation ? '● Live' : 'Waiting for GPS'}
-              </span>
-            </div>
-
-            {driverLiveLocation ? (
-              <div className="mt-4">
-                <LiveDeliveryTrackingMap
-                  driverLatitude={driverLiveLocation.latitude}
-                  driverLongitude={driverLiveLocation.longitude}
-                  driverHeading={driverLiveLocation.heading}
-                  driverName={order.driver?.name || 'Delivery partner'}
-                  customerLatitude={order.latitude}
-                  customerLongitude={order.longitude}
-                  markerType={trackingAppearance.marker_type || 'bike'}
-                  markerImageUrl={trackingAppearance.marker_image_url || ''}
-                  markerLabel={
-                    trackingAppearance.marker_label ||
-                    order.driver?.name ||
-                    'Delivery partner'
-                  }
-                  advertisement={trackingAdvertisement}
-                  height={360}
-                />
-
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  <div className="rounded-2xl bg-neutral-50 px-3 py-3">
-                    <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
-                      Driver Distance
-                    </p>
-                    <p className="mt-1 text-sm font-black text-neutral-950">
-                      {liveDistanceKm === null
-                        ? 'Calculating'
-                        : liveDistanceKm < 1
-                          ? `${Math.max(0, Math.round(liveDistanceKm * 1000))} m away`
-                          : `${liveDistanceKm.toFixed(2)} km away`}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-neutral-50 px-3 py-3">
-                    <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
-                      GPS Accuracy
-                    </p>
-                    <p className="mt-1 text-sm font-black text-neutral-950">
-                      {Number.isFinite(Number(driverLiveLocation.accuracy_m))
-                        ? `±${Math.round(Number(driverLiveLocation.accuracy_m))} m`
-                        : 'Live GPS'}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-neutral-50 px-3 py-3">
-                    <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
-                      Last Update
-                    </p>
-                    <p className="mt-1 text-sm font-black text-emerald-700">
-                      {formatLocationAge(
-                        driverLiveLocation.updated_at ||
-                          driverLiveLocation.captured_at
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-3 text-[10px] leading-4 text-neutral-400">
-                  Distance shown here is straight-line distance from the latest driver GPS point to your confirmed delivery pin. Actual road distance can be longer.
-                </p>
-              </div>
-            ) : (
-              <div className="mt-4 rounded-2xl border border-dashed border-amber-200 bg-amber-50 px-4 py-5 text-center">
-                <div className="text-2xl">📍</div>
-                <p className="mt-2 text-sm font-black text-amber-900">
-                  Waiting for the driver's live GPS
-                </p>
-                <p className="mt-1 text-xs leading-5 text-amber-700">
-                  The map will appear automatically after the delivery partner allows location access on the Driver Portal.
-                </p>
-              </div>
-            )}
-          </section>
-        )}
+        {order.order_status === 'out_for_delivery' &&
+          driverLiveLocation && (
+            <section className="overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-sm">
+              <LiveDeliveryTrackingMap
+                driverLatitude={
+                  driverLiveLocation.latitude
+                }
+                driverLongitude={
+                  driverLiveLocation.longitude
+                }
+                driverHeading={
+                  driverLiveLocation.heading
+                }
+                driverName={
+                  order.driver?.name ||
+                  'Delivery partner'
+                }
+                customerLatitude={
+                  order.latitude
+                }
+                customerLongitude={
+                  order.longitude
+                }
+                markerType={
+                  trackingAppearance.marker_type ||
+                  'bike'
+                }
+                markerImageUrl={
+                  trackingAppearance.marker_image_url ||
+                  ''
+                }
+                markerLabel={
+                  trackingAppearance.marker_label ||
+                  order.driver?.name ||
+                  'Delivery partner'
+                }
+                advertisement={
+                  trackingAdvertisement
+                }
+                height={420}
+              />
+            </section>
+          )}
 
         {order.driver && (
 
