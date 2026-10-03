@@ -37,6 +37,7 @@ import {
 import { supabase } from '@/lib/supabase'
 
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
+import { scanBarcodeWithCamera } from '@/lib/barcodeScanner'
 
 
 
@@ -118,6 +119,22 @@ const EMPTY_OFFER = {
 
 
 
+}
+
+const EMPTY_CREATE_STORE_ITEM = {
+  item_type: 'food',
+  name: '',
+  category: 'Main Course',
+  description: '',
+  image_url: '',
+  food_type: 'veg',
+  delivery_price: '',
+  delivery_offer_price: '',
+  delivery_enabled: true,
+  delivery_available: true,
+  barcode: '',
+  opening_stock: '0',
+  low_stock_threshold: '5',
 }
 
 
@@ -547,6 +564,12 @@ export default function ManagerDeliveryManagement({
 
 
   const [menuSaving, setMenuSaving] = useState(false)
+
+  const [showCreateStoreItem, setShowCreateStoreItem] = useState(false)
+  const [createStoreItemSaving, setCreateStoreItemSaving] = useState(false)
+  const [createStoreItemDraft, setCreateStoreItemDraft] = useState({
+    ...EMPTY_CREATE_STORE_ITEM,
+  })
 
   const [inventorySearch, setInventorySearch] = useState('')
   const [inventoryFilter, setInventoryFilter] = useState('all')
@@ -3010,7 +3033,181 @@ export default function ManagerDeliveryManagement({
 
 
 
+  const createManagerStoreItem = useCallback(
+    async (payload) => {
+      if (!restaurantId) {
+        throw new Error('Restaurant ID is missing.')
+      }
 
+      const result =
+        sessionMode && sessionToken
+          ? await supabase.rpc(
+              'manager_delivery_create_store_item_session',
+              {
+                p_session_token: sessionToken,
+                p_payload: payload,
+              }
+            )
+          : await supabase.rpc(
+              'manager_delivery_create_store_item',
+              {
+                p_restaurant_id: String(restaurantId),
+                p_restaurant_code: String(restaurantCode || '').trim(),
+                p_user_id: String(userId || '').trim().toLowerCase(),
+                p_password: String(password || ''),
+                p_payload: payload,
+              }
+            )
+
+      if (result.error) throw result.error
+
+      if (!result.data?.success) {
+        throw new Error(
+          result.data?.message || 'Unable to add store item.'
+        )
+      }
+
+      return result.data
+    },
+    [
+      restaurantId,
+      restaurantCode,
+      sessionToken,
+      sessionMode,
+      userId,
+      password,
+    ]
+  )
+
+  const scanCreateStoreItemBarcode = async () => {
+    const currentBarcode = String(
+      createStoreItemDraft.barcode || ''
+    ).trim()
+
+    try {
+      const barcode = await scanBarcodeWithCamera({
+        title: 'Scan New Packaged Product',
+      })
+
+      setCreateStoreItemDraft((current) => ({
+        ...current,
+        barcode,
+      }))
+
+      setMessage(`Barcode scanned: ${barcode}`)
+    } catch (scanError) {
+      if (scanError?.code === 'SCAN_CANCELLED') return
+
+      console.error('Store item barcode scan error:', scanError)
+
+      const manual = await appPrompt(
+        `${scanError?.message || 'Camera scanning failed.'}\n\nEnter barcode manually:`,
+        currentBarcode
+      )
+
+      if (manual != null) {
+        setCreateStoreItemDraft((current) => ({
+          ...current,
+          barcode: String(manual).trim(),
+        }))
+      }
+    }
+  }
+
+  const saveCreateStoreItem = async (event) => {
+    event.preventDefault()
+
+    if (createStoreItemSaving) return
+
+    const type = String(createStoreItemDraft.item_type || 'food')
+    const name = String(createStoreItemDraft.name || '').trim()
+    const price = Number(createStoreItemDraft.delivery_price)
+    const offerPrice =
+      createStoreItemDraft.delivery_offer_price === ''
+        ? null
+        : Number(createStoreItemDraft.delivery_offer_price)
+    const barcode = String(createStoreItemDraft.barcode || '').trim()
+    const openingStock = Number(createStoreItemDraft.opening_stock)
+    const lowStockThreshold = Number(
+      createStoreItemDraft.low_stock_threshold
+    )
+
+    if (name.length < 2 || !Number.isFinite(price) || price < 0) {
+      appNotice('Enter a valid item name and Delivery price.')
+      return
+    }
+
+    if (
+      offerPrice !== null &&
+      (!Number.isFinite(offerPrice) || offerPrice < 0 || offerPrice > price)
+    ) {
+      appNotice(
+        'Delivery offer price must be valid and cannot exceed the Delivery price.'
+      )
+      return
+    }
+
+    if (type === 'packaged_product') {
+      if (!barcode) {
+        appNotice('Scan or enter the packaged product barcode.')
+        return
+      }
+
+      if (!Number.isInteger(openingStock) || openingStock < 0) {
+        appNotice('Opening stock must be a whole number of 0 or more.')
+        return
+      }
+
+      if (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0) {
+        appNotice('Low-stock alert must be a whole number of 0 or more.')
+        return
+      }
+    }
+
+    setCreateStoreItemSaving(true)
+    setError('')
+
+    try {
+      const result = await createManagerStoreItem({
+        item_type: type,
+        name,
+        category: String(createStoreItemDraft.category || '').trim() ||
+          (type === 'packaged_product' ? 'Packaged Products' : 'Other'),
+        description: String(createStoreItemDraft.description || '').trim(),
+        image_url: String(createStoreItemDraft.image_url || '').trim(),
+        food_type:
+          type === 'packaged_product'
+            ? 'other'
+            : String(createStoreItemDraft.food_type || 'veg'),
+        delivery_price: price,
+        delivery_offer_price: offerPrice ?? '',
+        delivery_enabled: Boolean(createStoreItemDraft.delivery_enabled),
+        delivery_available: Boolean(createStoreItemDraft.delivery_available),
+        barcode: type === 'packaged_product' ? barcode : '',
+        opening_stock: type === 'packaged_product' ? openingStock : 0,
+        low_stock_threshold:
+          type === 'packaged_product' ? lowStockThreshold : 0,
+      })
+
+      setMessage(
+        result?.message ||
+          (type === 'packaged_product'
+            ? 'Packaged product added with opening stock.'
+            : 'Food item added successfully.')
+      )
+
+      setCreateStoreItemDraft({ ...EMPTY_CREATE_STORE_ITEM })
+      setShowCreateStoreItem(false)
+
+      await loadData(true)
+      await loadInventoryReport(true)
+    } catch (createError) {
+      console.error('Manager add store item error:', createError)
+      appNotice(createError?.message || 'Unable to add store item.')
+    } finally {
+      setCreateStoreItemSaving(false)
+    }
+  }
 
 
   const getManagerInventoryReport = useCallback(
@@ -3279,37 +3476,37 @@ export default function ManagerDeliveryManagement({
   }
 
   const scanBarcode = async () => {
-    if (typeof window === 'undefined' || !('BarcodeDetector' in window) || !navigator?.mediaDevices?.getUserMedia) {
-      const manual = await appPrompt('Barcode scanner is not supported here. Enter barcode manually:', inventoryDraft.barcode || '')
-      if (manual != null) setInventoryDraft((x) => ({ ...x, barcode: String(manual).trim() }))
-      return
-    }
-    let stream
+    const currentBarcode = String(
+      inventoryDraft.barcode || ''
+    ).trim()
+
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
-      const video = document.createElement('video')
-      video.srcObject = stream; video.muted = true; video.playsInline = true
-      await video.play()
-      const detector = new window.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','codabar','itf','qr_code'] })
-      let found = ''
-      const started = Date.now()
-      while (!found && Date.now() - started < 15000) {
-        const codes = await detector.detect(video)
-        found = String(codes?.[0]?.rawValue || '').trim()
-        if (!found) await new Promise((r) => setTimeout(r, 250))
+      const barcode = await scanBarcodeWithCamera({
+        title: 'Scan Inventory Barcode',
+      })
+
+      setInventoryDraft((current) => ({
+        ...current,
+        barcode,
+      }))
+
+      setMessage(`Barcode scanned: ${barcode}`)
+    } catch (scanError) {
+      if (scanError?.code === 'SCAN_CANCELLED') return
+
+      console.error('Inventory barcode scan error:', scanError)
+
+      const manual = await appPrompt(
+        `${scanError?.message || 'Camera scanning failed.'}\n\nEnter barcode manually:`,
+        currentBarcode
+      )
+
+      if (manual != null) {
+        setInventoryDraft((current) => ({
+          ...current,
+          barcode: String(manual).trim(),
+        }))
       }
-      if (found) {
-        setInventoryDraft((x) => ({ ...x, barcode: found }))
-        setMessage(`Barcode scanned: ${found}`)
-      } else {
-        const manual = await appPrompt('No barcode detected. Enter barcode manually:', inventoryDraft.barcode || '')
-        if (manual != null) setInventoryDraft((x) => ({ ...x, barcode: String(manual).trim() }))
-      }
-    } catch (e) {
-      const manual = await appPrompt('Camera unavailable. Enter barcode manually:', inventoryDraft.barcode || '')
-      if (manual != null) setInventoryDraft((x) => ({ ...x, barcode: String(manual).trim() }))
-    } finally {
-      stream?.getTracks().forEach((track) => track.stop())
     }
   }
 
@@ -5267,10 +5464,309 @@ export default function ManagerDeliveryManagement({
 
 
       {tab === 'menu' && (
+        <div className="space-y-4">
+          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                  Store Catalogue
+                </p>
+                <h3 className="mt-1 text-xl font-black text-white">
+                  Add Food Items & Packaged Products
+                </h3>
+                <p className="mt-2 max-w-2xl text-xs leading-5 text-neutral-400">
+                  Food items can be added normally. For packaged products, scan the barcode and enter the opening stock. Opening stock is recorded through the same atomic inventory engine used by Restock.
+                </p>
+              </div>
 
+              <button
+                type="button"
+                onClick={() => setShowCreateStoreItem((current) => !current)}
+                className="shrink-0 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white"
+              >
+                {showCreateStoreItem ? 'Close Add Item' : '＋ Add Food / Product'}
+              </button>
+            </div>
 
+            {showCreateStoreItem && (
+              <form onSubmit={saveCreateStoreItem} className="mt-5 space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCreateStoreItemDraft((current) => ({
+                        ...current,
+                        item_type: 'food',
+                        barcode: '',
+                        opening_stock: '0',
+                        low_stock_threshold: '5',
+                        food_type:
+                          current.food_type === 'other' ? 'veg' : current.food_type,
+                      }))
+                    }
+                    className={`rounded-xl border px-4 py-3 text-xs font-black ${
+                      createStoreItemDraft.item_type === 'food'
+                        ? 'border-orange-500 bg-orange-500/10 text-orange-300'
+                        : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                    }`}
+                  >
+                    🍔 Food Item
+                  </button>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCreateStoreItemDraft((current) => ({
+                        ...current,
+                        item_type: 'packaged_product',
+                        food_type: 'other',
+                        category:
+                          current.category === 'Main Course'
+                            ? 'Packaged Products'
+                            : current.category,
+                      }))
+                    }
+                    className={`rounded-xl border px-4 py-3 text-xs font-black ${
+                      createStoreItemDraft.item_type === 'packaged_product'
+                        ? 'border-sky-500 bg-sky-500/10 text-sky-300'
+                        : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                    }`}
+                  >
+                    📦 Packaged Product
+                  </button>
+                </div>
+
+                {createStoreItemDraft.item_type === 'packaged_product' && (
+                  <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-sky-300">
+                      Scan Product First
+                    </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <Field
+                        label="Product Barcode"
+                        value={createStoreItemDraft.barcode}
+                        onChange={(value) =>
+                          setCreateStoreItemDraft((current) => ({
+                            ...current,
+                            barcode: value,
+                          }))
+                        }
+                        placeholder="Scan or enter barcode"
+                      />
+                      <button
+                        type="button"
+                        onClick={scanCreateStoreItemBarcode}
+                        className="self-end rounded-xl bg-sky-600 px-5 py-3 text-xs font-black text-white"
+                      >
+                        📷 Scan Barcode
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field
+                    label={
+                      createStoreItemDraft.item_type === 'packaged_product'
+                        ? 'Product Name'
+                        : 'Food Item Name'
+                    }
+                    value={createStoreItemDraft.name}
+                    onChange={(value) =>
+                      setCreateStoreItemDraft((current) => ({
+                        ...current,
+                        name: value,
+                      }))
+                    }
+                    placeholder={
+                      createStoreItemDraft.item_type === 'packaged_product'
+                        ? 'Example: Coca-Cola 750ml'
+                        : 'Example: Chicken Biryani'
+                    }
+                  />
+
+                  <Field
+                    label="Category"
+                    value={createStoreItemDraft.category}
+                    onChange={(value) =>
+                      setCreateStoreItemDraft((current) => ({
+                        ...current,
+                        category: value,
+                      }))
+                    }
+                  />
+                </div>
+
+                {createStoreItemDraft.item_type === 'food' && (
+                  <label className="block">
+                    <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+                      Food Type
+                    </span>
+                    <select
+                      value={createStoreItemDraft.food_type}
+                      onChange={(event) =>
+                        setCreateStoreItemDraft((current) => ({
+                          ...current,
+                          food_type: event.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-white outline-none focus:border-emerald-500"
+                    >
+                      <option value="veg">Vegetarian</option>
+                      <option value="non-veg">Non-Vegetarian</option>
+                      <option value="egg">Egg</option>
+                      <option value="beverage">Beverage</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field
+                    label="Delivery Price"
+                    type="number"
+                    value={createStoreItemDraft.delivery_price}
+                    onChange={(value) =>
+                      setCreateStoreItemDraft((current) => ({
+                        ...current,
+                        delivery_price: value,
+                      }))
+                    }
+                    placeholder="0"
+                  />
+
+                  <Field
+                    label="Delivery Offer Price"
+                    type="number"
+                    value={createStoreItemDraft.delivery_offer_price}
+                    onChange={(value) =>
+                      setCreateStoreItemDraft((current) => ({
+                        ...current,
+                        delivery_offer_price: value,
+                      }))
+                    }
+                    placeholder="Optional"
+                  />
+                </div>
+
+                {createStoreItemDraft.item_type === 'packaged_product' && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field
+                      label="Opening Stock"
+                      type="number"
+                      value={createStoreItemDraft.opening_stock}
+                      onChange={(value) =>
+                        setCreateStoreItemDraft((current) => ({
+                          ...current,
+                          opening_stock: value,
+                        }))
+                      }
+                      placeholder="0"
+                    />
+
+                    <Field
+                      label="Low Stock Alert"
+                      type="number"
+                      value={createStoreItemDraft.low_stock_threshold}
+                      onChange={(value) =>
+                        setCreateStoreItemDraft((current) => ({
+                          ...current,
+                          low_stock_threshold: value,
+                        }))
+                      }
+                      placeholder="5"
+                    />
+                  </div>
+                )}
+
+                <Field
+                  label="Image URL"
+                  value={createStoreItemDraft.image_url}
+                  onChange={(value) =>
+                    setCreateStoreItemDraft((current) => ({
+                      ...current,
+                      image_url: value,
+                    }))
+                  }
+                  placeholder="Optional https://..."
+                />
+
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+                    Description
+                  </span>
+                  <textarea
+                    rows="3"
+                    value={createStoreItemDraft.description}
+                    onChange={(event) =>
+                      setCreateStoreItemDraft((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-emerald-500"
+                  />
+                </label>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Toggle
+                    label="Show on Delivery Website"
+                    checked={createStoreItemDraft.delivery_enabled}
+                    onChange={(checked) =>
+                      setCreateStoreItemDraft((current) => ({
+                        ...current,
+                        delivery_enabled: checked,
+                      }))
+                    }
+                  />
+                  <Toggle
+                    label="Available for Delivery"
+                    checked={createStoreItemDraft.delivery_available}
+                    onChange={(checked) =>
+                      setCreateStoreItemDraft((current) => ({
+                        ...current,
+                        delivery_available: checked,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4 text-[10px] leading-5 text-neutral-400">
+                  {createStoreItemDraft.item_type === 'packaged_product'
+                    ? 'Packaged products automatically enable stock tracking. Opening stock is added through the atomic inventory restock action and the barcode is checked for duplicates in this store.'
+                    : 'Food items are created without barcode stock tracking, so the Packer barcode gate will not block normal prepared food.'}
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={createStoreItemSaving}
+                    className="flex-1 rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-white disabled:opacity-50"
+                  >
+                    {createStoreItemSaving
+                      ? 'Adding Item...'
+                      : createStoreItemDraft.item_type === 'packaged_product'
+                        ? 'Add Product + Opening Stock'
+                        : 'Add Food Item'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={createStoreItemSaving}
+                    onClick={() => {
+                      setCreateStoreItemDraft({ ...EMPTY_CREATE_STORE_ITEM })
+                      setShowCreateStoreItem(false)
+                    }}
+                    className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </section>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 
 
 
@@ -5878,6 +6374,7 @@ export default function ManagerDeliveryManagement({
 
 
 
+          </div>
         </div>
 
 
@@ -5902,6 +6399,16 @@ export default function ManagerDeliveryManagement({
             <p className="mt-2 text-xs leading-5 text-neutral-400">
               Stock changes still use the same atomic inventory engine. This report reads the movement ledger for sales, restocks, releases and adjustments.
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                setTab('menu')
+                setShowCreateStoreItem(true)
+              }}
+              className="mt-4 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white"
+            >
+              ＋ Add Food / Scan Product
+            </button>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

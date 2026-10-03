@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import PaymentGatewayConfigCard from '@/app/components/PaymentGatewayConfigCard'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
+import { scanBarcodeWithCamera } from '@/lib/barcodeScanner'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 import InstallAppButton from '@/app/components/InstallAppButton'
 
@@ -65,6 +66,7 @@ const EMPTY_SETTINGS = {
 
 const EMPTY_MENU = {
   id: '',
+  item_type: 'food',
   name: '',
   category: 'Main Course',
   description: '',
@@ -74,6 +76,9 @@ const EMPTY_MENU = {
   delivery_offer_price: '',
   delivery_enabled: true,
   delivery_available: true,
+  barcode: '',
+  opening_stock: '0',
+  low_stock_threshold: '5',
 }
 
 const EMPTY_DRIVER = {
@@ -1581,182 +1586,40 @@ export default function DeliveryManagement({
     })
   }
 
-  const scanInventoryBarcode =
-    async () => {
-      if (
-        typeof window ===
-          'undefined' ||
-        !(
-          'BarcodeDetector' in
-          window
-        ) ||
-        !navigator
-          ?.mediaDevices
-          ?.getUserMedia
-      ) {
-        const manual =
-          await appPrompt(
-            'Barcode scanner is not supported here. Enter barcode manually:',
-            inventoryDraft.barcode ||
-              ''
-          )
+  const scanInventoryBarcode = async () => {
+    const currentBarcode = String(
+      inventoryDraft.barcode || ''
+    ).trim()
 
-        if (manual != null) {
-          setInventoryDraft(
-            (current) => ({
-              ...current,
-              barcode:
-                String(
-                  manual
-                ).trim(),
-            })
-          )
-        }
+    try {
+      const barcode = await scanBarcodeWithCamera({
+        title: 'Scan Inventory Barcode',
+      })
 
-        return
-      }
+      setInventoryDraft((current) => ({
+        ...current,
+        barcode,
+      }))
 
-      let stream
+      setMessage(`Barcode scanned: ${barcode}`)
+    } catch (scanError) {
+      if (scanError?.code === 'SCAN_CANCELLED') return
 
-      try {
-        stream =
-          await navigator
-            .mediaDevices
-            .getUserMedia({
-              video: {
-                facingMode: {
-                  ideal:
-                    'environment',
-                },
-              },
-              audio: false,
-            })
+      console.error('Owner inventory barcode scan error:', scanError)
 
-        const video =
-          document.createElement(
-            'video'
-          )
+      const manual = await appPrompt(
+        `${scanError?.message || 'Camera scanning failed.'}\n\nEnter barcode manually:`,
+        currentBarcode
+      )
 
-        video.srcObject =
-          stream
-        video.muted = true
-        video.playsInline = true
-
-        await video.play()
-
-        const detector =
-          new window.BarcodeDetector({
-            formats: [
-              'ean_13',
-              'ean_8',
-              'upc_a',
-              'upc_e',
-              'code_128',
-              'code_39',
-              'codabar',
-              'itf',
-              'qr_code',
-            ],
-          })
-
-        let found = ''
-        const started =
-          Date.now()
-
-        while (
-          !found &&
-          Date.now() -
-            started <
-            15000
-        ) {
-          const codes =
-            await detector.detect(
-              video
-            )
-
-          found =
-            String(
-              codes?.[0]
-                ?.rawValue ||
-                ''
-            ).trim()
-
-          if (!found) {
-            await new Promise(
-              (resolve) =>
-                setTimeout(
-                  resolve,
-                  250
-                )
-            )
-          }
-        }
-
-        if (found) {
-          setInventoryDraft(
-            (current) => ({
-              ...current,
-              barcode:
-                found,
-            })
-          )
-
-          setMessage(
-            `Barcode scanned: ${found}`
-          )
-        } else {
-          const manual =
-            await appPrompt(
-              'No barcode detected. Enter barcode manually:',
-              inventoryDraft.barcode ||
-                ''
-            )
-
-          if (manual != null) {
-            setInventoryDraft(
-              (current) => ({
-                ...current,
-                barcode:
-                  String(
-                    manual
-                  ).trim(),
-              })
-            )
-          }
-        }
-      } catch (scanError) {
-        console.error(
-          'Owner inventory barcode scan error:',
-          scanError
-        )
-
-        const manual =
-          await appPrompt(
-            'Camera unavailable. Enter barcode manually:',
-            inventoryDraft.barcode ||
-              ''
-          )
-
-        if (manual != null) {
-          setInventoryDraft(
-            (current) => ({
-              ...current,
-              barcode:
-                String(
-                  manual
-                ).trim(),
-            })
-          )
-        }
-      } finally {
-        stream
-          ?.getTracks()
-          .forEach(
-            (track) =>
-              track.stop()
-          )
+      if (manual != null) {
+        setInventoryDraft((current) => ({
+          ...current,
+          barcode: String(manual).trim(),
+        }))
       }
     }
+  }
 
   const saveInventory = async (
     item
@@ -2997,6 +2860,41 @@ export default function DeliveryManagement({
     }
   }
 
+  const scanNewMenuProductBarcode = async () => {
+    const currentBarcode = String(
+      menuForm.barcode || ''
+    ).trim()
+
+    try {
+      const barcode = await scanBarcodeWithCamera({
+        title: 'Scan New Packaged Product',
+      })
+
+      setMenuForm((current) => ({
+        ...current,
+        barcode,
+      }))
+
+      setMessage(`Barcode scanned: ${barcode}`)
+    } catch (scanError) {
+      if (scanError?.code === 'SCAN_CANCELLED') return
+
+      console.error('Owner new product barcode scan error:', scanError)
+
+      const manual = await appPrompt(
+        `${scanError?.message || 'Camera scanning failed.'}\n\nEnter barcode manually:`,
+        currentBarcode
+      )
+
+      if (manual != null) {
+        setMenuForm((current) => ({
+          ...current,
+          barcode: String(manual).trim(),
+        }))
+      }
+    }
+  }
+
   const saveMenuItem = async (
     event
   ) => {
@@ -3018,6 +2916,19 @@ export default function DeliveryManagement({
         : Number(
             menuForm.delivery_offer_price
           )
+
+    const itemType = String(
+      menuForm.item_type || 'food'
+    )
+    const barcode = String(
+      menuForm.barcode || ''
+    ).trim()
+    const openingStock = Number(
+      menuForm.opening_stock
+    )
+    const lowStockThreshold = Number(
+      menuForm.low_stock_threshold
+    )
 
     if (
       name.length < 2 ||
@@ -3046,6 +2957,23 @@ export default function DeliveryManagement({
         'Delivery offer price must be between ₹0 and the Delivery price.'
       )
       return
+    }
+
+    if (!menuForm.id && itemType === 'packaged_product') {
+      if (!barcode) {
+        appNotice('Scan or enter the packaged product barcode.')
+        return
+      }
+
+      if (!Number.isInteger(openingStock) || openingStock < 0) {
+        appNotice('Opening stock must be a whole number of 0 or more.')
+        return
+      }
+
+      if (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0) {
+        appNotice('Low-stock alert must be a whole number of 0 or more.')
+        return
+      }
     }
 
     setMenuSaving(true)
@@ -3114,31 +3042,50 @@ export default function DeliveryManagement({
           )
         )
       } else {
-        const {
-          data,
-          error,
-        } = await supabase
-          .from('menu_items')
-          .insert({
-            restaurant_id:
-              restaurantId,
-            ...commonPayload,
-            price: deliveryPrice,
-            original_price: null,
-            offer_price: null,
-            reorder_mode: 'auto',
-            addons: [],
-            is_available: true,
-          })
-          .select('*')
-          .single()
+        const { data: result, error } =
+          await supabase.rpc(
+            'owner_delivery_create_store_item',
+            {
+              p_restaurant_id: restaurantId,
+              p_payload: {
+                ...commonPayload,
+                item_type: itemType,
+                barcode:
+                  itemType === 'packaged_product'
+                    ? barcode
+                    : '',
+                opening_stock:
+                  itemType === 'packaged_product'
+                    ? openingStock
+                    : 0,
+                low_stock_threshold:
+                  itemType === 'packaged_product'
+                    ? lowStockThreshold
+                    : 0,
+              },
+            }
+          )
 
         if (error) throw error
+        if (!result?.success) {
+          throw new Error(
+            result?.message ||
+              'Unable to add Delivery item.'
+          )
+        }
 
-        setMenuItems((current) => [
-          data,
-          ...current,
-        ])
+        if (result?.data) {
+          setMenuItems((current) => [
+            result.data,
+            ...current.filter(
+              (item) =>
+                String(item.id) !==
+                String(result.data.id)
+            ),
+          ])
+        }
+
+        await loadInventoryReport(true)
       }
 
       setMenuForm(EMPTY_MENU)
@@ -3163,6 +3110,7 @@ export default function DeliveryManagement({
   const editMenuItem = (item) => {
     setMenuForm({
       id: item.id,
+      item_type: String(item.item_type || 'food'),
       name: item.name || '',
       category:
         item.category || 'Other',
@@ -3188,6 +3136,9 @@ export default function DeliveryManagement({
       delivery_available:
         item.delivery_available !==
         false,
+      barcode: String(item.barcode || ''),
+      opening_stock: String(item.stock_quantity ?? 0),
+      low_stock_threshold: String(item.low_stock_threshold ?? 5),
     })
 
     window.setTimeout(() => {
@@ -4918,14 +4869,90 @@ export default function DeliveryManagement({
             </h3>
 
             <p className="mt-1 text-xs leading-5 text-neutral-500">
-              {deliveryOnly
-                ? 'Delivery-only subscriptions manage their complete menu here.'
-                : 'The item name/details are shared with Restaurant. Delivery price and availability remain separate.'}
+              {menuForm.id
+                ? 'Update the Delivery item details. Inventory/barcode edits remain available in the Inventory tab.'
+                : 'Add normal food items or scan a packaged product barcode and enter its opening stock. Packaged opening stock is recorded through the atomic inventory engine.'}
             </p>
 
             <div className="mt-5 space-y-3">
+              {!menuForm.id && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMenuForm((current) => ({
+                        ...current,
+                        item_type: 'food',
+                        barcode: '',
+                        opening_stock: '0',
+                        food_type:
+                          current.food_type === 'other' ? 'veg' : current.food_type,
+                      }))
+                    }
+                    className={`rounded-xl border px-3 py-3 text-xs font-black ${
+                      menuForm.item_type === 'food'
+                        ? 'border-orange-500 bg-orange-500/10 text-orange-300'
+                        : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                    }`}
+                  >
+                    🍔 Food Item
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMenuForm((current) => ({
+                        ...current,
+                        item_type: 'packaged_product',
+                        food_type: 'other',
+                        category:
+                          current.category === 'Main Course'
+                            ? 'Packaged Products'
+                            : current.category,
+                      }))
+                    }
+                    className={`rounded-xl border px-3 py-3 text-xs font-black ${
+                      menuForm.item_type === 'packaged_product'
+                        ? 'border-sky-500 bg-sky-500/10 text-sky-300'
+                        : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                    }`}
+                  >
+                    📦 Packaged Product
+                  </button>
+                </div>
+              )}
+
+              {!menuForm.id && menuForm.item_type === 'packaged_product' && (
+                <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <Field
+                      label="Product Barcode"
+                      value={menuForm.barcode}
+                      onChange={(value) =>
+                        setMenuForm((current) => ({
+                          ...current,
+                          barcode: value,
+                        }))
+                      }
+                      placeholder="Scan or enter barcode"
+                    />
+                    <button
+                      type="button"
+                      onClick={scanNewMenuProductBarcode}
+                      className="self-end rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white"
+                    >
+                      📷 Scan
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <Field
-                label="Item Name"
+                label={
+                  !menuForm.id && menuForm.item_type === 'packaged_product'
+                    ? 'Product Name'
+                    : 'Item Name'
+                }
                 value={menuForm.name}
                 onChange={(value) =>
                   setMenuForm(
@@ -4952,6 +4979,7 @@ export default function DeliveryManagement({
                 }
               />
 
+              {(menuForm.id || menuForm.item_type !== 'packaged_product') && (
               <SelectField
                 label="Food Type"
                 value={
@@ -4993,6 +5021,7 @@ export default function DeliveryManagement({
                   ],
                 ]}
               />
+              )}
 
               <Field
                 label="Delivery Price"
@@ -5028,6 +5057,33 @@ export default function DeliveryManagement({
                 }
                 placeholder="Optional"
               />
+
+              {!menuForm.id && menuForm.item_type === 'packaged_product' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field
+                    label="Opening Stock"
+                    type="number"
+                    value={menuForm.opening_stock}
+                    onChange={(value) =>
+                      setMenuForm((current) => ({
+                        ...current,
+                        opening_stock: value,
+                      }))
+                    }
+                  />
+                  <Field
+                    label="Low Stock Alert"
+                    type="number"
+                    value={menuForm.low_stock_threshold}
+                    onChange={(value) =>
+                      setMenuForm((current) => ({
+                        ...current,
+                        low_stock_threshold: value,
+                      }))
+                    }
+                  />
+                </div>
+              )}
 
               <Field
                 label="Image URL"
