@@ -10,6 +10,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
+import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
+import InstallAppButton from '@/app/components/InstallAppButton'
 
 const EMPTY_CHECKOUT = {
   customerName: '',
@@ -128,6 +130,8 @@ export default function DeliveryStorePage({
     useState([])
   const [locationLoading, setLocationLoading] =
     useState(false)
+  const [addressLoading, setAddressLoading] =
+    useState(false)
   const [locationError, setLocationError] =
     useState('')
   const [locationConfirmed, setLocationConfirmed] =
@@ -135,8 +139,8 @@ export default function DeliveryStorePage({
 
   const settings =
     storeData?.settings || {}
-    const surge =
-  storeData?.surge || {}
+  const surge =
+    storeData?.surge || {}
   const coverage =
     storeData?.coverage || {}
   const restaurant =
@@ -199,7 +203,9 @@ export default function DeliveryStorePage({
       selectedDistanceKm > coverageRadiusKm
   )
 
-  const loadStore = async () => {
+  const loadStore = async (
+    quiet = false
+  ) => {
     if (!restaurantCode) {
       setError(
         'Delivery store code is missing.'
@@ -208,8 +214,10 @@ export default function DeliveryStorePage({
       return
     }
 
-    setLoading(true)
-    setError('')
+    if (!quiet) {
+      setLoading(true)
+      setError('')
+    }
 
     try {
       const {
@@ -264,18 +272,20 @@ export default function DeliveryStorePage({
         coverage: coverageData,
       })
 
-      if (
-        data?.settings
-          ?.cod_enabled
-      ) {
-        setPaymentMethod('cod')
-      } else if (
-        data?.settings
-          ?.online_payment_enabled
-      ) {
-        setPaymentMethod(
-          'razorpay'
-        )
+      if (!quiet) {
+        if (
+          data?.settings
+            ?.cod_enabled
+        ) {
+          setPaymentMethod('cod')
+        } else if (
+          data?.settings
+            ?.online_payment_enabled
+        ) {
+          setPaymentMethod(
+            'razorpay'
+          )
+        }
       }
     } catch (loadError) {
       console.error(
@@ -283,12 +293,16 @@ export default function DeliveryStorePage({
         loadError
       )
 
-      setError(
-        loadError?.message ||
-          'Unable to load Delivery store.'
-      )
+      if (!quiet) {
+        setError(
+          loadError?.message ||
+            'Unable to load Delivery store.'
+        )
+      }
     } finally {
-      setLoading(false)
+      if (!quiet) {
+        setLoading(false)
+      }
     }
   }
 
@@ -296,6 +310,12 @@ export default function DeliveryStorePage({
     loadStore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantCode])
+
+  useLiveDeliveryRefresh(
+    () => loadStore(true),
+    Boolean(restaurantCode && storeData),
+    1000
+  )
 
   const categories =
     useMemo(() => {
@@ -390,43 +410,87 @@ export default function DeliveryStorePage({
       0
     )
 
-  const previewDeliveryFee =
-    settings.free_delivery_above !=
-      null &&
-    subtotal >=
+  const minimumOrderAmount =
+    Math.max(
+      0,
       Number(
-        settings.free_delivery_above
+        settings.minimum_order_amount || 0
       )
-      ? 0
-      : Number(
-          settings.delivery_fee || 0
-        )
-
-  const previewPacking =
-    Number(
-      settings.packing_charge || 0
     )
 
-  const previewTax =
+  const configuredDeliveryFee =
+    Math.max(
+      0,
+      Number(
+        settings.delivery_fee || 0
+      )
+    )
+
+  const previewDeliveryFee =
+    minimumOrderAmount > 0
+      ? subtotal < minimumOrderAmount
+        ? configuredDeliveryFee
+        : 0
+      : settings.free_delivery_above != null &&
+          Number(settings.free_delivery_above) > 0 &&
+          subtotal >= Number(settings.free_delivery_above)
+        ? 0
+        : configuredDeliveryFee
+
+  const previewPacking =
+    Math.max(
+      0,
+      Number(
+        settings.packing_charge || 0
+      )
+    )
+
+  const previewHandling =
+    Math.max(
+      0,
+      Number(
+        settings.handling_charge || 0
+      )
+    )
+
+  const previewSurge =
+    Boolean(surge.active)
+      ? Math.max(
+          0,
+          Number(
+            surge.charge ||
+              settings.surge_charge ||
+              0
+          )
+        )
+      : 0
+
+  const previewSgst =
     settings.tax_enabled
       ? (
           subtotal *
-          (
-            Number(
-              settings.sgst_rate || 0
-            ) +
-            Number(
-              settings.cgst_rate || 0
-            )
-          )
-        ) /
-        100
+          Number(settings.sgst_rate || 0)
+        ) / 100
       : 0
+
+  const previewCgst =
+    settings.tax_enabled
+      ? (
+          subtotal *
+          Number(settings.cgst_rate || 0)
+        ) / 100
+      : 0
+
+  const previewTax =
+    previewSgst +
+    previewCgst
 
   const previewTotal =
     subtotal +
     previewDeliveryFee +
     previewPacking +
+    previewHandling +
+    previewSurge +
     previewTax
 
   const updateQuantity = (
@@ -602,12 +666,98 @@ export default function DeliveryStorePage({
     }
   }
 
-  const chooseLiveLocation = () => {
-    if (locationLoading) return
+  const fillAddressFromLocation =
+    async (latitude, longitude) => {
+      const lat = Number(latitude)
+      const lng = Number(longitude)
 
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng)
+      ) {
+        return false
+      }
+
+      setAddressLoading(true)
+
+      try {
+        const response = await fetch(
+          `/api/location/reverse?lat=${encodeURIComponent(
+            lat
+          )}&lng=${encodeURIComponent(
+            lng
+          )}`,
+          {
+            method: 'GET',
+            cache: 'no-store',
+          }
+        )
+
+        const data = await response
+          .json()
+          .catch(() => ({}))
+
+        if (!response.ok || !data?.success) {
+          throw new Error(
+            data?.message ||
+              'Unable to identify this address.'
+          )
+        }
+
+        const address = data.address || {}
+
+        setCheckout((current) => ({
+          ...current,
+          addressLine1:
+            address.addressLine1 ||
+            current.addressLine1,
+          addressLine2:
+            address.addressLine2 ||
+            current.addressLine2,
+          landmark:
+            address.landmark ||
+            current.landmark,
+          city:
+            address.city ||
+            current.city,
+          state:
+            address.state ||
+            current.state,
+          pincode: digits(
+            address.pincode ||
+              current.pincode,
+            6
+          ),
+        }))
+
+        return true
+      } catch (addressError) {
+        console.error(
+          'Automatic address lookup error:',
+          addressError
+        )
+
+        setLocationError(
+          'Your location pin was found, but the written address could not be filled automatically. You can enter it manually.'
+        )
+
+        return false
+      } finally {
+        setAddressLoading(false)
+      }
+    }
+
+  const chooseLiveLocation = () => {
+    if (locationLoading || addressLoading) {
+      return
+    }
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.geolocation
+    ) {
       setLocationError(
-        'Live location is not supported on this device/browser. Please open the Delivery page in a modern browser and allow location access.'
+        'Live location is not supported on this device/browser. Please allow location access or choose your location on the map.'
       )
       return
     }
@@ -616,28 +766,48 @@ export default function DeliveryStorePage({
     setLocationError('')
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const latitude = Number(position.coords.latitude)
-        const longitude = Number(position.coords.longitude)
-        const accuracy = Number(position.coords.accuracy || 0)
+      async (position) => {
+        const latitude = Number(
+          position.coords.latitude
+        )
+
+        const longitude = Number(
+          position.coords.longitude
+        )
+
+        const accuracy = Number(
+          position.coords.accuracy || 0
+        )
 
         setCheckout((current) => ({
           ...current,
           latitude: latitude.toFixed(7),
           longitude: longitude.toFixed(7),
-          locationAccuracy: accuracy ? accuracy.toFixed(2) : '',
+          locationAccuracy: accuracy
+            ? accuracy.toFixed(2)
+            : '',
         }))
+
         setLocationConfirmed(false)
 
+        await fillAddressFromLocation(
+          latitude,
+          longitude
+        )
+
         setLocationLoading(false)
-        setLocationError('')
       },
       (geoError) => {
-        console.error('Customer geolocation error:', geoError)
+        console.error(
+          'Customer geolocation error:',
+          geoError
+        )
+
         setLocationLoading(false)
+
         setLocationError(
           geoError?.code === 1
-            ? 'Location permission was denied. Allow location access and tap Use Current Location again.'
+            ? 'Location permission was denied. Allow location access and tap Use My Current Location again.'
             : 'Unable to read your current location. Check GPS/location services and try again.'
         )
       },
@@ -749,21 +919,6 @@ export default function DeliveryStorePage({
     if (!cartRows.length) {
       setMessage(
         'Your cart is empty.'
-      )
-      return
-    }
-
-    if (
-      subtotal <
-      Number(
-        settings.minimum_order_amount ||
-          0
-      )
-    ) {
-      setMessage(
-        `Minimum order is ${money(
-          settings.minimum_order_amount
-        )}.`
       )
       return
     }
@@ -1100,28 +1255,44 @@ export default function DeliveryStorePage({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={openTracking}
-              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 sm:px-3 text-[10px] font-black text-neutral-800 shadow-sm transition active:scale-[0.98]"
-            >
-              <span aria-hidden="true">⌖</span>
-              Track
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <InstallAppButton
+                label="App"
+                className="!h-10 !min-h-10 !rounded-xl !px-2.5 sm:!px-3"
+              />
 
-            <button
-              type="button"
-              onClick={() => setCheckoutOpen(true)}
-              className="relative flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-neutral-950 px-2.5 sm:px-3.5 text-[10px] font-black text-white shadow-sm transition active:scale-[0.98]"
-            >
-              <span aria-hidden="true">🛒</span>
-              Cart
-              {cartCount > 0 && (
-                <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black text-white ring-2 ring-white">
-                  {cartCount}
+              <button
+                type="button"
+                onClick={openTracking}
+                className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 sm:px-3 text-[10px] font-black text-neutral-800 shadow-sm transition active:scale-[0.98]"
+                aria-label="Track order"
+              >
+                <span aria-hidden="true">⌖</span>
+
+                <span className="hidden min-[390px]:inline">
+                  Track
                 </span>
-              )}
-            </button>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCheckoutOpen(true)}
+                className="relative flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-neutral-950 px-2.5 sm:px-3.5 text-[10px] font-black text-white shadow-sm transition active:scale-[0.98]"
+                aria-label="Open cart"
+              >
+                <span aria-hidden="true">🛒</span>
+
+                <span className="hidden min-[390px]:inline">
+                  Cart
+                </span>
+
+                {cartCount > 0 && (
+                  <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black text-white ring-2 ring-white">
+                    {cartCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="relative mt-3">
@@ -1746,55 +1917,71 @@ export default function DeliveryStorePage({
 
             <div className="mt-5 rounded-[22px] border border-neutral-200 bg-neutral-50 p-4 text-xs">
               <BillRow
-                label="Subtotal"
-                value={money(
-                  subtotal
-                )}
+                label="Item Subtotal"
+                value={money(subtotal)}
               />
 
               <BillRow
-                label="GST"
-                value={money(
-                  previewTax
-                )}
-              />
-
-              <BillRow
-                label="Packing"
-                value={money(
-                  previewPacking
-                )}
-              />
-
-              <BillRow
-                label="Delivery"
+                label="Delivery Fee"
                 value={
-                  previewDeliveryFee ===
-                  0
+                  previewDeliveryFee === 0
                     ? 'FREE'
-                    : money(
-                        previewDeliveryFee
-                      )
+                    : money(previewDeliveryFee)
                 }
               />
 
-              <div className="mt-3 flex items-center justify-between border-t border-neutral-200 pt-3 text-sm font-black">
-                <span>
-                  Estimated Total
-                </span>
+              <BillRow
+                label="Handling Charge"
+                value={money(previewHandling)}
+              />
 
-                <span>
-                  {money(
-                    previewTotal
-                  )}
-                </span>
+              <BillRow
+                label="Packing Charge"
+                value={money(previewPacking)}
+              />
+
+              {previewSurge > 0 && (
+                <BillRow
+                  label="High Demand Charge"
+                  value={money(previewSurge)}
+                />
+              )}
+
+              {settings.tax_enabled && (
+                <>
+                  <BillRow
+                    label={`SGST (${Number(settings.sgst_rate || 0)}%)`}
+                    value={money(previewSgst)}
+                  />
+
+                  <BillRow
+                    label={`CGST (${Number(settings.cgst_rate || 0)}%)`}
+                    value={money(previewCgst)}
+                  />
+                </>
+              )}
+
+              <div className="mt-3 flex items-center justify-between border-t border-neutral-200 pt-3 text-sm font-black">
+                <span>Estimated Total</span>
+                <span>{money(previewTotal)}</span>
               </div>
 
-              <p className="mt-2 text-[10px] leading-4 text-neutral-400">
-                The server recalculates
-                item prices, GST, packing
-                and delivery charges before
-                the order is created.
+              {minimumOrderAmount > 0 &&
+                subtotal > 0 &&
+                subtotal < minimumOrderAmount && (
+                  <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[10px] font-semibold leading-4 text-amber-700">
+                    Add {money(Math.max(0, minimumOrderAmount - subtotal))} more for free delivery.
+                  </div>
+                )}
+
+              {Boolean(surge.active) && previewSurge > 0 && (
+                <div className="mt-2 rounded-xl bg-orange-50 px-3 py-2 text-[10px] font-semibold leading-4 text-orange-700">
+                  High demand is active right now. The current demand charge is {money(previewSurge)}.
+                </div>
+              )}
+
+              <p className="mt-3 text-[10px] leading-4 text-neutral-400">
+                Item prices, delivery fee, handling, packing, demand charges and taxes are recalculated securely when the order is placed.
               </p>
             </div>
 
@@ -1882,7 +2069,7 @@ export default function DeliveryStorePage({
                         1. Pin Your Delivery Location
                       </p>
                       <p className="mt-1 text-xs leading-5 text-emerald-900/70">
-                        Use your current GPS location or tap/drag the pin on the map to the exact delivery point. Confirm the pin first, then enter the written address manually.
+                        Use your current GPS location or tap/drag the pin on the map to the exact delivery point. We will try to fill the written address automatically, and you can edit it before ordering.
                       </p>
                     </div>
 
@@ -1971,15 +2158,35 @@ export default function DeliveryStorePage({
 
                         <button
                           type="button"
-                          disabled={outsideDeliveryRadius}
-                          onClick={() => {
-                            if (outsideDeliveryRadius) return
+                          disabled={
+                            outsideDeliveryRadius ||
+                            addressLoading
+                          }
+                          onClick={async () => {
+                            if (
+                              outsideDeliveryRadius ||
+                              addressLoading
+                            ) {
+                              return
+                            }
+
+                            const addressFilled =
+                              await fillAddressFromLocation(
+                                checkout.latitude,
+                                checkout.longitude
+                              )
+
                             setLocationConfirmed(true)
-                            setLocationError('')
+
+                            if (addressFilled) {
+                              setLocationError('')
+                            }
                           }}
                           className="shrink-0 rounded-xl bg-neutral-950 px-4 py-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-neutral-300"
                         >
-                          Confirm Delivery Pin
+                          {addressLoading
+                            ? 'Finding Address...'
+                            : 'Confirm Delivery Pin'}
                         </button>
                       </div>
                     </div>
@@ -1996,10 +2203,10 @@ export default function DeliveryStorePage({
                   <>
                     <div className="sm:col-span-2 mt-1">
                       <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                        2. Enter Delivery Address Manually
+                        2. Confirm Your Delivery Address
                       </p>
                       <p className="mt-1 text-[10px] leading-4 text-neutral-400">
-                        The map pin is used for navigation. Enter house, street and landmark details so the driver can identify the exact door/building.
+                        We filled what we could from your selected location. Check the house, street, locality and landmark details and edit anything that needs correction.
                       </p>
                     </div>
 

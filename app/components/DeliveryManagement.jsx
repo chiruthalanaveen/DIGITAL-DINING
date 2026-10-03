@@ -36,6 +36,10 @@ const EMPTY_SETTINGS = {
   delivery_fee: 0,
   free_delivery_above: '',
   packing_charge: 0,
+  handling_charge: 0,
+  surge_enabled: true,
+  surge_charge: 0,
+  orders_per_delivery_boy_per_hour: 5,
   tax_enabled: true,
   sgst_rate: 2.5,
   cgst_rate: 2.5,
@@ -1030,6 +1034,31 @@ export default function DeliveryManagement({
             settings.packing_charge || 0
           )
         ),
+        handling_charge: Math.max(
+          0,
+          Number(
+            settings.handling_charge || 0
+          )
+        ),
+        surge_enabled: Boolean(
+          settings.surge_enabled
+        ),
+        surge_charge: Math.max(
+          0,
+          Number(
+            settings.surge_charge || 0
+          )
+        ),
+        orders_per_delivery_boy_per_hour:
+          Math.max(
+            1,
+            Math.floor(
+              Number(
+                settings.orders_per_delivery_boy_per_hour ||
+                  5
+              )
+            )
+          ),
         tax_enabled: Boolean(
           settings.tax_enabled
         ),
@@ -4169,6 +4198,79 @@ export default function DeliveryManagement({
                 )
               }
             />
+
+            <Field
+              label="Handling Charge"
+              type="number"
+              value={
+                settings.handling_charge
+              }
+              onChange={(value) =>
+                setSettings(
+                  (current) => ({
+                    ...current,
+                    handling_charge:
+                      value,
+                  })
+                )
+              }
+            />
+
+            <Field
+              label="Surge Charge"
+              type="number"
+              value={
+                settings.surge_charge
+              }
+              onChange={(value) =>
+                setSettings(
+                  (current) => ({
+                    ...current,
+                    surge_charge:
+                      value,
+                  })
+                )
+              }
+            />
+
+            <Field
+              label="Orders Per Delivery Boy / Hour"
+              type="number"
+              value={
+                settings.orders_per_delivery_boy_per_hour
+              }
+              onChange={(value) =>
+                setSettings(
+                  (current) => ({
+                    ...current,
+                    orders_per_delivery_boy_per_hour:
+                      value,
+                  })
+                )
+              }
+            />
+
+            <div className="sm:col-span-2">
+              <Toggle
+                label="Enable Automatic Surge Pricing"
+                checked={Boolean(
+                  settings.surge_enabled
+                )}
+                onChange={(checked) =>
+                  setSettings(
+                    (current) => ({
+                      ...current,
+                      surge_enabled:
+                        checked,
+                    })
+                  )
+                }
+              />
+
+              <p className="mt-2 text-[10px] leading-4 text-neutral-500">
+                Surge becomes active when orders received in the last hour reach the current delivery capacity. Capacity = active delivery boys × orders per delivery boy per hour.
+              </p>
+            </div>
 
             <Field
               label="SGST %"
