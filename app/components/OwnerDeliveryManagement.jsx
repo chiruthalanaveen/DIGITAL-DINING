@@ -243,6 +243,72 @@ function billItemTotal(item) {
   )
 }
 
+
+function csvValue(value) {
+  const text = String(value ?? '')
+  return `"${text.replaceAll('"', '""')}"`
+}
+
+function downloadCsv(filename, headers, rows) {
+  if (typeof window === 'undefined') return
+
+  const content = [
+    headers.map(csvValue).join(','),
+    ...rows.map((row) => row.map(csvValue).join(',')),
+  ].join('\\n')
+
+  const blob = new Blob([`\\ufeff${content}`], {
+    type: 'text/csv;charset=utf-8',
+  })
+
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+function inventoryMovementLabel(value) {
+  const type = String(value || '').toUpperCase()
+
+  const labels = {
+    ORDER_RESERVE: 'Order Reserved',
+    ORDER_SALE: 'Order Sale',
+    ORDER_RELEASE: 'Reservation Released',
+    ORDER_CANCEL: 'Order Cancelled / Returned',
+    RESTOCK: 'Restocked',
+    RETURN: 'Returned to Stock',
+    MANUAL_ADJUST: 'Manual Adjustment',
+  }
+
+  return labels[type] || labelStatus(type)
+}
+
+function inventoryMovementTone(value) {
+  const type = String(value || '').toUpperCase()
+
+  if (['RESTOCK', 'RETURN', 'ORDER_RELEASE', 'ORDER_CANCEL'].includes(type)) {
+    return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+  }
+
+  if (type === 'ORDER_SALE') {
+    return 'border-sky-500/20 bg-sky-500/10 text-sky-300'
+  }
+
+  if (type === 'ORDER_RESERVE') {
+    return 'border-violet-500/20 bg-violet-500/10 text-violet-300'
+  }
+
+  if (type === 'MANUAL_ADJUST') {
+    return 'border-amber-500/20 bg-amber-500/10 text-amber-300'
+  }
+
+  return 'border-neutral-700 bg-neutral-800 text-neutral-300'
+}
+
 export default function DeliveryManagement({
   restaurant,
   planCode = '',
@@ -300,10 +366,25 @@ export default function DeliveryManagement({
       low_stock_threshold: '5',
     })
 
+  const [inventoryReport, setInventoryReport] = useState(null)
+  const [inventoryReportLoading, setInventoryReportLoading] = useState(false)
+  const [inventoryReportError, setInventoryReportError] = useState('')
+  const [inventoryReportStartDate, setInventoryReportStartDate] = useState(() => indiaDateKey())
+  const [inventoryReportEndDate, setInventoryReportEndDate] = useState(() => indiaDateKey())
+  const [selectedInventoryHistoryId, setSelectedInventoryHistoryId] = useState('')
+  const [inventoryHistoryReport, setInventoryHistoryReport] = useState(null)
+  const [inventoryHistoryLoading, setInventoryHistoryLoading] = useState(false)
+  const [inventoryHistoryError, setInventoryHistoryError] = useState('')
+
   const [printingOrderId, setPrintingOrderId] =
     useState('')
   const [savingBillSettings, setSavingBillSettings] =
     useState(false)
+
+  const [codReport, setCodReport] = useState(null)
+  const [codLoading, setCodLoading] = useState(false)
+  const [codError, setCodError] = useState('')
+  const [codReviewId, setCodReviewId] = useState('')
 
   const [driverForm, setDriverForm] =
     useState(EMPTY_DRIVER)
@@ -1045,6 +1126,212 @@ export default function DeliveryManagement({
   ])
 
 
+
+  const getOwnerInventoryReport = useCallback(
+    async (menuItemId = '') => {
+      if (!restaurantId) {
+        throw new Error('Restaurant ID is missing.')
+      }
+
+      const { data, error } = await supabase.rpc(
+        'owner_delivery_get_inventory_report',
+        {
+          p_restaurant_id: restaurantId,
+          p_start_date: inventoryReportStartDate || null,
+          p_end_date: inventoryReportEndDate || null,
+          p_menu_item_id: menuItemId || null,
+        }
+      )
+
+      if (error) throw error
+
+      if (!data?.success) {
+        throw new Error(
+          data?.message || 'Unable to load inventory report.'
+        )
+      }
+
+      return data
+    },
+    [
+      restaurantId,
+      inventoryReportStartDate,
+      inventoryReportEndDate,
+    ]
+  )
+
+  const loadInventoryReport = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setInventoryReportLoading(true)
+      setInventoryReportError('')
+
+      try {
+        const data = await getOwnerInventoryReport('')
+        setInventoryReport(data)
+      } catch (reportError) {
+        console.error('Owner inventory report error:', reportError)
+        setInventoryReportError(
+          reportError?.message || 'Unable to load inventory report.'
+        )
+      } finally {
+        setInventoryReportLoading(false)
+      }
+    },
+    [getOwnerInventoryReport]
+  )
+
+  const loadInventoryHistory = useCallback(
+    async (menuItemId) => {
+      if (!menuItemId) {
+        setSelectedInventoryHistoryId('')
+        setInventoryHistoryReport(null)
+        setInventoryHistoryError('')
+        return
+      }
+
+      setSelectedInventoryHistoryId(menuItemId)
+      setInventoryHistoryLoading(true)
+      setInventoryHistoryError('')
+
+      try {
+        const data = await getOwnerInventoryReport(menuItemId)
+        setInventoryHistoryReport(data)
+      } catch (historyError) {
+        console.error('Owner inventory history error:', historyError)
+        setInventoryHistoryReport(null)
+        setInventoryHistoryError(
+          historyError?.message || 'Unable to load item inventory history.'
+        )
+      } finally {
+        setInventoryHistoryLoading(false)
+      }
+    },
+    [getOwnerInventoryReport]
+  )
+
+  const refreshInventoryReports = useCallback(async () => {
+    await loadInventoryReport(false)
+
+    if (selectedInventoryHistoryId) {
+      await loadInventoryHistory(selectedInventoryHistoryId)
+    }
+  }, [
+    loadInventoryReport,
+    loadInventoryHistory,
+    selectedInventoryHistoryId,
+  ])
+
+  useEffect(() => {
+    if (tab !== 'inventory') return
+    loadInventoryReport(false)
+  }, [tab, loadInventoryReport])
+
+  const inventoryReportItemsById = useMemo(() => {
+    return new Map(
+      (Array.isArray(inventoryReport?.items) ? inventoryReport.items : []).map(
+        (item) => [String(item.id), item]
+      )
+    )
+  }, [inventoryReport])
+
+  const exportInventorySummaryCsv = () => {
+    const rows = Array.isArray(inventoryReport?.items)
+      ? inventoryReport.items
+      : []
+
+    if (!rows.length) {
+      appNotice('There is no inventory report data to export.')
+      return
+    }
+
+    downloadCsv(
+      `delivery-inventory-${inventoryReportStartDate || 'start'}-to-${inventoryReportEndDate || 'end'}.csv`,
+      [
+        'Item',
+        'Category',
+        'Type',
+        'Barcode',
+        'Stock',
+        'Reserved',
+        'Available',
+        'Low Stock Alert',
+        'Sold Today',
+        'Restocked Today',
+        'Released Today',
+        'Adjustments Today',
+        'Sold In Range',
+        'Restocked In Range',
+        'Released In Range',
+        'Movements In Range',
+      ],
+      rows.map((item) => [
+        item.name,
+        item.category,
+        item.item_type,
+        item.barcode,
+        item.stock_quantity,
+        item.reserved_quantity,
+        item.available_stock,
+        item.low_stock_threshold,
+        item.sold_today,
+        item.restocked_today,
+        item.released_today,
+        item.adjustments_today,
+        item.sold_in_range,
+        item.restocked_in_range,
+        item.released_in_range,
+        item.movements_in_range,
+      ])
+    )
+  }
+
+  const exportInventoryHistoryCsv = () => {
+    const rows = Array.isArray(inventoryHistoryReport?.history)
+      ? inventoryHistoryReport.history
+      : []
+
+    if (!rows.length) {
+      appNotice('There is no movement history to export for this item.')
+      return
+    }
+
+    const item = menuItems.find(
+      (row) => String(row.id) === String(selectedInventoryHistoryId)
+    )
+
+    downloadCsv(
+      `delivery-inventory-history-${String(item?.name || 'item')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')}-${inventoryReportStartDate}-to-${inventoryReportEndDate}.csv`,
+      [
+        'Date / Time',
+        'Movement',
+        'Quantity',
+        'Order Code',
+        'Order Number',
+        'Notes',
+        'Actor',
+        'Stock Before',
+        'Stock After',
+        'Reserved Before',
+        'Reserved After',
+      ],
+      rows.map((movement) => [
+        orderTime(movement.created_at),
+        inventoryMovementLabel(movement.movement_type),
+        movement.quantity,
+        movement.order_code,
+        movement.order_number,
+        movement.notes,
+        movement.actor_name,
+        movement.stock_before,
+        movement.stock_after,
+        movement.reserved_before,
+        movement.reserved_after,
+      ])
+    )
+  }
+
   const inventoryStats = useMemo(() => {
     const tracked =
       menuItems.filter(
@@ -1583,6 +1870,12 @@ export default function DeliveryManagement({
       await loadDelivery(
         true
       )
+
+      await loadInventoryReport(true)
+
+      if (selectedInventoryHistoryId === item.id) {
+        await loadInventoryHistory(item.id)
+      }
     } catch (inventoryError) {
       console.error(
         'Owner inventory save error:',
@@ -1663,6 +1956,12 @@ export default function DeliveryManagement({
         await loadDelivery(
           true
         )
+
+        await loadInventoryReport(true)
+
+        if (selectedInventoryHistoryId === item.id) {
+          await loadInventoryHistory(item.id)
+        }
       } catch (inventoryError) {
         console.error(
           'Owner inventory restock error:',
@@ -3727,6 +4026,103 @@ export default function DeliveryManagement({
         false
     )
 
+
+  const loadCodReconciliation = useCallback(
+    async (quiet = false) => {
+      if (!restaurantId) return
+      if (!quiet) setCodLoading(true)
+      setCodError('')
+
+      try {
+        const { data, error } = await supabase.rpc(
+          'owner_delivery_get_cod_reconciliation',
+          { p_restaurant_id: restaurantId }
+        )
+
+        if (error) throw error
+        if (!data?.success) {
+          throw new Error(data?.message || 'Unable to load COD reconciliation.')
+        }
+
+        setCodReport(data)
+      } catch (codLoadError) {
+        console.error('Owner COD reconciliation error:', codLoadError)
+        setCodError(
+          codLoadError?.message || 'Unable to load COD reconciliation.'
+        )
+      } finally {
+        setCodLoading(false)
+      }
+    },
+    [restaurantId]
+  )
+
+  const reviewCodSettlement = async (settlement, decision) => {
+    if (!restaurantId || !settlement?.id || codReviewId) return
+
+    const decisionLabel = decision === 'approve' ? 'approve' : 'reject'
+    const reviewNote = await appPrompt(
+      `${decisionLabel === 'approve' ? 'Optional confirmation note' : 'Reason for rejection'} for ${settlement.driver_name || 'driver'}:`,
+      ''
+    )
+
+    if (reviewNote === null) return
+
+    const confirmed = await appConfirm(
+      `${decisionLabel === 'approve' ? 'Approve' : 'Reject'} ${money(
+        settlement.amount_submitted
+      )} COD cash handover from ${settlement.driver_name || 'this driver'}?`,
+      {
+        title: decisionLabel === 'approve' ? 'Approve COD Cash' : 'Reject COD Cash',
+        confirmText: decisionLabel === 'approve' ? 'Approve' : 'Reject',
+      }
+    )
+
+    if (!confirmed) return
+
+    setCodReviewId(settlement.id)
+    setCodError('')
+
+    try {
+      const { data, error } = await supabase.rpc(
+        'owner_delivery_review_cod_settlement',
+        {
+          p_restaurant_id: restaurantId,
+          p_settlement_id: settlement.id,
+          p_decision: decisionLabel,
+          p_review_note: String(reviewNote || '').trim(),
+        }
+      )
+
+      if (error) throw error
+      if (!data?.success) {
+        throw new Error(data?.message || 'Unable to review COD handover.')
+      }
+
+      setMessage(
+        data?.message ||
+          `COD cash handover ${decisionLabel === 'approve' ? 'approved' : 'rejected'}.`
+      )
+
+      await loadCodReconciliation(true)
+    } catch (reviewError) {
+      console.error('Owner COD review error:', reviewError)
+      setCodError(
+        reviewError?.message || 'Unable to review COD cash handover.'
+      )
+      appNotice(
+        reviewError?.message || 'Unable to review COD cash handover.'
+      )
+    } finally {
+      setCodReviewId('')
+    }
+  }
+
+  useEffect(() => {
+    if (tab !== 'cod') return
+    loadCodReconciliation(false)
+  }, [tab, loadCodReconciliation])
+
   const tabs = [
     ['overview', 'Overview'],
     [
@@ -3740,6 +4136,10 @@ export default function DeliveryManagement({
     [
       'inventory',
       `Inventory (${inventoryStats.tracked})`,
+    ],
+    [
+      'cod',
+      `COD Cash (${Number(codReport?.summary?.pending_handover || 0) > 0 ? 'Pending' : 'Reconcile'})`,
     ],
     [
       'offers',
@@ -4876,484 +5276,431 @@ export default function DeliveryManagement({
         <div className="space-y-4">
           <div className="rounded-3xl border border-sky-500/20 bg-sky-500/10 p-5">
             <p className="text-[10px] font-black uppercase tracking-wider text-sky-300">
-              Owner Inventory Control
+              Owner Inventory Control & History
             </p>
-
             <h3 className="mt-1 text-lg font-black text-white">
-              Food & Packaged Product Inventory
+              Live Stock, Daily Sales & Movement Ledger
             </h3>
-
             <p className="mt-2 text-xs leading-5 text-neutral-400">
-              Food items can remain untracked. Packaged products can use barcode verification,
-              atomic stock tracking, low-stock alerts and restocking. Reserved stock is protected
-              by the same backend used by Manager Delivery Management.
+              Owner and Manager use the same atomic stock engine. This report adds daily sales and full movement history without bypassing reserved-stock protection.
             </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat
-              title="Packaged Products"
-              value={inventoryStats.packaged}
-              accent="text-sky-400"
-            />
+            <Stat title="Packaged Products" value={inventoryStats.packaged} accent="text-sky-400" />
+            <Stat title="Stock Tracked" value={inventoryStats.tracked} accent="text-emerald-400" />
+            <Stat title="Low Stock" value={inventoryStats.low} accent="text-orange-400" />
+            <Stat title="Out of Stock" value={inventoryStats.out} accent="text-red-400" />
+          </div>
 
-            <Stat
-              title="Stock Tracked"
-              value={inventoryStats.tracked}
-              accent="text-emerald-400"
-            />
+          <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:max-w-2xl">
+                <Field
+                  label="Report From"
+                  type="date"
+                  value={inventoryReportStartDate}
+                  onChange={setInventoryReportStartDate}
+                />
+                <Field
+                  label="Report To"
+                  type="date"
+                  value={inventoryReportEndDate}
+                  onChange={setInventoryReportEndDate}
+                />
+              </div>
 
-            <Stat
-              title="Low Stock"
-              value={inventoryStats.low}
-              accent="text-orange-400"
-            />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={inventoryReportLoading}
+                  onClick={refreshInventoryReports}
+                  className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                >
+                  {inventoryReportLoading ? 'Loading...' : 'Refresh Report'}
+                </button>
+                <button
+                  type="button"
+                  onClick={exportInventorySummaryCsv}
+                  className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white"
+                >
+                  ↓ Download CSV
+                </button>
+              </div>
+            </div>
 
-            <Stat
-              title="Out of Stock"
-              value={inventoryStats.out}
-              accent="text-red-400"
-            />
+            {inventoryReportError && (
+              <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-300">
+                {inventoryReportError}
+              </div>
+            )}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <InventoryMetric label="Sold Today" value={Number(inventoryReport?.today_totals?.sold || 0)} />
+              <InventoryMetric label="Restocked Today" value={Number(inventoryReport?.today_totals?.restocked || 0)} />
+              <InventoryMetric label="Released Today" value={Number(inventoryReport?.today_totals?.released || 0)} />
+              <InventoryMetric label="Movements Today" value={Number(inventoryReport?.today_totals?.movements || 0)} />
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                Selected Range · {inventoryReportStartDate || '—'} → {inventoryReportEndDate || '—'}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <InventoryMetric label="Sold" value={Number(inventoryReport?.range_totals?.sold || 0)} />
+                <InventoryMetric label="Restocked" value={Number(inventoryReport?.range_totals?.restocked || 0)} />
+                <InventoryMetric label="Released" value={Number(inventoryReport?.range_totals?.released || 0)} />
+                <InventoryMetric label="Movements" value={Number(inventoryReport?.range_totals?.movements || 0)} />
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-3 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 lg:grid-cols-[1fr_auto]">
             <input
               value={inventorySearch}
-              onChange={(event) =>
-                setInventorySearch(
-                  event.target.value
-                )
-              }
+              onChange={(event) => setInventorySearch(event.target.value)}
               placeholder="Search product, category or barcode..."
               className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-white outline-none focus:border-emerald-500"
             />
-
             <select
               value={inventoryFilter}
-              onChange={(event) =>
-                setInventoryFilter(
-                  event.target.value
-                )
-              }
+              onChange={(event) => setInventoryFilter(event.target.value)}
               className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs font-bold text-white"
             >
-              <option value="all">
-                All Items
-              </option>
-
-              <option value="food">
-                Food Items
-              </option>
-
-              <option value="packaged">
-                Packaged Products
-              </option>
-
-              <option value="tracked">
-                Stock Tracked
-              </option>
-
-              <option value="low">
-                Low Stock
-              </option>
-
-              <option value="out">
-                Out of Stock
-              </option>
+              <option value="all">All Items</option>
+              <option value="food">Food Items</option>
+              <option value="packaged">Packaged Products</option>
+              <option value="tracked">Stock Tracked</option>
+              <option value="low">Low Stock</option>
+              <option value="out">Out of Stock</option>
             </select>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
-            {filteredInventoryItems.map(
-              (item) => {
-                const editing =
-                  editingInventoryId ===
-                  item.id
+            {filteredInventoryItems.map((item) => {
+              const editing = editingInventoryId === item.id
+              const type = String(item.item_type || 'food')
+              const tracked = item.track_stock === true
+              const stock = Number(item.stock_quantity || 0)
+              const reserved = Number(item.reserved_quantity || 0)
+              const available = Number(item.available_stock ?? Math.max(stock - reserved, 0))
+              const threshold = Number(item.low_stock_threshold ?? 5)
+              const out = tracked && available <= 0
+              const low = tracked && available > 0 && available <= threshold
+              const reportItem = inventoryReportItemsById.get(String(item.id)) || {}
+              const soldToday = Number(reportItem.sold_today || 0)
 
-                const type =
-                  String(
-                    item.item_type ||
-                      'food'
-                  )
-
-                const tracked =
-                  item.track_stock ===
-                  true
-
-                const stock =
-                  Number(
-                    item.stock_quantity ||
-                      0
-                  )
-
-                const reserved =
-                  Number(
-                    item.reserved_quantity ||
-                      0
-                  )
-
-                const available =
-                  Math.max(
-                    stock -
-                      reserved,
-                    0
-                  )
-
-                const threshold =
-                  Number(
-                    item.low_stock_threshold ??
-                      5
-                  )
-
-                const out =
-                  tracked &&
-                  available <= 0
-
-                const low =
-                  tracked &&
-                  available > 0 &&
-                  available <=
-                    threshold
-
-                return (
-                  <article
-                    key={item.id}
-                    className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-black text-white">
-                            {item.name}
-                          </h3>
-
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-[9px] font-black ${
-                              type ===
-                              'packaged_product'
-                                ? 'bg-sky-500/10 text-sky-400'
-                                : 'bg-orange-500/10 text-orange-400'
-                            }`}
-                          >
-                            {type ===
-                            'packaged_product'
-                              ? '📦 PACKAGED'
-                              : '🍔 FOOD'}
-                          </span>
-                        </div>
-
-                        <p className="mt-1 text-[10px] text-neutral-500">
-                          {item.category ||
-                            'Other'}
+              return (
+                <article key={item.id} className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap gap-2">
+                        <h3 className="font-black text-white">{item.name}</h3>
+                        <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${type === 'packaged_product' ? 'bg-sky-500/10 text-sky-400' : 'bg-orange-500/10 text-orange-400'}`}>
+                          {type === 'packaged_product' ? '📦 PACKAGED' : '🍔 FOOD'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[10px] text-neutral-500">{item.category || 'Other'}</p>
+                      {type === 'packaged_product' && (
+                        <p className="mt-2 break-all font-mono text-[10px] text-neutral-400">
+                          Barcode: {item.barcode || 'Not configured'}
                         </p>
-
-                        {type ===
-                          'packaged_product' && (
-                          <p className="mt-2 break-all font-mono text-[10px] text-neutral-400">
-                            Barcode:{' '}
-                            {item.barcode ||
-                              'Not configured'}
-                          </p>
-                        )}
-                      </div>
-
-                      <span
-                        className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black ${
-                          !tracked
-                            ? 'bg-neutral-800 text-neutral-500'
-                            : out
-                              ? 'bg-red-500/10 text-red-400'
-                              : low
-                                ? 'bg-orange-500/10 text-orange-400'
-                                : 'bg-emerald-500/10 text-emerald-400'
-                        }`}
-                      >
-                        {!tracked
-                          ? 'NOT TRACKED'
-                          : out
-                            ? 'OUT OF STOCK'
-                            : low
-                              ? 'LOW STOCK'
-                              : 'IN STOCK'}
-                      </span>
+                      )}
                     </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${!tracked ? 'bg-neutral-800 text-neutral-500' : out ? 'bg-red-500/10 text-red-400' : low ? 'bg-orange-500/10 text-orange-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                      {!tracked ? 'NOT TRACKED' : out ? 'OUT OF STOCK' : low ? 'LOW STOCK' : 'IN STOCK'}
+                    </span>
+                  </div>
 
-                    {!editing ? (
-                      <>
+                  {!editing ? (
+                    <>
+                      {tracked && (
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <InventoryMetric label="Stock" value={stock} />
+                          <InventoryMetric label="Reserved" value={reserved} />
+                          <InventoryMetric label="Available" value={available} />
+                          <InventoryMetric label="Sold Today" value={soldToday} />
+                        </div>
+                      )}
+
+                      {tracked && (
+                        <p className="mt-3 text-[10px] text-neutral-500">
+                          Low-stock alert at {threshold} units
+                        </p>
+                      )}
+
+                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                        <button
+                          type="button"
+                          onClick={() => startInventoryEdit(item)}
+                          className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white"
+                        >
+                          Edit Inventory
+                        </button>
+
                         {tracked && (
-                          <div className="mt-4 grid grid-cols-3 gap-2">
-                            <InventoryMetric
-                              label="Stock"
-                              value={stock}
-                            />
-
-                            <InventoryMetric
-                              label="Reserved"
-                              value={reserved}
-                            />
-
-                            <InventoryMetric
-                              label="Available"
-                              value={available}
-                            />
-                          </div>
-                        )}
-
-                        {tracked && (
-                          <p className="mt-3 text-[10px] text-neutral-500">
-                            Low-stock alert at{' '}
-                            {threshold}{' '}
-                            units
-                          </p>
-                        )}
-
-                        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                           <button
                             type="button"
-                            onClick={() =>
-                              startInventoryEdit(
-                                item
-                              )
-                            }
-                            className="flex-1 rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white"
+                            disabled={restockingId === item.id}
+                            onClick={() => restockInventory(item)}
+                            className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
                           >
-                            Edit Inventory
+                            {restockingId === item.id ? 'Adding...' : '+ Restock'}
                           </button>
-
-                          {tracked && (
-                            <button
-                              type="button"
-                              disabled={
-                                restockingId ===
-                                item.id
-                              }
-                              onClick={() =>
-                                restockInventory(
-                                  item
-                                )
-                              }
-                              className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
-                            >
-                              {restockingId ===
-                              item.id
-                                ? 'Adding...'
-                                : '+ Restock'}
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="mt-5 space-y-3">
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setInventoryDraft(
-                                (
-                                  current
-                                ) => ({
-                                  ...current,
-                                  item_type:
-                                    'food',
-                                  barcode:
-                                    '',
-                                  track_stock:
-                                    false,
-                                })
-                              )
-                            }
-                            className={`rounded-xl border px-3 py-3 text-xs font-black ${
-                              inventoryDraft.item_type ===
-                              'food'
-                                ? 'border-orange-500 bg-orange-500/10 text-orange-300'
-                                : 'border-neutral-800 bg-neutral-950 text-neutral-400'
-                            }`}
-                          >
-                            🍔 Food Item
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setInventoryDraft(
-                                (
-                                  current
-                                ) => ({
-                                  ...current,
-                                  item_type:
-                                    'packaged_product',
-                                  track_stock:
-                                    true,
-                                })
-                              )
-                            }
-                            className={`rounded-xl border px-3 py-3 text-xs font-black ${
-                              inventoryDraft.item_type ===
-                              'packaged_product'
-                                ? 'border-sky-500 bg-sky-500/10 text-sky-300'
-                                : 'border-neutral-800 bg-neutral-950 text-neutral-400'
-                            }`}
-                          >
-                            📦 Packaged Product
-                          </button>
-                        </div>
-
-                        {inventoryDraft.item_type ===
-                          'packaged_product' && (
-                          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                            <Field
-                              label="Barcode"
-                              value={
-                                inventoryDraft.barcode
-                              }
-                              onChange={(
-                                value
-                              ) =>
-                                setInventoryDraft(
-                                  (
-                                    current
-                                  ) => ({
-                                    ...current,
-                                    barcode:
-                                      value,
-                                  })
-                                )
-                              }
-                              placeholder="Scan or enter barcode"
-                            />
-
-                            <button
-                              type="button"
-                              onClick={
-                                scanInventoryBarcode
-                              }
-                              className="self-end rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white"
-                            >
-                              📷 Scan
-                            </button>
-                          </div>
                         )}
 
-                        <Toggle
-                          label="Track Stock"
-                          checked={Boolean(
-                            inventoryDraft.track_stock
-                          )}
-                          onChange={(
-                            checked
-                          ) =>
-                            setInventoryDraft(
-                              (
-                                current
-                              ) => ({
-                                ...current,
-                                track_stock:
-                                  checked,
-                              })
-                            )
-                          }
-                        />
-
-                        {inventoryDraft.track_stock && (
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <Field
-                              label="Current / Opening Stock"
-                              type="number"
-                              value={
-                                inventoryDraft.stock_quantity
-                              }
-                              onChange={(
-                                value
-                              ) =>
-                                setInventoryDraft(
-                                  (
-                                    current
-                                  ) => ({
-                                    ...current,
-                                    stock_quantity:
-                                      value,
-                                  })
-                                )
-                              }
-                            />
-
-                            <Field
-                              label="Low Stock Alert"
-                              type="number"
-                              value={
-                                inventoryDraft.low_stock_threshold
-                              }
-                              onChange={(
-                                value
-                              ) =>
-                                setInventoryDraft(
-                                  (
-                                    current
-                                  ) => ({
-                                    ...current,
-                                    low_stock_threshold:
-                                      value,
-                                  })
-                                )
-                              }
-                            />
-                          </div>
-                        )}
-
-                        {reserved > 0 && (
-                          <p className="rounded-xl bg-orange-500/10 px-3 py-2 text-[10px] font-bold text-orange-300">
-                            {reserved}{' '}
-                            unit
-                            {reserved === 1
-                              ? ''
-                              : 's'}{' '}
-                            currently reserved
-                            by active orders.
-                          </p>
-                        )}
-
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            disabled={
-                              inventorySaving
-                            }
-                            onClick={() =>
-                              saveInventory(
-                                item
-                              )
-                            }
-                            className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
-                          >
-                            {inventorySaving
-                              ? 'Saving...'
-                              : 'Save Inventory'}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditingInventoryId(
-                                ''
-                              )
-                            }
-                            className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white"
-                          >
-                            Cancel
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => loadInventoryHistory(item.id)}
+                          className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-xs font-black text-sky-300"
+                        >
+                          View History
+                        </button>
                       </div>
-                    )}
-                  </article>
-                )
-              }
-            )}
+                    </>
+                  ) : (
+                    <div className="mt-5 space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => setInventoryDraft((current) => ({ ...current, item_type: 'food', barcode: '', track_stock: false }))} className={`rounded-xl border px-3 py-3 text-xs font-black ${inventoryDraft.item_type === 'food' ? 'border-orange-500 bg-orange-500/10 text-orange-300' : 'border-neutral-800 bg-neutral-950 text-neutral-400'}`}>
+                          🍔 Food Item
+                        </button>
+                        <button type="button" onClick={() => setInventoryDraft((current) => ({ ...current, item_type: 'packaged_product', track_stock: true }))} className={`rounded-xl border px-3 py-3 text-xs font-black ${inventoryDraft.item_type === 'packaged_product' ? 'border-sky-500 bg-sky-500/10 text-sky-300' : 'border-neutral-800 bg-neutral-950 text-neutral-400'}`}>
+                          📦 Packaged Product
+                        </button>
+                      </div>
+
+                      {inventoryDraft.item_type === 'packaged_product' && (
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <Field label="Barcode" value={inventoryDraft.barcode} onChange={(value) => setInventoryDraft((current) => ({ ...current, barcode: value }))} placeholder="Scan or enter barcode" />
+                          <button type="button" onClick={scanInventoryBarcode} className="self-end rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white">
+                            📷 Scan
+                          </button>
+                        </div>
+                      )}
+
+                      <Toggle label="Track Stock" checked={inventoryDraft.track_stock} onChange={(value) => setInventoryDraft((current) => ({ ...current, track_stock: value }))} />
+
+                      {inventoryDraft.track_stock && (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label="Current / Opening Stock" type="number" value={inventoryDraft.stock_quantity} onChange={(value) => setInventoryDraft((current) => ({ ...current, stock_quantity: value }))} />
+                          <Field label="Low Stock Alert" type="number" value={inventoryDraft.low_stock_threshold} onChange={(value) => setInventoryDraft((current) => ({ ...current, low_stock_threshold: value }))} />
+                        </div>
+                      )}
+
+                      {reserved > 0 && (
+                        <p className="rounded-xl bg-orange-500/10 px-3 py-2 text-[10px] font-bold text-orange-300">
+                          {reserved} unit(s) currently reserved by orders.
+                        </p>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button type="button" disabled={inventorySaving} onClick={() => saveInventory(item)} className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50">
+                          {inventorySaving ? 'Saving...' : 'Save Inventory'}
+                        </button>
+                        <button type="button" onClick={() => setEditingInventoryId('')} className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              )
+            })}
 
             {!filteredInventoryItems.length && (
               <div className="col-span-full rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
                 No inventory items match this filter.
               </div>
             )}
+          </div>
+
+          {selectedInventoryHistoryId && (
+            <InventoryHistoryPanel
+              item={menuItems.find((row) => String(row.id) === String(selectedInventoryHistoryId))}
+              report={inventoryHistoryReport}
+              loading={inventoryHistoryLoading}
+              error={inventoryHistoryError}
+              onRefresh={() => loadInventoryHistory(selectedInventoryHistoryId)}
+              onDownload={exportInventoryHistoryCsv}
+              onClose={() => loadInventoryHistory('')}
+            />
+          )}
+        </div>
+      )}
+
+
+      {tab === 'cod' && (
+        <div className="space-y-4">
+          <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                  COD Cash Reconciliation
+                </p>
+                <h3 className="mt-1 text-xl font-black text-white">
+                  Driver cash due & handovers
+                </h3>
+                <p className="mt-2 max-w-2xl text-xs leading-5 text-neutral-400">
+                  Approve a handover only after the physical cash is received. Approved cash is automatically allocated to the driver's oldest unsettled COD orders.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => loadCodReconciliation(false)}
+                disabled={codLoading}
+                className="rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-3 text-[10px] font-black text-neutral-300 disabled:opacity-50"
+              >
+                {codLoading ? 'Refreshing...' : '↻ Refresh COD'}
+              </button>
+            </div>
+
+            {codError && (
+              <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-300">
+                {codError}
+              </div>
+            )}
+
+            <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <p className="text-[9px] font-black uppercase text-neutral-500">Rider Cash Due</p>
+                <p className="mt-2 text-xl font-black text-amber-300">{money(codReport?.summary?.cash_due)}</p>
+              </div>
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <p className="text-[9px] font-black uppercase text-neutral-500">Pending Handover</p>
+                <p className="mt-2 text-xl font-black text-sky-300">{money(codReport?.summary?.pending_handover)}</p>
+              </div>
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <p className="text-[9px] font-black uppercase text-neutral-500">Collected Today</p>
+                <p className="mt-2 text-xl font-black text-white">{money(codReport?.summary?.collected_today)}</p>
+              </div>
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <p className="text-[9px] font-black uppercase text-neutral-500">Settled Today</p>
+                <p className="mt-2 text-xl font-black text-emerald-300">{money(codReport?.summary?.settled_today)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {(Array.isArray(codReport?.drivers) ? codReport.drivers : []).map((driver) => (
+              <article key={driver.driver_id} className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-white">{driver.driver_name}</p>
+                    <p className="mt-1 text-[10px] text-neutral-500">{driver.driver_mobile || 'No mobile'}</p>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${Number(driver.cash_due || 0) > 0 ? 'bg-amber-500/10 text-amber-300' : 'bg-emerald-500/10 text-emerald-300'}`}>
+                    {Number(driver.cash_due || 0) > 0 ? 'Cash Due' : 'Clear'}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-xl bg-neutral-950 p-3">
+                    <p className="text-[8px] font-black uppercase text-neutral-600">Due</p>
+                    <p className="mt-1 text-xs font-black text-amber-300">{money(driver.cash_due)}</p>
+                  </div>
+                  <div className="rounded-xl bg-neutral-950 p-3">
+                    <p className="text-[8px] font-black uppercase text-neutral-600">Pending</p>
+                    <p className="mt-1 text-xs font-black text-sky-300">{money(driver.pending_handover)}</p>
+                  </div>
+                  <div className="rounded-xl bg-neutral-950 p-3">
+                    <p className="text-[8px] font-black uppercase text-neutral-600">Orders</p>
+                    <p className="mt-1 text-xs font-black text-white">{Number(driver.unsettled_orders || 0)}</p>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">Action Required</p>
+              <h3 className="mt-1 text-lg font-black text-white">Pending Cash Handovers</h3>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {(Array.isArray(codReport?.settlements) ? codReport.settlements : [])
+                .filter((row) => row.status === 'pending')
+                .map((settlement) => (
+                  <article key={settlement.id} className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-black text-white">{settlement.driver_name}</p>
+                        <p className="mt-1 text-2xl font-black text-amber-300">{money(settlement.amount_submitted)}</p>
+                        <p className="mt-1 text-[10px] text-neutral-500">Submitted {orderTime(settlement.submitted_at)}</p>
+                        {settlement.driver_note && <p className="mt-2 text-xs text-neutral-300">{settlement.driver_note}</p>}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={Boolean(codReviewId)}
+                          onClick={() => reviewCodSettlement(settlement, 'reject')}
+                          className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black text-red-300 disabled:opacity-40"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(codReviewId)}
+                          onClick={() => reviewCodSettlement(settlement, 'approve')}
+                          className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-40"
+                        >
+                          {codReviewId === settlement.id ? 'Processing...' : '✓ Approve Cash'}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+
+              {!(Array.isArray(codReport?.settlements) ? codReport.settlements : []).some((row) => row.status === 'pending') && (
+                <div className="rounded-2xl border border-neutral-800 bg-neutral-950 py-10 text-center text-xs text-neutral-500">
+                  No pending COD cash handovers.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Recent</p>
+              <h3 className="mt-1 text-lg font-black text-white">Settlement History</h3>
+              <div className="mt-4 space-y-2">
+                {(Array.isArray(codReport?.settlements) ? codReport.settlements : []).slice(0, 15).map((row) => (
+                  <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3">
+                    <div>
+                      <p className="text-xs font-black text-white">{row.driver_name} · {money(row.amount_submitted)}</p>
+                      <p className="mt-1 text-[9px] text-neutral-500">{orderTime(row.submitted_at)}{row.reviewed_by_name ? ` · ${row.reviewed_by_name}` : ''}</p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${row.status === 'approved' ? 'bg-emerald-500/10 text-emerald-300' : row.status === 'rejected' ? 'bg-red-500/10 text-red-300' : 'bg-amber-500/10 text-amber-300'}`}>
+                      {labelStatus(row.status)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Order Ledger</p>
+              <h3 className="mt-1 text-lg font-black text-white">Outstanding COD Orders</h3>
+              <div className="mt-4 space-y-2">
+                {(Array.isArray(codReport?.collections) ? codReport.collections : [])
+                  .filter((row) => Number(row.outstanding_amount || 0) > 0)
+                  .slice(0, 15)
+                  .map((row) => (
+                    <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3">
+                      <div>
+                        <p className="font-mono text-[10px] font-black text-white">{row.order_code || 'COD Order'}</p>
+                        <p className="mt-1 text-[9px] text-neutral-500">{row.driver_name || 'Unassigned'} · {orderTime(row.collected_at)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-black text-amber-300">{money(row.outstanding_amount)}</p>
+                        <p className="mt-1 text-[8px] uppercase text-neutral-600">Outstanding</p>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </section>
           </div>
         </div>
       )}
@@ -6984,6 +7331,135 @@ export default function DeliveryManagement({
 />
             </div>
           </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+
+function InventoryHistoryPanel({
+  item,
+  report,
+  loading,
+  error,
+  onRefresh,
+  onDownload,
+  onClose,
+}) {
+  const history = Array.isArray(report?.history) ? report.history : []
+  const summary = Array.isArray(report?.items) ? report.items[0] : null
+
+  return (
+    <section className="rounded-3xl border border-sky-500/20 bg-neutral-900 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-wider text-sky-300">
+            Inventory Movement History
+          </p>
+          <h3 className="mt-1 truncate text-lg font-black text-white">
+            {item?.name || summary?.name || 'Inventory Item'}
+          </h3>
+          <p className="mt-1 text-[10px] text-neutral-500">
+            {report?.start_date || '—'} → {report?.end_date || '—'} · Asia/Kolkata
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={loading} onClick={onRefresh} className="rounded-xl border border-neutral-700 bg-neutral-800 px-3 py-2.5 text-[10px] font-black text-white disabled:opacity-50">
+            {loading ? 'Loading...' : 'Refresh'}
+          </button>
+          <button type="button" onClick={onDownload} className="rounded-xl bg-emerald-600 px-3 py-2.5 text-[10px] font-black text-white">
+            ↓ History CSV
+          </button>
+          <button type="button" onClick={onClose} className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-[10px] font-black text-neutral-300">
+            Close
+          </button>
+        </div>
+      </div>
+
+      {summary && (
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <InventoryMetric label="Sold In Range" value={Number(summary.sold_in_range || 0)} />
+          <InventoryMetric label="Restocked" value={Number(summary.restocked_in_range || 0)} />
+          <InventoryMetric label="Released" value={Number(summary.released_in_range || 0)} />
+          <InventoryMetric label="Movements" value={Number(summary.movements_in_range || 0)} />
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-300">
+          {error}
+        </div>
+      )}
+
+      {!error && loading && !history.length && (
+        <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 py-10 text-center text-xs font-bold text-neutral-500">
+          Loading inventory movement history...
+        </div>
+      )}
+
+      {!loading && !error && !history.length && (
+        <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 py-10 text-center text-xs text-neutral-500">
+          No inventory movements were recorded for this item in the selected date range.
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {history.map((movement, index) => (
+            <article key={movement.id || `${movement.created_at}-${index}`} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${inventoryMovementTone(movement.movement_type)}`}>
+                      {inventoryMovementLabel(movement.movement_type)}
+                    </span>
+                    <span className="text-[10px] font-black text-white">
+                      Qty {Number(movement.quantity || 0)}
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-[10px] text-neutral-500">
+                    {orderTime(movement.created_at)}
+                  </p>
+
+                  {(movement.order_code || movement.order_number) && (
+                    <p className="mt-1 text-[10px] font-bold text-sky-300">
+                      Order {movement.order_code || `#${movement.order_number}`}
+                    </p>
+                  )}
+
+                  {movement.notes && (
+                    <p className="mt-2 text-xs leading-5 text-neutral-400">
+                      {movement.notes}
+                    </p>
+                  )}
+
+                  {movement.actor_name && (
+                    <p className="mt-1 text-[9px] text-neutral-600">
+                      By {movement.actor_name}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid shrink-0 grid-cols-2 gap-2 text-right">
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2">
+                    <p className="text-[8px] font-black uppercase text-neutral-600">Stock</p>
+                    <p className="mt-1 text-[10px] font-black text-white">
+                      {Number(movement.stock_before || 0)} → {Number(movement.stock_after || 0)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2">
+                    <p className="text-[8px] font-black uppercase text-neutral-600">Reserved</p>
+                    <p className="mt-1 text-[10px] font-black text-white">
+                      {Number(movement.reserved_before || 0)} → {Number(movement.reserved_after || 0)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </article>
+          ))}
         </div>
       )}
     </section>

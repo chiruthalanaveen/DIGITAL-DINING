@@ -678,6 +678,13 @@ export default function DeliveryDriverPortal({
 
     useState('')
 
+  const [codData, setCodData] = useState(null)
+  const [codLoading, setCodLoading] = useState(false)
+  const [codSubmitting, setCodSubmitting] = useState(false)
+  const [codAmount, setCodAmount] = useState('')
+  const [codNote, setCodNote] = useState('')
+  const [codError, setCodError] = useState('')
+
   const [gpsStatus, setGpsStatus] = useState('idle')
   const [gpsMessage, setGpsMessage] = useState('')
   const [gpsLastSentAt, setGpsLastSentAt] = useState('')
@@ -821,6 +828,100 @@ export default function DeliveryDriverPortal({
 
   }
 
+  const loadCodSummary = async (tokenOverride = '', quiet = false) => {
+    const token = String(tokenOverride || sessionToken || '').trim()
+
+    if (!token) {
+      setCodData(null)
+      return
+    }
+
+    if (!quiet) setCodLoading(true)
+    setCodError('')
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc(
+        'delivery_driver_get_cod_summary',
+        { p_session_token: token }
+      )
+
+      if (rpcError) throw rpcError
+      if (!data?.success) {
+        throw new Error(data?.message || 'Unable to load COD cash summary.')
+      }
+
+      setCodData(data)
+    } catch (codLoadError) {
+      console.error('Driver COD summary error:', codLoadError)
+      setCodError(
+        codLoadError?.message || 'Unable to load COD cash summary.'
+      )
+    } finally {
+      setCodLoading(false)
+    }
+  }
+
+  const submitCodSettlement = async (event) => {
+    event.preventDefault()
+
+    if (!sessionToken || codSubmitting) return
+
+    const amount = Number(codAmount)
+    const summary = codData?.summary || {}
+    const available = Math.max(
+      Number(summary.cash_due || 0) - Number(summary.pending_handover || 0),
+      0
+    )
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setCodError('Enter a valid cash handover amount greater than 0.')
+      return
+    }
+
+    if (amount > available + 0.001) {
+      setCodError(
+        `You can submit up to ${money(available)} based on your current COD cash due.`
+      )
+      return
+    }
+
+    setCodSubmitting(true)
+    setCodError('')
+    setMessage('')
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc(
+        'delivery_driver_submit_cod_settlement',
+        {
+          p_session_token: sessionToken,
+          p_amount: amount,
+          p_note: String(codNote || '').trim(),
+        }
+      )
+
+      if (rpcError) throw rpcError
+      if (!data?.success) {
+        throw new Error(data?.message || 'Unable to submit COD cash handover.')
+      }
+
+      setCodAmount('')
+      setCodNote('')
+      setMessage(
+        data?.message ||
+          'COD cash handover submitted for Manager/Owner confirmation.'
+      )
+
+      await loadCodSummary('', true)
+    } catch (submitError) {
+      console.error('Driver COD settlement submit error:', submitError)
+      setCodError(
+        submitError?.message || 'Unable to submit COD cash handover.'
+      )
+    } finally {
+      setCodSubmitting(false)
+    }
+  }
+
   useEffect(() => {
 
     if (!sessionToken) {
@@ -830,6 +931,13 @@ export default function DeliveryDriverPortal({
     }
 
     loadPortal()
+    loadCodSummary()
+
+    const codInterval = window.setInterval(() => {
+      loadCodSummary('', true)
+    }, 15000)
+
+    return () => window.clearInterval(codInterval)
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -967,7 +1075,10 @@ export default function DeliveryDriverPortal({
 
       )
 
-      await loadPortal(token)
+      await Promise.all([
+        loadPortal(token),
+        loadCodSummary(token, true),
+      ])
 
     } catch (loginError) {
 
@@ -1050,6 +1161,10 @@ export default function DeliveryDriverPortal({
       setSessionToken('')
 
       setPortalData(null)
+      setCodData(null)
+      setCodAmount('')
+      setCodNote('')
+      setCodError('')
 
       setUserId('')
 
@@ -1646,6 +1761,20 @@ export default function DeliveryDriverPortal({
 
     portalData.restaurant || {}
 
+  const codSummary = codData?.summary || {}
+  const codSettlements = Array.isArray(codData?.settlements)
+    ? codData.settlements
+    : []
+  const codCollections = Array.isArray(codData?.collections)
+    ? codData.collections
+    : []
+  const codCashDue = Number(codSummary.cash_due || 0)
+  const codPendingHandover = Number(codSummary.pending_handover || 0)
+  const codAvailableToSubmit = Math.max(
+    codCashDue - codPendingHandover,
+    0
+  )
+
   return (
 
     <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 pb-[max(2.5rem,env(safe-area-inset-bottom))] text-neutral-100">
@@ -1802,6 +1931,144 @@ export default function DeliveryDriverPortal({
 
           </div>
 
+        </section>
+
+
+        <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                COD Cash Reconciliation
+              </p>
+              <h2 className="mt-1 text-lg font-black text-white">
+                Cash collected from customers
+              </h2>
+              <p className="mt-1 text-xs leading-5 text-neutral-400">
+                Submit cash only after physically handing it to the Manager or Owner. Your balance reduces only after they approve the handover.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadCodSummary('', false)}
+              disabled={codLoading}
+              className="w-fit rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-[10px] font-black text-neutral-300 disabled:opacity-50"
+            >
+              {codLoading ? 'Refreshing...' : '↻ Refresh COD'}
+            </button>
+          </div>
+
+          {codError && (
+            <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-xs font-bold text-red-300">
+              {codError}
+            </div>
+          )}
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
+              <p className="text-[8px] font-black uppercase text-neutral-500">Cash Due</p>
+              <p className="mt-1 text-base font-black text-amber-300">{money(codCashDue)}</p>
+            </div>
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
+              <p className="text-[8px] font-black uppercase text-neutral-500">Pending</p>
+              <p className="mt-1 text-base font-black text-sky-300">{money(codPendingHandover)}</p>
+            </div>
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
+              <p className="text-[8px] font-black uppercase text-neutral-500">Can Submit</p>
+              <p className="mt-1 text-base font-black text-emerald-300">{money(codAvailableToSubmit)}</p>
+            </div>
+          </div>
+
+          <form onSubmit={submitCodSettlement} className="mt-4 space-y-2 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="grid gap-2 sm:grid-cols-[160px_1fr]">
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                max={codAvailableToSubmit || undefined}
+                value={codAmount}
+                onChange={(event) => setCodAmount(event.target.value)}
+                placeholder="Amount ₹"
+                disabled={codSubmitting || codAvailableToSubmit <= 0}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-xs text-white outline-none focus:border-amber-500 disabled:opacity-50"
+              />
+
+              <input
+                value={codNote}
+                onChange={(event) => setCodNote(event.target.value)}
+                maxLength={500}
+                placeholder="Optional handover note"
+                disabled={codSubmitting || codAvailableToSubmit <= 0}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-xs text-white outline-none focus:border-amber-500 disabled:opacity-50"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={codSubmitting || codAvailableToSubmit <= 0 || !String(codAmount || '').trim()}
+              className="w-full rounded-xl bg-amber-500 px-4 py-3 text-xs font-black text-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+            >
+              {codSubmitting ? 'Submitting Cash Handover...' : '💵 Submit COD Cash Handover'}
+            </button>
+
+            {codAvailableToSubmit <= 0 && (
+              <p className="text-[10px] leading-4 text-neutral-500">
+                No additional COD cash can be submitted right now.
+              </p>
+            )}
+          </form>
+
+          {codSettlements.length > 0 && (
+            <div className="mt-4">
+              <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                Handover History
+              </p>
+              <div className="mt-2 space-y-2">
+                {codSettlements.slice(0, 8).map((settlement) => (
+                  <div key={settlement.id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-white">{money(settlement.amount_submitted)}</p>
+                      <p className="mt-1 text-[9px] text-neutral-500">
+                        {formatDate(settlement.submitted_at)}
+                        {settlement.reviewed_by_name ? ` · ${settlement.reviewed_by_name}` : ''}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${
+                      settlement.status === 'approved'
+                        ? 'bg-emerald-500/10 text-emerald-300'
+                        : settlement.status === 'rejected'
+                          ? 'bg-red-500/10 text-red-300'
+                          : 'bg-amber-500/10 text-amber-300'
+                    }`}>
+                      {labelStatus(settlement.status)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {codCollections.some((row) => Number(row.outstanding_amount || 0) > 0) && (
+            <div className="mt-4">
+              <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                Unsettled COD Orders
+              </p>
+              <div className="mt-2 space-y-2">
+                {codCollections
+                  .filter((row) => Number(row.outstanding_amount || 0) > 0)
+                  .slice(0, 8)
+                  .map((row) => (
+                    <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3">
+                      <div>
+                        <p className="font-mono text-[10px] font-black text-white">{row.order_code || 'COD Order'}</p>
+                        <p className="mt-1 text-[9px] text-neutral-500">Collected {formatDate(row.collected_at)}</p>
+                      </div>
+                      <p className="text-xs font-black text-amber-300">{money(row.outstanding_amount)}</p>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {liveTrackingOrder && (

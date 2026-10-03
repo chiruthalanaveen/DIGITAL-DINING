@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
-import DeliveryManagement from '@/app/components/DeliveryManagement'
+import OwnerDeliveryManagement from '@/app/components/OwnerDeliveryManagement'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
@@ -4241,11 +4241,11 @@ restaurantModuleEnabled,
         )}
 
         {dashboardMode === 'delivery' && deliveryModuleEnabled && (
-          <DeliveryManagement
-            restaurant={restaurant}
-            planCode={currentPlanCode}
-          />
-        )}
+  <OwnerDeliveryManagement
+    restaurant={restaurant}
+    planCode={currentPlanCode}
+  />
+)}
 
         {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
           <div className="contents">

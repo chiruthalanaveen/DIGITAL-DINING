@@ -262,31 +262,377 @@ async function readDeliveryGateway(
 
 
 
-function publicOrder(order) {
-  return {
-    id: order?.id,
-    orderCode: order?.order_code,
-    orderNumber: order?.order_number,
-    customerName: order?.customer_name,
-    items: order?.items || [],
-    subtotal: Number(order?.subtotal || 0),
-    discountAmount: Number(order?.discount_amount || 0),
-    taxAmount: Number(order?.tax_amount || 0),
-    sgstAmount: Number(order?.sgst_amount || 0),
-    cgstAmount: Number(order?.cgst_amount || 0),
-    packingFee: Number(order?.packing_fee || 0),
-    deliveryFee: Number(order?.delivery_fee || 0),
-    handlingCharge: Number(order?.handling_charge || 0),
-    surgeCharge: Number(order?.surge_charge || 0),
-    surgeApplied: Boolean(order?.surge_applied),
-    totalAmount: Number(order?.total_amount || 0),
-    paymentMethod: order?.payment_method,
-    paymentStatus: order?.payment_status,
-    orderStatus: order?.order_status,
-    estimatedDeliveryAt: order?.estimated_delivery_at,
-    createdAt: order?.created_at,
+async function expireStaleInventoryReservations(admin) {
+
+  try {
+
+    const {
+
+      data,
+
+      error,
+
+    } = await admin.rpc(
+
+      'delivery_expire_unpaid_razorpay_orders',
+
+      {
+
+        p_limit: 100,
+
+      }
+
+    )
+
+
+
+    if (error) {
+
+      console.error(
+
+        'Delivery inventory expiry cleanup error:',
+
+        error
+
+      )
+
+      return
+
+    }
+
+
+
+    if (data?.success === false) {
+
+      console.error(
+
+        'Delivery inventory expiry cleanup failed:',
+
+        data
+
+      )
+
+    }
+
+  } catch (error) {
+
+    console.error(
+
+      'Delivery inventory expiry cleanup exception:',
+
+      error
+
+    )
+
   }
+
 }
+
+
+
+async function runInventoryAction(
+
+  admin,
+
+  functionName,
+
+  args,
+
+  fallbackMessage
+
+) {
+
+  const {
+
+    data,
+
+    error,
+
+  } = await admin.rpc(
+
+    functionName,
+
+    args
+
+  )
+
+
+
+  if (error) {
+
+    const actionError = new Error(
+
+      error.message ||
+
+        fallbackMessage
+
+    )
+
+    actionError.code =
+
+      error.code ||
+
+      'INVENTORY_ERROR'
+
+    actionError.httpStatus = 409
+
+    throw actionError
+
+  }
+
+
+
+  if (data?.success === false) {
+
+    const actionError = new Error(
+
+      data?.message ||
+
+        fallbackMessage
+
+    )
+
+    actionError.code =
+
+      data?.code ||
+
+      'INVENTORY_ERROR'
+
+    actionError.httpStatus =
+
+      data?.code === 'ORDER_NOT_FOUND'
+
+        ? 404
+
+        : 409
+
+    actionError.inventoryData =
+
+      data
+
+    throw actionError
+
+  }
+
+
+
+  return data || {
+
+    success: true,
+
+  }
+
+}
+
+
+
+async function releaseInventorySafe(
+
+  admin,
+
+  orderId,
+
+  reason
+
+) {
+
+  if (!admin || !orderId) return
+
+
+
+  try {
+
+    const {
+
+      data,
+
+      error,
+
+    } = await admin.rpc(
+
+      'delivery_release_order_inventory',
+
+      {
+
+        p_order_id: orderId,
+
+        p_reason:
+
+          String(reason || '')
+
+            .trim()
+
+            .slice(0, 500),
+
+      }
+
+    )
+
+
+
+    if (error) {
+
+      console.error(
+
+        'Delivery inventory release error:',
+
+        error
+
+      )
+
+      return
+
+    }
+
+
+
+    if (data?.success === false) {
+
+      console.error(
+
+        'Delivery inventory release failed:',
+
+        data
+
+      )
+
+    }
+
+  } catch (error) {
+
+    console.error(
+
+      'Delivery inventory release exception:',
+
+      error
+
+    )
+
+  }
+
+}
+
+
+
+function publicOrder(order) {
+
+  return {
+
+    id: order?.id,
+
+    orderCode:
+
+      order?.order_code,
+
+    orderNumber:
+
+      order?.order_number,
+
+    customerName:
+
+      order?.customer_name,
+
+    items:
+
+      order?.items || [],
+
+    subtotal:
+
+      Number(order?.subtotal || 0),
+
+    discountAmount:
+
+      Number(
+
+        order?.discount_amount || 0
+
+      ),
+
+    taxAmount:
+
+      Number(
+
+        order?.tax_amount || 0
+
+      ),
+
+    packingFee:
+
+      Number(
+
+        order?.packing_fee || 0
+
+      ),
+
+    deliveryFee:
+
+      Number(
+
+        order?.delivery_fee || 0
+
+      ),
+
+    handlingFee:
+
+      Number(
+
+        order?.handling_fee || 0
+
+      ),
+
+    surgeFee:
+
+      Number(
+
+        order?.surge_fee || 0
+
+      ),
+
+    surgeApplied:
+
+      Boolean(
+
+        order?.surge_applied
+
+      ),
+
+
+    totalAmount:
+
+      Number(
+
+        order?.total_amount || 0
+
+      ),
+
+    paymentMethod:
+
+      order?.payment_method,
+
+    paymentStatus:
+
+      order?.payment_status,
+
+    orderStatus:
+
+      order?.order_status,
+
+    inventoryStatus:
+
+      order?.inventory_status,
+
+    estimatedDeliveryAt:
+
+      order?.estimated_delivery_at,
+
+    createdAt:
+
+      order?.created_at,
+
+  }
+
+}
+
 
 
 export async function POST(request) {
@@ -468,6 +814,14 @@ export async function POST(request) {
 
 
     admin = getAdminClient()
+
+
+
+    // Best-effort cleanup for expired unpaid Razorpay orders.
+
+    // This safely releases inventory reserved by expired checkouts.
+
+    await expireStaleInventoryReservations(admin)
 
 
 
@@ -881,11 +1235,63 @@ export async function POST(request) {
 
 
 
+    // --------------------------------------------------------
+
+    // INVENTORY RESERVATION
+
+    // --------------------------------------------------------
+
+    // Food items with stock tracking disabled are ignored by
+
+    // the database inventory engine. Stock-tracked products are
+
+    // atomically reserved here before COD dispatch or Razorpay.
+
+    await runInventoryAction(
+
+        admin,
+
+        'delivery_reserve_order_inventory',
+
+        {
+
+          p_order_id: createdOrderId,
+
+        },
+
+        'Unable to reserve stock for this order.'
+
+      )
+
+
+
     if (
 
       paymentMethod === 'cod'
 
     ) {
+
+      // COD becomes a confirmed stock sale immediately.
+
+      // This changes stock_quantity and clears the reservation
+
+      // atomically. Repeated calls are idempotent in PostgreSQL.
+
+      await runInventoryAction(
+
+        admin,
+
+        'delivery_consume_order_inventory',
+
+        {
+
+          p_order_id: createdOrderId,
+
+        },
+
+        'Unable to confirm stock for this COD order.'
+
+      )
 
       try {
 
@@ -1001,6 +1407,18 @@ export async function POST(request) {
 
     ) {
 
+      await releaseInventorySafe(
+
+        admin,
+
+        createdOrderId,
+
+        'Razorpay is not configured for this store'
+
+      )
+
+
+
       await admin
 
         .from('delivery_orders')
@@ -1018,6 +1436,10 @@ export async function POST(request) {
           cancelled_at:
 
             new Date().toISOString(),
+
+          payment_expires_at:
+
+            null,
 
         })
 
@@ -1311,6 +1733,20 @@ export async function POST(request) {
 
     ) {
 
+      await releaseInventorySafe(
+
+        admin,
+
+        createdOrderId,
+
+        error?.message ||
+
+          'Delivery order creation failed'
+
+      )
+
+
+
       await admin
 
         .from('delivery_orders')
@@ -1329,6 +1765,10 @@ export async function POST(request) {
 
             new Date().toISOString(),
 
+          payment_expires_at:
+
+            null,
+
         })
 
         .eq(
@@ -1343,21 +1783,111 @@ export async function POST(request) {
 
 
 
+    const responseBody = {
+
+      success: false,
+
+      message:
+
+        error?.message ||
+
+        'Unable to create Delivery order.',
+
+    }
+
+
+
+    if (error?.code) {
+
+      responseBody.code =
+
+        error.code
+
+    }
+
+
+
+    if (error?.inventoryData) {
+
+      const inventoryData =
+
+        error.inventoryData
+
+
+
+      if (inventoryData.itemId) {
+
+        responseBody.itemId =
+
+          inventoryData.itemId
+
+      }
+
+
+
+      if (inventoryData.itemName) {
+
+        responseBody.itemName =
+
+          inventoryData.itemName
+
+      }
+
+
+
+      if (
+
+        inventoryData.requestedQuantity !==
+
+        undefined
+
+      ) {
+
+        responseBody.requestedQuantity =
+
+          inventoryData.requestedQuantity
+
+      }
+
+
+
+      if (
+
+        inventoryData.availableQuantity !==
+
+        undefined
+
+      ) {
+
+        responseBody.availableQuantity =
+
+          inventoryData.availableQuantity
+
+      }
+
+    }
+
+
+
+    const responseStatus =
+
+      Number.isInteger(
+
+        error?.httpStatus
+
+      )
+
+        ? error.httpStatus
+
+        : 500
+
+
+
     return NextResponse.json(
 
-      {
+      responseBody,
 
-        success: false,
-
-        message:
-
-          error?.message ||
-
-          'Unable to create Delivery order.',
-
-      },
-
-      { status: 500 }
+      { status: responseStatus }
 
     )
 

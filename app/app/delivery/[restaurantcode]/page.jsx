@@ -66,6 +66,58 @@ function distanceKm(lat1, lng1, lat2, lng2) {
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(a))
 }
 
+function deliveryStockInfo(item) {
+  const tracked =
+    item?.track_stock === true
+
+  const available = tracked
+    ? Math.max(
+        0,
+        Math.floor(
+          Number(
+            item?.available_stock || 0
+          )
+        )
+      )
+    : null
+
+  const lowThreshold = tracked
+    ? Math.max(
+        0,
+        Math.floor(
+          Number(
+            item?.low_stock_threshold || 0
+          )
+        )
+      )
+    : null
+
+  return {
+    tracked,
+    available,
+    lowThreshold,
+    outOfStock:
+      tracked &&
+      available <= 0,
+
+    lowStock:
+      tracked &&
+      available > 0 &&
+      available <= lowThreshold,
+
+    maxCartQuantity:
+      tracked
+        ? Math.max(
+            0,
+            Math.min(
+              20,
+              available
+            )
+          )
+        : 20,
+  }
+}
+
 export default function DeliveryStorePage({
   params,
 }) {
@@ -392,6 +444,79 @@ export default function DeliveryStorePage({
         }))
     }, [menuItems, cart])
 
+  /*
+   * Inventory can change while the customer is browsing.
+   * Keep the cart inside the latest public available-stock limit.
+   * The server inventory engine remains the final authority.
+   */
+  useEffect(() => {
+    if (!menuItems.length) {
+      return
+    }
+
+    setCart((current) => {
+      let changed = false
+      const nextCart = {
+        ...current,
+      }
+
+      for (const [
+        itemId,
+        rawQuantity,
+      ] of Object.entries(current)) {
+        const item =
+          menuItems.find(
+            (row) =>
+              String(row.id) ===
+              String(itemId)
+          )
+
+        if (!item) {
+          delete nextCart[itemId]
+          changed = true
+          continue
+        }
+
+        const stock =
+          deliveryStockInfo(item)
+
+        const currentQuantity =
+          Math.max(
+            0,
+            Math.floor(
+              Number(
+                rawQuantity || 0
+              )
+            )
+          )
+
+        const nextQuantity =
+          Math.min(
+            currentQuantity,
+            stock.maxCartQuantity
+          )
+
+        if (
+          nextQuantity !==
+          currentQuantity
+        ) {
+          changed = true
+
+          if (nextQuantity <= 0) {
+            delete nextCart[itemId]
+          } else {
+            nextCart[itemId] =
+              nextQuantity
+          }
+        }
+      }
+
+      return changed
+        ? nextCart
+        : current
+    })
+  }, [menuItems])
+
   const cartCount =
     cartRows.reduce(
       (sum, item) =>
@@ -497,13 +622,53 @@ export default function DeliveryStorePage({
     itemId,
     next
   ) => {
-    const safe = Math.max(
-      0,
-      Math.min(
-        20,
-        Number(next || 0)
+    const item =
+      menuItems.find(
+        (row) =>
+          String(row.id) ===
+          String(itemId)
       )
-    )
+
+    if (!item) {
+      return
+    }
+
+    const stock =
+      deliveryStockInfo(item)
+
+    const requested =
+      Math.max(
+        0,
+        Math.floor(
+          Number(next || 0)
+        )
+      )
+
+    const safe =
+      Math.min(
+        requested,
+        stock.maxCartQuantity
+      )
+
+    if (
+      stock.tracked &&
+      requested >
+        stock.maxCartQuantity
+    ) {
+      setMessage(
+        stock.outOfStock
+          ? `${item.name} is currently out of stock.`
+          : `Only ${stock.available} unit${
+              stock.available === 1
+                ? ''
+                : 's'
+            } of ${item.name} ${
+              stock.available === 1
+                ? 'is'
+                : 'are'
+            } available right now.`
+      )
+    }
 
     setCart((current) => {
       const copy = {
@@ -920,6 +1085,46 @@ export default function DeliveryStorePage({
       setMessage(
         'Your cart is empty.'
       )
+      return
+    }
+
+    const stockConflict =
+      cartRows.find((item) => {
+        const stock =
+          deliveryStockInfo(item)
+
+        return (
+          stock.tracked &&
+          (
+            stock.outOfStock ||
+            Number(
+              item.quantity || 0
+            ) > stock.available
+          )
+        )
+      })
+
+    if (stockConflict) {
+      const stock =
+        deliveryStockInfo(
+          stockConflict
+        )
+
+      setMessage(
+        stock.outOfStock
+          ? `${stockConflict.name} is now out of stock. Your cart has been updated.`
+          : `Only ${stock.available} unit${
+              stock.available === 1
+                ? ''
+                : 's'
+            } of ${stockConflict.name} ${
+              stock.available === 1
+                ? 'is'
+                : 'are'
+            } available now. Your cart has been updated.`
+      )
+
+      await loadStore(true)
       return
     }
 
@@ -1541,6 +1746,16 @@ export default function DeliveryStorePage({
                   item.price || 0
                 )
 
+              const stock =
+                deliveryStockInfo(item)
+
+              const packagedProduct =
+                String(
+                  item.item_type ||
+                    'food'
+                ) ===
+                'packaged_product'
+
               return (
                 <article
                   key={item.id}
@@ -1559,7 +1774,9 @@ export default function DeliveryStorePage({
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-4xl">
-                        🍽️
+                        {packagedProduct
+                          ? '📦'
+                          : '🍽️'}
                       </div>
                     )}
                   </div>
@@ -1612,12 +1829,31 @@ export default function DeliveryStorePage({
                       </p>
                     )}
 
+                    {stock.tracked && (
+                      <div
+                        className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[9px] font-black ${
+                          stock.outOfStock
+                            ? 'bg-red-50 text-red-600'
+                            : stock.lowStock
+                              ? 'bg-amber-50 text-amber-700'
+                              : 'bg-emerald-50 text-emerald-700'
+                        }`}
+                      >
+                        {stock.outOfStock
+                          ? 'OUT OF STOCK'
+                          : stock.lowStock
+                            ? `ONLY ${stock.available} LEFT`
+                            : `${stock.available} IN STOCK`}
+                      </div>
+                    )}
+
                     <div className="mt-4">
                       {quantity <= 0 ? (
                         <button
                           type="button"
                           disabled={
-                            !settings.is_open
+                            !settings.is_open ||
+                            stock.outOfStock
                           }
                           onClick={() =>
                             updateQuantity(
@@ -1627,7 +1863,9 @@ export default function DeliveryStorePage({
                           }
                           className="w-full rounded-xl border border-emerald-600 bg-white py-2.5 text-xs font-black text-emerald-700 shadow-sm transition hover:bg-emerald-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          ADD
+                          {stock.outOfStock
+                            ? 'OUT OF STOCK'
+                            : 'ADD'}
                         </button>
                       ) : (
                         <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-emerald-600 bg-white shadow-sm">
@@ -1651,6 +1889,11 @@ export default function DeliveryStorePage({
 
                           <button
                             type="button"
+                            disabled={
+                              stock.tracked &&
+                              quantity >=
+                                stock.maxCartQuantity
+                            }
                             onClick={() =>
                               updateQuantity(
                                 item.id,
@@ -1658,7 +1901,7 @@ export default function DeliveryStorePage({
                                   1
                               )
                             }
-                            className="py-2.5 text-lg font-black text-emerald-700"
+                            className="py-2.5 text-lg font-black text-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-neutral-300"
                           >
                             +
                           </button>
@@ -1866,64 +2109,92 @@ export default function DeliveryStorePage({
 
             <div className="mt-5 space-y-3">
               {cartRows.map(
-                (item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200 p-3"
-                  >
-                    <div>
-                      <p className="text-sm font-black">
-                        {item.name}
-                      </p>
+                (item) => {
+                  const stock =
+                    deliveryStockInfo(
+                      item
+                    )
 
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {money(
-                          item.price
-                        )}{' '}
-                        ×{' '}
-                        {
-                          item.quantity
-                        }
-                      </p>
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200 p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black">
+                          {item.name}
+                        </p>
+
+                        <p className="mt-1 text-xs text-neutral-500">
+                          {money(
+                            item.price
+                          )}{' '}
+                          ×{' '}
+                          {
+                            item.quantity
+                          }
+                        </p>
+
+                        {stock.tracked && (
+                          <p
+                            className={`mt-1 text-[9px] font-black ${
+                              stock.outOfStock
+                                ? 'text-red-600'
+                                : stock.lowStock
+                                  ? 'text-amber-700'
+                                  : 'text-emerald-700'
+                            }`}
+                          >
+                            {stock.outOfStock
+                              ? 'Out of stock'
+                              : `${stock.available} available`}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateQuantity(
+                              item.id,
+                              item.quantity -
+                                1
+                            )
+                          }
+                          className="h-8 w-8 rounded-lg bg-neutral-100 font-black"
+                        >
+                          −
+                        </button>
+
+                        <span className="text-sm font-black">
+                          {
+                            item.quantity
+                          }
+                        </span>
+
+                        <button
+                          type="button"
+                          disabled={
+                            stock.tracked &&
+                            item.quantity >=
+                              stock.maxCartQuantity
+                          }
+                          onClick={() =>
+                            updateQuantity(
+                              item.id,
+                              item.quantity +
+                                1
+                            )
+                          }
+                          className="h-8 w-8 rounded-lg bg-neutral-900 font-black text-white disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateQuantity(
-                            item.id,
-                            item.quantity -
-                              1
-                          )
-                        }
-                        className="h-8 w-8 rounded-lg bg-neutral-100 font-black"
-                      >
-                        −
-                      </button>
-
-                      <span className="text-sm font-black">
-                        {
-                          item.quantity
-                        }
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateQuantity(
-                            item.id,
-                            item.quantity +
-                              1
-                          )
-                        }
-                        className="h-8 w-8 rounded-lg bg-neutral-900 font-black text-white"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                )
+                  )
+                }
               )}
             </div>
 
