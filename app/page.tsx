@@ -2,649 +2,857 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
 const CONTACT_EMAIL = 'digitaldining077@gmail.com'
 
+// Replace this one value with your real Digital Dine-In support number.
+const SUPPORT_PHONE = '+91 8499047735'
+const SUPPORT_PHONE_LINK = SUPPORT_PHONE.replace(/[^\d+]/g, '')
+
+const modules = [
+  {
+    name: 'Restaurant',
+    description:
+      'QR ordering, Dine-In and Parcel, staff operations, billing, Razorpay and menu management.',
+    features: [
+      'QR menu & mobile ordering',
+      'Dine-In & Parcel',
+      'Owner, Manager, Waiter & KDS',
+      'Restaurant-specific Razorpay',
+      'GST-ready billing & invoices',
+      'Offers, reports & Highly Reordered items',
+    ],
+  },
+  {
+    name: 'Delivery',
+    description:
+      'Run your own local Delivery storefront, inventory, packing, dispatch, tracking and support.',
+    features: [
+      'Food, Groceries, Fruits & Vegetables',
+      'COD & Razorpay',
+      'Live-location & delivery radius',
+      'Inventory & barcode scanning',
+      'Packer & Delivery Boy portals',
+      'Automatic assignment & live tracking',
+      'Returns, replacements & Live Support',
+      'COD cash reconciliation',
+    ],
+  },
+  {
+    name: 'Resort',
+    description:
+      'Manage Resort operations beside Restaurant and Delivery from the same business account.',
+    features: [
+      'Resort workspace',
+      'Room types & rooms',
+      'Booking management',
+      'Guest workflows',
+      'Owner / Manager visibility',
+      'Combined hospitality operations',
+    ],
+  },
+]
+
+const platformFeatures = [
+  {
+    title: 'Restaurant Code Login',
+    text:
+      'Enter the 5-digit Restaurant Code and show only the portals included in that active subscription.',
+  },
+  {
+    title: 'Installable Web App',
+    text:
+      'Digital Dine-In can be installed as a PWA for faster Owner, Manager and staff access.',
+  },
+  {
+    title: 'Inventory & Opening Stock',
+    text:
+      'Add packaged products with barcode, opening stock, available stock, low-stock threshold and restocking.',
+  },
+  {
+    title: 'Barcode Packing',
+    text:
+      'Packer verifies packaged products before an order can be marked packed.',
+  },
+  {
+    title: 'Stock Protection',
+    text:
+      'Server-side stock reservation, consumption and release reduces overselling risk.',
+  },
+  {
+    title: 'Delivery Pricing Controls',
+    text:
+      'Minimum-order delivery fee, packing charge, handling charge, CGST/SGST and demand-based surge pricing.',
+  },
+  {
+    title: 'Live Delivery Operations',
+    text:
+      'Automatic rider assignment, customer tracking, delivery proof and driver contact details.',
+  },
+  {
+    title: 'Live Support',
+    text:
+      'Customers contact the Manager through Live Support instead of directly creating return or replacement requests.',
+  },
+  {
+    title: 'Return Pickup Workflow',
+    text:
+      'Manager-approved returns become pickup tasks for the Delivery Boy before store verification and restocking.',
+  },
+  {
+    title: 'Replacement Workflow',
+    text:
+      'Manager-controlled replacement flow with inventory protection for replacement stock.',
+  },
+  {
+    title: 'Delivery Billing',
+    text:
+      'Owner and Manager can generate Delivery bills using authoritative server-side order values.',
+  },
+  {
+    title: 'COD Cash Reconciliation',
+    text:
+      'Track rider COD liability, cash handover requests and Owner / Manager settlement approval.',
+  },
+]
+
 const plans = [
   {
-    name: 'Restaurant Standard',
-    label: 'Restaurant',
-    price: '₹799',
-    featured: false,
+    code: 'restaurant_pro',
+    name: 'Restaurant',
+    monthly: '₹1,499',
+    sixMonths: '₹8,095',
+    annual: '₹14,390',
+    description:
+      'Complete Restaurant operations.',
     features: [
       'QR menu & table ordering',
       'Dine-In & Parcel',
-      'GST-ready checkout',
-      'Razorpay payments',
-      'Digital invoices',
+      'Owner / Manager / Waiter / KDS',
+      'Restaurant Razorpay',
+      'GST billing & digital invoices',
+      'Offers, menu controls & reports',
     ],
   },
   {
-    name: 'Restaurant Pro',
-    label: 'Restaurant',
-    price: '₹1,299',
+    code: 'delivery',
+    name: 'Delivery',
+    monthly: '₹1,499',
+    sixMonths: '₹8,095',
+    annual: '₹14,390',
+    description:
+      'Direct local ordering and dispatch.',
+    features: [
+      'Customer Delivery storefront',
+      'Food / Grocery / Fruits & Vegetables',
+      'COD & Razorpay',
+      'Live location & delivery radius',
+      'Inventory & barcode workflow',
+      'Packer & Delivery Boy portals',
+      'Tracking, returns & Live Support',
+    ],
+  },
+  {
+    code: 'restaurant_resort_pro',
+    name: 'Restaurant + Resort',
+    monthly: '₹2,999',
+    sixMonths: '₹16,195',
+    annual: '₹28,790',
+    description:
+      'Restaurant and hospitality operations.',
+    features: [
+      'Everything in Restaurant',
+      'Resort workspace',
+      'Room types & rooms',
+      'Booking operations',
+      'Guest workflows',
+      'Combined operational visibility',
+    ],
+  },
+  {
+    code: 'restaurant_delivery',
+    name: 'Restaurant + Delivery',
+    monthly: '₹2,999',
+    sixMonths: '₹16,195',
+    annual: '₹28,790',
+    description:
+      'Restaurant plus your own Delivery operation.',
     featured: true,
     features: [
-      'Everything in Standard',
-      'Kitchen & waiter workflows',
-      'Manager tools',
-      'Live menu updates',
-      'Reports & order visibility',
+      'Everything in Restaurant',
+      'Everything in Delivery',
+      'Restaurant staff portals',
+      'Delivery inventory & dispatch',
+      'Separate payment configuration',
+      'One Owner / Manager workspace',
     ],
   },
   {
-    name: 'Restaurant + Resort Standard',
-    label: 'Restaurant + Resort',
-    price: '₹1,999',
-    featured: false,
+    code: 'restaurant_resort_delivery',
+    name: 'Restaurant + Resort + Delivery',
+    monthly: '₹3,999',
+    sixMonths: '₹21,595',
+    annual: '₹38,390',
+    description:
+      'Complete Digital Dine-In platform.',
     features: [
-      'Restaurant Standard features',
-      'Resort workspace',
-      'Room booking tools',
-      'Inventory support',
-      'Guest digital workflows',
-    ],
-  },
-  {
-    name: 'Restaurant + Resort Pro',
-    label: 'Restaurant + Resort',
-    price: '₹2,999',
-    featured: false,
-    features: [
-      'Restaurant Pro features',
-      'Full resort access',
-      'Connected staff workflows',
-      'Advanced reports',
-      'Live operational visibility',
+      'Restaurant module',
+      'Delivery module',
+      'Resort module',
+      'All role-based portals',
+      'Payments, billing & inventory',
+      'Tracking, support & operational reports',
     ],
   },
 ]
 
-const featureItems = [
-  {
-    icon: '⌁',
-    title: 'QR Ordering',
-    text: 'Guests scan, browse and order from their phone.',
-  },
-  {
-    icon: '₹',
-    title: 'Online Payments',
-    text: 'Restaurant-specific Razorpay checkout.',
-  },
-  {
-    icon: '◉',
-    title: 'Live Operations',
-    text: 'Kitchen, waiter and manager workflows stay connected.',
-  },
-  {
-    icon: '✓',
-    title: 'GST Billing',
-    text: 'Clear SGST, CGST, charges and digital invoices.',
-  },
-  {
-    icon: '★',
-    title: 'Smart Menu',
-    text: 'Search, filters, offers and highly reordered items.',
-  },
-  {
-    icon: '▣',
-    title: 'Resort Ready',
-    text: 'Optional restaurant + resort plans for combined operations.',
-  },
-]
+function SectionTitle({
+  eyebrow,
+  title,
+  text,
+}) {
+  return (
+    <div className="max-w-2xl">
+      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-400">
+        {eyebrow}
+      </p>
+
+      <h2 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-4xl">
+        {title}
+      </h2>
+
+      {text && (
+        <p className="mt-3 text-sm leading-7 text-neutral-400">
+          {text}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function PlanCard({ plan }) {
+  return (
+    <article
+      className={`flex h-full flex-col rounded-[26px] border p-5 ${
+        plan.featured
+          ? 'border-orange-500/40 bg-orange-500/[0.05]'
+          : 'border-white/[0.08] bg-white/[0.025]'
+      }`}
+    >
+      {plan.featured && (
+        <span className="mb-4 w-fit rounded-full bg-orange-500 px-3 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-black">
+          Popular
+        </span>
+      )}
+
+      <h3 className="text-xl font-black text-white">
+        {plan.name}
+      </h3>
+
+      <p className="mt-2 min-h-10 text-[11px] leading-5 text-neutral-500">
+        {plan.description}
+      </p>
+
+      <div className="mt-5">
+        <p className="text-3xl font-black tracking-tight text-white">
+          {plan.monthly}
+          <span className="ml-1 text-[10px] font-bold text-neutral-600">
+            / month
+          </span>
+        </p>
+
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[9px]">
+          <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3">
+            <p className="font-black text-neutral-300">
+              {plan.sixMonths}
+            </p>
+            <p className="mt-1 text-neutral-600">
+              6 months
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3">
+            <p className="font-black text-neutral-300">
+              {plan.annual}
+            </p>
+            <p className="mt-1 text-neutral-600">
+              12 months
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 flex-1 space-y-2.5">
+        {plan.features.map(
+          (feature) => (
+            <div
+              key={feature}
+              className="flex gap-2"
+            >
+              <span className="mt-0.5 text-[10px] font-black text-orange-400">
+                ✓
+              </span>
+
+              <span className="text-[10px] leading-5 text-neutral-400">
+                {feature}
+              </span>
+            </div>
+          )
+        )}
+      </div>
+
+      <Link
+        href={`/register?plan=${encodeURIComponent(
+          plan.code
+        )}`}
+        className={`mt-6 inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-[10px] font-black transition ${
+          plan.featured
+            ? 'bg-orange-500 text-black hover:bg-orange-400'
+            : 'bg-white text-black hover:bg-neutral-200'
+        }`}
+      >
+        Register for this plan
+      </Link>
+    </article>
+  )
+}
 
 export default function LandingPage() {
-  const [privacyReady, setPrivacyReady] = useState(false)
-  const [showPrivacyNotice, setShowPrivacyNotice] = useState(false)
+  useMobileViewportLock()
+
+  const [
+    privacyReady,
+    setPrivacyReady,
+  ] = useState(false)
+
+  const [
+    showPrivacyNotice,
+    setShowPrivacyNotice,
+  ] = useState(false)
 
   useEffect(() => {
-    const accepted = localStorage.getItem(
-      'digitaldining_privacy_accepted'
-    )
+    try {
+      const accepted =
+        localStorage.getItem(
+          'digitaldining_privacy_accepted'
+        )
 
-    if (!accepted) {
-      setShowPrivacyNotice(true)
+      if (!accepted) {
+        setShowPrivacyNotice(true)
+      }
+    } catch {
+      // Ignore unavailable storage.
     }
 
     setPrivacyReady(true)
   }, [])
 
   const acceptPrivacy = () => {
-    localStorage.setItem(
-      'digitaldining_privacy_accepted',
-      'true'
-    )
+    try {
+      localStorage.setItem(
+        'digitaldining_privacy_accepted',
+        'true'
+      )
+    } catch {
+      // Ignore unavailable storage.
+    }
+
     setShowPrivacyNotice(false)
   }
 
   return (
-    <div className="min-h-screen bg-[#090909] text-white selection:bg-orange-500 selection:text-white">
-      <style jsx global>{`
-        html {
-          scroll-behavior: smooth;
-        }
+    <div className="min-h-screen bg-[#090909] text-white selection:bg-orange-500 selection:text-black">
+      {/* =================================================== */}
+      {/* FREE MONTH BANNER                                   */}
+      {/* =================================================== */}
 
-        body {
-          margin: 0;
-          background: #090909;
-        }
+      <div className="border-b border-orange-500/20 bg-orange-500/[0.08]">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-center gap-2 px-4 py-2.5 text-center sm:flex-row sm:px-6">
+          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-orange-300">
+            Launch Offer
+          </span>
 
-        * {
-          box-sizing: border-box;
-        }
+          <span className="text-[10px] font-bold text-neutral-300">
+            New Digital Dine-In customers get their first month free.
+          </span>
 
-        @media (prefers-reduced-motion: reduce) {
-          html {
-            scroll-behavior: auto;
-          }
-
-          *,
-          *::before,
-          *::after {
-            transition: none !important;
-            animation: none !important;
-          }
-        }
-      `}</style>
-
-      {/* Offer */}
-      <div className="border-b border-orange-400/20 bg-orange-500 px-4 py-2 text-center text-[11px] font-bold text-black">
-        First-time partners get 1 month free
+          <Link
+            href="/register?offer=one-month-free"
+            className="text-[10px] font-black text-white underline decoration-orange-500 underline-offset-4"
+          >
+            Claim 1 Month Free
+          </Link>
+        </div>
       </div>
 
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/[0.07] bg-[#090909]/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6 lg:px-8">
-          <a href="#" className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 text-sm font-black text-black">
-              D
-            </span>
+      {/* =================================================== */}
+      {/* HEADER                                              */}
+      {/* =================================================== */}
 
-            <div>
-              <div className="text-sm font-black tracking-tight">
-                Digital Dining
-              </div>
-              <div className="text-[8px] font-bold uppercase tracking-[0.2em] text-neutral-600">
-                Restaurant SaaS
-              </div>
+      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#090909]/95 backdrop-blur-xl">
+        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+          <Link
+            href="/"
+            className="flex min-w-0 items-center gap-3"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[10px] font-black text-black">
+              DD
             </div>
-          </a>
 
-          <nav className="hidden items-center gap-7 text-[11px] font-bold text-neutral-400 md:flex">
-            <a href="/demo" className="transition hover:text-white">
-              Demo
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black">
+                Digital Dine-In
+              </p>
+
+              <p className="hidden text-[8px] font-bold uppercase tracking-[0.16em] text-neutral-600 sm:block">
+                Restaurant · Delivery · Resort
+              </p>
+            </div>
+          </Link>
+
+          <nav className="hidden items-center gap-6 text-[10px] font-bold text-neutral-500 lg:flex">
+            <a
+              href="#platform"
+              className="transition hover:text-white"
+            >
+              Platform
             </a>
-            <a href="#features" className="transition hover:text-white">
+
+            <a
+              href="#features"
+              className="transition hover:text-white"
+            >
               Features
             </a>
-            <a href="#pricing" className="transition hover:text-white">
+
+            <a
+              href="#pricing"
+              className="transition hover:text-white"
+            >
               Pricing
             </a>
-            <a href="#contact" className="transition hover:text-white">
-              Contact
+
+            <a
+              href="#contact"
+              className="transition hover:text-white"
+            >
+              Support
             </a>
           </nav>
 
-          <Link
-            href="/register"
-            className="rounded-xl bg-white px-4 py-2.5 text-[10px] font-black text-black transition hover:bg-orange-500"
-          >
-            Start Free
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/login"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-[9px] font-black text-white transition hover:border-orange-500/30 hover:bg-orange-500/[0.07] sm:px-4 sm:text-[10px]"
+            >
+              Restaurant Login
+            </Link>
+
+            <Link
+              href="/register"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-white px-3 text-[9px] font-black text-black transition hover:bg-orange-500 sm:px-4 sm:text-[10px]"
+            >
+              Register
+            </Link>
+          </div>
         </div>
       </header>
 
       <main>
-        {/* Hero */}
-        <section className="relative overflow-hidden">
-          <div className="pointer-events-none absolute left-1/2 top-[-260px] h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-orange-500/[0.08] blur-[100px]" />
+        {/* ================================================= */}
+        {/* HERO                                              */}
+        {/* ================================================= */}
 
-          <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 sm:px-6 sm:py-20 lg:grid-cols-[0.92fr_1.08fr] lg:px-8 lg:py-24">
-            <div className="relative z-10">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-neutral-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Built for restaurants
-              </div>
+        <section className="border-b border-white/[0.06]">
+          <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-24">
+            <div className="flex flex-col justify-center">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-400">
+                One operational platform
+              </p>
 
-              <h1 className="mt-6 max-w-3xl text-4xl font-black leading-[1.02] tracking-[-0.04em] sm:text-5xl lg:text-6xl">
-                Take orders.
+              <h1 className="mt-4 max-w-3xl text-4xl font-black leading-[1.03] tracking-[-0.045em] sm:text-5xl lg:text-6xl">
+                Restaurant, Delivery
                 <br />
-                <span className="text-orange-500">
-                  Run the restaurant.
+                <span className="text-neutral-500">
+                  and Resort operations.
                 </span>
-                <br />
-                Keep it simple.
               </h1>
 
-              <p className="mt-6 max-w-xl text-sm leading-7 text-neutral-400 sm:text-base">
-                QR menu, ordering, payments, kitchen, waiter and billing —
-                connected in one clean system.
+              <p className="mt-6 max-w-2xl text-sm leading-7 text-neutral-400 sm:text-base">
+                Digital Dine-In connects QR ordering, staff operations,
+                inventory, direct Delivery, dispatch, payments, billing,
+                support and Resort workflows in one simple platform.
               </p>
 
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <a
-                  href="/demo"
-                  className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-6 py-3.5 text-xs font-black text-black transition hover:bg-orange-400"
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  href="/register?offer=one-month-free"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl bg-orange-500 px-6 text-xs font-black text-black transition hover:bg-orange-400"
                 >
-                  View Live Demo
-                </a>
+                  Start 1 Month Free
+                </Link>
 
-                <a
-                  href={`mailto:${CONTACT_EMAIL}?subject=Digital%20Dining%20Enquiry`}
-                  className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-6 py-3.5 text-xs font-black text-white transition hover:bg-white/[0.07]"
+                <Link
+                  href="/login"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/10 px-6 text-xs font-black text-white transition hover:bg-white/[0.04]"
                 >
-                  Talk to Us
-                </a>
+                  Restaurant Login
+                </Link>
               </div>
 
-              <div className="mt-7 flex flex-wrap gap-2">
+              <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[9px] font-bold text-neutral-600">
+                <span>✓ QR ordering</span>
+                <span>✓ COD & Razorpay</span>
+                <span>✓ Inventory</span>
+                <span>✓ Role-based portals</span>
+                <span>✓ Installable PWA</span>
+              </div>
+            </div>
+
+            <div className="rounded-[30px] border border-white/[0.08] bg-white/[0.025] p-5 sm:p-6">
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neutral-600">
+                What Digital Dine-In connects
+              </p>
+
+              <div className="mt-5 space-y-3">
                 {[
-                  'QR ordering',
-                  'Razorpay',
-                  'GST billing',
-                  'Staff app',
-                ].map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-full border border-white/[0.07] bg-white/[0.025] px-3 py-1.5 text-[9px] font-bold text-neutral-500"
-                  >
-                    {item}
-                  </span>
-                ))}
-              </div>
-            </div>
+                  [
+                    'Restaurant',
+                    'QR menu · Staff · Billing · Razorpay',
+                  ],
+                  [
+                    'Delivery',
+                    'Storefront · Inventory · Dispatch · Tracking',
+                  ],
+                  [
+                    'Resort',
+                    'Rooms · Bookings · Guest operations',
+                  ],
+                  [
+                    'App Access',
+                    'Restaurant Code · Plan-aware portals',
+                  ],
+                ].map(
+                  ([title, text]) => (
+                    <div
+                      key={title}
+                      className="rounded-2xl border border-white/[0.06] bg-black/20 p-4"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-xs font-black text-white">
+                          {title}
+                        </p>
 
-            {/* Simple product preview */}
-            <div className="relative">
-              <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#111] shadow-2xl shadow-black/50">
-                <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3">
-                  <div className="flex gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/70" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-green-400/70" />
-                  </div>
-
-                  <div className="text-[8px] font-bold text-neutral-600">
-                    Digital Dining
-                  </div>
-
-                  <div className="text-[10px] text-neutral-700">•••</div>
-                </div>
-
-                <div className="p-5 sm:p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-500">
-                        Table 07
-                      </div>
-                      <div className="mt-1 text-lg font-black">
-                        Today&apos;s Menu
-                      </div>
-                    </div>
-
-                    <span className="rounded-xl bg-orange-500/10 px-3 py-2 text-[9px] font-black text-orange-400">
-                      DINE-IN
-                    </span>
-                  </div>
-
-                  <div className="mt-5 flex gap-2 overflow-hidden">
-                    {['All', 'Veg', 'Non-Veg', 'Drinks'].map(
-                      (item, index) => (
-                        <span
-                          key={item}
-                          className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[8px] font-bold ${
-                            index === 0
-                              ? 'bg-orange-500 text-black'
-                              : 'border border-white/[0.07] text-neutral-500'
-                          }`}
-                        >
-                          {item}
+                        <span className="text-orange-400">
+                          →
                         </span>
-                      )
-                    )}
-                  </div>
-
-                  <div className="mt-5 space-y-3">
-                    {[
-                      ['🍛', 'Butter Chicken', '₹320', 'Popular'],
-                      ['🥘', 'Paneer Tikka', '₹280', 'Highly Reordered'],
-                      ['🫓', 'Garlic Naan', '₹90', ''],
-                    ].map(([emoji, name, price, badge]) => (
-                      <div
-                        key={name}
-                        className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"
-                      >
-                        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#181818] text-xl">
-                          {emoji}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-xs font-black">
-                            {name}
-                          </div>
-
-                          {badge ? (
-                            <div className="mt-1 text-[7px] font-bold uppercase tracking-wider text-orange-400">
-                              {badge}
-                            </div>
-                          ) : (
-                            <div className="mt-1 text-[8px] text-neutral-600">
-                              Freshly prepared
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="text-xs font-black">{price}</div>
-
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500 text-sm font-black text-black">
-                          +
-                        </div>
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="mt-5 flex items-center justify-between rounded-2xl bg-orange-500 p-4 text-black">
-                    <div>
-                      <div className="text-[8px] font-bold uppercase">
-                        Your cart
-                      </div>
-                      <div className="mt-1 text-sm font-black">
-                        3 items · ₹690
-                      </div>
+                      <p className="mt-1 text-[10px] leading-5 text-neutral-500">
+                        {text}
+                      </p>
                     </div>
-
-                    <div className="rounded-xl bg-black px-4 py-2 text-[9px] font-black text-white">
-                      Checkout →
-                    </div>
-                  </div>
-                </div>
+                  )
+                )}
               </div>
             </div>
           </div>
         </section>
 
-        {/* Simple trust strip */}
-        <section className="border-y border-white/[0.06] bg-white/[0.015]">
-          <div className="mx-auto grid max-w-7xl grid-cols-2 sm:grid-cols-4">
-            {[
-              ['QR', 'Table ordering'],
-              ['LIVE', 'Staff operations'],
-              ['GST', 'Billing ready'],
-              ['₹', 'Online payments'],
-            ].map(([value, label]) => (
-              <div
-                key={label}
-                className="border-b border-r border-white/[0.05] px-5 py-5 text-center sm:border-b-0"
-              >
-                <div className="text-sm font-black text-white">{value}</div>
-                <div className="mt-1 text-[8px] font-bold uppercase tracking-wider text-neutral-600">
-                  {label}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* ================================================= */}
+        {/* MODULES                                           */}
+        {/* ================================================= */}
 
-        {/* Demo */}
         <section
-          id="demo"
-          className="mx-auto max-w-7xl scroll-mt-20 px-5 py-16 sm:px-6 lg:px-8"
+          id="platform"
+          className="border-b border-white/[0.06]"
         >
-          <div className="flex flex-col gap-7 rounded-[26px] border border-white/[0.08] bg-white/[0.025] p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">
-                Product demo
-              </div>
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+            <SectionTitle
+              eyebrow="Platform"
+              title="Three modules. One business account."
+              text="Use the modules your business needs today and keep operations connected as you grow."
+            />
 
-              <h2 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">
-                See every restaurant portal in one place.
-              </h2>
+            <div className="mt-8 grid gap-4 lg:grid-cols-3">
+              {modules.map(
+                (module) => (
+                  <article
+                    key={module.name}
+                    className="rounded-[26px] border border-white/[0.08] bg-white/[0.02] p-5"
+                  >
+                    <h3 className="text-lg font-black">
+                      {module.name}
+                    </h3>
 
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-500">
-                Owner, Manager, Waiter and Kitchen — switch between each portal
-                from a single clean demo page.
-              </p>
+                    <p className="mt-2 min-h-16 text-[11px] leading-6 text-neutral-500">
+                      {module.description}
+                    </p>
+
+                    <div className="mt-4 space-y-2.5 border-t border-white/[0.06] pt-4">
+                      {module.features.map(
+                        (feature) => (
+                          <div
+                            key={feature}
+                            className="flex gap-2"
+                          >
+                            <span className="text-[10px] font-black text-orange-400">
+                              ✓
+                            </span>
+
+                            <span className="text-[10px] leading-5 text-neutral-400">
+                              {feature}
+                            </span>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </article>
+                )
+              )}
             </div>
-
-            <Link
-              href="/demo"
-              className="inline-flex shrink-0 items-center justify-center rounded-xl bg-white px-6 py-3.5 text-xs font-black text-black transition hover:bg-orange-500"
-            >
-              Open Demo Center →
-            </Link>
           </div>
         </section>
 
-        {/* Features */}
+        {/* ================================================= */}
+        {/* FEATURES / RECENT UPGRADES                        */}
+        {/* ================================================= */}
+
         <section
           id="features"
-          className="border-y border-white/[0.06] bg-[#0c0c0c]"
+          className="border-b border-white/[0.06]"
         >
-          <div className="mx-auto max-w-7xl px-5 py-20 sm:px-6 lg:px-8">
-            <div className="max-w-xl">
-              <div className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-400">
-                What you get
-              </div>
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+            <SectionTitle
+              eyebrow="Current Platform"
+              title="Built for real daily operations."
+              text="The platform now goes well beyond QR menus, with inventory, Delivery controls, support, returns, billing and plan-aware staff access."
+            />
 
-              <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-                The essentials. Nothing noisy.
-              </h2>
+            <div className="mt-8 grid gap-px overflow-hidden rounded-[26px] border border-white/[0.07] bg-white/[0.07] sm:grid-cols-2 lg:grid-cols-3">
+              {platformFeatures.map(
+                (feature) => (
+                  <article
+                    key={feature.title}
+                    className="bg-[#0d0d0d] p-5"
+                  >
+                    <h3 className="text-xs font-black text-white">
+                      {feature.title}
+                    </h3>
+
+                    <p className="mt-2 text-[10px] leading-5 text-neutral-500">
+                      {feature.text}
+                    </p>
+                  </article>
+                )
+              )}
             </div>
+          </div>
+        </section>
 
-            <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {featureItems.map((feature) => (
-                <div
-                  key={feature.title}
-                  className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5"
-                >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/10 text-sm font-black text-orange-400">
-                    {feature.icon}
-                  </div>
+        {/* ================================================= */}
+        {/* FREE MONTH                                        */}
+        {/* ================================================= */}
 
-                  <h3 className="mt-4 text-sm font-black">
-                    {feature.title}
-                  </h3>
+        <section className="border-b border-white/[0.06]">
+          <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+            <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/[0.06] p-6 sm:p-8">
+              <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
+                    New Customer Offer
+                  </p>
 
-                  <p className="mt-2 text-[11px] leading-5 text-neutral-500">
-                    {feature.text}
+                  <h2 className="mt-2 text-2xl font-black sm:text-3xl">
+                    First month free.
+                  </h2>
+
+                  <p className="mt-3 max-w-2xl text-sm leading-7 text-neutral-400">
+                    New Digital Dine-In customers can start with a 1-month free subscription offer and experience the platform before continuing with a paid plan.
                   </p>
                 </div>
-              ))}
+
+                <Link
+                  href="/register?offer=one-month-free"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl bg-orange-500 px-6 text-xs font-black text-black transition hover:bg-orange-400"
+                >
+                  Claim Free Month
+                </Link>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Pricing */}
+        {/* ================================================= */}
+        {/* PRICING                                           */}
+        {/* ================================================= */}
+
         <section
           id="pricing"
-          className="mx-auto max-w-7xl scroll-mt-20 px-5 py-20 sm:px-6 lg:px-8"
+          className="border-b border-white/[0.06]"
         >
-          <div className="text-center">
-            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">
-              Pricing
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+            <SectionTitle
+              eyebrow="Subscription Plans"
+              title="Choose the modules your business needs."
+              text="All five plans use the same Digital Dine-In account and role-based access model."
+            />
+
+            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {plans.map(
+                (plan) => (
+                  <PlanCard
+                    key={plan.code}
+                    plan={plan}
+                  />
+                )
+              )}
             </div>
 
-            <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-              Pick what fits your business.
-            </h2>
-
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-neutral-500">
-              Simple monthly subscription pricing. GST included. First-time
-              partners get 1 month free.
+            <p className="mt-5 text-center text-[9px] leading-5 text-neutral-600">
+              New-customer free-month eligibility and final subscription activation should be confirmed during registration/subscription checkout.
             </p>
-          </div>
-
-          <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {plans.map((plan) => (
-                <div
-                  key={plan.name}
-                  className={`relative flex flex-col rounded-[24px] border p-6 ${
-                    plan.featured
-                      ? 'border-orange-500 bg-orange-500/[0.07]'
-                      : 'border-white/[0.07] bg-white/[0.02]'
-                  }`}
-                >
-                  {plan.featured && (
-                    <div className="absolute -top-3 left-5 rounded-full bg-orange-500 px-3 py-1 text-[8px] font-black uppercase tracking-wider text-black">
-                      Most Popular
-                    </div>
-                  )}
-
-                  <div className="text-[8px] font-black uppercase tracking-[0.16em] text-neutral-600">
-                    {plan.label}
-                  </div>
-
-                  <h3 className="mt-2 min-h-[46px] text-lg font-black leading-tight">
-                    {plan.name}
-                  </h3>
-
-                  <div className="mt-5 flex items-end gap-1">
-                    <span className="text-3xl font-black tracking-tight">
-                      {plan.price}
-                    </span>
-                    <span className="pb-1 text-[9px] font-bold text-neutral-600">
-                      / month
-                    </span>
-                  </div>
-
-                  <div className="my-5 h-px bg-white/[0.07]" />
-
-                  <div className="flex-1 space-y-3">
-                    {plan.features.map((feature) => (
-                      <div
-                        key={feature}
-                        className="flex items-start gap-2 text-[10px] font-semibold leading-5 text-neutral-400"
-                      >
-                        <span className="mt-0.5 text-emerald-400">✓</span>
-                        <span>{feature}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <Link
-                    href="/register"
-                    className={`mt-7 flex items-center justify-center rounded-xl py-3 text-[10px] font-black transition ${
-                      plan.featured
-                        ? 'bg-orange-500 text-black hover:bg-orange-400'
-                        : 'bg-white text-black hover:bg-neutral-200'
-                    }`}
-                  >
-                    Start Free
-                  </Link>
-                </div>
-            ))}
           </div>
         </section>
 
-        {/* Contact CTA */}
-        <section
-          id="contact"
-          className="border-t border-white/[0.06] bg-[#0c0c0c]"
-        >
-          <div className="mx-auto max-w-5xl px-5 py-20 text-center sm:px-6">
-            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-400">
-              Talk to us
-            </div>
+        {/* ================================================= */}
+        {/* LOGIN                                             */}
+        {/* ================================================= */}
 
-            <h2 className="mx-auto mt-3 max-w-3xl text-3xl font-black tracking-tight sm:text-5xl">
-              Want Digital Dining for your restaurant?
-            </h2>
+        <section className="border-b border-white/[0.06]">
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+            <div className="grid gap-8 rounded-[28px] border border-white/[0.08] bg-white/[0.02] p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
+                  Existing Customer
+                </p>
 
-            <p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-neutral-500">
-              See the demo, ask your questions, then decide.
-            </p>
+                <h2 className="mt-2 text-2xl font-black sm:text-3xl">
+                  Open your business portals.
+                </h2>
 
-            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-              <a
-                href={`mailto:${CONTACT_EMAIL}?subject=Digital%20Dining%20Demo%20Enquiry`}
-                className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-6 py-3.5 text-xs font-black text-black transition hover:bg-orange-400"
-              >
-                Message Digital Dining
-              </a>
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-neutral-500">
+                  Enter your Restaurant Code. Digital Dine-In checks the active subscription and shows only the Owner, Manager, Waiter, Kitchen, Packer or Delivery Boy portals included in that plan.
+                </p>
+              </div>
 
               <Link
-                href="/register"
-                className="inline-flex items-center justify-center rounded-xl border border-white/10 px-6 py-3.5 text-xs font-black text-white transition hover:bg-white/[0.05]"
+                href="/restaurant-login"
+                className="inline-flex min-h-12 items-center justify-center rounded-xl bg-white px-6 text-xs font-black text-black transition hover:bg-neutral-200"
               >
-                Start Free
+                Restaurant Login
               </Link>
             </div>
+          </div>
+        </section>
 
-            <a
-              href={`mailto:${CONTACT_EMAIL}`}
-              className="mt-5 inline-block text-[11px] font-semibold text-neutral-500 transition hover:text-white"
-            >
-              {CONTACT_EMAIL}
-            </a>
+        {/* ================================================= */}
+        {/* CONTACT                                           */}
+        {/* ================================================= */}
+
+        <section
+          id="contact"
+          className="border-b border-white/[0.06]"
+        >
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+            <SectionTitle
+              eyebrow="Support"
+              title="Need help choosing or running a plan?"
+              text="Contact Digital Dine-In for registration, subscription and platform support."
+            />
+
+            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 transition hover:border-white/15"
+              >
+                <p className="text-[9px] font-black uppercase tracking-[0.17em] text-neutral-600">
+                  Email
+                </p>
+
+                <p className="mt-2 break-all text-sm font-black text-white">
+                  {CONTACT_EMAIL}
+                </p>
+              </a>
+
+              <a
+                href={`tel:${SUPPORT_PHONE_LINK}`}
+                className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 transition hover:border-white/15"
+              >
+                <p className="text-[9px] font-black uppercase tracking-[0.17em] text-neutral-600">
+                  Support Number
+                </p>
+
+                <p className="mt-2 text-sm font-black text-white">
+                  {SUPPORT_PHONE}
+                </p>
+              </a>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/register"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-orange-500 px-5 text-[10px] font-black text-black"
+              >
+                Register
+              </Link>
+
+              <Link
+                href="/restaurant-login"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 px-5 text-[10px] font-black text-white"
+              >
+                Restaurant Login
+              </Link>
+            </div>
           </div>
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-white/[0.06]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-8 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500 text-xs font-black text-black">
-              D
-            </span>
-            <span className="text-xs font-black">Digital Dining</span>
+      {/* =================================================== */}
+      {/* FOOTER                                              */}
+      {/* =================================================== */}
+
+      <footer>
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-7 text-center sm:px-6 md:flex-row md:items-center md:justify-between md:text-left lg:px-8">
+          <div>
+            <p className="text-xs font-black">
+              Digital Dine-In
+            </p>
+
+            <p className="mt-1 text-[9px] text-neutral-700">
+              Restaurant · Delivery · Resort Operations
+            </p>
           </div>
 
-          <div className="flex flex-wrap gap-5 text-[9px] font-bold text-neutral-600">
-            <a href="/demo" className="hover:text-white">Demo</a>
-            <a href="#features" className="hover:text-white">Features</a>
-            <a href="#pricing" className="hover:text-white">Pricing</a>
-            <a href="#contact" className="hover:text-white">Contact</a>
-            <Link href="/privacy-policy" className="hover:text-white">
-              Privacy
-            </Link>
-          </div>
-
-          <div className="text-[9px] font-bold text-neutral-700">
-            © 2026 Digital Dining
-          </div>
+          <p className="text-[9px] text-neutral-700">
+            © {new Date().getFullYear()} Digital Dine-In. All rights reserved.
+          </p>
         </div>
       </footer>
 
-      {/* Privacy notice */}
-      {privacyReady && showPrivacyNotice && (
-        <div className="fixed bottom-4 left-1/2 z-[9999] w-[calc(100%-2rem)] max-w-md -translate-x-1/2">
-          <div className="rounded-2xl border border-white/10 bg-[#151515] p-4 shadow-2xl shadow-black/50">
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 text-sm text-orange-400">
-                🔒
-              </div>
+      {/* =================================================== */}
+      {/* PRIVACY NOTICE                                      */}
+      {/* =================================================== */}
 
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-bold">
-                  Privacy
-                </div>
+      {privacyReady &&
+        showPrivacyNotice && (
+          <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-xl rounded-2xl border border-white/10 bg-[#151515] p-4 shadow-2xl sm:bottom-5">
+            <p className="text-[10px] leading-5 text-neutral-400">
+              Digital Dine-In uses necessary browser storage for preferences and application functionality.
+            </p>
 
-                <p className="mt-1 text-[10px] leading-5 text-neutral-500">
-                  We use essential storage and security technologies. Read our{' '}
-                  <Link
-                    href="/privacy-policy"
-                    className="font-bold text-orange-400"
-                  >
-                    Privacy Policy
-                  </Link>
-                  .
-                </p>
-
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={acceptPrivacy}
-                    className="rounded-lg bg-white px-4 py-2 text-[10px] font-black text-black transition hover:bg-orange-500"
-                  >
-                    Accept
-                  </button>
-                </div>
-              </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={acceptPrivacy}
+                className="rounded-xl bg-white px-4 py-2 text-[9px] font-black text-black"
+              >
+                Continue
+              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
     </div>
   )
 }

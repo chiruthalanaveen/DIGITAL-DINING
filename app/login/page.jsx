@@ -1,659 +1,646 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import {
+  useMemo,
+  useState,
+} from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 
-export default function RestaurantLogin() {
+import { supabase } from '@/lib/supabase'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+
+const ROLE_META = {
+  owner: {
+    title: 'Owner',
+    icon: '👑',
+    description:
+      'Business owner dashboard and subscribed modules.',
+    className:
+      'border-orange-500/20 bg-orange-500/[0.08] text-orange-300',
+  },
+
+  manager: {
+    title: 'Manager',
+    icon: '🧑‍💼',
+    description:
+      'Operational controls for the enabled modules.',
+    className:
+      'border-violet-500/20 bg-violet-500/[0.08] text-violet-300',
+  },
+
+  waiter: {
+    title: 'Waiter',
+    icon: '🧑‍🍳',
+    description:
+      'Restaurant waiter ordering and handover.',
+    className:
+      'border-cyan-500/20 bg-cyan-500/[0.08] text-cyan-300',
+  },
+
+  kitchen: {
+    title: 'Kitchen',
+    icon: '👨‍🍳',
+    description:
+      'KDS orders and preparation workflow.',
+    className:
+      'border-red-500/20 bg-red-500/[0.08] text-red-300',
+  },
+
+  packer: {
+    title: 'Packer',
+    icon: '📦',
+    description:
+      'Delivery packing and barcode verification.',
+    className:
+      'border-amber-500/20 bg-amber-500/[0.08] text-amber-300',
+  },
+
+  driver: {
+    title: 'Delivery Boy',
+    icon: '🛵',
+    description:
+      'Assigned deliveries, navigation and proof.',
+    className:
+      'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-300',
+  },
+}
+
+function cleanRestaurantCode(value) {
+  return String(value || '')
+    .replace(/\D/g, '')
+    .slice(0, 5)
+}
+
+function moduleLabels(modules) {
+  const values = []
+
+  if (modules?.restaurant) {
+    values.push('Restaurant')
+  }
+
+  if (modules?.delivery) {
+    values.push('Delivery')
+  }
+
+  if (modules?.resort) {
+    values.push('Resort')
+  }
+
+  return values
+}
+
+export default function RestaurantLoginPage() {
+  useMobileViewportLock()
+
   const router = useRouter()
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [dob, setDob] = useState('')
+  const [restaurantCode, setRestaurantCode] =
+    useState('')
 
-  const [loading, setLoading] = useState(false)
-  const [biometricLoading, setBiometricLoading] = useState(false)
-  const [googleLoading, setGoogleLoading] = useState(false)
-  const [appleLoading, setAppleLoading] = useState(false)
+  const [result, setResult] =
+    useState(null)
 
-  const [biometricAccountDetected, setBiometricAccountDetected] =
+  const [loading, setLoading] =
     useState(false)
 
-  const isPasskeySupported = () => {
-    return (
-      typeof window !== 'undefined' &&
-      typeof window.PublicKeyCredential !== 'undefined'
-    )
-  }
+  const [error, setError] =
+    useState('')
 
-  const getPasskeyErrorMessage = (error) => {
-    const code = error?.code || error?.name || ''
-    const message = error?.message || ''
-    const lowerMessage = message.toLowerCase()
+  const modules = useMemo(
+    () =>
+      moduleLabels(
+        result?.modules
+      ),
+    [result]
+  )
 
-    if (code === 'webauthn_credential_not_found') {
-      return (
-        'No biometric/passkey was found on this device. ' +
-        'Please use password login or register a passkey first.'
-      )
-    }
+  const verifyCode =
+    async (event) => {
+      event.preventDefault()
 
-    if (
-      code === 'webauthn_verification_failed' ||
-      lowerMessage.includes('credential verification failed')
-    ) {
-      return (
-        'Biometric verification failed. Please try again or turn biometric login OFF.'
-      )
-    }
+      if (loading) return
 
-    if (
-      code === 'webauthn_challenge_expired' ||
-      lowerMessage.includes('challenge expired')
-    ) {
-      return 'The biometric security request expired. Please try again.'
-    }
-
-    if (
-      code === 'webauthn_challenge_not_found' ||
-      lowerMessage.includes('challenge not found')
-    ) {
-      return (
-        'The biometric security request could not be found. Please try again.'
-      )
-    }
-
-    if (
-      code === 'passkey_disabled' ||
-      lowerMessage.includes('passkeys are disabled')
-    ) {
-      return 'Biometric login is currently disabled in the system.'
-    }
-
-    if (
-      lowerMessage.includes('cancel') ||
-      lowerMessage.includes('abort') ||
-      lowerMessage.includes('notallowed')
-    ) {
-      return (
-        'Biometric verification was cancelled. Please try again or use password login.'
-      )
-    }
-
-    return message || 'Biometric verification could not be completed.'
-  }
-
-  const handleGoogleLogin = async () => {
-    if (loading || biometricLoading || googleLoading) {
-      return
-    }
-
-    setGoogleLoading(true)
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/google-login`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'select_account',
-          },
-        },
-      })
-
-      if (error) {
-        throw error
-      }
-    } catch (error) {
-      console.error('Google login error:', error)
-
-      alert(
-        'Google Login Failed: ' +
-          (error?.message || 'Something went wrong.')
-      )
-
-      setGoogleLoading(false)
-    }
-  }
-
-  const handleAppleLogin = async () => {
-    if (loading || biometricLoading || googleLoading || appleLoading) {
-      return
-    }
-
-    setAppleLoading(true)
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'apple',
-        options: {
-          redirectTo: `${window.location.origin}/auth/apple-login`,
-        },
-      })
-
-      if (error) {
-        throw error
-      }
-    } catch (error) {
-      console.error('Apple login error:', error)
-      alert(
-        'Apple Login Failed: ' +
-          (error?.message || 'Something went wrong.')
-      )
-      setAppleLoading(false)
-    }
-  }
-
-  const handleLogin = async (e) => {
-    e.preventDefault()
-
-    if (
-      loading ||
-      biometricLoading ||
-      googleLoading ||
-      appleLoading
-    ) {
-      return
-    }
-
-    const cleanEmail =
-      email.trim().toLowerCase()
-
-    const cleanPassword = password
-    const cleanDob = dob.trim()
-
-    if (
-      !cleanEmail ||
-      !cleanPassword ||
-      !cleanDob
-    ) {
-      alert(
-        'Please fill out your Email, Password, and Date of Birth.'
-      )
-      return
-    }
-
-    setLoading(true)
-    setBiometricAccountDetected(false)
-
-    let passwordSessionCreated = false
-
-    try {
-      console.log(
-        'LOGIN: Sending credentials to /api/login'
-      )
-
-      const response =
-        await fetch('/api/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type':
-              'application/json',
-          },
-          body: JSON.stringify({
-            email: cleanEmail,
-            password: cleanPassword,
-            dob: cleanDob,
-          }),
-        })
-
-      const result =
-        await response
-          .json()
-          .catch(() => ({}))
+      const code =
+        cleanRestaurantCode(
+          restaurantCode
+        )
 
       if (
-        !response.ok ||
-        !result?.success
+        code.length !== 5
       ) {
-        throw new Error(
-          result?.message ||
-            'Invalid email, password, or Date of Birth.'
+        setError(
+          'Enter your 5-digit Restaurant Code.'
         )
+        return
       }
 
-      if (
-        !result?.session?.access_token ||
-        !result?.session?.refresh_token
-      ) {
-        throw new Error(
-          'Login succeeded, but a secure session was not returned.'
-        )
-      }
+      setLoading(true)
+      setError('')
 
+      try {
+        const {
+          data,
+          error: rpcError,
+        } =
+          await supabase.rpc(
+            'resolve_app_restaurant_portals',
+            {
+              p_restaurant_code:
+                code,
+            }
+          )
+
+        if (rpcError) {
+          throw rpcError
+        }
+
+        if (!data?.success) {
+          throw new Error(
+            data?.message ||
+              'Invalid Restaurant Code.'
+          )
+        }
+
+        setResult(data)
+        setRestaurantCode(code)
+      } catch (lookupError) {
+        console.error(
+          '[RESTAURANT LOGIN] Restaurant lookup error:',
+          lookupError
+        )
+
+        setResult(null)
+
+        const message =
+          String(
+            lookupError?.message ||
+              ''
+          )
+
+        if (
+          message.includes(
+            'resolve_app_restaurant_portals'
+          ) ||
+          message
+            .toLowerCase()
+            .includes(
+              'could not find the function'
+            )
+        ) {
+          setError(
+            'Step 9A is not installed yet. Run the Step 9A SQL in Supabase.'
+          )
+        } else {
+          setError(
+            message ||
+              'Unable to verify Restaurant Code.'
+          )
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+
+  const changeRestaurant =
+    () => {
+      setResult(null)
+      setRestaurantCode('')
+      setError('')
+    }
+
+  const openPortal =
+    (role) => {
       const restaurant =
-        result.restaurant
+        result?.restaurant
 
-      if (!restaurant?.id) {
-        throw new Error(
-          'Restaurant profile not found for this account.'
+      const code =
+        cleanRestaurantCode(
+          restaurant?.restaurant_code ||
+            restaurantCode
         )
-      }
 
-      /*
-       * Restore the password-authenticated Owner session first.
-       * Then ask Supabase Auth directly for the signed-in user's
-       * actual registered passkeys.
-       */
-      const {
-        error: sessionError,
-      } =
-        await supabase.auth
-          .setSession({
-            access_token:
-              result.session.access_token,
-            refresh_token:
-              result.session.refresh_token,
-          })
-
-      if (sessionError) {
-        throw sessionError
-      }
-
-      passwordSessionCreated = true
+      const restaurantId =
+        String(
+          restaurant?.id || ''
+        ).trim()
 
       if (
-        typeof supabase?.auth?.passkey
-          ?.list !== 'function'
+        !code ||
+        !restaurantId
       ) {
-        throw new Error(
-          'Passkey account checking is unavailable in the current Supabase client.'
+        setError(
+          'Restaurant information is incomplete. Verify the Restaurant Code again.'
         )
+        return
       }
 
-      const {
-        data: passkeyList,
-        error: passkeyListError,
-      } =
-        await supabase.auth
-          .passkey.list()
+      const normalizedRole =
+        String(role || '')
+          .trim()
+          .toLowerCase()
 
-      if (passkeyListError) {
-        throw new Error(
-          passkeyListError?.message ||
-            'Unable to check registered biometric/passkeys for this Owner.'
+      const allowedRoles =
+        Array.isArray(
+          result?.available_roles
         )
-      }
-
-      const registeredPasskeys =
-        Array.isArray(passkeyList)
-          ? passkeyList
+          ? result.available_roles.map(
+              (value) =>
+                String(
+                  value || ''
+                )
+                  .trim()
+                  .toLowerCase()
+            )
           : []
 
-      /*
-       * No registered passkey:
-       * continue with normal website Owner login.
-       */
       if (
-        registeredPasskeys.length === 0
-      ) {
-        router.replace(
-          `/dashboard/${restaurant.id}`
+        !allowedRoles.includes(
+          normalizedRole
         )
-        router.refresh()
+      ) {
+        setError(
+          'This portal is not included in this restaurant plan.'
+        )
+        return
+      }
+
+      const encodedCode =
+        encodeURIComponent(code)
+
+      const encodedId =
+        encodeURIComponent(
+          restaurantId
+        )
+
+      if (
+        normalizedRole ===
+        'owner'
+      ) {
+        router.push(
+          `/app/owner?restaurantCode=${encodedCode}&restaurantId=${encodedId}`
+        )
+        return
+      }
+
+      if (
+        normalizedRole ===
+        'packer'
+      ) {
+        router.push(
+          `/app/packer/${encodedCode}`
+        )
+        return
+      }
+
+      if (
+        normalizedRole ===
+        'driver'
+      ) {
+        router.push(
+          `/app/driver/${encodedCode}`
+        )
         return
       }
 
       /*
-       * A real Supabase passkey exists:
-       * require biometric/passkey verification.
+       * Manager / Waiter / Kitchen keep using your existing
+       * secure staff login system.
+       *
+       * Step 9C will make the role query auto-open the selected
+       * login form without changing the current authentication.
        */
-      setBiometricAccountDetected(true)
-
-      if (!isPasskeySupported()) {
-        throw new Error(
-          'This Owner account has a registered biometric/passkey, but this browser or device cannot use passkeys.'
-        )
-      }
-
-      if (
-        typeof supabase?.auth
-          ?.signInWithPasskey !==
-        'function'
-      ) {
-        throw new Error(
-          'Passkey sign-in is unavailable in the current Supabase client.'
-        )
-      }
-
-      /*
-       * End the password session before starting the passkey login.
-       * The passkey authentication creates the final secure session.
-       */
-      await supabase.auth.signOut()
-      passwordSessionCreated = false
-
-      setLoading(false)
-      setBiometricLoading(true)
-
-      const {
-        data: passkeyAuthData,
-        error: passkeyError,
-      } =
-        await supabase.auth
-          .signInWithPasskey()
-
-      if (
-        passkeyError ||
-        !passkeyAuthData?.user
-      ) {
-        throw new Error(
-          getPasskeyErrorMessage(
-            passkeyError
-          )
-        )
-      }
-
-      const authUserId =
-        String(
-          passkeyAuthData.user.id || ''
-        )
-
-      const restaurantOwnerId =
-        String(
-          restaurant.owner_id || ''
-        )
-
-      if (
-        !restaurantOwnerId ||
-        authUserId !== restaurantOwnerId
-      ) {
-        await supabase.auth.signOut()
-
-        throw new Error(
-          'Biometric account does not match this restaurant account.'
-        )
-      }
-
-      alert(
-        'Secure Login Successful! 🔐'
+      router.push(
+        `/app?code=${encodedCode}&role=${encodeURIComponent(
+          normalizedRole
+        )}`
       )
-
-      router.replace(
-        `/dashboard/${restaurant.id}`
-      )
-      router.refresh()
-    } catch (err) {
-      console.error(
-        'AUTHENTICATION ERROR:',
-        err
-      )
-
-      if (passwordSessionCreated) {
-        try {
-          await supabase.auth.signOut()
-        } catch (signOutError) {
-          console.error(
-            'LOGIN: Could not clear failed session:',
-            signOutError
-          )
-        }
-      }
-
-      alert(
-        'Authentication Failed: ' +
-          (
-            err?.message ||
-            'Something went wrong.'
-          )
-      )
-    } finally {
-      setBiometricLoading(false)
-      setLoading(false)
     }
-  }
-
-  const isBusy =
-    loading ||
-    biometricLoading ||
-    googleLoading ||
-    appleLoading
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 font-sans">
-      <div className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
-        <div className="text-center space-y-2">
-          <span className="text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
-            Restaurant Login
-          </span>
+    <main className="min-h-[100dvh] w-full overflow-x-hidden bg-[#090909] text-white">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[520px] flex-col px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:px-5">
+        <header className="flex items-center justify-between gap-3 py-2">
+          <Link
+            href="/"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-300"
+            aria-label="Back to Digital Dine-In"
+          >
+            ←
+          </Link>
 
-          <h1 className="text-2xl font-black text-white">
-            Partner Sign In
-          </h1>
+          <div className="min-w-0 text-center">
+            <p className="truncate text-sm font-black">
+              Digital Dine-In
+            </p>
 
-          <p className="text-xs text-neutral-400">
-            Sign in securely to your Digital Dining dashboard.
-          </p>
-        </div>
+            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-400">
+              Restaurant Login
+            </p>
+          </div>
 
-        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
-          <div className="flex items-start gap-3">
-            <div className="text-2xl">
-              🔐
+          <div className="h-10 w-10" />
+        </header>
+
+        {!result ? (
+          <div className="flex flex-1 flex-col justify-center py-6">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[26px] border border-orange-500/20 bg-orange-500/10 shadow-2xl shadow-orange-950/20">
+              <span className="text-3xl">
+                🏪
+              </span>
             </div>
 
-            <div>
-              <p className="text-sm font-black text-white">
-                Automatic Biometric Protection
+            <div className="mt-5 text-center">
+              <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
+                Enter Restaurant Code
+              </h1>
+
+              <p className="mx-auto mt-2 max-w-sm text-xs leading-6 text-neutral-500">
+                We will check the active subscription and show only the portals included in this restaurant&apos;s plan.
+              </p>
+            </div>
+
+            <form
+              onSubmit={verifyCode}
+              className="mt-6 rounded-[28px] border border-white/[0.08] bg-neutral-900 p-5 shadow-2xl shadow-black/30"
+            >
+              <label className="block">
+                <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.18em] text-neutral-500">
+                  5-digit Restaurant Code
+                </span>
+
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={5}
+                  value={
+                    restaurantCode
+                  }
+                  onChange={(
+                    event
+                  ) => {
+                    setRestaurantCode(
+                      cleanRestaurantCode(
+                        event.target
+                          .value
+                      )
+                    )
+
+                    setError('')
+                  }}
+                  placeholder="00000"
+                  className="h-16 w-full rounded-2xl border border-white/10 bg-black/30 px-4 text-center font-mono text-3xl font-black tracking-[0.35em] text-white outline-none transition placeholder:text-neutral-700 focus:border-orange-500/50"
+                />
+              </label>
+
+              {error && (
+                <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-[10px] font-bold leading-5 text-red-300">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={
+                  loading ||
+                  restaurantCode.length !==
+                    5
+                }
+                className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-orange-500 px-4 text-xs font-black text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {loading
+                  ? 'Checking...'
+                  : 'Continue'}
+              </button>
+            </form>
+
+            <div className="mt-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-neutral-600">
+                Plan-aware portal access
               </p>
 
-              <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed">
-                After Email + Password + DOB are verified, Digital Dine checks this Owner account's real Supabase passkeys. If a registered passkey exists, fingerprint, Face ID, Windows Hello, device PIN or passkey verification is required automatically.
+              <p className="mt-2 text-[10px] leading-5 text-neutral-500">
+                Delivery-only plans show Owner, Manager, Packer and Delivery Boy. Restaurant plans show Restaurant staff portals. Combined plans show all permitted roles.
               </p>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex-1 py-4">
+            <section className="rounded-[26px] border border-white/[0.08] bg-neutral-900 p-4">
+              <div className="flex items-start gap-3">
+                {result?.restaurant
+                  ?.logo_url ? (
+                  <img
+                    src={
+                      result
+                        .restaurant
+                        .logo_url
+                    }
+                    alt={`${result?.restaurant?.name || 'Restaurant'} logo`}
+                    className="h-14 w-14 shrink-0 rounded-2xl border border-white/10 bg-white object-contain p-1"
+                  />
+                ) : (
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-lg font-black text-black">
+                    DD
+                  </div>
+                )}
 
-        {biometricAccountDetected && biometricLoading && (
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
-            <p className="text-sm font-black text-emerald-300">
-              Registered biometric account detected 🔐
-            </p>
+                <div className="min-w-0 flex-1">
+                  <h1 className="truncate text-lg font-black">
+                    {result
+                      ?.restaurant
+                      ?.name ||
+                      'Restaurant'}
+                  </h1>
 
-            <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
-              Complete the biometric / passkey prompt on your device to continue.
-            </p>
+                  <p className="mt-1 font-mono text-[9px] font-bold text-neutral-500">
+                    Code{' '}
+                    {
+                      result
+                        ?.restaurant
+                        ?.restaurant_code
+                    }
+                  </p>
+
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider text-orange-300">
+                      {result?.plan
+                        ?.name ||
+                        result
+                          ?.restaurant
+                          ?.plan_code ||
+                        'Plan'}
+                    </span>
+
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${
+                        result
+                          ?.subscription
+                          ?.active
+                          ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+                          : 'border-red-500/20 bg-red-500/10 text-red-300'
+                      }`}
+                    >
+                      {result
+                        ?.subscription
+                        ?.active
+                        ? 'Active'
+                        : 'Inactive'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {modules.length >
+                0 && (
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-white/[0.06] pt-3">
+                  {modules.map(
+                    (module) => (
+                      <span
+                        key={module}
+                        className="rounded-full border border-white/[0.08] bg-black/20 px-2.5 py-1 text-[8px] font-black text-neutral-400"
+                      >
+                        {module}
+                      </span>
+                    )
+                  )}
+                </div>
+              )}
+            </section>
+
+            {!result?.access_allowed ? (
+              <section className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+                <p className="text-xs font-black text-red-200">
+                  Portal access unavailable
+                </p>
+
+                <p className="mt-2 text-[10px] leading-5 text-red-300/80">
+                  {result
+                    ?.subscription
+                    ?.reason ||
+                    'This subscription is not active.'}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={
+                    changeRestaurant
+                  }
+                  className="mt-4 w-full rounded-xl border border-red-400/20 px-4 py-3 text-[10px] font-black text-red-200"
+                >
+                  Use Another Restaurant Code
+                </button>
+              </section>
+            ) : (
+              <>
+                <div className="mt-5 flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neutral-600">
+                      Available Portals
+                    </p>
+
+                    <p className="mt-1 text-xs font-bold text-neutral-300">
+                      Choose your role
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      changeRestaurant
+                    }
+                    className="text-[9px] font-black text-orange-400"
+                  >
+                    Change Code
+                  </button>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  {(Array.isArray(
+                    result?.portals
+                  )
+                    ? result.portals
+                    : []
+                  ).map(
+                    (portal) => {
+                      const role =
+                        String(
+                          portal?.role ||
+                            ''
+                        ).toLowerCase()
+
+                      const meta =
+                        ROLE_META[
+                          role
+                        ] || {
+                          title:
+                            portal
+                              ?.title ||
+                            role ||
+                            'Portal',
+                          icon:
+                            portal?.icon ||
+                            '👤',
+                          description:
+                            'Open secure portal.',
+                          className:
+                            'border-white/10 bg-white/[0.03] text-white',
+                        }
+
+                      return (
+                        <button
+                          key={role}
+                          type="button"
+                          onClick={() =>
+                            openPortal(
+                              role
+                            )
+                          }
+                          className={`min-h-[142px] rounded-2xl border p-3 text-left transition active:scale-[0.98] ${meta.className}`}
+                        >
+                          <span className="text-2xl">
+                            {portal?.icon ||
+                              meta.icon}
+                          </span>
+
+                          <p className="mt-3 text-xs font-black text-white">
+                            {portal
+                              ?.title ||
+                              meta.title}
+                          </p>
+
+                          <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-neutral-500">
+                            {
+                              meta.description
+                            }
+                          </p>
+
+                          <p className="mt-3 text-[8px] font-black uppercase tracking-wider">
+                            Login →
+                          </p>
+                        </button>
+                      )
+                    }
+                  )}
+                </div>
+
+                {error && (
+                  <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-[10px] font-bold leading-5 text-red-300">
+                    {error}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-neutral-300 block mb-1">
-              Email Address
-            </label>
-
-            <input
-              type="email"
-              placeholder="owner@restaurant.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={isBusy}
-              autoComplete="email"
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-neutral-300 block mb-1">
-              Password
-            </label>
-
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={isBusy}
-              autoComplete="current-password"
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-neutral-300 block mb-1">
-              Date of Birth (Security Verification)
-            </label>
-
-            <input
-              type="date"
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              required
-              disabled={isBusy}
-              autoComplete="bday"
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-orange-500 font-mono text-neutral-300 disabled:opacity-50"
-            />
-          </div>
-
-          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="text-3xl">
-                🔐
-              </div>
-
-              <div>
-                <p className="text-sm font-black text-white">
-                  Account-aware secure login
-                </p>
-
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  Passkey verification is requested only when this Owner has a registered passkey.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isBusy}
-            className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-orange-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {biometricLoading
-              ? 'Verifying Biometric...'
-              : loading
-                ? 'Checking Owner Account...'
-                : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="flex items-center gap-4">
-          <div className="h-px flex-1 bg-neutral-800" />
-
-          <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
-            Or
-          </span>
-
-          <div className="h-px flex-1 bg-neutral-800" />
-        </div>
-
-        <button
-          type="button"
-          onClick={handleGoogleLogin}
-          disabled={isBusy}
-          className="w-full flex items-center justify-center gap-3 bg-white hover:bg-neutral-100 text-neutral-900 font-black py-4 rounded-xl text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {googleLoading ? (
-            <>
-              <svg
-                className="h-5 w-5 animate-spin"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-
-              Connecting to Google...
-            </>
-          ) : (
-            <>
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  fill="#4285F4"
-                  d="M21.35 12.27c0-.78-.07-1.53-.22-2.27H12v4.3h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.69 2.91-4.18 2.91-7.42Z"
-                />
-
-                <path
-                  fill="#34A853"
-                  d="M12 21.5c2.63 0 4.84-.87 6.45-2.36l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.54 0-4.69-1.72-5.46-4.03H3.3v2.53A9.74 9.74 0 0 0 12 21.5Z"
-                />
-
-                <path
-                  fill="#FBBC05"
-                  d="M6.54 13.58A5.85 5.85 0 0 1 6.23 12c0-.55.1-1.08.31-1.58V7.89H3.3A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.05 1.05 4.11l3.24-2.53Z"
-                />
-
-                <path
-                  fill="#EA4335"
-                  d="M12 6.39c1.43 0 2.71.49 3.72 1.45l2.79-2.79C16.84 3.47 14.63 2.5 12 2.5a9.74 9.74 0 0 0-8.7 5.39l3.24 2.53C7.31 8.11 9.46 6.39 12 6.39Z"
-                />
-              </svg>
-
-              Continue with Google
-            </>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={handleAppleLogin}
-          disabled={isBusy}
-          className="w-full flex items-center justify-center gap-3 bg-black hover:bg-neutral-900 text-white border border-neutral-700 font-black py-4 rounded-xl text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {appleLoading ? (
-            <>
-              <span className="h-4 w-4 animate-spin border-2 border-white/40 border-t-white rounded-full" />
-              Connecting to Apple...
-            </>
-          ) : (
-            <>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M17.05 12.54c-.02-2.15 1.76-3.18 1.84-3.23-1.01-1.47-2.58-1.67-3.13-1.69-1.31-.14-2.58.78-3.25.78-.68 0-1.72-.76-2.82-.74-1.45.02-2.79.84-3.54 2.14-1.52 2.63-.39 6.5 1.08 8.63.74 1.04 1.59 2.19 2.72 2.15 1.09-.04 1.5-.69 2.81-.69 1.31 0 1.68.69 2.82.67 1.17-.02 1.9-1.05 2.61-2.1.83-1.21 1.17-2.38 1.19-2.44-.03-.01-2.29-.88-2.31-3.48ZM14.9 6.22c.6-.73 1.01-1.74.9-2.74-.87.04-1.93.58-2.55 1.3-.56.64-1.06 1.66-.93 2.64.97.08 1.96-.49 2.58-1.2Z"/>
-              </svg>
-              Continue with Apple
-            </>
-          )}
-        </button>
-
-        <div className="text-center pt-2 space-y-3">
-          <a
-            href="/register"
-            className="text-xs text-orange-400 hover:text-orange-300 underline"
-          >
-            Create Restaurant Account
-          </a>
-
-          <div>
-            <a
-              href="/"
-              className="text-xs text-neutral-400 hover:text-white underline"
-            >
-              ← Back to Home
-            </a>
-          </div>
-        </div>
+        <footer className="mt-auto border-t border-white/[0.06] py-3 text-center">
+          <p className="text-[8px] font-bold uppercase tracking-[0.18em] text-neutral-700">
+            Digital Dine-In · Secure Operations Access
+          </p>
+        </footer>
       </div>
-    </div>
+    </main>
   )
 }
