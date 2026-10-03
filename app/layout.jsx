@@ -3,21 +3,31 @@ import PWARegister from '@/app/components/PWARegister'
 import './globals.css'
 
 export const metadata = {
-  // Base URL used by Next.js for canonical/Open Graph URLs
-  metadataBase: new URL('https://digitaldine-in.online'),
+  // =========================================================
+  // BASE URL
+  // =========================================================
+
+  metadataBase: new URL(
+    'https://digitaldine-in.online'
+  ),
 
   // =========================================================
   // BASIC SEO
   // =========================================================
+
   title: {
-    default: 'Digital Dine-In | Smart QR Restaurant Ordering',
-    template: '%s | Digital Dine-In',
+    default:
+      'Digital Dine-In | Smart QR Restaurant Ordering',
+
+    template:
+      '%s | Digital Dine-In',
   },
 
   description:
     'Digital Dine-In is a smart QR restaurant ordering platform for digital menus, dine-in and takeaway ordering, online payments, kitchen order management and digital billing.',
 
-  applicationName: 'Digital Dine',
+  applicationName:
+    'Digital Dine-In',
 
   keywords: [
     'Digital Dine-In',
@@ -46,29 +56,44 @@ export const metadata = {
   authors: [
     {
       name: 'Digital Dine-In',
-      url: 'https://digitaldine-in.online',
+      url:
+        'https://digitaldine-in.online',
     },
   ],
 
-  creator: 'Digital Dine-In',
-  publisher: 'Digital Dine-In',
+  creator:
+    'Digital Dine-In',
+
+  publisher:
+    'Digital Dine-In',
 
   // =========================================================
   // CANONICAL URL
   // =========================================================
+
   alternates: {
     canonical: '/',
   },
 
   // =========================================================
   // PWA
+  //
+  // IMPORTANT:
+  // app/manifest.js is automatically served by Next.js as
+  // /manifest.webmanifest
   // =========================================================
-  manifest: '/manifest.json',
+
+  manifest:
+    '/manifest.webmanifest',
 
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'Digital Dine',
+
+    statusBarStyle:
+      'black-translucent',
+
+    title:
+      'Digital Dine-In',
   },
 
   formatDetection: {
@@ -77,98 +102,149 @@ export const metadata = {
 
   // =========================================================
   // ICONS
-  // Existing logo setup preserved
   // =========================================================
+
   icons: {
-    icon: '/logo.png',
-    shortcut: '/logo.png',
-    apple: '/logo.png',
+    icon: [
+      {
+        url:
+          '/icons/digital-dine-192.png',
+
+        sizes:
+          '192x192',
+
+        type:
+          'image/png',
+      },
+
+      {
+        url:
+          '/icons/digital-dine-512.png',
+
+        sizes:
+          '512x512',
+
+        type:
+          'image/png',
+      },
+    ],
+
+    shortcut:
+      '/icons/digital-dine-192.png',
+
+    apple:
+      '/icons/digital-dine-192.png',
   },
 
   // =========================================================
   // OPEN GRAPH
-  // WhatsApp / Facebook / LinkedIn previews
+  // WhatsApp / Facebook / LinkedIn
   // =========================================================
+
   openGraph: {
-    title: 'Digital Dine-In | Smart QR Restaurant Ordering',
+    title:
+      'Digital Dine-In | Smart QR Restaurant Ordering',
+
     description:
       'Smart QR menus, dine-in and takeaway ordering, online payments, kitchen management and digital billing for restaurants.',
 
-    url: 'https://digitaldine-in.online',
+    url:
+      'https://digitaldine-in.online',
 
-    siteName: 'Digital Dine-In',
+    siteName:
+      'Digital Dine-In',
 
-    locale: 'en_IN',
+    locale:
+      'en_IN',
 
-    type: 'website',
+    type:
+      'website',
 
     images: [
       {
-        url: '/logo.png',
+        url:
+          '/logo.png',
+
         width: 512,
+
         height: 512,
-        alt: 'Digital Dine-In Logo',
+
+        alt:
+          'Digital Dine-In Logo',
       },
     ],
   },
 
   // =========================================================
-  // X / TWITTER PREVIEW
+  // X / TWITTER
   // =========================================================
-  twitter: {
-    card: 'summary_large_image',
 
-    title: 'Digital Dine-In | Smart QR Restaurant Ordering',
+  twitter: {
+    card:
+      'summary_large_image',
+
+    title:
+      'Digital Dine-In | Smart QR Restaurant Ordering',
 
     description:
       'Digital restaurant menus, QR ordering, online payments, kitchen management and digital billing.',
 
-    images: ['/logo.png'],
+    images: [
+      '/logo.png',
+    ],
   },
 
   // =========================================================
-  // GOOGLE / SEARCH ENGINE CRAWLING
+  // GOOGLE / SEARCH ENGINE
   // =========================================================
+
   robots: {
     index: true,
+
     follow: true,
 
     googleBot: {
       index: true,
+
       follow: true,
 
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
+      'max-video-preview':
+        -1,
+
+      'max-image-preview':
+        'large',
+
+      'max-snippet':
+        -1,
     },
   },
 
-  // =========================================================
-  // OPTIONAL CATEGORY INFORMATION
-  // =========================================================
-  category: 'technology',
+  category:
+    'technology',
 
-  // =========================================================
-  // REFERRER POLICY
-  // =========================================================
-  referrer: 'origin-when-cross-origin',
+  referrer:
+    'origin-when-cross-origin',
 }
 
 // ===========================================================
 // VIEWPORT
-// Existing mobile/PWA configuration preserved
 // ===========================================================
 
 export const viewport = {
-  width: 'device-width',
+  width:
+    'device-width',
 
-  initialScale: 1,
+  initialScale:
+    1,
 
-  maximumScale: 1,
+  maximumScale:
+    1,
 
-  viewportFit: 'cover',
+  viewportFit:
+    'cover',
 
-  themeColor: '#f97316',
+  themeColor:
+    '#f97316',
 }
 
 // ===========================================================
@@ -179,20 +255,111 @@ export const viewport = {
 const themeInit = `
 (function () {
   try {
-    var saved = localStorage.getItem('digitaldining-theme');
+    var saved =
+      localStorage.getItem(
+        'digitaldining-theme'
+      );
 
-    var theme = saved === 'light' || saved === 'dark'
-      ? saved
-      : (
-          window.matchMedia('(prefers-color-scheme: light)').matches
-            ? 'light'
-            : 'dark'
+    var theme =
+      saved === 'light' ||
+      saved === 'dark'
+        ? saved
+        : (
+            window.matchMedia(
+              '(prefers-color-scheme: light)'
+            ).matches
+              ? 'light'
+              : 'dark'
+          );
+
+    document.documentElement.dataset.theme =
+      theme;
+
+  } catch (e) {
+
+    document.documentElement.dataset.theme =
+      'dark';
+
+  }
+})();
+`
+
+// ===========================================================
+// PWA INSTALL EVENT
+//
+// Capture Chrome's install event BEFORE the customer Delivery
+// page and InstallAppButton load.
+// ===========================================================
+
+const pwaInstallInit = `
+(function () {
+
+  try {
+
+    if (
+      window.__digitalDinePwaCaptureInstalled
+    ) {
+      return;
+    }
+
+    window.__digitalDinePwaCaptureInstalled =
+      true;
+
+    window.__digitalDineInstallPrompt =
+      window.__digitalDineInstallPrompt ||
+      null;
+
+    window.addEventListener(
+      'beforeinstallprompt',
+      function (event) {
+
+        console.log(
+          '[PWA] beforeinstallprompt captured'
         );
 
-    document.documentElement.dataset.theme = theme;
-  } catch (e) {
-    document.documentElement.dataset.theme = 'dark';
+        event.preventDefault();
+
+        window.__digitalDineInstallPrompt =
+          event;
+
+        window.dispatchEvent(
+          new CustomEvent(
+            'digitaldine-install-ready'
+          )
+        );
+
+      }
+    );
+
+    window.addEventListener(
+      'appinstalled',
+      function () {
+
+        console.log(
+          '[PWA] Digital Dine-In installed'
+        );
+
+        window.__digitalDineInstallPrompt =
+          null;
+
+        window.dispatchEvent(
+          new CustomEvent(
+            'digitaldine-app-installed'
+          )
+        );
+
+      }
+    );
+
+  } catch (error) {
+
+    console.warn(
+      '[PWA] Early install capture failed:',
+      error
+    );
+
   }
+
 })();
 `
 
@@ -200,36 +367,64 @@ const themeInit = `
 // ROOT LAYOUT
 // ===========================================================
 
-export default function RootLayout({ children }) {
+export default function RootLayout({
+  children,
+}) {
   return (
-    <html lang="en" suppressHydrationWarning>
-
+    <html
+      lang="en"
+      suppressHydrationWarning
+    >
       <head>
-        {/* Existing theme initialization */}
+
+        {/* =============================================== */}
+        {/* EXISTING THEME INITIALIZATION                   */}
+        {/* =============================================== */}
+
         <Script
           id="digitaldining-theme-init"
           strategy="beforeInteractive"
         >
           {themeInit}
         </Script>
+
+        {/* =============================================== */}
+        {/* PWA INSTALL EVENT CAPTURE                       */}
+        {/* =============================================== */}
+
+        <Script
+          id="digital-dine-pwa-install-init"
+          strategy="beforeInteractive"
+        >
+          {pwaInstallInit}
+        </Script>
+
       </head>
 
       <body className="antialiased">
 
-        {/* Existing PWA registration */}
+        {/* =============================================== */}
+        {/* EXISTING PWA SERVICE WORKER REGISTRATION        */}
+        {/* =============================================== */}
+
         <PWARegister />
 
-        {/* Application */}
+        {/* =============================================== */}
+        {/* APPLICATION                                     */}
+        {/* =============================================== */}
+
         {children}
 
-        {/* Existing Razorpay checkout */}
+        {/* =============================================== */}
+        {/* EXISTING RAZORPAY                               */}
+        {/* =============================================== */}
+
         <Script
           src="https://checkout.razorpay.com/v1/checkout.js"
           strategy="lazyOnload"
         />
 
       </body>
-
     </html>
   )
 }
