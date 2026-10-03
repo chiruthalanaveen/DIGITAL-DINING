@@ -1,3 +1,26 @@
+/**
+ * Digital Dine-In PWA bootstrap.
+ *
+ * Website routes:
+ *   /
+ *   /manager/*
+ *   /waiter/*
+ *   /kitchen/*
+ *   /delivery-driver/*
+ *   ...
+ *
+ * Installed application routes:
+ *   /app
+ *   /app/owner/*
+ *   /app/manager/*
+ *   /app/waiter/*
+ *   /app/kitchen/*
+ *   /app/packer/*
+ *   /app/driver/*
+ *
+ * The PWA service worker is intentionally scoped to /app/.
+ */
+
 try {
   window.__digitalDineInstallPrompt =
     window.__digitalDineInstallPrompt ||
@@ -6,10 +29,6 @@ try {
   window.addEventListener(
     'beforeinstallprompt',
     (event) => {
-      console.log(
-        '[PWA] Captured beforeinstallprompt early'
-      )
-
       event.preventDefault()
 
       window.__digitalDineInstallPrompt =
@@ -26,12 +45,14 @@ try {
   window.addEventListener(
     'appinstalled',
     () => {
-      console.log(
-        '[PWA] Installed successfully'
-      )
-
       window.__digitalDineInstallPrompt =
         null
+
+      window.dispatchEvent(
+        new CustomEvent(
+          'digitaldine-app-installed'
+        )
+      )
     }
   )
 
@@ -43,24 +64,15 @@ try {
       () => {
         navigator.serviceWorker
           .register('/sw.js', {
-            scope: '/',
+            // Only app/app routes are controlled.
+            scope: '/app/',
           })
-          .then(
-            (registration) => {
-              console.log(
-                '[PWA] Service worker registered:',
-                registration.scope
-              )
-            }
-          )
-          .catch(
-            (error) => {
-              console.error(
-                '[PWA] Service worker failed:',
-                error
-              )
-            }
-          )
+          .catch((error) => {
+            console.warn(
+              '[Digital Dine-In] App service worker registration failed:',
+              error
+            )
+          })
       },
       {
         once: true,
@@ -68,8 +80,8 @@ try {
     )
   }
 } catch (error) {
-  console.error(
-    '[PWA] Initialization error:',
+  console.warn(
+    '[Digital Dine-In] PWA initialization warning:',
     error
   )
 }

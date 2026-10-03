@@ -66,6 +66,58 @@ function distanceKm(lat1, lng1, lat2, lng2) {
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(a))
 }
 
+function deliveryStockInfo(item) {
+  const tracked =
+    item?.track_stock === true
+
+  const available = tracked
+    ? Math.max(
+        0,
+        Math.floor(
+          Number(
+            item?.available_stock || 0
+          )
+        )
+      )
+    : null
+
+  const lowThreshold = tracked
+    ? Math.max(
+        0,
+        Math.floor(
+          Number(
+            item?.low_stock_threshold || 0
+          )
+        )
+      )
+    : null
+
+  return {
+    tracked,
+    available,
+    lowThreshold,
+    outOfStock:
+      tracked &&
+      available <= 0,
+
+    lowStock:
+      tracked &&
+      available > 0 &&
+      available <= lowThreshold,
+
+    maxCartQuantity:
+      tracked
+        ? Math.max(
+            0,
+            Math.min(
+              20,
+              available
+            )
+          )
+        : 20,
+  }
+}
+
 export default function DeliveryStorePage({
   params,
 }) {
@@ -135,6 +187,39 @@ export default function DeliveryStorePage({
   const [locationError, setLocationError] =
     useState('')
   const [locationConfirmed, setLocationConfirmed] =
+    useState(false)
+
+  const [afterSalesOpen, setAfterSalesOpen] =
+    useState(false)
+  const [afterSalesTab, setAfterSalesTab] =
+    useState('request')
+  const [afterSalesOrderCode, setAfterSalesOrderCode] =
+    useState('')
+  const [afterSalesMobile, setAfterSalesMobile] =
+    useState('')
+  const [afterSalesOrder, setAfterSalesOrder] =
+    useState(null)
+  const [afterSalesLoading, setAfterSalesLoading] =
+    useState(false)
+  const [afterSalesSubmitting, setAfterSalesSubmitting] =
+    useState(false)
+  const [afterSalesError, setAfterSalesError] =
+    useState('')
+  const [afterSalesMessage, setAfterSalesMessage] =
+    useState('')
+  const [afterSalesType, setAfterSalesType] =
+    useState('return')
+  const [afterSalesReason, setAfterSalesReason] =
+    useState('')
+  const [afterSalesQuantities, setAfterSalesQuantities] =
+    useState({})
+  const [afterSalesCreated, setAfterSalesCreated] =
+    useState(null)
+  const [afterSalesCaseCode, setAfterSalesCaseCode] =
+    useState('')
+  const [afterSalesCase, setAfterSalesCase] =
+    useState(null)
+  const [afterSalesCaseLoading, setAfterSalesCaseLoading] =
     useState(false)
 
   const settings =
@@ -392,6 +477,79 @@ export default function DeliveryStorePage({
         }))
     }, [menuItems, cart])
 
+  /*
+   * Inventory can change while the customer is browsing.
+   * Keep the cart inside the latest public available-stock limit.
+   * The server inventory engine remains the final authority.
+   */
+  useEffect(() => {
+    if (!menuItems.length) {
+      return
+    }
+
+    setCart((current) => {
+      let changed = false
+      const nextCart = {
+        ...current,
+      }
+
+      for (const [
+        itemId,
+        rawQuantity,
+      ] of Object.entries(current)) {
+        const item =
+          menuItems.find(
+            (row) =>
+              String(row.id) ===
+              String(itemId)
+          )
+
+        if (!item) {
+          delete nextCart[itemId]
+          changed = true
+          continue
+        }
+
+        const stock =
+          deliveryStockInfo(item)
+
+        const currentQuantity =
+          Math.max(
+            0,
+            Math.floor(
+              Number(
+                rawQuantity || 0
+              )
+            )
+          )
+
+        const nextQuantity =
+          Math.min(
+            currentQuantity,
+            stock.maxCartQuantity
+          )
+
+        if (
+          nextQuantity !==
+          currentQuantity
+        ) {
+          changed = true
+
+          if (nextQuantity <= 0) {
+            delete nextCart[itemId]
+          } else {
+            nextCart[itemId] =
+              nextQuantity
+          }
+        }
+      }
+
+      return changed
+        ? nextCart
+        : current
+    })
+  }, [menuItems])
+
   const cartCount =
     cartRows.reduce(
       (sum, item) =>
@@ -497,13 +655,53 @@ export default function DeliveryStorePage({
     itemId,
     next
   ) => {
-    const safe = Math.max(
-      0,
-      Math.min(
-        20,
-        Number(next || 0)
+    const item =
+      menuItems.find(
+        (row) =>
+          String(row.id) ===
+          String(itemId)
       )
-    )
+
+    if (!item) {
+      return
+    }
+
+    const stock =
+      deliveryStockInfo(item)
+
+    const requested =
+      Math.max(
+        0,
+        Math.floor(
+          Number(next || 0)
+        )
+      )
+
+    const safe =
+      Math.min(
+        requested,
+        stock.maxCartQuantity
+      )
+
+    if (
+      stock.tracked &&
+      requested >
+        stock.maxCartQuantity
+    ) {
+      setMessage(
+        stock.outOfStock
+          ? `${item.name} is currently out of stock.`
+          : `Only ${stock.available} unit${
+              stock.available === 1
+                ? ''
+                : 's'
+            } of ${item.name} ${
+              stock.available === 1
+                ? 'is'
+                : 'are'
+            } available right now.`
+      )
+    }
 
     setCart((current) => {
       const copy = {
@@ -665,6 +863,490 @@ export default function DeliveryStorePage({
       setTrackingLoading(false)
     }
   }
+
+  const resetAfterSalesRequest = () => {
+    setAfterSalesOrder(null)
+    setAfterSalesError('')
+    setAfterSalesMessage('')
+    setAfterSalesType('return')
+    setAfterSalesReason('')
+    setAfterSalesQuantities({})
+    setAfterSalesCreated(null)
+  }
+
+  const openAfterSales = ({
+    orderCode = '',
+    mobile = '',
+    tab = 'request',
+  } = {}) => {
+    setAfterSalesTab(tab)
+    setAfterSalesOrderCode(
+      String(orderCode || '').trim()
+    )
+    setAfterSalesMobile(
+      digits(mobile, 10)
+    )
+    setAfterSalesCaseCode('')
+    setAfterSalesCase(null)
+    resetAfterSalesRequest()
+    setAfterSalesOpen(true)
+  }
+
+  const closeAfterSales = () => {
+    setAfterSalesOpen(false)
+    setAfterSalesError('')
+    setAfterSalesMessage('')
+    setAfterSalesLoading(false)
+    setAfterSalesSubmitting(false)
+    setAfterSalesCaseLoading(false)
+  }
+
+  const loadAfterSalesOrder = async (event) => {
+    event?.preventDefault?.()
+
+    const orderCode =
+      String(
+        afterSalesOrderCode || ''
+      ).trim()
+
+    const mobile =
+      digits(
+        afterSalesMobile,
+        10
+      )
+
+    if (!orderCode) {
+      setAfterSalesError(
+        'Enter your Delivery order code.'
+      )
+      return
+    }
+
+    if (mobile.length !== 10) {
+      setAfterSalesError(
+        'Enter the 10-digit mobile number used for this Delivery order.'
+      )
+      return
+    }
+
+    setAfterSalesLoading(true)
+    setAfterSalesError('')
+    setAfterSalesMessage('')
+    setAfterSalesOrder(null)
+    setAfterSalesCreated(null)
+
+    try {
+      const {
+        data,
+        error: rpcError,
+      } = await supabase.rpc(
+        'get_public_delivery_order',
+        {
+          p_restaurant_code:
+            restaurantCode,
+          p_order_code:
+            orderCode,
+          p_customer_mobile:
+            mobile,
+        }
+      )
+
+      if (rpcError) {
+        throw rpcError
+      }
+
+      if (!data?.success) {
+        throw new Error(
+          data?.message ||
+            'Delivery order could not be verified.'
+        )
+      }
+
+      const order =
+        data?.order || null
+
+      if (!order) {
+        throw new Error(
+          'Delivery order details are unavailable.'
+        )
+      }
+
+      const orderStatus =
+        String(
+          order.order_status || ''
+        ).toLowerCase()
+
+      if (orderStatus !== 'delivered') {
+        throw new Error(
+          'Return, replacement and refund requests can be submitted only after the order is delivered.'
+        )
+      }
+
+      const paymentMethod =
+        String(
+          order.payment_method || ''
+        ).toLowerCase()
+
+      if (
+        paymentMethod ===
+          'razorpay' &&
+        String(
+          order.payment_status || ''
+        ).toLowerCase() !==
+          'paid'
+      ) {
+        throw new Error(
+          'This online-payment order is not eligible for an after-sales request.'
+        )
+      }
+
+      setAfterSalesOrder(order)
+      setAfterSalesOrderCode(
+        String(
+          order.order_code ||
+            orderCode
+        )
+      )
+      setAfterSalesMobile(
+        mobile
+      )
+
+      const initialQuantities = {}
+
+      ;(
+        Array.isArray(
+          order.items
+        )
+          ? order.items
+          : []
+      ).forEach((item) => {
+        const id =
+          String(
+            item?.id ||
+              item?.menu_item_id ||
+              ''
+          )
+
+        if (id) {
+          initialQuantities[id] = 0
+        }
+      })
+
+      setAfterSalesQuantities(
+        initialQuantities
+      )
+
+      setAfterSalesMessage(
+        'Order verified. Choose the request type and affected item quantities.'
+      )
+    } catch (lookupError) {
+      console.error(
+        'Delivery after-sales order lookup error:',
+        lookupError
+      )
+
+      setAfterSalesError(
+        lookupError?.message ||
+          'Unable to verify this Delivery order.'
+      )
+    } finally {
+      setAfterSalesLoading(false)
+    }
+  }
+
+  const changeAfterSalesQuantity = (
+    item,
+    change
+  ) => {
+    const id =
+      String(
+        item?.id ||
+          item?.menu_item_id ||
+          ''
+      )
+
+    if (!id) {
+      return
+    }
+
+    const ordered =
+      Math.max(
+        1,
+        Math.floor(
+          Number(
+            item?.quantity ||
+              item?.qty ||
+              1
+          )
+        )
+      )
+
+    setAfterSalesQuantities(
+      (current) => {
+        const existing =
+          Math.max(
+            0,
+            Math.floor(
+              Number(
+                current?.[id] ||
+                  0
+              )
+            )
+          )
+
+        return {
+          ...current,
+          [id]:
+            Math.max(
+              0,
+              Math.min(
+                ordered,
+                existing +
+                  Number(change || 0)
+              )
+            ),
+        }
+      }
+    )
+  }
+
+  const submitAfterSalesRequest =
+    async (event) => {
+      event?.preventDefault?.()
+
+      if (!afterSalesOrder) {
+        setAfterSalesError(
+          'Verify your Delivery order first.'
+        )
+        return
+      }
+
+      const reason =
+        String(
+          afterSalesReason || ''
+        ).trim()
+
+      if (reason.length < 5) {
+        setAfterSalesError(
+          'Please enter a short reason for this request.'
+        )
+        return
+      }
+
+      const requiresItems =
+        afterSalesType !==
+          'refund'
+
+      const selectedItems =
+        (
+          Array.isArray(
+            afterSalesOrder.items
+          )
+            ? afterSalesOrder.items
+            : []
+        )
+          .map((item) => {
+            const id =
+              String(
+                item?.id ||
+                  item?.menu_item_id ||
+                  ''
+              )
+
+            return {
+              id,
+              quantity:
+                Math.max(
+                  0,
+                  Math.floor(
+                    Number(
+                      afterSalesQuantities?.[
+                        id
+                      ] || 0
+                    )
+                  )
+                ),
+            }
+          })
+          .filter(
+            (item) =>
+              item.id &&
+              item.quantity > 0
+          )
+
+      if (
+        requiresItems &&
+        !selectedItems.length
+      ) {
+        setAfterSalesError(
+          'Select at least one affected item and quantity.'
+        )
+        return
+      }
+
+      setAfterSalesSubmitting(true)
+      setAfterSalesError('')
+      setAfterSalesMessage('')
+
+      try {
+        const {
+          data,
+          error: rpcError,
+        } = await supabase.rpc(
+          'create_public_delivery_after_sales_request',
+          {
+            p_restaurant_code:
+              restaurantCode,
+
+            p_order_code:
+              String(
+                afterSalesOrder.order_code ||
+                  afterSalesOrderCode
+              ),
+
+            p_customer_mobile:
+              digits(
+                afterSalesMobile,
+                10
+              ),
+
+            p_case_type:
+              afterSalesType,
+
+            p_items:
+              requiresItems
+                ? selectedItems
+                : [],
+
+            p_reason:
+              reason,
+          }
+        )
+
+        if (rpcError) {
+          throw rpcError
+        }
+
+        if (!data?.success) {
+          throw new Error(
+            data?.message ||
+              'Unable to submit the after-sales request.'
+          )
+        }
+
+        const created =
+          data?.case || {}
+
+        setAfterSalesCreated(
+          created
+        )
+
+        setAfterSalesCaseCode(
+          String(
+            created?.case_code ||
+              ''
+          )
+        )
+
+        setAfterSalesMessage(
+          data?.message ||
+            'Your request was submitted to the store for review.'
+        )
+      } catch (requestError) {
+        console.error(
+          'Delivery after-sales request error:',
+          requestError
+        )
+
+        setAfterSalesError(
+          requestError?.message ||
+            'Unable to submit your request.'
+        )
+      } finally {
+        setAfterSalesSubmitting(false)
+      }
+    }
+
+  const loadAfterSalesCase =
+    async (event) => {
+      event?.preventDefault?.()
+
+      const caseCode =
+        String(
+          afterSalesCaseCode || ''
+        ).trim()
+
+      const mobile =
+        digits(
+          afterSalesMobile,
+          10
+        )
+
+      if (!caseCode) {
+        setAfterSalesError(
+          'Enter your return/refund request code.'
+        )
+        return
+      }
+
+      if (mobile.length !== 10) {
+        setAfterSalesError(
+          'Enter the 10-digit mobile number used for the Delivery order.'
+        )
+        return
+      }
+
+      setAfterSalesCaseLoading(true)
+      setAfterSalesError('')
+      setAfterSalesMessage('')
+      setAfterSalesCase(null)
+
+      try {
+        const {
+          data,
+          error: rpcError,
+        } = await supabase.rpc(
+          'get_public_delivery_after_sales_case',
+          {
+            p_restaurant_code:
+              restaurantCode,
+
+            p_case_code:
+              caseCode,
+
+            p_customer_mobile:
+              mobile,
+          }
+        )
+
+        if (rpcError) {
+          throw rpcError
+        }
+
+        if (!data?.success) {
+          throw new Error(
+            data?.message ||
+              'Return/refund request was not found.'
+          )
+        }
+
+        setAfterSalesCase(
+          data?.case || null
+        )
+      } catch (caseError) {
+        console.error(
+          'Delivery after-sales case lookup error:',
+          caseError
+        )
+
+        setAfterSalesError(
+          caseError?.message ||
+            'Unable to load this return/refund request.'
+        )
+      } finally {
+        setAfterSalesCaseLoading(false)
+      }
+    }
 
   const fillAddressFromLocation =
     async (latitude, longitude) => {
@@ -920,6 +1602,46 @@ export default function DeliveryStorePage({
       setMessage(
         'Your cart is empty.'
       )
+      return
+    }
+
+    const stockConflict =
+      cartRows.find((item) => {
+        const stock =
+          deliveryStockInfo(item)
+
+        return (
+          stock.tracked &&
+          (
+            stock.outOfStock ||
+            Number(
+              item.quantity || 0
+            ) > stock.available
+          )
+        )
+      })
+
+    if (stockConflict) {
+      const stock =
+        deliveryStockInfo(
+          stockConflict
+        )
+
+      setMessage(
+        stock.outOfStock
+          ? `${stockConflict.name} is now out of stock. Your cart has been updated.`
+          : `Only ${stock.available} unit${
+              stock.available === 1
+                ? ''
+                : 's'
+            } of ${stockConflict.name} ${
+              stock.available === 1
+                ? 'is'
+                : 'are'
+            } available now. Your cart has been updated.`
+      )
+
+      await loadStore(true)
       return
     }
 
@@ -1263,6 +1985,24 @@ export default function DeliveryStorePage({
 
               <button
                 type="button"
+                onClick={() =>
+                  openAfterSales({
+                    mobile:
+                      trackingMobile,
+                  })
+                }
+                className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 sm:px-3 text-[10px] font-black text-neutral-800 shadow-sm transition active:scale-[0.98]"
+                aria-label="Returns and refunds"
+              >
+                <span aria-hidden="true">↩</span>
+
+                <span className="hidden min-[430px]:inline">
+                  Returns
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={openTracking}
                 className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 sm:px-3 text-[10px] font-black text-neutral-800 shadow-sm transition active:scale-[0.98]"
                 aria-label="Track order"
@@ -1541,6 +2281,16 @@ export default function DeliveryStorePage({
                   item.price || 0
                 )
 
+              const stock =
+                deliveryStockInfo(item)
+
+              const packagedProduct =
+                String(
+                  item.item_type ||
+                    'food'
+                ) ===
+                'packaged_product'
+
               return (
                 <article
                   key={item.id}
@@ -1559,7 +2309,9 @@ export default function DeliveryStorePage({
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-4xl">
-                        🍽️
+                        {packagedProduct
+                          ? '📦'
+                          : '🍽️'}
                       </div>
                     )}
                   </div>
@@ -1612,12 +2364,31 @@ export default function DeliveryStorePage({
                       </p>
                     )}
 
+                    {stock.tracked && (
+                      <div
+                        className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[9px] font-black ${
+                          stock.outOfStock
+                            ? 'bg-red-50 text-red-600'
+                            : stock.lowStock
+                              ? 'bg-amber-50 text-amber-700'
+                              : 'bg-emerald-50 text-emerald-700'
+                        }`}
+                      >
+                        {stock.outOfStock
+                          ? 'OUT OF STOCK'
+                          : stock.lowStock
+                            ? `ONLY ${stock.available} LEFT`
+                            : `${stock.available} IN STOCK`}
+                      </div>
+                    )}
+
                     <div className="mt-4">
                       {quantity <= 0 ? (
                         <button
                           type="button"
                           disabled={
-                            !settings.is_open
+                            !settings.is_open ||
+                            stock.outOfStock
                           }
                           onClick={() =>
                             updateQuantity(
@@ -1627,7 +2398,9 @@ export default function DeliveryStorePage({
                           }
                           className="w-full rounded-xl border border-emerald-600 bg-white py-2.5 text-xs font-black text-emerald-700 shadow-sm transition hover:bg-emerald-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          ADD
+                          {stock.outOfStock
+                            ? 'OUT OF STOCK'
+                            : 'ADD'}
                         </button>
                       ) : (
                         <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-emerald-600 bg-white shadow-sm">
@@ -1651,6 +2424,11 @@ export default function DeliveryStorePage({
 
                           <button
                             type="button"
+                            disabled={
+                              stock.tracked &&
+                              quantity >=
+                                stock.maxCartQuantity
+                            }
                             onClick={() =>
                               updateQuantity(
                                 item.id,
@@ -1658,7 +2436,7 @@ export default function DeliveryStorePage({
                                   1
                               )
                             }
-                            className="py-2.5 text-lg font-black text-emerald-700"
+                            className="py-2.5 text-lg font-black text-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-neutral-300"
                           >
                             +
                           </button>
@@ -1708,6 +2486,596 @@ export default function DeliveryStorePage({
               View cart
               <span aria-hidden="true">→</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {afterSalesOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-0 backdrop-blur-[3px] sm:items-center sm:p-4">
+          <div className="max-h-[94dvh] w-full min-w-0 max-w-xl overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:rounded-[30px]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-600">
+                  After-sales support
+                </p>
+
+                <h2 className="mt-1 text-xl font-black text-neutral-950">
+                  Returns · Replacements · Refunds
+                </h2>
+
+                <p className="mt-1 text-xs leading-5 text-neutral-500">
+                  Verify your delivered order using its Order Code and the same mobile number used at checkout.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeAfterSales}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-sm font-black text-neutral-600"
+                aria-label="Close returns and refunds"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-neutral-100 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setAfterSalesTab('request')
+                  setAfterSalesError('')
+                  setAfterSalesMessage('')
+                  setAfterSalesCase(null)
+                }}
+                className={`rounded-xl px-3 py-3 text-[11px] font-black transition ${
+                  afterSalesTab === 'request'
+                    ? 'bg-white text-neutral-950 shadow-sm'
+                    : 'text-neutral-500'
+                }`}
+              >
+                New Request
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAfterSalesTab('track')
+                  setAfterSalesError('')
+                  setAfterSalesMessage('')
+                }}
+                className={`rounded-xl px-3 py-3 text-[11px] font-black transition ${
+                  afterSalesTab === 'track'
+                    ? 'bg-white text-neutral-950 shadow-sm'
+                    : 'text-neutral-500'
+                }`}
+              >
+                Track Request
+              </button>
+            </div>
+
+            {afterSalesError && (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold leading-5 text-red-700">
+                {afterSalesError}
+              </div>
+            )}
+
+            {afterSalesMessage && (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold leading-5 text-emerald-700">
+                {afterSalesMessage}
+              </div>
+            )}
+
+            {afterSalesTab === 'request' && (
+              <div className="mt-5">
+                {!afterSalesOrder ? (
+                  <form
+                    onSubmit={loadAfterSalesOrder}
+                    className="space-y-4"
+                  >
+                    <label className="block">
+                      <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                        Delivery Order Code
+                      </span>
+
+                      <input
+                        value={afterSalesOrderCode}
+                        onChange={(event) => {
+                          setAfterSalesOrderCode(
+                            event.target.value
+                          )
+                          setAfterSalesError('')
+                        }}
+                        placeholder="Example: DEL-20261003-0018"
+                        autoCapitalize="characters"
+                        className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 font-mono text-sm font-bold outline-none focus:border-violet-500 focus:bg-white"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                        Mobile Number
+                      </span>
+
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        value={afterSalesMobile}
+                        onChange={(event) => {
+                          setAfterSalesMobile(
+                            digits(
+                              event.target.value,
+                              10
+                            )
+                          )
+                          setAfterSalesError('')
+                        }}
+                        placeholder="10-digit order mobile"
+                        className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-bold outline-none focus:border-violet-500 focus:bg-white"
+                      />
+                    </label>
+
+                    <button
+                      type="submit"
+                      disabled={
+                        afterSalesLoading ||
+                        !afterSalesOrderCode.trim() ||
+                        afterSalesMobile.length !== 10
+                      }
+                      className="w-full rounded-xl bg-violet-600 px-5 py-4 text-sm font-black text-white disabled:opacity-50"
+                    >
+                      {afterSalesLoading
+                        ? 'Verifying Order...'
+                        : 'Verify Delivered Order'}
+                    </button>
+                  </form>
+                ) : (
+                  <form
+                    onSubmit={submitAfterSalesRequest}
+                    className="space-y-5"
+                  >
+                    <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-mono text-xs font-black text-neutral-950">
+                            {afterSalesOrder.order_code}
+                          </p>
+                          <p className="mt-1 text-[10px] font-semibold text-neutral-500">
+                            Delivered order · {money(afterSalesOrder.total_amount)}
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[9px] font-black uppercase text-emerald-700">
+                          Delivered
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={resetAfterSalesRequest}
+                        className="mt-3 text-[10px] font-black text-violet-700 underline underline-offset-2"
+                      >
+                        Use another order
+                      </button>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                        What do you need?
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          ['return', '↩ Return'],
+                          ['replacement', '🔁 Replacement'],
+                          ['refund', '₹ Refund'],
+                          ['return_refund', '↩ Return + Refund'],
+                        ].map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => {
+                              setAfterSalesType(value)
+                              setAfterSalesError('')
+                            }}
+                            className={`rounded-xl border px-3 py-3 text-[11px] font-black transition ${
+                              afterSalesType === value
+                                ? 'border-violet-500 bg-violet-50 text-violet-800'
+                                : 'border-neutral-200 bg-white text-neutral-600'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {afterSalesType !== 'refund' && (
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                          Select affected items
+                        </p>
+
+                        <p className="mt-1 text-[10px] leading-4 text-neutral-400">
+                          Set the quantity only for products affected by this request.
+                        </p>
+
+                        <div className="mt-3 space-y-2">
+                          {(Array.isArray(afterSalesOrder.items)
+                            ? afterSalesOrder.items
+                            : []
+                          ).map((item, index) => {
+                            const id = String(
+                              item?.id ||
+                                item?.menu_item_id ||
+                                ''
+                            )
+
+                            const ordered = Math.max(
+                              1,
+                              Math.floor(
+                                Number(
+                                  item?.quantity ||
+                                    item?.qty ||
+                                    1
+                                )
+                              )
+                            )
+
+                            const selected = Math.max(
+                              0,
+                              Math.floor(
+                                Number(
+                                  afterSalesQuantities?.[id] ||
+                                    0
+                                )
+                              )
+                            )
+
+                            return (
+                              <div
+                                key={id || index}
+                                className={`rounded-2xl border p-3 ${
+                                  selected > 0
+                                    ? 'border-violet-300 bg-violet-50/70'
+                                    : 'border-neutral-200 bg-white'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-xs font-black text-neutral-950">
+                                      {item?.name || 'Order item'}
+                                    </p>
+
+                                    <p className="mt-1 text-[10px] font-semibold text-neutral-500">
+                                      Ordered ×{ordered}
+                                      {item?.price != null
+                                        ? ` · ${money(item.price)} each`
+                                        : ''}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center rounded-xl border border-neutral-200 bg-white p-1">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        changeAfterSalesQuantity(
+                                          item,
+                                          -1
+                                        )
+                                      }
+                                      disabled={selected <= 0}
+                                      className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-black text-neutral-700 disabled:opacity-30"
+                                    >
+                                      −
+                                    </button>
+
+                                    <span className="w-8 text-center text-xs font-black text-neutral-950">
+                                      {selected}
+                                    </span>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        changeAfterSalesQuantity(
+                                          item,
+                                          1
+                                        )
+                                      }
+                                      disabled={selected >= ordered}
+                                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-950 text-sm font-black text-white disabled:opacity-30"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                        Reason
+                      </span>
+
+                      <textarea
+                        value={afterSalesReason}
+                        onChange={(event) => {
+                          setAfterSalesReason(
+                            event.target.value
+                          )
+                          setAfterSalesError('')
+                        }}
+                        maxLength={1000}
+                        rows={4}
+                        placeholder={
+                          afterSalesType === 'replacement'
+                            ? 'Example: Product was damaged / wrong item received...'
+                            : afterSalesType === 'refund'
+                              ? 'Explain why you are requesting a refund...'
+                              : 'Explain the issue with the returned item...'
+                        }
+                        className="w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm outline-none focus:border-violet-500 focus:bg-white"
+                      />
+                    </label>
+
+                    {afterSalesCreated ? (
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                          Request submitted
+                        </p>
+
+                        <p className="mt-2 font-mono text-base font-black text-emerald-950">
+                          {afterSalesCreated.case_code}
+                        </p>
+
+                        <p className="mt-2 text-xs leading-5 text-emerald-800">
+                          Save this request code. The store will review your request before any stock replacement or refund is processed.
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAfterSalesTab('track')
+                            setAfterSalesCaseCode(
+                              String(
+                                afterSalesCreated.case_code ||
+                                  ''
+                              )
+                            )
+                            setAfterSalesCase(null)
+                            setAfterSalesError('')
+                            setAfterSalesMessage('')
+                          }}
+                          className="mt-3 w-full rounded-xl bg-emerald-700 px-4 py-3 text-xs font-black text-white"
+                        >
+                          Track This Request
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={afterSalesSubmitting}
+                        className="w-full rounded-xl bg-violet-600 px-5 py-4 text-sm font-black text-white disabled:opacity-50"
+                      >
+                        {afterSalesSubmitting
+                          ? 'Submitting Request...'
+                          : 'Submit to Store for Review'}
+                      </button>
+                    )}
+
+                    <p className="text-[10px] leading-5 text-neutral-400">
+                      Submitting a request does not automatically refund money or add products back into inventory. The store must review and confirm the return/replacement/refund.
+                    </p>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {afterSalesTab === 'track' && (
+              <div className="mt-5">
+                <form
+                  onSubmit={loadAfterSalesCase}
+                  className="space-y-4"
+                >
+                  <label className="block">
+                    <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                      Request Code
+                    </span>
+
+                    <input
+                      value={afterSalesCaseCode}
+                      onChange={(event) => {
+                        setAfterSalesCaseCode(
+                          event.target.value
+                        )
+                        setAfterSalesCase(null)
+                        setAfterSalesError('')
+                      }}
+                      placeholder="Example: AS-20261003-XXXXXXXX"
+                      autoCapitalize="characters"
+                      className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 font-mono text-sm font-bold outline-none focus:border-violet-500 focus:bg-white"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                      Order Mobile Number
+                    </span>
+
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={afterSalesMobile}
+                      onChange={(event) => {
+                        setAfterSalesMobile(
+                          digits(
+                            event.target.value,
+                            10
+                          )
+                        )
+                        setAfterSalesCase(null)
+                        setAfterSalesError('')
+                      }}
+                      placeholder="10-digit order mobile"
+                      className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-bold outline-none focus:border-violet-500 focus:bg-white"
+                    />
+                  </label>
+
+                  <button
+                    type="submit"
+                    disabled={
+                      afterSalesCaseLoading ||
+                      !afterSalesCaseCode.trim() ||
+                      afterSalesMobile.length !== 10
+                    }
+                    className="w-full rounded-xl bg-neutral-950 px-5 py-4 text-sm font-black text-white disabled:opacity-50"
+                  >
+                    {afterSalesCaseLoading
+                      ? 'Loading Request...'
+                      : 'Check Request Status'}
+                  </button>
+                </form>
+
+                {afterSalesCase && (
+                  <div className="mt-5 space-y-3">
+                    <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-mono text-xs font-black text-neutral-950">
+                            {afterSalesCase.case_code}
+                          </p>
+
+                          <p className="mt-1 text-[10px] font-semibold text-neutral-500">
+                            Order {afterSalesCase.order_code}
+                          </p>
+                        </div>
+
+                        <span className="max-w-[48%] rounded-full bg-violet-100 px-2.5 py-1 text-center text-[9px] font-black uppercase text-violet-700">
+                          {String(
+                            afterSalesCase.status || ''
+                          ).replaceAll('_', ' ')}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2 text-[10px]">
+                        <div className="rounded-xl bg-white p-3">
+                          <p className="font-black uppercase text-neutral-400">
+                            Request
+                          </p>
+                          <p className="mt-1 font-black capitalize text-neutral-900">
+                            {String(
+                              afterSalesCase.case_type || ''
+                            ).replaceAll('_', ' ')}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl bg-white p-3">
+                          <p className="font-black uppercase text-neutral-400">
+                            Refund
+                          </p>
+                          <p className="mt-1 font-black capitalize text-neutral-900">
+                            {afterSalesCase.refund_required
+                              ? String(
+                                  afterSalesCase.refund_status ||
+                                    'pending'
+                                ).replaceAll('_', ' ')
+                              : 'Not required'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {afterSalesCase.reason && (
+                        <div className="mt-3 rounded-xl bg-white p-3">
+                          <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                            Reason
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-neutral-700">
+                            {afterSalesCase.reason}
+                          </p>
+                        </div>
+                      )}
+
+                      {afterSalesCase.refund_required && (
+                        <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                          <div className="flex justify-between gap-3 text-xs">
+                            <span className="font-semibold text-emerald-800">
+                              Approved refund
+                            </span>
+                            <span className="font-black text-emerald-950">
+                              {money(afterSalesCase.refund_amount)}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 flex justify-between gap-3 text-xs">
+                            <span className="font-semibold text-emerald-800">
+                              Refunded
+                            </span>
+                            <span className="font-black text-emerald-950">
+                              {money(
+                                afterSalesCase.refund_completed_amount
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {Array.isArray(afterSalesCase.items) &&
+                      afterSalesCase.items.length > 0 && (
+                        <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                            Items
+                          </p>
+
+                          <div className="mt-3 space-y-2">
+                            {afterSalesCase.items.map(
+                              (item, index) => (
+                                <div
+                                  key={`${item.name || 'item'}-${index}`}
+                                  className="rounded-xl bg-neutral-50 p-3"
+                                >
+                                  <p className="text-xs font-black text-neutral-950">
+                                    {item.name || 'Order item'}
+                                  </p>
+
+                                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-neutral-600">
+                                    <span>
+                                      Requested: <b>{item.requested_quantity || 0}</b>
+                                    </span>
+                                    <span>
+                                      Approved: <b>{item.approved_quantity || 0}</b>
+                                    </span>
+                                    <span>
+                                      Returned: <b>{item.returned_quantity || 0}</b>
+                                    </span>
+                                    <span>
+                                      Replacement sent: <b>{item.replacement_dispatched_quantity || 0}</b>
+                                    </span>
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        loadAfterSalesCase()
+                      }
+                      disabled={afterSalesCaseLoading}
+                      className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-xs font-black text-neutral-700 disabled:opacity-50"
+                    >
+                      ↻ Refresh Request Status
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1830,6 +3198,20 @@ export default function DeliveryStorePage({
               </div>
             )}
 
+            <button
+              type="button"
+              onClick={() => {
+                setTrackingOpen(false)
+                openAfterSales({
+                  mobile:
+                    trackingMobile,
+                })
+              }}
+              className="mt-4 w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-black text-violet-700"
+            >
+              ↩ Returns · Replacement · Refund
+            </button>
+
             <p className="mt-4 text-[10px] leading-5 text-neutral-500">
               Order progress refreshes every 1 minute on the tracking page.
             </p>
@@ -1866,102 +3248,94 @@ export default function DeliveryStorePage({
 
             <div className="mt-5 space-y-3">
               {cartRows.map(
-                (item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200 p-3"
-                  >
-                    <div>
-                      <p className="text-sm font-black">
-                        {item.name}
-                      </p>
+                (item) => {
+                  const stock =
+                    deliveryStockInfo(
+                      item
+                    )
 
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {money(
-                          item.price
-                        )}{' '}
-                        ×{' '}
-                        {
-                          item.quantity
-                        }
-                      </p>
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200 p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black">
+                          {item.name}
+                        </p>
+
+                        <p className="mt-1 text-xs text-neutral-500">
+                          {money(
+                            item.price
+                          )}{' '}
+                          ×{' '}
+                          {
+                            item.quantity
+                          }
+                        </p>
+
+                        {stock.tracked && (
+                          <p
+                            className={`mt-1 text-[9px] font-black ${
+                              stock.outOfStock
+                                ? 'text-red-600'
+                                : stock.lowStock
+                                  ? 'text-amber-700'
+                                  : 'text-emerald-700'
+                            }`}
+                          >
+                            {stock.outOfStock
+                              ? 'Out of stock'
+                              : `${stock.available} available`}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateQuantity(
+                              item.id,
+                              item.quantity -
+                                1
+                            )
+                          }
+                          className="h-8 w-8 rounded-lg bg-neutral-100 font-black"
+                        >
+                          −
+                        </button>
+
+                        <span className="text-sm font-black">
+                          {
+                            item.quantity
+                          }
+                        </span>
+
+                        <button
+                          type="button"
+                          disabled={
+                            stock.tracked &&
+                            item.quantity >=
+                              stock.maxCartQuantity
+                          }
+                          onClick={() =>
+                            updateQuantity(
+                              item.id,
+                              item.quantity +
+                                1
+                            )
+                          }
+                          className="h-8 w-8 rounded-lg bg-neutral-900 font-black text-white disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateQuantity(
-                            item.id,
-                            item.quantity -
-                              1
-                          )
-                        }
-                        className="h-8 w-8 rounded-lg bg-neutral-100 font-black"
-                      >
-                        −
-                      </button>
-
-                      <span className="text-sm font-black">
-                        {
-                          item.quantity
-                        }
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateQuantity(
-                            item.id,
-                            item.quantity +
-                              1
-                          )
-                        }
-                        className="h-8 w-8 rounded-lg bg-neutral-900 font-black text-white"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                )
+                  )
+                }
               )}
             </div>
-
-            {settings.surge_enabled && (
-              <div
-                className={`mb-3 rounded-2xl border px-4 py-3 ${
-                  surge.active
-                    ? 'border-orange-200 bg-orange-50'
-                    : 'border-emerald-200 bg-emerald-50'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p
-                      className={`text-[10px] font-black uppercase tracking-wider ${
-                        surge.active
-                          ? 'text-orange-600'
-                          : 'text-emerald-600'
-                      }`}
-                    >
-                      {surge.active
-                        ? 'High Delivery Demand'
-                        : 'Normal Delivery Demand'}
-                    </p>
-                    <p className="mt-1 text-[10px] leading-4 text-neutral-500">
-                      {Number(surge.active_delivery_boys || 0)} active delivery boys ·{' '}
-                      {Number(surge.orders_last_hour || 0)} orders in the last hour
-                    </p>
-                  </div>
-
-                  {surge.active && Number(surge.charge || 0) > 0 && (
-                    <span className="shrink-0 rounded-lg bg-orange-100 px-2.5 py-1.5 text-[10px] font-black text-orange-700">
-                      +{money(surge.charge)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
 
             <div className="mt-5 rounded-[22px] border border-neutral-200 bg-neutral-50 p-4 text-xs">
               <BillRow
