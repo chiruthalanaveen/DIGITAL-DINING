@@ -1,91 +1,204 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 
-export default function AdminLogin() {
-  const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
+import {
+  useState,
+} from 'react'
 
-  const handleAdminLogin = async (e) => {
-    e.preventDefault()
+export default function AdminLoginPage() {
+  const [email, setEmail] =
+    useState('')
+
+  const [password, setPassword] =
+    useState('')
+
+  const [loading, setLoading] =
+    useState(false)
+
+  const [error, setError] =
+    useState('')
+
+  const login = async (event) => {
+    event.preventDefault()
+
+    if (loading) {
+      return
+    }
+
     setLoading(true)
+    setError('')
+
     try {
-      // Strict Admin Verification
-      if (email.trim() !== 'chiruthalanaveen07@gmail.com' || password !== 'Shu@Shu') {
-        throw new Error('Invalid Admin Credentials. Please check your email and password.')
+      const response =
+        await fetch(
+          '/api/admin/login',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            cache: 'no-store',
+            body: JSON.stringify({
+              email:
+                email.trim(),
+              password,
+            }),
+          }
+        )
+
+      const data =
+        await response
+          .json()
+          .catch(
+            () => ({})
+          )
+
+      if (
+        !response.ok ||
+        !data?.success
+      ) {
+        throw new Error(
+          data?.message ||
+            'Admin login failed.'
+        )
       }
 
       /*
-       * Keep the existing admin login gate, but persist the successful
-       * login in both storages so the dashboard can be reopened by URL
-       * or in a new tab on the same browser.
+       * Verify that the HttpOnly cookie created by /api/admin/login
+       * is actually available before navigating to the dashboard.
        */
-      sessionStorage.setItem('isSuperAdminAuthenticated', 'true')
-      localStorage.setItem('isSuperAdminAuthenticated', 'true')
+      const sessionResponse =
+        await fetch(
+          '/api/admin/session',
+          {
+            method: 'GET',
+            cache: 'no-store',
+          }
+        )
 
-      alert('Admin Login Successful! ⚡')
-      router.replace('/admin/dashboard')
-    } catch (err) {
-      alert('Login Error: ' + err.message)
+      const session =
+        await sessionResponse
+          .json()
+          .catch(
+            () => ({})
+          )
+
+      if (
+        !sessionResponse.ok ||
+        !session?.authenticated
+      ) {
+        throw new Error(
+          'Login succeeded but the Admin session cookie was not created.'
+        )
+      }
+
+      /*
+       * Full browser navigation avoids stale App Router state from
+       * an older Admin dashboard component.
+       */
+      window.location.assign(
+        '/admin/dashboard'
+      )
+    } catch (loginError) {
+      setError(
+        loginError?.message ||
+          'Unable to login.'
+      )
+    } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 font-sans">
-      <div className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
-        
-        <div className="text-center space-y-2">
-          <span className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full uppercase font-extrabold tracking-widest">
-            Restricted Admin Area
-          </span>
-          <h1 className="text-2xl font-black text-white">Admin Portal</h1>
-          <p className="text-xs text-neutral-400">Sign in to manage partner restaurants and subscriptions.</p>
-        </div>
+    <main className="min-h-[100dvh] bg-neutral-950 px-4 py-10 text-white">
+      <div className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-md items-center">
+        <section className="w-full rounded-[30px] border border-neutral-800 bg-neutral-900 p-6 shadow-2xl sm:p-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-600 text-lg font-black">
+              D
+            </div>
 
-        <form onSubmit={handleAdminLogin} className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-neutral-300 block mb-1">Admin Email</label>
-            <input 
-              type="email" 
-              placeholder="chiruthalanaveen07@gmail.com" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              required 
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-red-500" 
-            />
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-red-400">
+                Digital Dine-In
+              </p>
+
+              <h1 className="mt-1 text-2xl font-black">
+                Admin Login
+              </h1>
+            </div>
           </div>
 
-          <div>
-            <label className="text-xs font-bold text-neutral-300 block mb-1">Password</label>
-            <input 
-              type="password" 
-              placeholder="••••••••" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              required 
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-red-500 font-mono" 
-            />
-          </div>
+          <p className="mt-5 text-sm leading-6 text-neutral-400">
+            Sign in before opening the Admin ERP Control Center.
+          </p>
 
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-red-600/20"
+          {error && (
+            <div className="mt-4 rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-xs font-bold leading-5 text-red-300">
+              {error}
+            </div>
+          )}
+
+          <form
+            onSubmit={login}
+            className="mt-6 space-y-4"
           >
-            {loading ? 'Authenticating...' : 'Access Admin Dashboard 🛡️'}
-          </button>
-        </form>
+            <label className="block">
+              <span className="mb-2 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                Admin Email
+              </span>
 
-        <div className="text-center pt-2">
-          <a href="/" className="text-xs text-neutral-400 hover:text-white underline">
-            ← Back to Home
-          </a>
-        </div>
+              <input
+                type="email"
+                required
+                autoComplete="username"
+                value={email}
+                onChange={(event) =>
+                  setEmail(
+                    event.target.value
+                  )
+                }
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3.5 text-sm outline-none focus:border-red-500"
+                placeholder="Admin email"
+              />
+            </label>
 
+            <label className="block">
+              <span className="mb-2 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                Admin Password
+              </span>
+
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) =>
+                  setPassword(
+                    event.target.value
+                  )
+                }
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3.5 text-sm outline-none focus:border-red-500"
+                placeholder="Admin password"
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-red-600 px-4 py-4 text-sm font-black text-white disabled:opacity-50"
+            >
+              {loading
+                ? 'Authenticating...'
+                : 'Login to Admin ERP'}
+            </button>
+          </form>
+
+          <p className="mt-5 text-center font-mono text-[9px] text-neutral-600">
+            /admin = LOGIN ONLY
+          </p>
+        </section>
       </div>
-    </div>
+    </main>
   )
 }

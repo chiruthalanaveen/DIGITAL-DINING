@@ -587,6 +587,9 @@ export default function ManagerDeliveryManagement({
   const [afterSalesError, setAfterSalesError] = useState('')
   const [afterSalesActionId, setAfterSalesActionId] = useState('')
   const [afterSalesRefundingId, setAfterSalesRefundingId] = useState('')
+  const [codRefundDetailsByCase, setCodRefundDetailsByCase] = useState({})
+  const [codRefundLoadingId, setCodRefundLoadingId] = useState('')
+  const [codRefundPayingId, setCodRefundPayingId] = useState('')
   const [afterSalesCreating, setAfterSalesCreating] = useState(false)
   const [afterSalesCreateOrderId, setAfterSalesCreateOrderId] = useState('')
   const [afterSalesCreateType, setAfterSalesCreateType] = useState('return')
@@ -715,6 +718,14 @@ export default function ManagerDeliveryManagement({
 
 
   const hasInitialSnapshotRef = useRef(false)
+
+  // Background Help Centre alert snapshot for Manager alarms.
+  const knownSupportAlertKeysRef =
+    useRef(new Set())
+
+  const supportAlertPrimedRef =
+    useRef(false)
+
 
 
 
@@ -1458,7 +1469,7 @@ export default function ManagerDeliveryManagement({
 
 
 
-        'New Delivery order alarm enabled for this Manager session.'
+        'Manager alerts enabled for Delivery orders, Help Centre requests and Return / Refund / Replacement requests.'
 
 
 
@@ -1665,6 +1676,294 @@ export default function ManagerDeliveryManagement({
 
 
 
+
+  const getManagerSupportAlertSnapshot =
+    useCallback(
+      async () => {
+        const result =
+          sessionMode &&
+          sessionToken
+            ? await supabase.rpc(
+                'manager_delivery_get_support_session',
+                {
+                  p_session_token:
+                    sessionToken,
+                  p_thread_id:
+                    null,
+                }
+              )
+            : await supabase.rpc(
+                'manager_delivery_get_support',
+                {
+                  p_restaurant_id:
+                    String(
+                      restaurantId
+                    ),
+                  p_restaurant_code:
+                    String(
+                      restaurantCode ||
+                        ''
+                    ).trim(),
+                  p_user_id:
+                    String(
+                      userId || ''
+                    )
+                      .trim()
+                      .toLowerCase(),
+                  p_password:
+                    String(
+                      password || ''
+                    ),
+                  p_thread_id:
+                    null,
+                }
+              )
+
+        if (result.error) {
+          throw result.error
+        }
+
+        if (
+          result.data?.success ===
+          false
+        ) {
+          throw new Error(
+            result.data?.message ||
+              'Unable to load Help Centre alerts.'
+          )
+        }
+
+        return Array.isArray(
+          result.data?.threads
+        )
+          ? result.data.threads
+          : []
+      },
+      [
+        restaurantId,
+        restaurantCode,
+        sessionMode,
+        sessionToken,
+        userId,
+        password,
+      ]
+    )
+
+  const announceManagerSupportAlerts =
+    useCallback(
+      (threads) => {
+        const openThreads =
+          (
+            Array.isArray(
+              threads
+            )
+              ? threads
+              : []
+          ).filter(
+            (thread) =>
+              String(
+                thread?.status ||
+                  ''
+              ).toLowerCase() ===
+              'open'
+          )
+
+        const alertEntries =
+          openThreads
+            .map(
+              (thread) => {
+                const messages =
+                  Array.isArray(
+                    thread?.messages
+                  )
+                    ? thread.messages
+                    : []
+
+                const latestCustomerMessage =
+                  [...messages]
+                    .reverse()
+                    .find(
+                      (row) =>
+                        ![
+                          'manager',
+                          'system',
+                        ].includes(
+                          String(
+                            row?.sender ||
+                              ''
+                          ).toLowerCase()
+                        )
+                    )
+
+                if (
+                  !latestCustomerMessage
+                ) {
+                  return null
+                }
+
+                return {
+                  key:
+                    `${thread.id}:${
+                      latestCustomerMessage.id ||
+                      latestCustomerMessage.created_at ||
+                      latestCustomerMessage.message
+                    }`,
+                  thread,
+                  message:
+                    latestCustomerMessage,
+                }
+              }
+            )
+            .filter(Boolean)
+
+        const nextKeys =
+          new Set(
+            alertEntries.map(
+              (entry) =>
+                entry.key
+            )
+          )
+
+        if (
+          supportAlertPrimedRef.current
+        ) {
+          const newEntries =
+            alertEntries.filter(
+              (entry) =>
+                !knownSupportAlertKeysRef.current
+                  .has(
+                    entry.key
+                  )
+            )
+
+          if (
+            newEntries.length > 0
+          ) {
+            playAlarm()
+
+            const latestText =
+              String(
+                newEntries[0]
+                  ?.message
+                  ?.message ||
+                  ''
+              )
+
+            const requestMatch =
+              latestText.match(
+                /^\[([^\]]+)\]/
+              )
+
+            const requestName =
+              requestMatch?.[1] ||
+              'Help Centre'
+
+            setMessage(
+              newEntries.length === 1
+                ? `New ${requestName} request/message received.`
+                : `${newEntries.length} new Help Centre requests/messages received.`
+            )
+
+            if (
+              'Notification' in
+                window &&
+              Notification.permission ===
+                'granted'
+            ) {
+              new Notification(
+                requestName,
+                {
+                  body:
+                    newEntries.length ===
+                    1
+                      ? `Customer ${
+                          newEntries[0]
+                            ?.thread
+                            ?.order_code ||
+                          ''
+                        } needs Manager attention.`
+                      : `${newEntries.length} customer requests need Manager attention.`,
+                }
+              )
+            }
+          }
+        }
+
+        knownSupportAlertKeysRef.current =
+          nextKeys
+
+        supportAlertPrimedRef.current =
+          true
+      },
+      [playAlarm]
+    )
+
+  useEffect(() => {
+    if (
+      !alarmEnabled ||
+      !restaurantId
+    ) {
+      supportAlertPrimedRef.current =
+        false
+
+      knownSupportAlertKeysRef.current =
+        new Set()
+
+      return undefined
+    }
+
+    let cancelled =
+      false
+
+    const pollSupport =
+      async () => {
+        try {
+          const threads =
+            await getManagerSupportAlertSnapshot()
+
+          if (!cancelled) {
+            announceManagerSupportAlerts(
+              threads
+            )
+          }
+        } catch (
+          supportAlarmError
+        ) {
+          console.warn(
+            'Manager Help Centre alarm poll warning:',
+            supportAlarmError
+          )
+        }
+      }
+
+    // Prime existing threads without a false alarm.
+    pollSupport()
+
+    const timer =
+      window.setInterval(
+        () => {
+          if (
+            document.visibilityState ===
+              'visible'
+          ) {
+            pollSupport()
+          }
+        },
+        2500
+      )
+
+    return () => {
+      cancelled = true
+      window.clearInterval(
+        timer
+      )
+    }
+  }, [
+    alarmEnabled,
+    restaurantId,
+    getManagerSupportAlertSnapshot,
+    announceManagerSupportAlerts,
+  ])
 
   const loadData = useCallback(
 
@@ -4817,6 +5116,158 @@ export default function ManagerDeliveryManagement({
     }
   }
 
+  const loadManagerCodRefundDetails = async (caseRow, quiet = false) => {
+    if (!caseRow?.id || (!quiet && codRefundLoadingId)) return null
+
+    if (!quiet) setCodRefundLoadingId(caseRow.id)
+    setAfterSalesError('')
+
+    try {
+      const response = await fetch('/api/delivery/cod-refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          action: 'manager_details',
+          actorType: 'manager',
+          caseId: caseRow.id,
+          restaurantId: String(restaurantId),
+          restaurantCode: String(restaurantCode || '').trim(),
+          sessionToken:
+            sessionMode && sessionToken ? sessionToken : '',
+          userId: String(userId || '').trim().toLowerCase(),
+          password: String(password || ''),
+        }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || 'Unable to load COD refund bank details.'
+        )
+      }
+
+      setCodRefundDetailsByCase((current) => ({
+        ...current,
+        [caseRow.id]: data,
+      }))
+      return data
+    } catch (detailsError) {
+      console.error('Manager COD refund details error:', detailsError)
+      if (!quiet) {
+        setAfterSalesError(
+          detailsError?.message || 'Unable to load COD refund bank details.'
+        )
+        appNotice(
+          detailsError?.message || 'Unable to load COD refund bank details.'
+        )
+      }
+      return null
+    } finally {
+      if (!quiet) setCodRefundLoadingId('')
+    }
+  }
+
+  const markManagerCodRefundPaid = async (caseRow) => {
+    if (!caseRow?.id || codRefundPayingId) return
+
+    let details = codRefundDetailsByCase[caseRow.id]
+    if (!details) {
+      details = await loadManagerCodRefundDetails(caseRow, false)
+    }
+    if (!details) return
+
+    if (!details.bankDetailsSubmitted || !details?.bank) {
+      appNotice('Customer bank details have not been submitted yet.')
+      return
+    }
+
+    if (details?.payment) {
+      appNotice(
+        `This COD refund was already paid. Reference: ${details.payment.transactionReference || 'recorded'}.`
+      )
+      return
+    }
+
+    const remaining = Math.max(
+      0,
+      Number(details?.case?.remainingAmount || 0)
+    )
+
+    if (remaining <= 0) {
+      appNotice('This refund is already complete.')
+      return
+    }
+
+    const confirmed = await appConfirm(
+      `Confirm that you have already transferred ${money(remaining)} to ${details.bank.accountHolderName} · ${details.bank.bankName} · Account ${details.bank.maskedAccountNumber}?`,
+      {
+        title: 'Confirm COD Bank Refund',
+        confirmText: 'I Have Paid',
+      }
+    )
+    if (!confirmed) return
+
+    const transactionReference = await appPrompt(
+      'Enter bank UTR / transaction reference:',
+      ''
+    )
+    if (transactionReference === null) return
+    if (String(transactionReference || '').trim().length < 4) {
+      appNotice('Enter a valid UTR / transaction reference.')
+      return
+    }
+
+    const note = await appPrompt('Optional refund note:', '')
+    if (note === null) return
+
+    setCodRefundPayingId(caseRow.id)
+    setAfterSalesError('')
+
+    try {
+      const response = await fetch('/api/delivery/cod-refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          action: 'mark_paid',
+          actorType: 'manager',
+          caseId: caseRow.id,
+          restaurantId: String(restaurantId),
+          restaurantCode: String(restaurantCode || '').trim(),
+          sessionToken:
+            sessionMode && sessionToken ? sessionToken : '',
+          userId: String(userId || '').trim().toLowerCase(),
+          password: String(password || ''),
+          amount: remaining,
+          transactionReference: String(transactionReference).trim(),
+          note: String(note || '').trim(),
+        }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.message || 'Unable to record COD bank refund.')
+      }
+
+      setMessage(data?.message || 'COD bank refund marked Paid.')
+      await Promise.all([
+        loadAfterSales(true),
+        loadManagerCodRefundDetails(caseRow, true),
+      ])
+    } catch (paymentError) {
+      console.error('Manager COD refund payment error:', paymentError)
+      setAfterSalesError(
+        paymentError?.message || 'Unable to record COD bank refund.'
+      )
+      appNotice(
+        paymentError?.message || 'Unable to record COD bank refund.'
+      )
+    } finally {
+      setCodRefundPayingId('')
+    }
+  }
+
   useEffect(() => {
     if (tab !== 'after_sales') return
     loadAfterSales(false)
@@ -5055,11 +5506,11 @@ export default function ManagerDeliveryManagement({
 
 
 
-                ? '🔔 Order Alarm ON'
+                ? '🔔 Manager Alerts ON'
 
 
 
-                : '🔕 Enable Order Alarm'}
+                : '🔕 Enable Manager Alerts'}
 
 
 
@@ -6214,6 +6665,11 @@ export default function ManagerDeliveryManagement({
           onAction={reviewManagerAfterSalesCase}
           refundingId={afterSalesRefundingId}
           onRazorpayRefund={processManagerRazorpayRefund}
+          codRefundDetailsByCase={codRefundDetailsByCase}
+          codRefundLoadingId={codRefundLoadingId}
+          codRefundPayingId={codRefundPayingId}
+          onLoadCodRefund={loadManagerCodRefundDetails}
+          onMarkCodRefundPaid={markManagerCodRefundPaid}
         />
       )}
 
@@ -8578,6 +9034,11 @@ function AfterSalesWorkspace({
   onAction,
   refundingId,
   onRazorpayRefund,
+  codRefundDetailsByCase,
+  codRefundLoadingId,
+  codRefundPayingId,
+  onLoadCodRefund,
+  onMarkCodRefundPaid,
 }) {
   const cases =
     Array.isArray(report?.cases)
@@ -8917,6 +9378,24 @@ function AfterSalesWorkspace({
             refundingId ===
             caseRow.id
 
+          const paymentMethod =
+            String(
+              caseRow?.order?.payment_method || ''
+            ).toLowerCase()
+
+          const isCodRefund =
+            caseRow.refund_required &&
+            paymentMethod === 'cod'
+
+          const codRefundDetails =
+            codRefundDetailsByCase?.[caseRow.id] || null
+
+          const codRefundLoading =
+            codRefundLoadingId === caseRow.id
+
+          const codRefundPaying =
+            codRefundPayingId === caseRow.id
+
           return (
             <article
               key={caseRow.id}
@@ -9146,6 +9625,97 @@ function AfterSalesWorkspace({
                       {caseRow.provider_refund_id}
                     </p>
                   )}
+                </div>
+              )}
+
+              {isCodRefund && (
+                <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-wider text-emerald-300">COD Bank Refund</p>
+                      <p className="mt-1 text-xs font-black text-white">Customer bank-transfer details</p>
+                      <p className="mt-1 text-[10px] leading-5 text-neutral-400">
+                        The full account number is encrypted at rest and is shown here only through the authenticated server route.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={codRefundLoading}
+                      onClick={() => onLoadCodRefund(caseRow, false)}
+                      className="shrink-0 rounded-xl border border-emerald-500/30 bg-neutral-950 px-4 py-2.5 text-[10px] font-black text-emerald-300 disabled:opacity-50"
+                    >
+                      {codRefundLoading
+                        ? 'Loading...'
+                        : codRefundDetails
+                          ? '↻ Refresh Bank Details'
+                          : 'View Bank Details'}
+                    </button>
+                  </div>
+
+                  {!codRefundDetails && (
+                    <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-[10px] leading-5 text-neutral-500">
+                      Load bank details to see whether the customer has submitted them.
+                    </div>
+                  )}
+
+                  {codRefundDetails && !codRefundDetails.bankDetailsSubmitted && (
+                    <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-3">
+                      <p className="text-[10px] font-black text-amber-300">Waiting for Customer Bank Details</p>
+                      <p className="mt-1 text-[10px] leading-5 text-neutral-400">
+                        Ask the customer to open Help Centre → COD Refund for order {caseRow?.order?.order_code}.
+                      </p>
+                    </div>
+                  )}
+
+                  {codRefundDetails?.bankDetailsSubmitted && codRefundDetails?.bank && (
+                    <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-neutral-600">Account Holder</p>
+                          <p className="mt-1 text-xs font-black text-white">{codRefundDetails.bank.accountHolderName}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-neutral-600">Bank</p>
+                          <p className="mt-1 text-xs font-black text-white">{codRefundDetails.bank.bankName}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-neutral-600">IFSC</p>
+                          <p className="mt-1 font-mono text-xs font-black text-sky-300">{codRefundDetails.bank.ifscCode}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-neutral-600">Account Number</p>
+                          <p className="mt-1 select-all font-mono text-xs font-black text-emerald-300">{codRefundDetails.bank.accountNumber}</p>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-[9px] leading-4 text-neutral-600">
+                        Verify Account Holder, IFSC and Account Number before transferring the approved refund.
+                      </p>
+                    </div>
+                  )}
+
+                  {codRefundDetails?.payment && (
+                    <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                      <p className="text-[10px] font-black uppercase text-emerald-300">✓ Bank Refund Paid</p>
+                      <p className="mt-1 text-xs font-black text-white">{money(codRefundDetails.payment.amount)}</p>
+                      <p className="mt-1 break-all font-mono text-[9px] text-emerald-200">UTR / Ref: {codRefundDetails.payment.transactionReference}</p>
+                    </div>
+                  )}
+
+                  {codRefundDetails?.bankDetailsSubmitted &&
+                    !codRefundDetails?.payment &&
+                    refundRemaining > 0 && (
+                      <button
+                        type="button"
+                        disabled={codRefundPaying}
+                        onClick={() => onMarkCodRefundPaid(caseRow)}
+                        className="mt-3 w-full rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                      >
+                        {codRefundPaying
+                          ? 'Recording Refund...'
+                          : `✓ Mark ${money(refundRemaining)} Bank Refund Paid`}
+                      </button>
+                    )}
                 </div>
               )}
 
