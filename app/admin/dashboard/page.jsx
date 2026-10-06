@@ -13,6 +13,7 @@ import {
 
 const NAV = [
   ['overview', 'Overview'],
+  ['custom-plans', 'Custom Plans'],
   ['tenants', 'Tenants & Access'],
   ['operations', 'Operations'],
   ['people', 'Users & Staff'],
@@ -236,6 +237,335 @@ function StatusPill({
           'unknown'
       )}
     </span>
+  )
+}
+
+
+function CustomPlanRequestCard({
+  request,
+  action,
+  actionLoading,
+}) {
+  const [
+    status,
+    setStatus,
+  ] = useState(
+    request?.status ||
+      'new'
+  )
+
+  const [
+    quotedMonthlyPrice,
+    setQuotedMonthlyPrice,
+  ] = useState(
+    request?.quoted_monthly_price ??
+      ''
+  )
+
+  const [
+    adminNotes,
+    setAdminNotes,
+  ] = useState(
+    request?.admin_notes ||
+      ''
+  )
+
+  const requirements = [
+    {
+      key: 'Restaurant',
+      selected:
+        request?.restaurant_selected,
+      items:
+        request?.restaurant_requirements,
+    },
+    {
+      key: 'Delivery',
+      selected:
+        request?.delivery_selected,
+      items:
+        request?.delivery_requirements,
+    },
+    {
+      key: 'Resort',
+      selected:
+        request?.resort_selected,
+      items:
+        request?.resort_requirements,
+    },
+  ].filter(
+    (module) =>
+      module.selected ||
+      (
+        Array.isArray(
+          module.items
+        ) &&
+        module.items.length > 0
+      )
+  )
+
+  const save =
+    async () => {
+      await action({
+        action:
+          'update_custom_plan_request',
+        requestId:
+          request.id,
+        status,
+        quotedMonthlyPrice:
+          quotedMonthlyPrice === ''
+            ? null
+            : quotedMonthlyPrice,
+        adminNotes,
+      })
+    }
+
+  return (
+    <article className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-black text-white">
+              {request.customer_name ||
+                'Customer'}
+            </h2>
+
+            <StatusPill
+              value={
+                request.status ||
+                'new'
+              }
+            />
+          </div>
+
+          <p className="mt-1 text-[10px] text-neutral-500">
+            Submitted{' '}
+            {formatDate(
+              request.created_at
+            )}
+          </p>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {request.contact_number && (
+              <a
+                href={`tel:${request.contact_number}`}
+                className="rounded-xl bg-emerald-600 px-3 py-2 text-[9px] font-black text-white"
+              >
+                Call {request.contact_number}
+              </a>
+            )}
+
+            {request.email && (
+              <a
+                href={`mailto:${request.email}`}
+                className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-[9px] font-black text-neutral-300"
+              >
+                Email
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div className="grid min-w-0 gap-1 text-[10px] text-neutral-400 xl:text-right">
+          <p>
+            <span className="font-black text-neutral-600">
+              Business:
+            </span>{' '}
+            {request.business_name ||
+              '—'}
+          </p>
+
+          <p>
+            <span className="font-black text-neutral-600">
+              City:
+            </span>{' '}
+            {request.business_city ||
+              '—'}
+          </p>
+
+          <p className="font-mono text-[9px] text-neutral-600">
+            {request.id}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 xl:grid-cols-3">
+        {requirements.map(
+          (module) => (
+            <div
+              key={module.key}
+              className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4"
+            >
+              <p className="text-[9px] font-black uppercase tracking-wider text-red-400">
+                {module.key}
+              </p>
+
+              <div className="mt-3 space-y-2">
+                {Array.isArray(
+                  module.items
+                ) &&
+                module.items.length ? (
+                  module.items.map(
+                    (
+                      item,
+                      index
+                    ) => (
+                      <div
+                        key={
+                          item?.id ||
+                          `${module.key}-${index}`
+                        }
+                        className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-[10px] font-bold leading-5 text-neutral-300"
+                      >
+                        ✓{' '}
+                        {item?.title ||
+                          item?.id ||
+                          'Requirement'}
+                      </div>
+                    )
+                  )
+                ) : (
+                  <p className="text-[10px] text-neutral-600">
+                    Module selected.
+                  </p>
+                )}
+              </div>
+            </div>
+          )
+        )}
+      </div>
+
+      {request.additional_requirements && (
+        <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <p className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
+            Additional Requirements
+          </p>
+
+          <p className="mt-2 whitespace-pre-wrap text-xs leading-6 text-neutral-300">
+            {request.additional_requirements}
+          </p>
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[220px_220px_minmax(0,1fr)]">
+        <label className="block">
+          <span className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
+            Status
+          </span>
+
+          <select
+            value={status}
+            onChange={(
+              event
+            ) =>
+              setStatus(
+                event.target.value
+              )
+            }
+            className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-white outline-none focus:border-red-500"
+          >
+            {[
+              'new',
+              'reviewing',
+              'contacted',
+              'quoted',
+              'accepted',
+              'rejected',
+            ].map(
+              (option) => (
+                <option
+                  key={option}
+                  value={option}
+                >
+                  {label(option)}
+                </option>
+              )
+            )}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
+            Monthly Quote ₹
+          </span>
+
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={
+              quotedMonthlyPrice
+            }
+            onChange={(
+              event
+            ) =>
+              setQuotedMonthlyPrice(
+                event.target.value
+              )
+            }
+            placeholder="Enter amount"
+            className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-white outline-none focus:border-red-500"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
+            Admin / Manager Notes
+          </span>
+
+          <textarea
+            value={adminNotes}
+            onChange={(
+              event
+            ) =>
+              setAdminNotes(
+                event.target.value
+              )
+            }
+            rows={3}
+            placeholder="Discussion, quotation notes, follow-up details..."
+            className="mt-2 w-full resize-y rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs leading-5 text-white outline-none focus:border-red-500"
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-3 border-t border-neutral-800 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-neutral-600">
+          <span>
+            Contacted:{' '}
+            {formatDate(
+              request.contacted_at
+            )}
+          </span>
+
+          <span>
+            Quoted:{' '}
+            {formatDate(
+              request.quoted_at
+            )}
+          </span>
+
+          <span>
+            Accepted:{' '}
+            {formatDate(
+              request.accepted_at
+            )}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          disabled={
+            actionLoading
+          }
+          onClick={save}
+          className="rounded-xl bg-red-600 px-5 py-3 text-[10px] font-black text-white disabled:opacity-50"
+        >
+          {actionLoading
+            ? 'Saving...'
+            : 'Save Request'}
+        </button>
+      </div>
+    </article>
   )
 }
 
@@ -956,6 +1286,13 @@ export default function AdminControlCenter() {
   const summary =
     data?.summary || {}
 
+  const customPlanRequests =
+    Array.isArray(
+      data?.customPlanRequests
+    )
+      ? data.customPlanRequests
+      : []
+
   const openTenantEditor =
     (
       tenant
@@ -1343,6 +1680,14 @@ export default function AdminControlCenter() {
                   }
                   hint={`${summary.reviews || 0} verified reviews`}
                 />
+                <Metric
+                  label="Custom Leads"
+                  value={
+                    summary.customPlanRequests ||
+                    0
+                  }
+                  hint={`${summary.newCustomPlanRequests || 0} new`}
+                />
               </div>
 
               <div className="mt-6 grid gap-4 xl:grid-cols-2">
@@ -1433,6 +1778,111 @@ export default function AdminControlCenter() {
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {section ===
+            'custom-plans' && (
+            <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-400">
+                    Sales Pipeline
+                  </p>
+
+                  <h1 className="mt-1 text-2xl font-black text-white sm:text-3xl">
+                    Custom Plan Requests
+                  </h1>
+
+                  <p className="mt-2 max-w-3xl text-xs leading-6 text-neutral-500">
+                    Review customer-selected Restaurant, Delivery and Resort requirements, record the quotation and manage the follow-up status.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    loadData(
+                      true
+                    )
+                  }
+                  disabled={
+                    refreshing
+                  }
+                  className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-[10px] font-black text-neutral-300 disabled:opacity-50"
+                >
+                  {refreshing
+                    ? 'Refreshing...'
+                    : 'Refresh Requests'}
+                </button>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Metric
+                  label="Total Requests"
+                  value={
+                    summary.customPlanRequests ||
+                    customPlanRequests.length
+                  }
+                />
+
+                <Metric
+                  label="New"
+                  value={
+                    summary.newCustomPlanRequests ||
+                    0
+                  }
+                />
+
+                <Metric
+                  label="Quoted"
+                  value={
+                    customPlanRequests.filter(
+                      (row) =>
+                        row.status ===
+                        'quoted'
+                    ).length
+                  }
+                />
+
+                <Metric
+                  label="Accepted"
+                  value={
+                    customPlanRequests.filter(
+                      (row) =>
+                        row.status ===
+                        'accepted'
+                    ).length
+                  }
+                />
+              </div>
+
+              <div className="mt-5 space-y-4">
+                {!customPlanRequests.length ? (
+                  <Empty>
+                    No Custom Plan requests have been submitted yet.
+                  </Empty>
+                ) : (
+                  customPlanRequests.map(
+                    (request) => (
+                      <CustomPlanRequestCard
+                        key={
+                          request.id
+                        }
+                        request={
+                          request
+                        }
+                        action={
+                          action
+                        }
+                        actionLoading={
+                          actionLoading
+                        }
+                      />
+                    )
+                  )
+                )}
               </div>
             </div>
           )}
