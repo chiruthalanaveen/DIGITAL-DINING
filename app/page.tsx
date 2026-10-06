@@ -509,7 +509,7 @@ export default function LandingPage() {
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Link
-              href="/app"
+              href="/login"
               className="inline-flex min-h-9 items-center justify-center rounded-lg border border-neutral-300 bg-white px-2.5 text-[8px] font-black text-neutral-900 transition hover:border-neutral-400 sm:min-h-10 sm:rounded-xl sm:px-4 sm:text-[10px]"
             >
               Login
@@ -573,7 +573,7 @@ export default function LandingPage() {
                 />
 
                 <Link
-                  href="/app"
+                  href="/login"
                   className="inline-flex min-h-12 items-center justify-center rounded-xl border border-neutral-300 bg-white px-6 text-xs font-black text-neutral-900 transition hover:bg-neutral-50"
                 >
                   Restaurant Login
@@ -847,7 +847,7 @@ export default function LandingPage() {
                 />
 
                 <Link
-                  href="/app"
+                  href="/login"
                   className="inline-flex min-h-12 items-center justify-center rounded-xl border border-neutral-300 bg-white px-6 text-xs font-black text-neutral-900"
                 >
                   Restaurant Login
@@ -919,7 +919,7 @@ export default function LandingPage() {
               />
 
               <Link
-                href="/app"
+                href="/login"
                 className="inline-flex min-h-11 items-center justify-center rounded-xl border border-neutral-300 bg-white px-5 text-[10px] font-black text-neutral-900"
               >
                 Restaurant Login
@@ -950,7 +950,7 @@ export default function LandingPage() {
 
           <div className="flex flex-wrap justify-center gap-5 text-[9px] font-bold text-neutral-500">
             <Link
-              href="/app"
+              href="/login"
               className="hover:text-neutral-950"
             >
               Open APP

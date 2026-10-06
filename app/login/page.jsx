@@ -1,645 +1,299 @@
 'use client'
 
-import {
-  useMemo,
-  useState,
-} from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-
 import { supabase } from '@/lib/supabase'
-import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
-const ROLE_META = {
-  owner: {
-    title: 'Owner',
-    icon: '👑',
-    description:
-      'Business owner dashboard and subscribed modules.',
-    className:
-      'border-orange-500/20 bg-orange-500/[0.08] text-orange-300',
-  },
-
-  manager: {
-    title: 'Manager',
-    icon: '🧑‍💼',
-    description:
-      'Operational controls for the enabled modules.',
-    className:
-      'border-violet-500/20 bg-violet-500/[0.08] text-violet-300',
-  },
-
-  waiter: {
-    title: 'Waiter',
-    icon: '🧑‍🍳',
-    description:
-      'Restaurant waiter ordering and handover.',
-    className:
-      'border-cyan-500/20 bg-cyan-500/[0.08] text-cyan-300',
-  },
-
-  kitchen: {
-    title: 'Kitchen',
-    icon: '👨‍🍳',
-    description:
-      'KDS orders and preparation workflow.',
-    className:
-      'border-red-500/20 bg-red-500/[0.08] text-red-300',
-  },
-
-  packer: {
-    title: 'Packer',
-    icon: '📦',
-    description:
-      'Delivery packing and barcode verification.',
-    className:
-      'border-amber-500/20 bg-amber-500/[0.08] text-amber-300',
-  },
-
-  driver: {
-    title: 'Delivery Boy',
-    icon: '🛵',
-    description:
-      'Assigned deliveries, navigation and proof.',
-    className:
-      'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-300',
-  },
-}
-
-function cleanRestaurantCode(value) {
-  return String(value || '')
-    .replace(/\D/g, '')
-    .slice(0, 5)
-}
-
-function moduleLabels(modules) {
-  const values = []
-
-  if (modules?.restaurant) {
-    values.push('Restaurant')
-  }
-
-  if (modules?.delivery) {
-    values.push('Delivery')
-  }
-
-  if (modules?.resort) {
-    values.push('Resort')
-  }
-
-  return values
-}
-
-export default function RestaurantLoginPage() {
-  useMobileViewportLock()
-
+export default function WebsiteOwnerLoginPage() {
   const router = useRouter()
 
-  const [restaurantCode, setRestaurantCode] =
-    useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [oauthLoading, setOauthLoading] = useState('')
+  const [error, setError] = useState('')
 
-  const [result, setResult] =
-    useState(null)
-
-  const [loading, setLoading] =
-    useState(false)
-
-  const [error, setError] =
-    useState('')
-
-  const modules = useMemo(
-    () =>
-      moduleLabels(
-        result?.modules
-      ),
-    [result]
-  )
-
-  const verifyCode =
-    async (event) => {
-      event.preventDefault()
-
-      if (loading) return
-
-      const code =
-        cleanRestaurantCode(
-          restaurantCode
-        )
-
-      if (
-        code.length !== 5
-      ) {
-        setError(
-          'Enter your 5-digit Restaurant Code.'
-        )
-        return
-      }
-
-      setLoading(true)
-      setError('')
-
-      try {
-        const {
-          data,
-          error: rpcError,
-        } =
-          await supabase.rpc(
-            'resolve_app_restaurant_portals',
-            {
-              p_restaurant_code:
-                code,
-            }
-          )
-
-        if (rpcError) {
-          throw rpcError
-        }
-
-        if (!data?.success) {
-          throw new Error(
-            data?.message ||
-              'Invalid Restaurant Code.'
-          )
-        }
-
-        setResult(data)
-        setRestaurantCode(code)
-      } catch (lookupError) {
-        console.error(
-          '[RESTAURANT LOGIN] Restaurant lookup error:',
-          lookupError
-        )
-
-        setResult(null)
-
-        const message =
-          String(
-            lookupError?.message ||
-              ''
-          )
-
-        if (
-          message.includes(
-            'resolve_app_restaurant_portals'
-          ) ||
-          message
-            .toLowerCase()
-            .includes(
-              'could not find the function'
-            )
-        ) {
-          setError(
-            'Step 9A is not installed yet. Run the Step 9A SQL in Supabase.'
-          )
-        } else {
-          setError(
-            message ||
-              'Unable to verify Restaurant Code.'
-          )
-        }
-      } finally {
-        setLoading(false)
-      }
+  const findOwnerRestaurant = async (user) => {
+    if (!user?.id) {
+      throw new Error('Authenticated user was not found.')
     }
 
-  const changeRestaurant =
-    () => {
-      setResult(null)
-      setRestaurantCode('')
-      setError('')
-    }
+    const { data: restaurant, error: restaurantError } = await supabase
+      .from('restaurants')
+      .select('id, name, subscription_status')
+      .eq('id', user.id)
+      .maybeSingle()
 
-  const openPortal =
-    (role) => {
-      const restaurant =
-        result?.restaurant
-
-      const code =
-        cleanRestaurantCode(
-          restaurant?.restaurant_code ||
-            restaurantCode
-        )
-
-      const restaurantId =
-        String(
-          restaurant?.id || ''
-        ).trim()
-
-      if (
-        !code ||
-        !restaurantId
-      ) {
-        setError(
-          'Restaurant information is incomplete. Verify the Restaurant Code again.'
-        )
-        return
-      }
-
-      const normalizedRole =
-        String(role || '')
-          .trim()
-          .toLowerCase()
-
-      const allowedRoles =
-        Array.isArray(
-          result?.available_roles
-        )
-          ? result.available_roles.map(
-              (value) =>
-                String(
-                  value || ''
-                )
-                  .trim()
-                  .toLowerCase()
-            )
-          : []
-
-      if (
-        !allowedRoles.includes(
-          normalizedRole
-        )
-      ) {
-        setError(
-          'This portal is not included in this restaurant plan.'
-        )
-        return
-      }
-
-      const encodedCode =
-        encodeURIComponent(code)
-
-      const encodedId =
-        encodeURIComponent(
-          restaurantId
-        )
-
-      if (
-        normalizedRole ===
-        'owner'
-      ) {
-        router.push(
-          `/app/owner?restaurantCode=${encodedCode}&restaurantId=${encodedId}`
-        )
-        return
-      }
-
-      if (
-        normalizedRole ===
-        'packer'
-      ) {
-        router.push(
-          `/app/packer/${encodedCode}`
-        )
-        return
-      }
-
-      if (
-        normalizedRole ===
-        'driver'
-      ) {
-        router.push(
-          `/app/driver/${encodedCode}`
-        )
-        return
-      }
-
-      /*
-       * Manager / Waiter / Kitchen keep using your existing
-       * secure staff login system.
-       *
-       * Step 9C will make the role query auto-open the selected
-       * login form without changing the current authentication.
-       */
-      router.push(
-        `/app?code=${encodedCode}&role=${encodeURIComponent(
-          normalizedRole
-        )}`
+    if (restaurantError) {
+      throw new Error(
+        restaurantError.message || 'Unable to load your restaurant account.'
       )
     }
 
+    if (!restaurant?.id) {
+      throw new Error(
+        'No restaurant account is connected to this login. Please register your business first.'
+      )
+    }
+
+    return restaurant
+  }
+
+  const handlePasswordLogin = async (event) => {
+    event.preventDefault()
+    if (loading || oauthLoading) return
+
+    const cleanEmail = email.trim().toLowerCase()
+
+    if (!cleanEmail || !password) {
+      setError('Enter your email address and password.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const { data, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        })
+
+      if (signInError) {
+        throw new Error(signInError.message || 'Unable to sign in.')
+      }
+
+      if (!data?.user) {
+        throw new Error('Login succeeded, but the user session was not found.')
+      }
+
+      const restaurant = await findOwnerRestaurant(data.user)
+
+      router.replace(
+        `/dashboard/${encodeURIComponent(restaurant.id)}`
+      )
+    } catch (loginError) {
+      console.error('[WEBSITE LOGIN] Password login error:', loginError)
+      setError(loginError?.message || 'Unable to sign in. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGoogleLogin = async () => {
+    if (loading || oauthLoading) return
+
+    setOauthLoading('google')
+    setError('')
+
+    try {
+      // Prevent a previous registration attempt from being mistaken for
+      // a website owner login.
+      localStorage.removeItem('digitaldining_google_registration')
+
+      const redirectTo =
+        `${window.location.origin}/auth/google-complete?source=website`
+
+      const { error: googleError } =
+        await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'select_account',
+            },
+          },
+        })
+
+      if (googleError) {
+        throw googleError
+      }
+    } catch (googleError) {
+      console.error('[WEBSITE LOGIN] Google login error:', googleError)
+      setError(
+        googleError?.message ||
+          'Google login could not be started. Please try again.'
+      )
+      setOauthLoading('')
+    }
+  }
+
+  const handleAppleLogin = async () => {
+    if (loading || oauthLoading) return
+
+    setOauthLoading('apple')
+    setError('')
+
+    try {
+      localStorage.removeItem('digitaldining_apple_registration')
+
+      const redirectTo =
+        `${window.location.origin}/auth/apple-complete?source=website`
+
+      const { error: appleError } =
+        await supabase.auth.signInWithOAuth({
+          provider: 'apple',
+          options: { redirectTo },
+        })
+
+      if (appleError) {
+        throw appleError
+      }
+    } catch (appleError) {
+      console.error('[WEBSITE LOGIN] Apple login error:', appleError)
+      setError(
+        appleError?.message ||
+          'Apple login could not be started. Please try again.'
+      )
+      setOauthLoading('')
+    }
+  }
+
   return (
-    <main className="min-h-[100dvh] w-full overflow-x-hidden bg-[#090909] text-white">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[520px] flex-col px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:px-5">
-        <header className="flex items-center justify-between gap-3 py-2">
+    <main className="min-h-screen bg-[#f7f7f5] px-4 py-8 text-neutral-950 sm:py-12">
+      <div className="mx-auto w-full max-w-md">
+        <div className="mb-6 flex items-center justify-between">
           <Link
             href="/"
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-300"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200 bg-white text-sm font-black shadow-sm transition hover:bg-neutral-50"
             aria-label="Back to Digital Dine-In"
           >
             ←
           </Link>
 
-          <div className="min-w-0 text-center">
-            <p className="truncate text-sm font-black">
-              Digital Dine-In
+          <div className="text-right">
+            <p className="text-sm font-black">Digital Dine-In</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-600">
+              Website Owner Login
             </p>
+          </div>
+        </div>
 
-            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-400">
-              Restaurant Login
+        <section className="rounded-[30px] border border-neutral-200 bg-white p-6 shadow-xl shadow-neutral-200/50 sm:p-8">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-neutral-950 text-xl font-black text-white">
+            DD
+          </div>
+
+          <div className="mt-5 text-center">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">
+              Business Account
+            </p>
+            <h1 className="mt-2 text-2xl font-black tracking-tight">
+              Welcome back
+            </h1>
+            <p className="mx-auto mt-2 max-w-sm text-xs leading-6 text-neutral-500">
+              Sign in to manage your Digital Dine-In business dashboard.
             </p>
           </div>
 
-          <div className="h-10 w-10" />
-        </header>
-
-        {!result ? (
-          <div className="flex flex-1 flex-col justify-center py-6">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[26px] border border-orange-500/20 bg-orange-500/10 shadow-2xl shadow-orange-950/20">
-              <span className="text-3xl">
-                🏪
-              </span>
-            </div>
-
-            <div className="mt-5 text-center">
-              <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
-                Enter Restaurant Code
-              </h1>
-
-              <p className="mx-auto mt-2 max-w-sm text-xs leading-6 text-neutral-500">
-                We will check the active subscription and show only the portals included in this restaurant&apos;s plan.
-              </p>
-            </div>
-
-            <form
-              onSubmit={verifyCode}
-              className="mt-6 rounded-[28px] border border-white/[0.08] bg-neutral-900 p-5 shadow-2xl shadow-black/30"
+          <div className="mt-6 grid gap-3">
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={loading || Boolean(oauthLoading)}
+              className="flex min-h-12 items-center justify-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 text-xs font-black transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <label className="block">
-                <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.18em] text-neutral-500">
-                  5-digit Restaurant Code
-                </span>
+              <span className="text-base font-black text-[#4285F4]">G</span>
+              {oauthLoading === 'google'
+                ? 'Opening Google...'
+                : 'Continue with Google'}
+            </button>
 
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={5}
-                  value={
-                    restaurantCode
-                  }
-                  onChange={(
-                    event
-                  ) => {
-                    setRestaurantCode(
-                      cleanRestaurantCode(
-                        event.target
-                          .value
-                      )
-                    )
-
-                    setError('')
-                  }}
-                  placeholder="00000"
-                  className="h-16 w-full rounded-2xl border border-white/10 bg-black/30 px-4 text-center font-mono text-3xl font-black tracking-[0.35em] text-white outline-none transition placeholder:text-neutral-700 focus:border-orange-500/50"
-                />
-              </label>
-
-              {error && (
-                <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-[10px] font-bold leading-5 text-red-300">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={
-                  loading ||
-                  restaurantCode.length !==
-                    5
-                }
-                className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-orange-500 px-4 text-xs font-black text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {loading
-                  ? 'Checking...'
-                  : 'Continue'}
-              </button>
-            </form>
-
-            <div className="mt-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-neutral-600">
-                Plan-aware portal access
-              </p>
-
-              <p className="mt-2 text-[10px] leading-5 text-neutral-500">
-                Delivery-only plans show Owner, Manager, Packer and Delivery Boy. Restaurant plans show Restaurant staff portals. Combined plans show all permitted roles.
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={handleAppleLogin}
+              disabled={loading || Boolean(oauthLoading)}
+              className="flex min-h-12 items-center justify-center gap-3 rounded-xl bg-neutral-950 px-4 text-xs font-black text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span className="text-lg">●</span>
+              {oauthLoading === 'apple'
+                ? 'Opening Apple...'
+                : 'Continue with Apple'}
+            </button>
           </div>
-        ) : (
-          <div className="flex-1 py-4">
-            <section className="rounded-[26px] border border-white/[0.08] bg-neutral-900 p-4">
-              <div className="flex items-start gap-3">
-                {result?.restaurant
-                  ?.logo_url ? (
-                  <img
-                    src={
-                      result
-                        .restaurant
-                        .logo_url
-                    }
-                    alt={`${result?.restaurant?.name || 'Restaurant'} logo`}
-                    className="h-14 w-14 shrink-0 rounded-2xl border border-white/10 bg-white object-contain p-1"
-                  />
-                ) : (
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-lg font-black text-black">
-                    DD
-                  </div>
-                )}
 
-                <div className="min-w-0 flex-1">
-                  <h1 className="truncate text-lg font-black">
-                    {result
-                      ?.restaurant
-                      ?.name ||
-                      'Restaurant'}
-                  </h1>
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-neutral-200" />
+            <span className="text-[9px] font-black uppercase tracking-[0.18em] text-neutral-400">
+              or email
+            </span>
+            <div className="h-px flex-1 bg-neutral-200" />
+          </div>
 
-                  <p className="mt-1 font-mono text-[9px] font-bold text-neutral-500">
-                    Code{' '}
-                    {
-                      result
-                        ?.restaurant
-                        ?.restaurant_code
-                    }
-                  </p>
+          <form onSubmit={handlePasswordLogin} className="space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.16em] text-neutral-500">
+                Email address
+              </span>
+              <input
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value)
+                  setError('')
+                }}
+                placeholder="owner@example.com"
+                className="h-12 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white"
+              />
+            </label>
 
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider text-orange-300">
-                      {result?.plan
-                        ?.name ||
-                        result
-                          ?.restaurant
-                          ?.plan_code ||
-                        'Plan'}
-                    </span>
+            <label className="block">
+              <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.16em] text-neutral-500">
+                Password
+              </span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value)
+                  setError('')
+                }}
+                placeholder="Enter your password"
+                className="h-12 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white"
+              />
+            </label>
 
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${
-                        result
-                          ?.subscription
-                          ?.active
-                          ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
-                          : 'border-red-500/20 bg-red-500/10 text-red-300'
-                      }`}
-                    >
-                      {result
-                        ?.subscription
-                        ?.active
-                        ? 'Active'
-                        : 'Inactive'}
-                    </span>
-                  </div>
-                </div>
+            {error ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[11px] font-bold leading-5 text-red-700">
+                {error}
               </div>
+            ) : null}
 
-              {modules.length >
-                0 && (
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-white/[0.06] pt-3">
-                  {modules.map(
-                    (module) => (
-                      <span
-                        key={module}
-                        className="rounded-full border border-white/[0.08] bg-black/20 px-2.5 py-1 text-[8px] font-black text-neutral-400"
-                      >
-                        {module}
-                      </span>
-                    )
-                  )}
-                </div>
-              )}
-            </section>
+            <button
+              type="submit"
+              disabled={loading || Boolean(oauthLoading)}
+              className="min-h-12 w-full rounded-xl bg-orange-500 px-4 text-xs font-black text-neutral-950 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? 'Signing in...' : 'Login to Dashboard'}
+            </button>
+          </form>
 
-            {!result?.access_allowed ? (
-              <section className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
-                <p className="text-xs font-black text-red-200">
-                  Portal access unavailable
-                </p>
-
-                <p className="mt-2 text-[10px] leading-5 text-red-300/80">
-                  {result
-                    ?.subscription
-                    ?.reason ||
-                    'This subscription is not active.'}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={
-                    changeRestaurant
-                  }
-                  className="mt-4 w-full rounded-xl border border-red-400/20 px-4 py-3 text-[10px] font-black text-red-200"
-                >
-                  Use Another Restaurant Code
-                </button>
-              </section>
-            ) : (
-              <>
-                <div className="mt-5 flex items-end justify-between gap-3">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-neutral-600">
-                      Available Portals
-                    </p>
-
-                    <p className="mt-1 text-xs font-bold text-neutral-300">
-                      Choose your role
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={
-                      changeRestaurant
-                    }
-                    className="text-[9px] font-black text-orange-400"
-                  >
-                    Change Code
-                  </button>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  {(Array.isArray(
-                    result?.portals
-                  )
-                    ? result.portals
-                    : []
-                  ).map(
-                    (portal) => {
-                      const role =
-                        String(
-                          portal?.role ||
-                            ''
-                        ).toLowerCase()
-
-                      const meta =
-                        ROLE_META[
-                          role
-                        ] || {
-                          title:
-                            portal
-                              ?.title ||
-                            role ||
-                            'Portal',
-                          icon:
-                            portal?.icon ||
-                            '👤',
-                          description:
-                            'Open secure portal.',
-                          className:
-                            'border-white/10 bg-white/[0.03] text-white',
-                        }
-
-                      return (
-                        <button
-                          key={role}
-                          type="button"
-                          onClick={() =>
-                            openPortal(
-                              role
-                            )
-                          }
-                          className={`min-h-[142px] rounded-2xl border p-3 text-left transition active:scale-[0.98] ${meta.className}`}
-                        >
-                          <span className="text-2xl">
-                            {portal?.icon ||
-                              meta.icon}
-                          </span>
-
-                          <p className="mt-3 text-xs font-black text-white">
-                            {portal
-                              ?.title ||
-                              meta.title}
-                          </p>
-
-                          <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-neutral-500">
-                            {
-                              meta.description
-                            }
-                          </p>
-
-                          <p className="mt-3 text-[8px] font-black uppercase tracking-wider">
-                            Login →
-                          </p>
-                        </button>
-                      )
-                    }
-                  )}
-                </div>
-
-                {error && (
-                  <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-[10px] font-bold leading-5 text-red-300">
-                    {error}
-                  </div>
-                )}
-              </>
-            )}
+          <div className="mt-6 border-t border-neutral-100 pt-5 text-center">
+            <p className="text-[11px] text-neutral-500">
+              New to Digital Dine-In?{' '}
+              <Link href="/register" className="font-black text-orange-600">
+                Register your business
+              </Link>
+            </p>
           </div>
-        )}
+        </section>
 
-        <footer className="mt-auto border-t border-white/[0.06] py-3 text-center">
-          <p className="text-[8px] font-bold uppercase tracking-[0.18em] text-neutral-700">
-            Digital Dine-In · Secure Operations Access
+        <div className="mt-4 rounded-2xl border border-neutral-200 bg-white/70 p-4 text-center">
+          <p className="text-[10px] leading-5 text-neutral-500">
+            Looking for staff, packer or delivery access?
           </p>
-        </footer>
+          <Link
+            href="/app"
+            className="mt-1 inline-block text-[10px] font-black text-neutral-950 underline decoration-orange-400 underline-offset-4"
+          >
+            Open Restaurant APP
+          </Link>
+        </div>
       </div>
     </main>
   )

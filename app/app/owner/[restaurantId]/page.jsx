@@ -2775,13 +2775,24 @@ restaurantModuleEnabled,
 
       if (menuData) setMenuItems(menuData)
 
-      const { data: staffData } = await supabase
-        .from('staff_users')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false })
+      const { data: staffData, error: staffError } = await supabase.rpc(
+        'owner_list_restaurant_staff',
+        { p_restaurant_id: restaurantId }
+      )
 
-      if (staffData) setStaffList(staffData)
+      if (staffError) {
+        console.error('Staff loading error:', staffError)
+      } else {
+        const safeStaffList = Array.isArray(staffData)
+          ? staffData
+          : Array.isArray(staffData?.staff)
+            ? staffData.staff
+            : Array.isArray(staffData?.staff_list)
+              ? staffData.staff_list
+              : []
+
+        setStaffList(safeStaffList.filter((staff) => staff?.is_active !== false))
+      }
 
       const { data: orderData } = await supabase
         .from('orders')
@@ -3382,30 +3393,21 @@ restaurantModuleEnabled,
     setAddingStaff(true)
 
     try {
-      const newStaff = {
-        restaurant_id: restaurantId,
-        name: staffName.trim(),
-        user_id:
-          staffUserId
-            .trim()
-            .toLowerCase(),
-        password:
-          staffPassword.trim(),
-        role: roleToCreate,
-        pin:
-          staffPassword.trim(),
-        is_active: true
-      }
-
-      const {
-        data,
-        error
-      } = await supabase
-        .from('staff_users')
-        .insert([newStaff])
-        .select()
+      const { data, error } = await supabase.rpc(
+        'owner_create_restaurant_staff',
+        {
+          p_restaurant_id: restaurantId,
+          p_name: staffName.trim(),
+          p_user_id: staffUserId.trim().toLowerCase(),
+          p_password: staffPassword.trim(),
+          p_role: roleToCreate
+        }
+      )
 
       if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to create staff account.')
+      }
 
       appNotice(
         `${roleToCreate === 'waiter' ? 'Waiter' : roleToCreate === 'kitchen' ? 'Kitchen' : 'Delivery Manager'} account created successfully! 🎉`
@@ -3415,11 +3417,22 @@ restaurantModuleEnabled,
       setStaffUserId('')
       setStaffPassword('')
 
-      if (data) {
-        setStaffList((prev) => [
-          ...data,
-          ...prev
-        ])
+      const { data: refreshedStaff, error: refreshError } = await supabase.rpc(
+        'owner_list_restaurant_staff',
+        { p_restaurant_id: restaurantId }
+      )
+
+      if (refreshError) {
+        console.error('Staff refresh error:', refreshError)
+      } else {
+        const safeStaffList = Array.isArray(refreshedStaff)
+          ? refreshedStaff
+          : Array.isArray(refreshedStaff?.staff)
+            ? refreshedStaff.staff
+            : Array.isArray(refreshedStaff?.staff_list)
+              ? refreshedStaff.staff_list
+              : []
+        setStaffList(safeStaffList.filter((staff) => staff?.is_active !== false))
       }
     } catch (err) {
       appNotice(
@@ -3443,24 +3456,23 @@ restaurantModuleEnabled,
       return
     }
 
-    setStaffList((prev) =>
-      prev.filter(
-        (s) => s.id !== staffId
-      )
-    )
-
     try {
-      const { error } =
-        await supabase
-          .from('staff_users')
-          .delete()
-          .eq('id', staffId)
+      const { data, error } = await supabase.rpc(
+        'owner_revoke_restaurant_staff',
+        {
+          p_restaurant_id: restaurantId,
+          p_staff_id: staffId
+        }
+      )
 
       if (error) throw error
+      if (data?.success === false) {
+        throw new Error(data?.message || 'Unable to revoke staff account.')
+      }
 
-      appNotice(
-        'Staff account revoked.'
-      )
+      setStaffList((prev) => prev.filter((s) => s.id !== staffId))
+
+      appNotice(data?.message || 'Staff account revoked.')
     } catch (err) {
       appNotice(
         'Failed to delete staff: ' +
@@ -8077,11 +8089,11 @@ restaurantModuleEnabled,
                           </td>
 
                           <td className="p-3 font-mono text-neutral-300">
-                            {staff.user_id || staff.pin}
+                            {staff.user_id || '—'}
                           </td>
 
                           <td className="p-3 font-mono text-neutral-300">
-                            {staff.password || staff.pin || '••••••'}
+                            {'••••••••'}
                           </td>
 
                           <td className="p-3">

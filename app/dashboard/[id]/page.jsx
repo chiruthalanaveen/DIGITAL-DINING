@@ -1241,6 +1241,7 @@ export default function RestaurantDashboard() {
   const [staffPassword, setStaffPassword] = useState('')
   const [staffRole, setStaffRole] = useState('waiter')
   const [addingStaff, setAddingStaff] = useState(false)
+  const [resettingStaffId, setResettingStaffId] = useState(null)
 
   // Tax & Packing Charge Configuration States
   const [sgstRate, setSgstRate] = useState(2.5)
@@ -1535,11 +1536,27 @@ restaurantModuleEnabled,
         setProfileEmail(user.email || '')
       }
 
+      // Registration stores the Supabase Auth user ID directly in
+      // restaurants.id. Verify both the URL restaurant and logged-in owner
+      // against that same ID. Do not use owner_id here.
+      if (String(restaurantId) !== String(user.id)) {
+        console.error('Dashboard ownership verification failed:', {
+          restaurantId,
+          userId: user.id,
+          reason: 'Restaurant URL does not belong to the authenticated user',
+        })
+
+        if (!cancelled) {
+          router.replace('/login')
+        }
+
+        return
+      }
+
       const { data: ownedRestaurant, error: ownershipError } = await supabase
         .from('restaurants')
-        .select('id, owner_id')
-        .eq('id', restaurantId)
-        .eq('owner_id', user.id)
+        .select('id, name, subscription_status')
+        .eq('id', user.id)
         .maybeSingle()
 
      if (ownershipError || !ownedRestaurant) {
@@ -1723,13 +1740,30 @@ restaurantModuleEnabled,
 
       if (menuData) setMenuItems(menuData)
 
-      const { data: staffData } = await supabase
-        .from('staff_users')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false })
+     const { data: staffResult, error: staffError } =
+  await supabase.rpc('owner_list_restaurant_staff', {
+    p_restaurant_id: restaurantId
+  })
 
-      if (staffData) setStaffList(staffData)
+if (staffError) {
+  console.error(
+    'Secure staff list loading error:',
+    staffError
+  )
+} else if (staffResult?.success === false) {
+  console.error(
+    'Secure staff list rejected:',
+    staffResult?.message
+  )
+} else {
+  setStaffList(
+    Array.isArray(staffResult?.staff)
+      ? staffResult.staff.filter(
+          (staff) => staff?.is_active !== false
+        )
+      : []
+  )
+}
 
       const { data: orderData } = await supabase
         .from('orders')
@@ -2294,69 +2328,166 @@ restaurantModuleEnabled,
     setLoading(false)
   }
 
-  const handleCreateStaff = async (e) => {
-    e.preventDefault()
+ const handleCreateStaff = async (e) => {
+  e.preventDefault()
 
-    if (
-      !staffName.trim() ||
-      !staffUserId.trim() ||
-      !staffPassword.trim()
-    ) {
-      appNotice(
-        'Please fill out all staff credentials.'
+  const cleanName = staffName.trim()
+  const cleanUserId = staffUserId
+    .trim()
+    .toLowerCase()
+  const cleanPassword = staffPassword.trim()
+
+  if (
+    !cleanName ||
+    !cleanUserId ||
+    !cleanPassword
+  ) {
+    appNotice(
+      'Please fill out all staff credentials.'
+    )
+    return
+  }
+
+  if (cleanPassword.length < 4) {
+    appNotice(
+      'Password must contain at least 4 characters.'
+    )
+    return
+  }
+
+  setAddingStaff(true)
+
+  try {
+    const { data, error } = await supabase.rpc(
+      'owner_create_restaurant_staff',
+      {
+        p_restaurant_id: restaurantId,
+        p_name: cleanName,
+        p_user_id: cleanUserId,
+        p_password: cleanPassword,
+        p_role: staffRole
+      }
+    )
+
+    if (error) {
+      throw error
+    }
+
+    if (data?.success === false) {
+      throw new Error(
+        data?.message ||
+          'Unable to create staff account.'
       )
+    }
+
+    const createdStaff = data?.staff
+
+    if (!createdStaff?.id) {
+      throw new Error(
+        'Staff account was created but no staff record was returned.'
+      )
+    }
+
+    // Add only the SAFE staff object returned by the RPC.
+    // password, pin and password_hash never enter staffList.
+    setStaffList((prev) => [
+      createdStaff,
+      ...prev.filter(
+        (staff) => staff.id !== createdStaff.id
+      )
+    ])
+
+    // Password is available only from the value the owner
+    // just entered. It is not retrieved from the database.
+    appNotice(
+      `${
+        staffRole === 'waiter'
+          ? 'Waiter'
+          : staffRole === 'kitchen'
+            ? 'Kitchen'
+            : 'Restaurant Manager'
+      } account created successfully! 🎉\n\nUser ID: ${
+        createdStaff.user_id
+      }\nPassword: ${cleanPassword}\n\nSave this password now. It will not be shown again.`
+    )
+
+    setStaffName('')
+    setStaffUserId('')
+    setStaffPassword('')
+    setStaffRole('waiter')
+  } catch (err) {
+    console.error(
+      'Secure staff creation error:',
+      err
+    )
+
+    appNotice(
+      'Error creating staff account: ' +
+        (
+          err?.message ||
+          'Please try again.'
+        )
+    )
+  } finally {
+    setAddingStaff(false)
+  }
+}
+
+  const handleResetStaffPassword = async (staffId, name) => {
+    if (!staffId || resettingStaffId) return
+
+    const newPassword = await appPrompt(
+      `Enter a new password for "${name || 'this staff member'}".\n\nMinimum 4 characters. The password will only be shown during this reset.`,
+      ''
+    )
+
+    if (newPassword === null) return
+
+    const cleanPassword = String(newPassword).trim()
+
+    if (cleanPassword.length < 4) {
+      appNotice('Password must contain at least 4 characters.')
       return
     }
 
-    setAddingStaff(true)
+    const confirmed = await appConfirm(
+      `Reset the password for "${name || 'this staff member'}"?\n\nTheir existing staff sessions will be revoked and they must sign in again with the new password.`
+    )
+
+    if (!confirmed) return
+
+    setResettingStaffId(staffId)
 
     try {
-      const newStaff = {
-        restaurant_id: restaurantId,
-        name: staffName.trim(),
-        user_id:
-          staffUserId
-            .trim()
-            .toLowerCase(),
-        password:
-          staffPassword.trim(),
-        role: staffRole,
-        pin:
-          staffPassword.trim(),
-        is_active: true
-      }
-
-      const {
-        data,
-        error
-      } = await supabase
-        .from('staff_users')
-        .insert([newStaff])
-        .select()
+      const { data, error } = await supabase.rpc(
+        'owner_reset_staff_password',
+        {
+          p_restaurant_id: restaurantId,
+          p_staff_id: staffId,
+          p_new_password: cleanPassword
+        }
+      )
 
       if (error) throw error
 
-      appNotice(
-        `${staffRole === 'waiter' ? 'Waiter' : staffRole === 'kitchen' ? 'Kitchen' : 'Restaurant Manager'} account created successfully! 🎉`
-      )
-
-      setStaffName('')
-      setStaffUserId('')
-      setStaffPassword('')
-
-      if (data) {
-        setStaffList((prev) => [
-          ...data,
-          ...prev
-        ])
+      if (data?.success === false) {
+        throw new Error(
+          data?.message || 'Unable to reset staff password.'
+        )
       }
-    } catch (err) {
+
       appNotice(
-        'Error creating staff account: ' +
-          err.message
+        `${name || 'Staff'} password reset successfully.\n\nNew password: ${cleanPassword}\n\nSave this password now. It will not be shown again.`
+      )
+    } catch (error) {
+      console.error('Secure staff password reset error:', error)
+      appNotice(
+        `Error resetting staff password: ${
+          error?.message || 'Please try again.'
+        }`
       )
     } finally {
-      setAddingStaff(false)
+      setResettingStaffId(null)
     }
   }
 
@@ -2364,36 +2495,58 @@ restaurantModuleEnabled,
     staffId,
     name
   ) => {
-    if (
-      !await appConfirm(
-        `Are you sure you want to remove staff member "${name}"?`
-      )
-    ) {
+    if (!staffId) {
+      appNotice('Invalid staff account.')
       return
     }
 
-    setStaffList((prev) =>
-      prev.filter(
-        (s) => s.id !== staffId
-      )
+    const confirmed = await appConfirm(
+      `Revoke access for "${name || 'this staff member'}"?\n\nThey will no longer be able to log in and any active staff sessions will be revoked.`
     )
 
-    try {
-      const { error } =
-        await supabase
-          .from('staff_users')
-          .delete()
-          .eq('id', staffId)
+    if (!confirmed) return
 
-      if (error) throw error
+    try {
+      const { data, error } = await supabase.rpc(
+        'owner_revoke_restaurant_staff',
+        {
+          p_restaurant_id: restaurantId,
+          p_staff_id: staffId
+        }
+      )
+
+      if (error) {
+        throw error
+      }
+
+      if (data?.success === false) {
+        throw new Error(
+          data?.message ||
+            'Unable to revoke staff account.'
+        )
+      }
+
+      setStaffList((prev) =>
+        prev.filter(
+          (staff) => staff.id !== staffId
+        )
+      )
 
       appNotice(
-        'Staff account revoked.'
+        `${name || 'Staff'} access revoked successfully.`
       )
     } catch (err) {
+      console.error(
+        'Secure staff revoke error:',
+        err
+      )
+
       appNotice(
-        'Failed to delete staff: ' +
-          err.message
+        'Error revoking staff account: ' +
+          (
+            err?.message ||
+            'Please try again.'
+          )
       )
     }
   }
@@ -5572,12 +5725,13 @@ restaurantModuleEnabled,
 
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 block mb-1 uppercase">
-                  Password / PIN
+                  Password
                 </label>
 
                 <input
-                  type="text"
-                  placeholder="Secret123"
+                  type="password"
+                  placeholder="Enter secure password"
+                  autoComplete="new-password"
                   value={
                     staffPassword
                   }
@@ -5628,7 +5782,7 @@ restaurantModuleEnabled,
                       Login User ID
                     </th>
                     <th className="p-3 font-bold">
-                      Password / PIN
+                      Password
                     </th>
                     <th className="p-3 font-bold">
                       Role Portal
@@ -5664,11 +5818,11 @@ restaurantModuleEnabled,
                           </td>
 
                           <td className="p-3 font-mono text-neutral-300">
-                            {staff.user_id || staff.pin}
+                            {staff.user_id || '—'}
                           </td>
 
                           <td className="p-3 font-mono text-neutral-300">
-                            {staff.password || staff.pin || '••••••'}
+                            {'••••••••'}
                           </td>
 
                           <td className="p-3">
@@ -5705,6 +5859,22 @@ restaurantModuleEnabled,
                                 : staff.role === 'kitchen'
                                   ? 'Open Kitchen Portal ↗'
                                   : 'Open Manager Portal ↗'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleResetStaffPassword(
+                                  staff.id,
+                                  staff.name
+                                )
+                              }
+                              disabled={resettingStaffId === staff.id}
+                              className="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-200 hover:text-white border border-neutral-700 px-3 py-1 rounded-lg font-bold transition"
+                            >
+                              {resettingStaffId === staff.id
+                                ? 'Resetting...'
+                                : 'Reset Password 🔑'}
                             </button>
 
                             <button

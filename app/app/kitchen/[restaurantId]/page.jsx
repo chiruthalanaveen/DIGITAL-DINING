@@ -54,7 +54,6 @@ export default function KitchenPortal({ params }) {
 
   const restaurantCodeRef = useRef('')
   const userIdRef = useRef('')
-  const passwordRef = useRef('')
 
   /*
    * ---------------------------------------------------------
@@ -139,10 +138,6 @@ export default function KitchenPortal({ params }) {
   useEffect(() => {
     userIdRef.current = userId
   }, [userId])
-
-  useEffect(() => {
-    passwordRef.current = password
-  }, [password])
 
   /*
    * ---------------------------------------------------------
@@ -929,79 +924,21 @@ export default function KitchenPortal({ params }) {
         return null
       }
 
-      let data
-      let error
+      const token = String(
+        sessionTokenRef.current || ''
+      ).trim()
 
-      /*
-       * Secure /app session.
-       */
-
-      if (
-        sessionModeRef.current &&
-        sessionTokenRef.current
-      ) {
-        const response =
-          await supabase.rpc(
-            'get_kitchen_portal_data_session',
-            {
-              p_session_token:
-                sessionTokenRef.current,
-            }
-          )
-
-        data = response.data
-        error = response.error
-      } else {
-        /*
-         * Existing manual-login fallback.
-         */
-
-        const code =
-          restaurantCodeRef.current
-
-        const id =
-          userIdRef.current
-
-        const pass =
-          passwordRef.current
-
-        if (
-          !code ||
-          !id ||
-          !pass
-        ) {
-          return null
-        }
-
-        const response =
-          await supabase.rpc(
-            'get_kitchen_portal_data',
-            {
-              p_restaurant_id:
-                String(
-                  restaurantId
-                ),
-
-              p_restaurant_code:
-                String(
-                  code
-                ).trim(),
-
-              p_user_id:
-                String(id)
-                  .trim()
-                  .toLowerCase(),
-
-              p_password:
-                String(
-                  pass
-                ).trim(),
-            }
-          )
-
-        data = response.data
-        error = response.error
+      if (!token) {
+        return null
       }
+
+      const { data, error } =
+        await supabase.rpc(
+          'get_kitchen_portal_data_session',
+          {
+            p_session_token: token,
+          }
+        )
 
       if (error) {
         console.error(
@@ -1018,45 +955,33 @@ export default function KitchenPortal({ params }) {
           data?.message
         )
 
-        /*
-         * Session is no longer valid.
-         * Return to the existing manual login.
-         */
+        clearSavedSession()
 
-        if (
-          sessionModeRef.current
-        ) {
-          clearSavedSession()
+        sessionTokenRef.current = ''
+        sessionModeRef.current = false
 
-          sessionTokenRef.current =
-            ''
-
-          sessionModeRef.current =
-            false
-
-          setSessionToken('')
-          setSessionMode(false)
-
-          setIsAuthenticated(
-            false
-          )
-        }
+        setSessionToken('')
+        setSessionMode(false)
+        setIsAuthenticated(false)
 
         return null
       }
 
       if (
         data.restaurantId &&
-        String(
-          data.restaurantId
-        ) !==
-          String(
-            restaurantId
-          )
+        String(data.restaurantId) !==
+          String(restaurantId)
       ) {
         console.error(
           '[KITCHEN] Restaurant mismatch.'
         )
+
+        clearSavedSession()
+        sessionTokenRef.current = ''
+        sessionModeRef.current = false
+        setSessionToken('')
+        setSessionMode(false)
+        setIsAuthenticated(false)
 
         return null
       }
@@ -1065,9 +990,7 @@ export default function KitchenPortal({ params }) {
         data.restaurant || {}
       )
 
-      return Array.isArray(
-        data.orders
-      )
+      return Array.isArray(data.orders)
         ? data.orders
         : []
     }, [
@@ -1561,9 +1484,6 @@ export default function KitchenPortal({ params }) {
           userIdRef.current =
             restoredUserId
 
-          passwordRef.current =
-            ''
-
           setSessionToken(token)
 
           setSessionMode(true)
@@ -1738,9 +1658,6 @@ export default function KitchenPortal({ params }) {
           userIdRef.current =
             ''
 
-          passwordRef.current =
-            ''
-
           setSessionToken('')
           setSessionMode(false)
 
@@ -1804,9 +1721,7 @@ export default function KitchenPortal({ params }) {
 
       try {
         const cleanCode =
-          String(
-            restaurantCode
-          ).trim()
+          String(restaurantCode).trim()
 
         const cleanUserId =
           String(userId)
@@ -1814,34 +1729,29 @@ export default function KitchenPortal({ params }) {
             .toLowerCase()
 
         const cleanPassword =
-          String(
-            password
-          ).trim()
+          String(password).trim()
 
-        const {
-          data,
-          error,
-        } = await supabase.rpc(
-          'authenticate_staff_login',
-          {
-            p_restaurant_id:
-              String(
-                restaurantId
-              ),
+        /*
+         * Authenticate and create the secure server-side staff session
+         * in one RPC. The password is used only for this login request.
+         */
 
-            p_restaurant_code:
-              cleanCode,
-
-            p_user_id:
-              cleanUserId,
-
-            p_password:
-              cleanPassword,
-
-            p_role:
-              'kitchen',
-          }
-        )
+        const { data, error } =
+          await supabase.rpc(
+            'create_staff_app_session',
+            {
+              p_restaurant_id:
+                String(restaurantId),
+              p_restaurant_code:
+                cleanCode,
+              p_user_id:
+                cleanUserId,
+              p_password:
+                cleanPassword,
+              p_role:
+                'kitchen',
+            }
+          )
 
         if (error) {
           throw error
@@ -1855,110 +1765,126 @@ export default function KitchenPortal({ params }) {
         }
 
         if (
-          String(
-            data.restaurantId
-          ) !==
-          String(
-            restaurantId
-          )
+          data.restaurantId &&
+          String(data.restaurantId) !==
+            String(restaurantId)
         ) {
           throw new Error(
             'These credentials do not belong to this restaurant.'
           )
         }
 
+        const token = String(
+          data.sessionToken ||
+            data.session_token ||
+            data.token ||
+            ''
+        ).trim()
+
+        if (!token) {
+          throw new Error(
+            'Secure Kitchen session was not created.'
+          )
+        }
+
+        const finalCode = String(
+          data.restaurantCode ||
+            cleanCode
+        ).trim()
+
+        const finalUserId = String(
+          data.userId ||
+            cleanUserId
+        )
+          .trim()
+          .toLowerCase()
+
         /*
-         * Manual fallback remains password based.
+         * Switch to secure session mode before any Kitchen data call.
          */
 
-        sessionTokenRef.current =
-          ''
-
-        sessionModeRef.current =
-          false
-
-        setSessionToken('')
-        setSessionMode(false)
-
-        const finalCode =
-          String(
-            data.restaurantCode ||
-              cleanCode
-          ).trim()
-
+        sessionTokenRef.current = token
+        sessionModeRef.current = true
         restaurantCodeRef.current =
           finalCode
-
         userIdRef.current =
-          cleanUserId
+          finalUserId
 
-        passwordRef.current =
-          cleanPassword
-
-        setRestaurantCode(
-          finalCode
-        )
-
-        setUserId(
-          cleanUserId
-        )
+        setSessionToken(token)
+        setSessionMode(true)
+        setRestaurantCode(finalCode)
+        setUserId(finalUserId)
 
         /*
-         * Load initial Kitchen data using exact credentials
-         * before enabling polling/realtime.
+         * Never keep the staff password after successful login.
+         */
+
+        setPassword('')
+
+        if (
+          typeof window !== 'undefined'
+        ) {
+          localStorage.setItem(
+            SESSION_STORAGE_KEY,
+            JSON.stringify({
+              sessionToken: token,
+              role: 'kitchen',
+              restaurantId:
+                String(restaurantId),
+              restaurantCode:
+                finalCode,
+              userId:
+                finalUserId,
+            })
+          )
+        }
+
+        /*
+         * All Kitchen data now loads through the session-only RPC.
          */
 
         const portalResponse =
           await supabase.rpc(
-            'get_kitchen_portal_data',
+            'get_kitchen_portal_data_session',
             {
-              p_restaurant_id:
-                String(
-                  restaurantId
-                ),
-
-              p_restaurant_code:
-                finalCode,
-
-              p_user_id:
-                cleanUserId,
-
-              p_password:
-                cleanPassword,
+              p_session_token: token,
             }
           )
 
-        if (
-          portalResponse.error
-        ) {
+        if (portalResponse.error) {
           throw portalResponse.error
         }
 
         if (
-          !portalResponse.data
-            ?.success
+          !portalResponse.data?.success
         ) {
           throw new Error(
-            portalResponse.data
-              ?.message ||
+            portalResponse.data?.message ||
               'Unable to load kitchen.'
           )
         }
 
+        if (
+          portalResponse.data.restaurantId &&
+          String(
+            portalResponse.data.restaurantId
+          ) !== String(restaurantId)
+        ) {
+          throw new Error(
+            'This Kitchen session belongs to another restaurant.'
+          )
+        }
+
         applyRestaurantSettings(
-          portalResponse.data
-            .restaurant ||
+          portalResponse.data.restaurant ||
             {}
         )
 
-        const rows =
-          Array.isArray(
-            portalResponse.data
-              .orders
-          )
-            ? portalResponse.data
-                .orders
-            : []
+        const rows = Array.isArray(
+          portalResponse.data.orders
+        )
+          ? portalResponse.data.orders
+          : []
 
         const activeRows =
           rows.filter(
@@ -1970,20 +1896,13 @@ export default function KitchenPortal({ params }) {
 
         setOrders(activeRows)
 
-        /*
-         * Mark initial orders as known so login doesn't alarm
-         * for every existing order.
-         */
-
         knownOrderIdsRef.current =
           new Set(
             activeRows
-              .map(
-                (order) =>
-                  String(
-                    order?.id ||
-                      ''
-                  )
+              .map((order) =>
+                String(
+                  order?.id || ''
+                )
               )
               .filter(Boolean)
           )
@@ -1992,27 +1911,21 @@ export default function KitchenPortal({ params }) {
           new Date()
         )
 
-        const {
-          start,
-          end,
-        } = getTodayBounds()
+        const { start, end } =
+          getTodayBounds()
 
         const todayRows =
           rows
-            .filter(
-              (order) => {
-                const created =
-                  order?.created_at
+            .filter((order) => {
+              const created =
+                order?.created_at
 
-                return (
-                  created &&
-                  created >=
-                    start &&
-                  created <
-                    end
-                )
-              }
-            )
+              return (
+                created &&
+                created >= start &&
+                created < end
+              )
+            })
             .sort(
               (a, b) =>
                 new Date(
@@ -2023,26 +1936,27 @@ export default function KitchenPortal({ params }) {
                 ).getTime()
             )
 
-        setTodayOrders(
-          todayRows
-        )
-
+        setTodayOrders(todayRows)
         setLastTodayRefresh(
           new Date()
         )
-
-        setIsAuthenticated(
-          true
-        )
+        setIsAuthenticated(true)
       } catch (err) {
         console.error(
           '[KITCHEN] Login error:',
           err
         )
 
-        setIsAuthenticated(
-          false
-        )
+        clearSavedSession()
+        sessionTokenRef.current = ''
+        sessionModeRef.current = false
+        restaurantCodeRef.current = ''
+        userIdRef.current = ''
+
+        setSessionToken('')
+        setSessionMode(false)
+        setIsAuthenticated(false)
+        setPassword('')
 
         appNotice(
           err.message ||
@@ -2366,120 +2280,47 @@ export default function KitchenPortal({ params }) {
         return
       }
 
-      setUpdatingOrder(
-        orderId
-      )
+      setUpdatingOrder(orderId)
 
       try {
-        let data
-        let error
+        const token = String(
+          sessionTokenRef.current || ''
+        ).trim()
 
-        /*
-         * Secure /app session.
-         */
+        if (!token) {
+          clearSavedSession()
+          setIsAuthenticated(false)
 
-        if (
-          sessionModeRef.current &&
-          sessionTokenRef.current
-        ) {
-          const response =
-            await supabase.rpc(
-              'kitchen_update_order_status_session',
-              {
-                p_session_token:
-                  sessionTokenRef.current,
-
-                p_order_id:
-                  String(
-                    orderId
-                  ),
-
-                p_new_status:
-                  String(
-                    newStatus
-                  ),
-              }
-            )
-
-          data = response.data
-          error = response.error
-        } else {
-          /*
-           * Existing manual login.
-           */
-
-          const response =
-            await supabase.rpc(
-              'staff_update_order_status',
-              {
-                p_restaurant_id:
-                  String(
-                    restaurantId
-                  ),
-
-                p_restaurant_code:
-                  String(
-                    restaurantCodeRef.current
-                  ).trim(),
-
-                p_user_id:
-                  String(
-                    userIdRef.current
-                  )
-                    .trim()
-                    .toLowerCase(),
-
-                p_password:
-                  String(
-                    passwordRef.current
-                  ).trim(),
-
-                p_role:
-                  'kitchen',
-
-                p_order_id:
-                  String(
-                    orderId
-                  ),
-
-                p_new_status:
-                  String(
-                    newStatus
-                  ),
-              }
-            )
-
-          data = response.data
-          error = response.error
+          throw new Error(
+            'Kitchen session expired. Please login again.'
+          )
         }
+
+        const { data, error } =
+          await supabase.rpc(
+            'kitchen_update_order_status_session',
+            {
+              p_session_token: token,
+              p_order_id:
+                String(orderId),
+              p_new_status:
+                String(newStatus),
+            }
+          )
 
         if (error) {
           throw error
         }
 
         if (!data?.success) {
-          /*
-           * Expired app session.
-           */
+          clearSavedSession()
 
-          if (
-            sessionModeRef.current
-          ) {
-            clearSavedSession()
+          sessionTokenRef.current = ''
+          sessionModeRef.current = false
 
-            sessionTokenRef.current =
-              ''
-
-            sessionModeRef.current =
-              false
-
-            setSessionToken('')
-            setSessionMode(false)
-
-            setIsAuthenticated(
-              false
-            )
-          }
+          setSessionToken('')
+          setSessionMode(false)
+          setIsAuthenticated(false)
 
           throw new Error(
             data?.message ||
@@ -2490,27 +2331,18 @@ export default function KitchenPortal({ params }) {
         const updatedOrder =
           data.order
 
-        /*
-         * Preserve immediate KDS update.
-         */
-
         setOrders(
           (current) =>
             current
-              .map(
-                (order) =>
-                  String(
-                    order.id
-                  ) ===
-                  String(
-                    orderId
-                  )
-                    ? updatedOrder || {
-                        ...order,
-                        status:
-                          newStatus,
-                      }
-                    : order
+              .map((order) =>
+                String(order.id) ===
+                String(orderId)
+                  ? updatedOrder || {
+                      ...order,
+                      status:
+                        newStatus,
+                    }
+                  : order
               )
               .filter(
                 (order) =>
@@ -2520,13 +2352,7 @@ export default function KitchenPortal({ params }) {
               )
         )
 
-        /*
-         * Preserve today's history.
-         */
-
-        await fetchTodayOrders(
-          false
-        )
+        await fetchTodayOrders(false)
       } catch (error) {
         console.error(
           'Status update error:',
@@ -2540,9 +2366,7 @@ export default function KitchenPortal({ params }) {
           }`
         )
       } finally {
-        setUpdatingOrder(
-          null
-        )
+        setUpdatingOrder(null)
       }
     }
 
@@ -2792,8 +2616,6 @@ export default function KitchenPortal({ params }) {
       ''
 
     userIdRef.current = ''
-
-    passwordRef.current = ''
 
     setSessionToken('')
     setSessionMode(false)
