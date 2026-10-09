@@ -190,6 +190,8 @@ export default function DeliveryCustomerSupportChat({
 
   onReviewSubmitted,
 
+  hideLauncher = false,
+
 }) {
 
   const [open, setOpen] =
@@ -197,6 +199,17 @@ export default function DeliveryCustomerSupportChat({
     useState(false)
 
 
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const openHelpCentre = () => setOpen(true)
+    window.addEventListener('digitaldine:open-help-centre', openHelpCentre)
+
+    return () => {
+      window.removeEventListener('digitaldine:open-help-centre', openHelpCentre)
+    }
+  }, [])
 
   const [activeTab, setActiveTab] =
 
@@ -2019,6 +2032,7 @@ export default function DeliveryCustomerSupportChat({
 
     <>
 
+      {!hideLauncher && (
       <button
 
         type="button"
@@ -2044,6 +2058,7 @@ export default function DeliveryCustomerSupportChat({
         Help Centre
 
       </button>
+      )}
 
 
 

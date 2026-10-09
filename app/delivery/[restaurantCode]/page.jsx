@@ -194,6 +194,110 @@ export default function DeliveryStorePage({
   const [productReviews, setProductReviews] =
     useState({})
 
+  // Delivery customer app session.
+  // This keeps Home / Orders / Account available while the customer is inside a store.
+  const [customerUser, setCustomerUser] = useState(null)
+  const [customerProfile, setCustomerProfile] = useState(null)
+  const [customerAuthLoading, setCustomerAuthLoading] = useState(true)
+  const [accountOpen, setAccountOpen] = useState(false)
+
+
+  useEffect(() => {
+    let active = true
+
+    async function syncDeliveryCustomer(session) {
+      const user = session?.user || null
+      if (!active) return
+
+      setCustomerUser(user)
+
+      if (!user) {
+        setCustomerProfile(null)
+        setCustomerAuthLoading(false)
+        return
+      }
+
+      const { data, error: profileError } = await supabase
+        .from('delivery_customer_profiles')
+        .select('id, full_name, email, phone, avatar_url')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (!active) return
+
+      if (profileError) {
+        console.warn('Delivery customer profile load warning:', profileError)
+        setCustomerProfile(null)
+      } else {
+        setCustomerProfile(data || null)
+      }
+
+      setCustomerAuthLoading(false)
+    }
+
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!active) return
+
+      if (sessionError) {
+        console.warn('Delivery customer session warning:', sessionError)
+        setCustomerAuthLoading(false)
+        return
+      }
+
+      syncDeliveryCustomer(data?.session || null)
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncDeliveryCustomer(session)
+    })
+
+    return () => {
+      active = false
+      subscription?.unsubscribe()
+    }
+  }, [])
+
+  const openCustomerAccount = () => {
+    if (customerAuthLoading) return
+
+    if (!customerUser) {
+      const next = `/delivery/${encodeURIComponent(restaurantCode)}`
+      router.push(`/delivery/login?next=${encodeURIComponent(next)}`)
+      return
+    }
+
+    setAccountOpen(true)
+  }
+
+  const signOutDeliveryCustomer = async () => {
+    try {
+      setCustomerAuthLoading(true)
+      const { error: signOutError } = await supabase.auth.signOut()
+      if (signOutError) throw signOutError
+
+      setAccountOpen(false)
+      setCustomerUser(null)
+      setCustomerProfile(null)
+    } catch (signOutError) {
+      console.error('Delivery customer sign out error:', signOutError)
+      setMessage(signOutError?.message || 'Unable to sign out. Please try again.')
+    } finally {
+      setCustomerAuthLoading(false)
+    }
+  }
+
+  const openCustomerOrders = () => {
+    if (!customerUser) {
+      const next = `/delivery/${encodeURIComponent(restaurantCode)}`
+      router.push(`/delivery/login?next=${encodeURIComponent(next)}`)
+      return
+    }
+
+    // Keep the customer inside the store/app and reuse the existing order tracker.
+    openTracking()
+  }
 
   const settings =
     storeData?.settings || {}
@@ -684,6 +788,15 @@ export default function DeliveryStorePage({
     itemId,
     next
   ) => {
+    const requestedQuantity = Math.max(0, Math.floor(Number(next || 0)))
+
+    if (requestedQuantity > 0 && !customerUser) {
+      setMessage('Please login to add items to your cart.')
+      const nextPath = `/delivery/${encodeURIComponent(restaurantCode)}`
+      router.push(`/delivery/login?next=${encodeURIComponent(nextPath)}`)
+      return
+    }
+
     const item =
       menuItems.find(
         (row) =>
@@ -698,13 +811,7 @@ export default function DeliveryStorePage({
     const stock =
       deliveryStockInfo(item)
 
-    const requested =
-      Math.max(
-        0,
-        Math.floor(
-          Number(next || 0)
-        )
-      )
+    const requested = requestedQuantity
 
     const safe =
       Math.min(
@@ -1054,6 +1161,25 @@ export default function DeliveryStorePage({
 
     if (placing) return
 
+    if (!customerUser) {
+      setMessage('Please login before placing your Delivery order.')
+      const nextPath = `/delivery/${encodeURIComponent(restaurantCode)}`
+      router.push(`/delivery/login?next=${encodeURIComponent(nextPath)}`)
+      return
+    }
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
+
+    if (sessionError || !session?.access_token) {
+      setMessage('Your login session has expired. Please login again.')
+      const nextPath = `/delivery/${encodeURIComponent(restaurantCode)}`
+      router.push(`/delivery/login?next=${encodeURIComponent(nextPath)}`)
+      return
+    }
+
     const cleanName =
       checkout.customerName.trim()
     const cleanMobile =
@@ -1202,6 +1328,8 @@ export default function DeliveryStorePage({
           headers: {
             'Content-Type':
               'application/json',
+            Authorization:
+              `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
             restaurantCode,
@@ -1486,9 +1614,27 @@ export default function DeliveryStorePage({
   }
 
   return (
-    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] pb-[calc(8rem+env(safe-area-inset-bottom))] text-neutral-950">
+    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] pb-[calc(12rem+env(safe-area-inset-bottom))] text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-5xl px-3 pb-3 sm:px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <div className="mb-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => router.push('/delivery')}
+              className="flex items-center gap-2 rounded-xl px-1 py-1 text-xs font-black text-neutral-700 transition active:scale-[0.98]"
+              aria-label="Back to Delivery home"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-neutral-200 bg-white text-base shadow-sm">
+                ←
+              </span>
+              <span>DIGITAL DINE</span>
+            </button>
+
+            <span className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-600">
+              Delivery
+            </span>
+          </div>
+
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-2xl sm:h-12 sm:w-12 border border-neutral-200 bg-neutral-100 shadow-sm">
               {restaurant.logo_url ? (
@@ -2054,7 +2200,7 @@ export default function DeliveryStorePage({
       </div>
 
       {cartCount > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 px-2 sm:px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="fixed inset-x-0 bottom-[68px] z-40 px-2 sm:px-3">
           <div className="mx-auto flex max-w-2xl items-center gap-3 rounded-[22px] border border-neutral-800 bg-neutral-950 p-2.5 pl-4 text-white shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
             <div className="min-w-0 flex-1">
               <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
@@ -2080,11 +2226,62 @@ export default function DeliveryStorePage({
         </div>
       )}
 
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur-xl">
+        <div className="mx-auto grid max-w-md grid-cols-4 px-3 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2">
+          <button
+            type="button"
+            onClick={() => router.push('/delivery')}
+            className="flex flex-col items-center gap-1 py-1 text-neutral-500 transition active:scale-[0.98]"
+          >
+            <span className="text-xl" aria-hidden="true">🏠</span>
+            <span className="text-[10px] font-black">Home</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+              window.setTimeout(() => {
+                document.querySelector('input[placeholder="Search food, drinks or categories"]')?.focus()
+              }, 250)
+            }}
+            className="flex flex-col items-center gap-1 py-1 text-emerald-700 transition active:scale-[0.98]"
+          >
+            <span className="text-xl" aria-hidden="true">🔎</span>
+            <span className="text-[10px] font-black">Search</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={openTracking}
+            className="flex flex-col items-center gap-1 py-1 text-neutral-500 transition active:scale-[0.98]"
+          >
+            <span className="text-xl" aria-hidden="true">📦</span>
+            <span className="text-[10px] font-black">Orders</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('digitaldine:open-help-centre'))
+              }
+            }}
+            className="flex flex-col items-center gap-1 py-1 text-violet-600 transition active:scale-[0.98]"
+            aria-label="Open Help Centre"
+          >
+            <span className="text-xl" aria-hidden="true">❓</span>
+            <span className="text-[10px] font-black">Help</span>
+          </button>
+        </div>
+      </nav>
+
       <DeliveryCustomerSupportChat
         restaurantCode={restaurantCode}
         onReviewSubmitted={
           loadProductReviews
         }
+        hideLauncher
       />
 
 
@@ -2808,7 +3005,130 @@ export default function DeliveryStorePage({
           </div>
         </div>
       )}
-    </main>
+    
+      {/* Persistent Delivery customer app navigation */}
+      <nav className="fixed inset-x-0 bottom-0 z-[55] border-t border-neutral-200 bg-white/95 backdrop-blur-xl">
+        <div className="mx-auto grid max-w-md grid-cols-4 px-3 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2">
+          <button
+            type="button"
+            onClick={() => router.push('/delivery')}
+            className="flex flex-col items-center gap-1 py-1 text-neutral-400"
+          >
+            <span className="text-xl">🏠</span>
+            <span className="text-[10px] font-black">Home</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="flex flex-col items-center gap-1 py-1 text-emerald-700"
+          >
+            <span className="text-xl">🏪</span>
+            <span className="text-[10px] font-black">Store</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={openCustomerOrders}
+            className="flex flex-col items-center gap-1 py-1 text-neutral-400"
+          >
+            <span className="text-xl">📦</span>
+            <span className="text-[10px] font-black">Orders</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={openCustomerAccount}
+            className="flex flex-col items-center gap-1 py-1 text-neutral-400"
+          >
+            <span className="text-xl">{customerUser ? '👤' : '🔐'}</span>
+            <span className="text-[10px] font-black">
+              {customerUser ? 'Account' : 'Sign In'}
+            </span>
+          </button>
+        </div>
+      </nav>
+
+      {accountOpen && customerUser ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 backdrop-blur-[2px] sm:items-center sm:p-4">
+          <button
+            type="button"
+            aria-label="Close account"
+            onClick={() => setAccountOpen(false)}
+            className="absolute inset-0"
+          />
+
+          <section className="relative z-10 w-full max-w-md rounded-t-[30px] bg-white p-5 shadow-2xl sm:rounded-[30px]">
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200 sm:hidden" />
+
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-emerald-50 text-2xl">
+                {customerProfile?.avatar_url ? (
+                  <img
+                    src={customerProfile.avatar_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  '👤'
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-600">
+                  Delivery Account
+                </p>
+                <h2 className="mt-1 truncate text-xl font-black">
+                  {customerProfile?.full_name ||
+                    customerUser?.user_metadata?.full_name ||
+                    customerUser?.email?.split('@')?.[0] ||
+                    'Customer'}
+                </h2>
+                <p className="mt-1 truncate text-xs font-semibold text-neutral-500">
+                  {customerProfile?.email || customerUser?.email || ''}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAccountOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100 text-xs font-black text-neutral-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAccountOpen(false)
+                openTracking()
+              }}
+              className="mt-5 flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-left"
+            >
+              <span>
+                <span className="block text-sm font-black">My Orders</span>
+                <span className="mt-1 block text-[10px] font-semibold text-neutral-500">
+                  View and track your Delivery orders
+                </span>
+              </span>
+              <span className="text-lg">📦</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={signOutDeliveryCustomer}
+              disabled={customerAuthLoading}
+              className="mt-3 w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-3.5 text-sm font-black text-red-700 disabled:opacity-50"
+            >
+              {customerAuthLoading ? 'Signing Out...' : 'Sign Out'}
+            </button>
+          </section>
+        </div>
+      ) : null}
+
+</main>
   )
 }
 

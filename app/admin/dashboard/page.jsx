@@ -66,6 +66,96 @@ const BILLING_OPTIONS = [
   '12months',
 ]
 
+const DEFAULT_TENANT_FEATURES = {
+  restaurant_enabled: true,
+  qr_menu_enabled: true,
+  dine_in_enabled: true,
+  takeaway_enabled: true,
+  pay_at_counter_enabled: true,
+  restaurant_razorpay_enabled: true,
+  offers_enabled: true,
+  highly_reordered_enabled: true,
+  kds_enabled: true,
+  waiter_portal_enabled: true,
+  manager_portal_enabled: true,
+  staff_management_enabled: true,
+  gst_enabled: true,
+  digital_invoice_enabled: true,
+  restaurant_notifications_enabled: true,
+
+  delivery_enabled: true,
+  delivery_customer_ordering_enabled: true,
+  cod_enabled: true,
+  delivery_razorpay_enabled: true,
+  delivery_fee_enabled: true,
+  minimum_order_enabled: true,
+  handling_charge_enabled: true,
+  surge_pricing_enabled: true,
+  delivery_radius_enabled: true,
+  customer_live_location_enabled: true,
+  auto_driver_assignment_enabled: true,
+  manual_driver_assignment_enabled: true,
+  delivery_tracking_enabled: true,
+  driver_number_enabled: true,
+  manager_delivery_management_enabled: true,
+  owner_delivery_management_enabled: true,
+  barcode_scanning_enabled: true,
+  inventory_enabled: true,
+  packing_enabled: true,
+  cod_reconciliation_enabled: true,
+  live_support_enabled: true,
+  return_replacement_enabled: true,
+  return_pickup_enabled: true,
+  bill_generation_enabled: true,
+  delivery_notifications_enabled: true,
+}
+
+const RESTAURANT_FEATURE_OPTIONS = [
+  ['restaurant_enabled', 'Restaurant Access', 'Master switch for the complete restaurant module.', true],
+  ['qr_menu_enabled', 'QR Menu', 'Allow customers to open and use the restaurant QR menu.'],
+  ['dine_in_enabled', 'Dine-In', 'Allow dine-in ordering.'],
+  ['takeaway_enabled', 'Takeaway / Parcel', 'Allow takeaway and parcel ordering.'],
+  ['pay_at_counter_enabled', 'Pay at Counter', 'Allow Pay at Counter as a payment option.'],
+  ['restaurant_razorpay_enabled', 'Razorpay', 'Allow online Razorpay payments for restaurant orders.'],
+  ['offers_enabled', 'Offers of the Day', 'Allow restaurant offers and offer ordering.'],
+  ['highly_reordered_enabled', 'Highly Reordered', 'Allow the Highly Reordered menu section.'],
+  ['kds_enabled', 'KDS / Kitchen', 'Allow Kitchen Display System access.'],
+  ['waiter_portal_enabled', 'Waiter Portal', 'Allow waiter portal access.'],
+  ['manager_portal_enabled', 'Manager Portal', 'Allow restaurant manager portal access.'],
+  ['staff_management_enabled', 'Staff Management', 'Allow restaurant staff management.'],
+  ['gst_enabled', 'GST', 'Allow GST calculation and GST settings.'],
+  ['digital_invoice_enabled', 'Digital Invoice', 'Allow digital invoice generation.'],
+  ['restaurant_notifications_enabled', 'Order Notifications', 'Allow restaurant order notifications.'],
+]
+
+const DELIVERY_FEATURE_OPTIONS = [
+  ['delivery_enabled', 'Delivery Access', 'Master switch for the complete delivery module.', true],
+  ['delivery_customer_ordering_enabled', 'Customer Delivery Ordering', 'Allow customers to place delivery orders.'],
+  ['cod_enabled', 'Cash on Delivery', 'Allow COD for delivery orders.'],
+  ['delivery_razorpay_enabled', 'Razorpay', 'Allow Razorpay for delivery orders.'],
+  ['delivery_fee_enabled', 'Delivery Fee', 'Allow delivery fee calculation.'],
+  ['minimum_order_enabled', 'Minimum Order Rule', 'Allow minimum-order based delivery rules.'],
+  ['handling_charge_enabled', 'Handling Charge', 'Allow handling charges.'],
+  ['surge_pricing_enabled', 'Surge Pricing', 'Allow owner/manager surge pricing controls.'],
+  ['delivery_radius_enabled', 'Delivery Radius', 'Allow delivery-radius validation.'],
+  ['customer_live_location_enabled', 'Customer Live Location', 'Allow customer location capture for delivery.'],
+  ['auto_driver_assignment_enabled', 'Auto Delivery-Boy Assignment', 'Allow automatic delivery-boy assignment.'],
+  ['manual_driver_assignment_enabled', 'Manual Delivery-Boy Assignment', 'Allow manual delivery-boy assignment.'],
+  ['delivery_tracking_enabled', 'Delivery Tracking', 'Allow delivery order tracking.'],
+  ['driver_number_enabled', 'Show Delivery-Boy Number', 'Allow customers to see the assigned delivery-boy number.'],
+  ['manager_delivery_management_enabled', 'Manager Delivery Management', 'Allow manager delivery management tools.'],
+  ['owner_delivery_management_enabled', 'Owner Delivery Management', 'Allow owner delivery management tools.'],
+  ['barcode_scanning_enabled', 'Barcode Scanning', 'Allow barcode-based product scanning.'],
+  ['inventory_enabled', 'Inventory / Opening Stock', 'Allow inventory and opening-stock management.'],
+  ['packing_enabled', 'Packing', 'Allow packing workflow and packer features.'],
+  ['cod_reconciliation_enabled', 'COD Reconciliation', 'Allow COD reconciliation tools.'],
+  ['live_support_enabled', 'Live Support Chat', 'Allow customer-to-manager live support.'],
+  ['return_replacement_enabled', 'Return / Replacement Management', 'Allow return and replacement handling.'],
+  ['return_pickup_enabled', 'Return Pickup', 'Allow return-pickup assignment and workflow.'],
+  ['bill_generation_enabled', 'Bill Generation', 'Allow owner/manager bill generation.'],
+  ['delivery_notifications_enabled', 'Delivery Notifications', 'Allow delivery notifications.'],
+]
+
 function money(value) {
   return `₹${Number(
     value || 0
@@ -239,7 +329,6 @@ function StatusPill({
     </span>
   )
 }
-
 
 function CustomPlanRequestCard({
   request,
@@ -776,7 +865,8 @@ export default function AdminControlCenter() {
 
   const action =
     async (
-      payload
+      payload,
+      refreshAfter = true
     ) => {
       if (actionLoading) {
         return null
@@ -832,9 +922,11 @@ export default function AdminControlCenter() {
           )
         }
 
-        await loadData(
-          true
-        )
+        if (refreshAfter) {
+          await loadData(
+            true
+          )
+        }
 
         return result
       } catch (actionError) {
@@ -1312,6 +1404,10 @@ export default function AdminControlCenter() {
           shortDate(
             tenant.subscription_expires_at
           ),
+        features: {
+          ...DEFAULT_TENANT_FEATURES,
+          ...(tenant.features || {}),
+        },
       })
     }
 
@@ -1321,29 +1417,56 @@ export default function AdminControlCenter() {
         return
       }
 
-      const result =
-        await action({
-          action:
-            'update_tenant_access',
-          restaurantId:
-            tenantEditor.id,
-          planCode:
-            tenantEditor.planCode,
-          subscriptionStatus:
-            tenantEditor.subscriptionStatus,
-          billingCycle:
-            tenantEditor.billingCycle,
-          subscriptionExpiresAt:
-            tenantEditor.subscriptionExpiresAt
-              ? `${tenantEditor.subscriptionExpiresAt}T23:59:59+05:30`
-              : null,
-        })
-
-      if (result) {
-        setTenantEditor(
-          null
+      const accessResult =
+        await action(
+          {
+            action:
+              'update_tenant_access',
+            restaurantId:
+              tenantEditor.id,
+            planCode:
+              tenantEditor.planCode,
+            subscriptionStatus:
+              tenantEditor.subscriptionStatus,
+            billingCycle:
+              tenantEditor.billingCycle,
+            subscriptionExpiresAt:
+              tenantEditor.subscriptionExpiresAt
+                ? `${tenantEditor.subscriptionExpiresAt}T23:59:59+05:30`
+                : null,
+          },
+          false
         )
+
+      if (!accessResult) {
+        return
       }
+
+      const featureResult =
+        await action(
+          {
+            action:
+              'update_tenant_features',
+            restaurantId:
+              tenantEditor.id,
+            features: {
+              ...DEFAULT_TENANT_FEATURES,
+              ...(tenantEditor.features || {}),
+            },
+          },
+          false
+        )
+
+      if (!featureResult) {
+        await loadData(true)
+        return
+      }
+
+      await loadData(true)
+
+      setTenantEditor(
+        null
+      )
     }
 
   const recentOrders =
@@ -3705,6 +3828,172 @@ export default function AdminControlCenter() {
                 Changing the plan updates Restaurant / Delivery / Resort module flags together. Setting status to suspended, expired or inactive removes access from the current plan-aware application resolver.
               </div>
 
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-white">
+                      Restaurant Features
+                    </p>
+                    <p className="mt-1 text-[9px] leading-4 text-neutral-500">
+                      Admin entitlement controls. Turning the master switch off blocks the module without deleting the saved child preferences.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {RESTAURANT_FEATURE_OPTIONS.map(
+                    ([
+                      key,
+                      featureLabel,
+                      description,
+                      master,
+                    ]) => {
+                      const enabled =
+                        tenantEditor.features?.[key] !== false
+
+                      const masterEnabled =
+                        tenantEditor.features?.restaurant_enabled !== false
+
+                      const visuallyDisabled =
+                        !master &&
+                        !masterEnabled
+
+                      return (
+                        <div
+                          key={key}
+                          className={`flex items-center justify-between gap-4 rounded-xl border px-3 py-3 ${
+                            master
+                              ? 'border-red-500/25 bg-red-500/5'
+                              : 'border-neutral-800 bg-neutral-950/60'
+                          } ${visuallyDisabled ? 'opacity-50' : ''}`}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black text-white">
+                              {featureLabel}
+                            </p>
+                            <p className="mt-1 text-[9px] leading-4 text-neutral-500">
+                              {description}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            aria-pressed={enabled}
+                            onClick={() =>
+                              setTenantEditor(
+                                (current) => ({
+                                  ...current,
+                                  features: {
+                                    ...DEFAULT_TENANT_FEATURES,
+                                    ...(current?.features || {}),
+                                    [key]: !enabled,
+                                  },
+                                })
+                              )
+                            }
+                            className={`relative h-7 w-12 shrink-0 rounded-full border transition ${
+                              enabled
+                                ? 'border-emerald-500/40 bg-emerald-500/25'
+                                : 'border-neutral-700 bg-neutral-800'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                                enabled
+                                  ? 'left-6'
+                                  : 'left-1'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      )
+                    }
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-white">
+                    Delivery Features
+                  </p>
+                  <p className="mt-1 text-[9px] leading-4 text-neutral-500">
+                    These switches control which delivery capabilities this tenant is entitled to use.
+                  </p>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {DELIVERY_FEATURE_OPTIONS.map(
+                    ([
+                      key,
+                      featureLabel,
+                      description,
+                      master,
+                    ]) => {
+                      const enabled =
+                        tenantEditor.features?.[key] !== false
+
+                      const masterEnabled =
+                        tenantEditor.features?.delivery_enabled !== false
+
+                      const visuallyDisabled =
+                        !master &&
+                        !masterEnabled
+
+                      return (
+                        <div
+                          key={key}
+                          className={`flex items-center justify-between gap-4 rounded-xl border px-3 py-3 ${
+                            master
+                              ? 'border-red-500/25 bg-red-500/5'
+                              : 'border-neutral-800 bg-neutral-950/60'
+                          } ${visuallyDisabled ? 'opacity-50' : ''}`}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black text-white">
+                              {featureLabel}
+                            </p>
+                            <p className="mt-1 text-[9px] leading-4 text-neutral-500">
+                              {description}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            aria-pressed={enabled}
+                            onClick={() =>
+                              setTenantEditor(
+                                (current) => ({
+                                  ...current,
+                                  features: {
+                                    ...DEFAULT_TENANT_FEATURES,
+                                    ...(current?.features || {}),
+                                    [key]: !enabled,
+                                  },
+                                })
+                              )
+                            }
+                            className={`relative h-7 w-12 shrink-0 rounded-full border transition ${
+                              enabled
+                                ? 'border-emerald-500/40 bg-emerald-500/25'
+                                : 'border-neutral-700 bg-neutral-800'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                                enabled
+                                  ? 'left-6'
+                                  : 'left-1'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      )
+                    }
+                  )}
+                </div>
+              </div>
+
               <button
                 type="button"
                 disabled={
@@ -3717,7 +4006,7 @@ export default function AdminControlCenter() {
               >
                 {actionLoading
                   ? 'Saving...'
-                  : 'Save Access & Subscription'}
+                  : 'Save Access, Subscription & Features'}
               </button>
             </div>
           </div>

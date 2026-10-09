@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase'
 import { appNotice } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
-
 // Restaurant logo used throughout the QR menu.
 function RestaurantLogo({ restaurant, className = '', imageClassName = 'w-full h-full object-contain' }) {
   const [imageError, setImageError] = useState(false)
@@ -35,7 +34,6 @@ function RestaurantLogo({ restaurant, className = '', imageClassName = 'w-full h
     </div>
   )
 }
-
 
 // Shared browser cache for menu images.
 // Images begin preloading before guest verification finishes.
@@ -167,6 +165,26 @@ export default function CustomerMenuPage() {
 
   const [loading, setLoading] = useState(true)
 
+  // Super Admin entitlement gate.
+  // null = still checking, true = allowed, false = blocked.
+  const [qrAccessAllowed, setQrAccessAllowed] = useState(null)
+  const [qrAccessMessage, setQrAccessMessage] = useState('')
+
+  // Individual Super Admin feature entitlements.
+  // Defaults remain enabled so an entitlement API outage does not break
+  // existing restaurant functionality.
+  const [tenantFeatures, setTenantFeatures] = useState({
+    dine_in_enabled: true,
+    takeaway_enabled: true,
+    pay_at_counter_enabled: true,
+    restaurant_razorpay_enabled: true,
+    offers_enabled: true,
+    highly_reordered_enabled: true,
+    gst_enabled: true,
+    digital_invoice_enabled: true,
+    restaurant_notifications_enabled: true
+  })
+
   // 3D Visual Entry Experience (active immediately after scanning QR)
   const [showPortal, setShowPortal] = useState(true)
   const [portalExiting, setPortalExiting] = useState(false)
@@ -289,22 +307,178 @@ export default function CustomerMenuPage() {
   }
 
   /*
-   * PAY AT COUNTER SETTING
+   * RESTAURANT SETTINGS + SUPER ADMIN FEATURE ENTITLEMENTS
+   *
+   * Super Admin grants permission. Restaurant settings still control the
+   * restaurant's own operational choice. Both must allow a feature.
    */
-  const counterPaymentEnabled =
+  const restaurantCounterPaymentEnabled =
     restaurant?.enable_counter_payment === true ||
     restaurant?.enable_counter_payment === 'true' ||
     restaurant?.enable_counter_payment === 1 ||
     restaurant?.enable_counter_payment === '1'
 
+  const dineInEnabled = tenantFeatures.dine_in_enabled !== false
+  const takeawayEnabled = tenantFeatures.takeaway_enabled !== false
+
+  const counterPaymentEnabled =
+    tenantFeatures.pay_at_counter_enabled !== false &&
+    restaurantCounterPaymentEnabled
+
+  const razorpayEnabled =
+    tenantFeatures.restaurant_razorpay_enabled !== false
+
+  const offersEnabled =
+    tenantFeatures.offers_enabled !== false
+
+  const highlyReorderedEnabled =
+    tenantFeatures.highly_reordered_enabled !== false
+
+  const gstEnabled =
+    tenantFeatures.gst_enabled !== false
+
+  const digitalInvoiceEnabled =
+    tenantFeatures.digital_invoice_enabled !== false
+
+  const restaurantNotificationsEnabled =
+    tenantFeatures.restaurant_notifications_enabled !== false
+
   useEffect(() => {
-    if (
-      !counterPaymentEnabled &&
-      paymentMethod === 'counter'
-    ) {
-      setPaymentMethod('online')
+    if (orderType === 'dine-in' && !dineInEnabled && takeawayEnabled) {
+      setOrderType('parcel')
+      return
     }
-  }, [counterPaymentEnabled, paymentMethod])
+
+    if (orderType === 'parcel' && !takeawayEnabled && dineInEnabled) {
+      setOrderType('dine-in')
+    }
+  }, [dineInEnabled, takeawayEnabled, orderType])
+
+  useEffect(() => {
+    if (paymentMethod === 'counter' && !counterPaymentEnabled) {
+      setPaymentMethod('online')
+      return
+    }
+
+    if (paymentMethod === 'online' && !razorpayEnabled && counterPaymentEnabled) {
+      setPaymentMethod('counter')
+    }
+  }, [
+    counterPaymentEnabled,
+    razorpayEnabled,
+    paymentMethod
+  ])
+
+  /*
+   * SUPER ADMIN RESTAURANT / QR MENU ACCESS
+   *
+   * This is intentionally checked through our Next.js server API instead of
+   * reading tenant_feature_controls directly from the anonymous browser.
+   */
+  const fetchQrAccess = async () => {
+    if (!restaurantId) {
+      setQrAccessAllowed(false)
+      setQrAccessMessage('Restaurant ID is missing. Please scan a valid QR code.')
+      return false
+    }
+
+    try {
+      const response = await fetch(
+        `/api/public/tenant-features?restaurantId=${encodeURIComponent(
+          restaurantId
+        )}`,
+        {
+          method: 'GET',
+          cache: 'no-store'
+        }
+      )
+
+      const payload = await response.json().catch(() => null)
+
+      console.log('[QR MENU] Feature control response:', {
+        restaurantId,
+        status: response.status,
+        payload
+      })
+
+      // Preserve existing restaurant functionality if the new entitlement
+      // endpoint itself has a temporary technical problem.
+      if (!response.ok || !payload?.success) {
+        console.error(
+          '[QR MENU] Unable to verify feature controls:',
+          payload
+        )
+        setQrAccessAllowed(true)
+        setQrAccessMessage('')
+        return true
+      }
+
+      const restaurantEnabled =
+        payload.restaurant_enabled !== false
+      const qrMenuEnabled =
+        payload.qr_menu_enabled !== false
+
+      const allowed =
+        restaurantEnabled && qrMenuEnabled
+
+      setTenantFeatures({
+        dine_in_enabled:
+          payload.dine_in_enabled !== false,
+        takeaway_enabled:
+          payload.takeaway_enabled !== false,
+        pay_at_counter_enabled:
+          payload.pay_at_counter_enabled !== false,
+        restaurant_razorpay_enabled:
+          payload.restaurant_razorpay_enabled !== false,
+        offers_enabled:
+          payload.offers_enabled !== false,
+        highly_reordered_enabled:
+          payload.highly_reordered_enabled !== false,
+        gst_enabled:
+          payload.gst_enabled !== false,
+        digital_invoice_enabled:
+          payload.digital_invoice_enabled !== false,
+        restaurant_notifications_enabled:
+          payload.restaurant_notifications_enabled !== false
+      })
+
+      console.log('[QR MENU] Feature access:', {
+        restaurantEnabled,
+        qrMenuEnabled,
+        dineInEnabled: payload.dine_in_enabled !== false,
+        takeawayEnabled: payload.takeaway_enabled !== false,
+        payAtCounterEnabled: payload.pay_at_counter_enabled !== false,
+        razorpayEnabled: payload.restaurant_razorpay_enabled !== false,
+        offersEnabled: payload.offers_enabled !== false,
+        highlyReorderedEnabled: payload.highly_reordered_enabled !== false,
+        gstEnabled: payload.gst_enabled !== false,
+        digitalInvoiceEnabled: payload.digital_invoice_enabled !== false,
+        restaurantNotificationsEnabled:
+          payload.restaurant_notifications_enabled !== false,
+        allowed
+      })
+
+      setQrAccessAllowed(allowed)
+
+      if (!allowed) {
+        setQrAccessMessage(
+          payload?.message ||
+            'Online ordering is temporarily unavailable for this restaurant.'
+        )
+      } else {
+        setQrAccessMessage('')
+      }
+
+      return allowed
+    } catch (error) {
+      console.error('[QR MENU] Feature access API error:', error)
+
+      // Fail open only for failures in the new entitlement check.
+      setQrAccessAllowed(true)
+      setQrAccessMessage('')
+      return true
+    }
+  }
 
   /*
    * FETCH RESTAURANT + MENU
@@ -315,6 +489,16 @@ export default function CustomerMenuPage() {
    */
   const fetchMenu = async () => {
     if (!restaurantId) {
+      setRestaurant(null)
+      setMenuItems([])
+      setDailyOffers([])
+      setLoading(false)
+      return
+    }
+
+    const accessAllowed = await fetchQrAccess()
+
+    if (!accessAllowed) {
       setRestaurant(null)
       setMenuItems([])
       setDailyOffers([])
@@ -708,8 +892,12 @@ export default function CustomerMenuPage() {
     0
   )
 
-  const sgstRate = Number(restaurant?.sgst_rate ?? 2.5)
-  const cgstRate = Number(restaurant?.cgst_rate ?? 2.5)
+  const sgstRate = gstEnabled
+    ? Number(restaurant?.sgst_rate ?? 2.5)
+    : 0
+  const cgstRate = gstEnabled
+    ? Number(restaurant?.cgst_rate ?? 2.5)
+    : 0
   const totalTaxPercent = sgstRate + cgstRate
 
   const gstAmount = Math.round((subtotalAmount * totalTaxPercent) / 100)
@@ -753,7 +941,6 @@ export default function CustomerMenuPage() {
       .sort((a, b) => Number(b.order_count || 0) - Number(a.order_count || 0))
       .slice(0, 8)
   }, [menuItems])
-
 
   /*
    * PRELOAD MENU IMAGES BEFORE GUEST LOGIN COMPLETES
@@ -840,7 +1027,6 @@ export default function CustomerMenuPage() {
     bestSellers,
     menuItems
   ])
-
 
   /*
    * CUSTOMER IMAGE-LOADING GATE
@@ -974,6 +1160,7 @@ export default function CustomerMenuPage() {
   const automaticHighlyReorderedIds = getAutomaticHighlyReorderedIds(menuItems)
 
   const shouldShowHighlyReordered = item => {
+    if (!highlyReorderedEnabled) return false
     const mode = item?.reorder_mode || 'auto'
     if (mode === 'on') return true
     if (mode === 'off') return false
@@ -1013,6 +1200,14 @@ export default function CustomerMenuPage() {
       throw new Error('Restaurant ID is missing. Please reopen the QR menu.')
     }
 
+    const accessAllowed = await fetchQrAccess()
+
+    if (!accessAllowed) {
+      throw new Error(
+        'Online ordering is currently disabled for this restaurant.'
+      )
+    }
+
     const cleanName = String(customerFullName || '').trim()
     const cleanMobile = String(customerPhone || '').trim()
 
@@ -1040,7 +1235,8 @@ export default function CustomerMenuPage() {
         p_tax_amount: Number(taxAmount || 0),
         p_packing_fee: Number(packingFeeAmount || 0),
         p_payment_mode: String(paymentMode || 'Pay at Counter'),
-        p_status: String(status || 'pending')
+        p_status: String(status || 'pending'),
+        p_order_type: orderType
       }
     )
 
@@ -1104,14 +1300,21 @@ export default function CustomerMenuPage() {
   }
 
   const handlePayAtCounter = async () => {
-    if (!cartItemsArray.length) {
-      appNotice('Please add at least one item to your cart.')
+    if (!counterPaymentEnabled) {
+      appNotice('Pay at Counter is currently unavailable.')
       return
     }
 
-    if (!counterPaymentEnabled) {
-      appNotice('Pay at Counter is currently disabled by this restaurant.')
-      setPaymentMethod('online')
+    if (
+      (orderType === 'dine-in' && !dineInEnabled) ||
+      (orderType === 'parcel' && !takeawayEnabled)
+    ) {
+      appNotice('The selected order type is currently unavailable.')
+      return
+    }
+
+    if (!cartItemsArray.length) {
+      appNotice('Please add at least one item to your cart.')
       return
     }
 
@@ -1174,6 +1377,19 @@ export default function CustomerMenuPage() {
   }
 
   const handleRazorpayCheckout = async () => {
+    if (!razorpayEnabled) {
+      appNotice('Online payment is currently unavailable.')
+      return
+    }
+
+    if (
+      (orderType === 'dine-in' && !dineInEnabled) ||
+      (orderType === 'parcel' && !takeawayEnabled)
+    ) {
+      appNotice('The selected order type is currently unavailable.')
+      return
+    }
+
     if (!cartItemsArray.length) {
       appNotice('Please add at least one item to your cart.')
       return
@@ -1337,6 +1553,42 @@ export default function CustomerMenuPage() {
           <p className="mt-5 text-xs font-black uppercase tracking-[0.22em] text-neutral-500">
             Loading menu
           </p>
+        </div>
+      </main>
+    )
+  }
+
+  if (qrAccessAllowed === false) {
+    return (
+      <main className="flex min-h-[100dvh] w-full items-center justify-center bg-[#f7f6f2] p-6 text-center text-neutral-900">
+        <div className="w-full max-w-sm rounded-[32px] border border-orange-100 bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,.08)]">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-orange-50 text-4xl">
+            🍽️
+          </div>
+
+          <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-orange-500">
+            Digital Dining
+          </p>
+
+          <h1 className="mt-2 text-2xl font-black">
+            Menu currently unavailable
+          </h1>
+
+          <p className="mt-3 text-sm leading-6 text-neutral-500">
+            {qrAccessMessage ||
+              'Online ordering is temporarily unavailable for this restaurant.'}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true)
+              fetchMenu()
+            }}
+            className="mt-6 h-12 w-full rounded-2xl bg-neutral-950 text-sm font-black text-white transition active:scale-[0.99]"
+          >
+            Try Again
+          </button>
         </div>
       </main>
     )
@@ -1534,7 +1786,6 @@ export default function CustomerMenuPage() {
       </>
     )
   }
-
 
   /*
    * IMAGE LOADING EXPERIENCE
@@ -2112,34 +2363,51 @@ export default function CustomerMenuPage() {
 
           {/* ORDER MODE */}
           <section className="px-3 min-[390px]:px-4 pt-4">
-            <div className="grid grid-cols-2 gap-1 rounded-2xl border border-black/5 bg-white p-1.5 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setOrderType('dine-in')}
-                className={`rounded-xl py-3 text-xs font-black transition ${
-                  orderType === 'dine-in'
-                    ? 'bg-neutral-950 text-white shadow'
-                    : 'text-neutral-500'
-                }`}
-              >
-                🍽 Dine-In
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderType('parcel')}
-                className={`rounded-xl py-3 text-xs font-black transition ${
-                  orderType === 'parcel'
-                    ? 'bg-orange-500 text-white shadow'
-                    : 'text-neutral-500'
-                }`}
-              >
-                🥡 Takeaway
-              </button>
+            <div
+              className={`grid gap-1 rounded-2xl border border-black/5 bg-white p-1.5 shadow-sm ${
+                dineInEnabled && takeawayEnabled
+                  ? 'grid-cols-2'
+                  : 'grid-cols-1'
+              }`}
+            >
+              {dineInEnabled && (
+                <button
+                  type="button"
+                  onClick={() => setOrderType('dine-in')}
+                  className={`rounded-xl py-3 text-xs font-black transition ${
+                    orderType === 'dine-in'
+                      ? 'bg-neutral-950 text-white shadow'
+                      : 'text-neutral-500'
+                  }`}
+                >
+                  🍽 Dine-In
+                </button>
+              )}
+
+              {takeawayEnabled && (
+                <button
+                  type="button"
+                  onClick={() => setOrderType('parcel')}
+                  className={`rounded-xl py-3 text-xs font-black transition ${
+                    orderType === 'parcel'
+                      ? 'bg-orange-500 text-white shadow'
+                      : 'text-neutral-500'
+                  }`}
+                >
+                  🥡 Takeaway
+                </button>
+              )}
+
+              {!dineInEnabled && !takeawayEnabled && (
+                <div className="rounded-xl bg-amber-50 px-3 py-3 text-center text-xs font-bold text-amber-800">
+                  Ordering is currently unavailable.
+                </div>
+              )}
             </div>
           </section>
 
           {/* OFFERS */}
-          {dailyOffers.length > 0 && (
+          {offersEnabled && dailyOffers.length > 0 && (
             <section className="mt-6">
               <div className="flex items-end justify-between px-3 min-[390px]:px-4">
                 <div>
@@ -2604,29 +2872,46 @@ export default function CustomerMenuPage() {
                         <p className="mb-2 text-[9px] font-black uppercase tracking-wider text-neutral-400">
                           Order type
                         </p>
-                        <div className="grid grid-cols-2 gap-2 rounded-2xl bg-neutral-100 p-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setOrderType('dine-in')}
-                            className={`rounded-xl py-3 text-xs font-black ${
-                              orderType === 'dine-in'
-                                ? 'bg-white text-neutral-950 shadow-sm'
-                                : 'text-neutral-500'
-                            }`}
-                          >
-                            🍽 Dine-In
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setOrderType('parcel')}
-                            className={`rounded-xl py-3 text-xs font-black ${
-                              orderType === 'parcel'
-                                ? 'bg-white text-orange-600 shadow-sm'
-                                : 'text-neutral-500'
-                            }`}
-                          >
-                            🥡 Takeaway
-                          </button>
+                        <div
+                          className={`grid gap-2 rounded-2xl bg-neutral-100 p-1.5 ${
+                            dineInEnabled && takeawayEnabled
+                              ? 'grid-cols-2'
+                              : 'grid-cols-1'
+                          }`}
+                        >
+                          {dineInEnabled && (
+                            <button
+                              type="button"
+                              onClick={() => setOrderType('dine-in')}
+                              className={`rounded-xl py-3 text-xs font-black ${
+                                orderType === 'dine-in'
+                                  ? 'bg-white text-neutral-950 shadow-sm'
+                                  : 'text-neutral-500'
+                              }`}
+                            >
+                              🍽 Dine-In
+                            </button>
+                          )}
+
+                          {takeawayEnabled && (
+                            <button
+                              type="button"
+                              onClick={() => setOrderType('parcel')}
+                              className={`rounded-xl py-3 text-xs font-black ${
+                                orderType === 'parcel'
+                                  ? 'bg-white text-orange-600 shadow-sm'
+                                  : 'text-neutral-500'
+                              }`}
+                            >
+                              🥡 Takeaway
+                            </button>
+                          )}
+
+                          {!dineInEnabled && !takeawayEnabled && (
+                            <div className="rounded-xl bg-amber-50 px-3 py-3 text-center text-xs font-bold text-amber-800">
+                              Ordering is currently unavailable.
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -2639,12 +2924,14 @@ export default function CustomerMenuPage() {
                             <span className="text-neutral-400">Subtotal</span>
                             <span className="font-bold">{money(subtotalAmount)}</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-neutral-400">
-                              GST ({totalTaxPercent}%)
-                            </span>
-                            <span className="font-bold">{money(gstAmount)}</span>
-                          </div>
+                          {gstEnabled && (
+                            <div className="flex justify-between">
+                              <span className="text-neutral-400">
+                                GST ({totalTaxPercent}%)
+                              </span>
+                              <span className="font-bold">{money(gstAmount)}</span>
+                            </div>
+                          )}
                           {packingFee > 0 && (
                             <div className="flex justify-between">
                               <span className="text-neutral-400">Packing</span>
@@ -2660,7 +2947,7 @@ export default function CustomerMenuPage() {
                         </div>
                       </div>
 
-                      {counterPaymentEnabled && (
+                      {counterPaymentEnabled && razorpayEnabled && (
                         <div className="mt-5">
                           <p className="mb-2 text-[9px] font-black uppercase tracking-wider text-neutral-400">
                             Payment method
@@ -2693,7 +2980,15 @@ export default function CustomerMenuPage() {
                       )}
 
                       <div className="mt-5">
-                        {paymentMethod === 'online' ? (
+                        {!dineInEnabled && !takeawayEnabled ? (
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center text-xs font-bold text-amber-800">
+                            Ordering is currently unavailable. Please contact the restaurant.
+                          </div>
+                        ) : !razorpayEnabled && !counterPaymentEnabled ? (
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center text-xs font-bold text-amber-800">
+                            No payment method is currently available. Please contact the restaurant.
+                          </div>
+                        ) : paymentMethod === 'online' && razorpayEnabled ? (
                           <button
                             type="button"
                             onClick={handleRazorpayCheckout}
@@ -2708,7 +3003,7 @@ export default function CustomerMenuPage() {
                           <button
                             type="button"
                             onClick={handlePayAtCounter}
-                            disabled={paymentLoading}
+                            disabled={paymentLoading || !counterPaymentEnabled}
                             className="w-full rounded-2xl bg-emerald-600 py-4 text-sm font-black text-white shadow-lg shadow-emerald-600/15 disabled:opacity-50"
                           >
                             {paymentLoading

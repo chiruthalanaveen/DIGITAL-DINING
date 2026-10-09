@@ -4,15 +4,11 @@ import {
 
 } from 'next/server'
 
-
-
 import {
 
   requireAdmin,
 
 } from '@/lib/server/adminSession'
-
-
 
 import {
 
@@ -20,19 +16,13 @@ import {
 
 } from '@/lib/server/adminSupabase'
 
-
-
 export const runtime =
 
   'nodejs'
 
-
-
 export const dynamic =
 
   'force-dynamic'
-
-
 
 const VALID_PLAN_CODES =
 
@@ -49,8 +39,6 @@ const VALID_PLAN_CODES =
     'restaurant_resort_delivery',
 
   ])
-
-
 
 const PLAN_MATRIX = {
 
@@ -74,8 +62,6 @@ const PLAN_MATRIX = {
 
   },
 
-
-
   delivery: {
 
     label: 'Delivery',
@@ -95,8 +81,6 @@ const PLAN_MATRIX = {
       true,
 
   },
-
-
 
   restaurant_resort_pro: {
 
@@ -120,8 +104,6 @@ const PLAN_MATRIX = {
 
   },
 
-
-
   restaurant_delivery: {
 
     label:
@@ -143,8 +125,6 @@ const PLAN_MATRIX = {
       true,
 
   },
-
-
 
   restaurant_resort_delivery:
 
@@ -172,8 +152,6 @@ const PLAN_MATRIX = {
 
 }
 
-
-
 const VALID_STATUS =
 
   new Set([
@@ -196,8 +174,6 @@ const VALID_STATUS =
 
   ])
 
-
-
 const VALID_BILLING =
 
   new Set([
@@ -209,8 +185,6 @@ const VALID_BILLING =
     '12months',
 
   ])
-
-
 
 const VALID_CUSTOM_PLAN_STATUS =
 
@@ -230,7 +204,82 @@ const VALID_CUSTOM_PLAN_STATUS =
 
   ])
 
+const TENANT_FEATURE_KEYS = [
+  // Restaurant
+  'restaurant_enabled',
+  'qr_menu_enabled',
+  'dine_in_enabled',
+  'takeaway_enabled',
+  'pay_at_counter_enabled',
+  'restaurant_razorpay_enabled',
+  'offers_enabled',
+  'highly_reordered_enabled',
+  'kds_enabled',
+  'waiter_portal_enabled',
+  'manager_portal_enabled',
+  'staff_management_enabled',
+  'gst_enabled',
+  'digital_invoice_enabled',
+  'restaurant_notifications_enabled',
 
+  // Delivery
+  'delivery_enabled',
+  'delivery_customer_ordering_enabled',
+  'cod_enabled',
+  'delivery_razorpay_enabled',
+  'delivery_fee_enabled',
+  'minimum_order_enabled',
+  'handling_charge_enabled',
+  'surge_pricing_enabled',
+  'delivery_radius_enabled',
+  'customer_live_location_enabled',
+  'auto_driver_assignment_enabled',
+  'manual_driver_assignment_enabled',
+  'delivery_tracking_enabled',
+  'driver_number_enabled',
+  'manager_delivery_management_enabled',
+  'owner_delivery_management_enabled',
+  'barcode_scanning_enabled',
+  'inventory_enabled',
+  'packing_enabled',
+  'cod_reconciliation_enabled',
+  'live_support_enabled',
+  'return_replacement_enabled',
+  'return_pickup_enabled',
+  'bill_generation_enabled',
+  'delivery_notifications_enabled',
+]
+
+function sanitizeTenantFeatures(row) {
+  if (!row) {
+    return null
+  }
+
+  const result = {
+    id: row?.id || '',
+    restaurant_id: row?.restaurant_id || '',
+    created_at: row?.created_at || null,
+    updated_at: row?.updated_at || null,
+  }
+
+  for (const key of TENANT_FEATURE_KEYS) {
+    result[key] = row?.[key] !== false
+  }
+
+  return result
+}
+
+function defaultTenantFeatures(restaurantId) {
+  const result = {
+    restaurant_id: restaurantId,
+  }
+
+  for (const key of TENANT_FEATURE_KEYS) {
+    result[key] = true
+  }
+
+  return result
+}
 
 function cleanText(
 
@@ -258,8 +307,6 @@ function cleanText(
 
 }
 
-
-
 function numberValue(
 
   value
@@ -269,8 +316,6 @@ function numberValue(
   const parsed =
 
     Number(value)
-
-
 
   return Number.isFinite(
 
@@ -283,8 +328,6 @@ function numberValue(
     : 0
 
 }
-
-
 
 function asArray(
 
@@ -304,8 +347,6 @@ function asArray(
 
 }
 
-
-
 function dateValue(
 
   value
@@ -318,13 +359,9 @@ function dateValue(
 
   }
 
-
-
   const parsed =
 
     new Date(value)
-
-
 
   return Number.isNaN(
 
@@ -338,15 +375,11 @@ function dateValue(
 
 }
 
-
-
 function todayStartUtcForIndia() {
 
   const now =
 
     new Date()
-
-
 
   const offsetMs =
 
@@ -358,8 +391,6 @@ function todayStartUtcForIndia() {
 
     1000
 
-
-
   const indiaNow =
 
     new Date(
@@ -369,8 +400,6 @@ function todayStartUtcForIndia() {
         offsetMs
 
     )
-
-
 
   indiaNow.setUTCHours(
 
@@ -384,8 +413,6 @@ function todayStartUtcForIndia() {
 
   )
 
-
-
   return new Date(
 
     indiaNow.getTime() -
@@ -395,8 +422,6 @@ function todayStartUtcForIndia() {
   )
 
 }
-
-
 
 async function readTable(
 
@@ -432,8 +457,6 @@ async function readTable(
 
         .limit(limit)
 
-
-
     if (orderBy) {
 
       query =
@@ -452,8 +475,6 @@ async function readTable(
 
     }
 
-
-
     const {
 
       data,
@@ -463,8 +484,6 @@ async function readTable(
     } =
 
       await query
-
-
 
     if (error) {
 
@@ -479,8 +498,6 @@ async function readTable(
       }
 
     }
-
-
 
     return {
 
@@ -513,8 +530,6 @@ async function readTable(
   }
 
 }
-
-
 
 function sanitizeRestaurant(
 
@@ -614,8 +629,6 @@ function sanitizeRestaurant(
 
 }
 
-
-
 function sanitizeOrder(
 
   row,
@@ -704,8 +717,6 @@ function sanitizeOrder(
 
 }
 
-
-
 function sanitizeStaff(
 
   row
@@ -757,8 +768,6 @@ function sanitizeStaff(
   }
 
 }
-
-
 
 function sanitizeReview(
 
@@ -832,8 +841,6 @@ function sanitizeReview(
 
 }
 
-
-
 function sanitizeGateway(
 
   row
@@ -849,8 +856,6 @@ function sanitizeGateway(
       200
 
     )
-
-
 
   return {
 
@@ -908,8 +913,6 @@ function sanitizeGateway(
 
 }
 
-
-
 function isToday(
 
   value,
@@ -922,8 +925,6 @@ function isToday(
 
     dateValue(value)
 
-
-
   return Boolean(
 
     date &&
@@ -933,8 +934,6 @@ function isToday(
   )
 
 }
-
-
 
 function restaurantNameMap(
 
@@ -967,8 +966,6 @@ function restaurantNameMap(
   )
 
 }
-
-
 
 async function logAudit(
 
@@ -1110,8 +1107,6 @@ async function logAudit(
 
 }
 
-
-
 function unauthorized() {
 
   return NextResponse.json(
@@ -1144,8 +1139,6 @@ function unauthorized() {
 
 }
 
-
-
 export async function GET(
 
   request
@@ -1160,15 +1153,11 @@ export async function GET(
 
     )
 
-
-
   if (!session) {
 
     return unauthorized()
 
   }
-
-
 
   try {
 
@@ -1176,11 +1165,11 @@ export async function GET(
 
       getAdminSupabase()
 
-
-
     const [
 
       restaurantsResult,
+
+      tenantFeaturesResult,
 
       ordersResult,
 
@@ -1232,7 +1221,14 @@ export async function GET(
 
         ),
 
-
+        readTable(
+          admin,
+          'tenant_feature_controls',
+          {
+            limit: 2000,
+            orderBy: 'updated_at',
+          }
+        ),
 
         readTable(
 
@@ -1248,8 +1244,6 @@ export async function GET(
 
         ),
 
-
-
         readTable(
 
           admin,
@@ -1263,8 +1257,6 @@ export async function GET(
           }
 
         ),
-
-
 
         readTable(
 
@@ -1280,8 +1272,6 @@ export async function GET(
 
         ),
 
-
-
         readTable(
 
           admin,
@@ -1295,8 +1285,6 @@ export async function GET(
           }
 
         ),
-
-
 
         readTable(
 
@@ -1312,8 +1300,6 @@ export async function GET(
 
         ),
 
-
-
         readTable(
 
           admin,
@@ -1327,8 +1313,6 @@ export async function GET(
           }
 
         ),
-
-
 
         readTable(
 
@@ -1348,8 +1332,6 @@ export async function GET(
 
         ),
 
-
-
         readTable(
 
           admin,
@@ -1368,8 +1350,6 @@ export async function GET(
 
         ),
 
-
-
         readTable(
 
           admin,
@@ -1383,8 +1363,6 @@ export async function GET(
           }
 
         ),
-
-
 
         readTable(
 
@@ -1400,8 +1378,6 @@ export async function GET(
 
         ),
 
-
-
         readTable(
 
           admin,
@@ -1416,8 +1392,6 @@ export async function GET(
 
         ),
 
-
-
         readTable(
 
           admin,
@@ -1431,8 +1405,6 @@ export async function GET(
           }
 
         ),
-
-
 
         readTable(
 
@@ -1452,8 +1424,6 @@ export async function GET(
 
         ),
 
-
-
         readTable(
 
           admin,
@@ -1470,8 +1440,6 @@ export async function GET(
 
         ),
 
-
-
         readTable(
 
           admin,
@@ -1485,8 +1453,6 @@ export async function GET(
           }
 
         ),
-
- 
 
         readTable(
 
@@ -1508,13 +1474,13 @@ export async function GET(
 
       ])
 
-
-
     const warnings =
 
       [
 
         restaurantsResult,
+
+        tenantFeaturesResult,
 
         ordersResult,
 
@@ -1560,11 +1526,7 @@ export async function GET(
 
         .filter(Boolean)
 
-
-
     let authUserCount = 0
-
-
 
     try {
 
@@ -1592,15 +1554,11 @@ export async function GET(
 
           })
 
-
-
       if (error) {
 
         throw error
 
       }
-
-
 
       authUserCount =
 
@@ -1632,17 +1590,34 @@ export async function GET(
 
     }
 
-
-
-    const restaurants =
-
-      restaurantsResult.rows.map(
-
-        sanitizeRestaurant
-
+    const tenantFeaturesByRestaurant =
+      new Map(
+        tenantFeaturesResult.rows.map(
+          (row) => [
+            String(row?.restaurant_id || ''),
+            sanitizeTenantFeatures(row),
+          ]
+        )
       )
 
+    const restaurants =
+      restaurantsResult.rows.map(
+        (row) => {
+          const restaurant =
+            sanitizeRestaurant(row)
 
+          return {
+            ...restaurant,
+            features:
+              tenantFeaturesByRestaurant.get(
+                String(restaurant.id)
+              ) ||
+              defaultTenantFeatures(
+                restaurant.id
+              ),
+          }
+        }
+      )
 
     const normalOrders =
 
@@ -1660,8 +1635,6 @@ export async function GET(
 
       )
 
-
-
     const deliveryOrders =
 
       deliveryOrdersResult.rows.map(
@@ -1677,8 +1650,6 @@ export async function GET(
           )
 
       )
-
-
 
     const resortBookings =
 
@@ -1696,8 +1667,6 @@ export async function GET(
 
       )
 
-
-
     const staff =
 
       staffResult.rows.map(
@@ -1705,8 +1674,6 @@ export async function GET(
         sanitizeStaff
 
       )
-
-
 
     const reviews =
 
@@ -1716,8 +1683,6 @@ export async function GET(
 
       )
 
-
-
     const gatewayRows =
 
       gatewaysResult.rows.map(
@@ -1726,13 +1691,9 @@ export async function GET(
 
       )
 
-
-
     const startToday =
 
       todayStartUtcForIndia()
-
-
 
     const todayOrders =
 
@@ -1758,8 +1719,6 @@ export async function GET(
 
       )
 
-
-
     const revenueToday =
 
       todayOrders.reduce(
@@ -1783,8 +1742,6 @@ export async function GET(
         0
 
       )
-
-
 
     const activeSubscriptions =
 
@@ -1814,13 +1771,9 @@ export async function GET(
 
       ).length
 
-
-
     const now =
 
       Date.now()
-
-
 
     const sevenDays =
 
@@ -1833,8 +1786,6 @@ export async function GET(
       60 *
 
       1000
-
-
 
     const expiringSoon =
 
@@ -1850,23 +1801,17 @@ export async function GET(
 
             )
 
-
-
           if (!expiry) {
 
             return false
 
           }
 
-
-
           const delta =
 
             expiry.getTime() -
 
             now
-
-
 
           return (
 
@@ -1881,8 +1826,6 @@ export async function GET(
         }
 
       ).length
-
-
 
     const lowStock =
 
@@ -1904,8 +1847,6 @@ export async function GET(
 
             }
 
-
-
             const stock =
 
               numberValue(
@@ -1913,8 +1854,6 @@ export async function GET(
                 row?.stock_quantity
 
               )
-
-
 
             const reserved =
 
@@ -1924,8 +1863,6 @@ export async function GET(
 
               )
 
-
-
             const threshold =
 
               numberValue(
@@ -1933,8 +1870,6 @@ export async function GET(
                 row?.low_stock_threshold
 
               )
-
-
 
             return (
 
@@ -2022,8 +1957,6 @@ export async function GET(
 
         )
 
-
-
     const siteStatus =
 
       settingsResult.rows.find(
@@ -2038,8 +1971,6 @@ export async function GET(
 
       'Working'
 
-
-
     const nameMap =
 
       restaurantNameMap(
@@ -2047,8 +1978,6 @@ export async function GET(
         restaurants
 
       )
-
-
 
     const supportThreads =
 
@@ -2124,8 +2053,6 @@ export async function GET(
 
       )
 
-
-
     const legacySupport =
 
       legacySupportResult.rows.map(
@@ -2181,8 +2108,6 @@ export async function GET(
         })
 
       )
-
-
 
     const returnPickups =
 
@@ -2258,8 +2183,6 @@ export async function GET(
 
       )
 
-
-
     const drivers =
 
       driversResult.rows.map(
@@ -2300,8 +2223,6 @@ export async function GET(
 
       )
 
-
-
     const packers =
 
       packersResult.rows.map(
@@ -2341,8 +2262,6 @@ export async function GET(
         })
 
       )
-
-
 
     const deliverySettings =
 
@@ -2432,8 +2351,6 @@ export async function GET(
 
       )
 
-
-
     const allRecentOrders =
 
       [
@@ -2500,8 +2417,6 @@ export async function GET(
 
         )
 
-
-
     const avgRating =
 
       reviews.length
@@ -2532,21 +2447,15 @@ export async function GET(
 
         : 0
 
-
-
     return NextResponse.json(
 
       {
 
         success: true,
 
-
-
         generatedAt:
 
           new Date().toISOString(),
-
-
 
         admin: {
 
@@ -2555,8 +2464,6 @@ export async function GET(
             session.email,
 
         },
-
-
 
         summary: {
 
@@ -2734,8 +2641,6 @@ export async function GET(
 
         },
 
-
-
         platform: {
 
           websiteStatus:
@@ -2760,23 +2665,15 @@ export async function GET(
 
         },
 
-
-
         tenants:
 
           restaurants,
-
-
 
         orders:
 
           allRecentOrders,
 
-
-
         staff,
-
-
 
         drivers,
 
@@ -2784,11 +2681,7 @@ export async function GET(
 
         deliverySettings,
 
-
-
         lowStock,
-
-
 
         supportThreads,
 
@@ -2796,17 +2689,11 @@ export async function GET(
 
         returnPickups,
 
-
-
         reviews,
-
-
 
         gateways:
 
           gatewayRows,
-
-
 
         customPlanRequests:
 
@@ -2859,8 +2746,6 @@ export async function GET(
             })
 
           ),
-
-
 
         auditLogs:
 
@@ -2920,8 +2805,6 @@ export async function GET(
 
           ),
 
-
-
         warnings,
 
       },
@@ -2950,8 +2833,6 @@ export async function GET(
 
     )
 
-
-
     return NextResponse.json(
 
       {
@@ -2978,8 +2859,6 @@ export async function GET(
 
 }
 
-
-
 export async function POST(
 
   request
@@ -2994,23 +2873,17 @@ export async function POST(
 
     )
 
-
-
   if (!session) {
 
     return unauthorized()
 
   }
 
-
-
   try {
 
     const admin =
 
       getAdminSupabase()
-
-
 
     const body =
 
@@ -3024,8 +2897,6 @@ export async function POST(
 
         )
 
-
-
     const action =
 
       cleanText(
@@ -3036,9 +2907,199 @@ export async function POST(
 
       )
 
-
-
     if (
+      action ===
+      'update_tenant_features'
+    ) {
+      const restaurantId =
+        cleanText(
+          body?.restaurantId,
+          100
+        )
+
+      if (!restaurantId) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Restaurant ID is required.',
+          },
+          {
+            status: 400,
+          }
+        )
+      }
+
+      const incomingFeatures =
+        body?.features
+
+      if (
+        !incomingFeatures ||
+        typeof incomingFeatures !== 'object' ||
+        Array.isArray(incomingFeatures)
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Feature settings are required.',
+          },
+          {
+            status: 400,
+          }
+        )
+      }
+
+      const {
+        data: restaurant,
+        error: restaurantError,
+      } =
+        await admin
+          .from('restaurants')
+          .select('id')
+          .eq('id', restaurantId)
+          .maybeSingle()
+
+      if (restaurantError) {
+        throw restaurantError
+      }
+
+      if (!restaurant) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Tenant was not found.',
+          },
+          {
+            status: 404,
+          }
+        )
+      }
+
+      const {
+        data: before,
+        error: beforeError,
+      } =
+        await admin
+          .from(
+            'tenant_feature_controls'
+          )
+          .select('*')
+          .eq(
+            'restaurant_id',
+            restaurantId
+          )
+          .maybeSingle()
+
+      if (beforeError) {
+        throw beforeError
+      }
+
+      const featureUpdate = {}
+
+      for (const key of TENANT_FEATURE_KEYS) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            incomingFeatures,
+            key
+          )
+        ) {
+          if (
+            typeof incomingFeatures[key] !==
+            'boolean'
+          ) {
+            return NextResponse.json(
+              {
+                success: false,
+                message:
+                  `Invalid value for feature: ${key}`,
+              },
+              {
+                status: 400,
+              }
+            )
+          }
+
+          featureUpdate[key] =
+            incomingFeatures[key]
+        }
+      }
+
+      if (
+        Object.keys(featureUpdate).length === 0
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'No valid feature settings were provided.',
+          },
+          {
+            status: 400,
+          }
+        )
+      }
+
+      const update = {
+        restaurant_id: restaurantId,
+        ...featureUpdate,
+        updated_at:
+          new Date().toISOString(),
+      }
+
+      const {
+        data: after,
+        error,
+      } =
+        await admin
+          .from(
+            'tenant_feature_controls'
+          )
+          .upsert(
+            update,
+            {
+              onConflict:
+                'restaurant_id',
+            }
+          )
+          .select('*')
+          .single()
+
+      if (error) {
+        throw error
+      }
+
+      await logAudit(
+        admin,
+        session,
+        request,
+        {
+          action:
+            'update_tenant_features',
+          entityType:
+            'tenant_feature_controls',
+          entityId:
+            restaurantId,
+          beforeData:
+            before
+              ? sanitizeTenantFeatures(before)
+              : defaultTenantFeatures(
+                  restaurantId
+                ),
+          afterData:
+            sanitizeTenantFeatures(after),
+        }
+      )
+
+      return NextResponse.json({
+        success: true,
+        features:
+          sanitizeTenantFeatures(after),
+      })
+    }
+
+if (
 
       action ===
 
@@ -3056,8 +3117,6 @@ export async function POST(
 
         )
 
-
-
       const planCode =
 
         cleanText(
@@ -3067,8 +3126,6 @@ export async function POST(
           100
 
         )
-
-
 
       const status =
 
@@ -3080,8 +3137,6 @@ export async function POST(
 
         ).toLowerCase()
 
-
-
       const billingCycle =
 
         cleanText(
@@ -3091,8 +3146,6 @@ export async function POST(
           50
 
         )
-
-
 
       const expiry =
 
@@ -3107,8 +3160,6 @@ export async function POST(
             )
 
           : null
-
-
 
       if (
 
@@ -3150,8 +3201,6 @@ export async function POST(
 
       }
 
-
-
       if (
 
         billingCycle &&
@@ -3185,8 +3234,6 @@ export async function POST(
         )
 
       }
-
-
 
       if (
 
@@ -3222,8 +3269,6 @@ export async function POST(
 
       }
 
-
-
       const {
 
         data: before,
@@ -3258,15 +3303,11 @@ export async function POST(
 
           .maybeSingle()
 
-
-
       if (beforeError) {
 
         throw beforeError
 
       }
-
-
 
       if (!before) {
 
@@ -3292,8 +3333,6 @@ export async function POST(
 
       }
 
-
-
       const plan =
 
         PLAN_MATRIX[
@@ -3301,8 +3340,6 @@ export async function POST(
           planCode
 
         ]
-
-
 
       const update = {
 
@@ -3332,8 +3369,6 @@ export async function POST(
 
       }
 
-
-
       if (billingCycle) {
 
         update.billing_cycle =
@@ -3342,8 +3377,6 @@ export async function POST(
 
       }
 
-
-
       if (expiry) {
 
         update.subscription_expires_at =
@@ -3351,8 +3384,6 @@ export async function POST(
           expiry.toISOString()
 
       }
-
-
 
       const {
 
@@ -3392,15 +3423,11 @@ export async function POST(
 
           .single()
 
-
-
       if (error) {
 
         throw error
 
       }
-
-
 
       await logAudit(
 
@@ -3444,8 +3471,6 @@ export async function POST(
 
       )
 
-
-
       return NextResponse.json({
 
         success: true,
@@ -3461,8 +3486,6 @@ export async function POST(
       })
 
     }
-
-
 
     if (
 
@@ -3481,8 +3504,6 @@ export async function POST(
           ? 'Not Working'
 
           : 'Working'
-
-
 
       const {
 
@@ -3509,8 +3530,6 @@ export async function POST(
           )
 
           .maybeSingle()
-
-
 
       const {
 
@@ -3558,15 +3577,11 @@ export async function POST(
 
           .single()
 
-
-
       if (error) {
 
         throw error
 
       }
-
-
 
       await logAudit(
 
@@ -3602,8 +3617,6 @@ export async function POST(
 
       )
 
-
-
       return NextResponse.json({
 
         success: true,
@@ -3613,8 +3626,6 @@ export async function POST(
       })
 
     }
-
-
 
     if (
 
@@ -3634,8 +3645,6 @@ export async function POST(
 
         )
 
-
-
       const visible =
 
         Boolean(
@@ -3643,8 +3652,6 @@ export async function POST(
           body?.visible
 
         )
-
-
 
       const {
 
@@ -3676,15 +3683,11 @@ export async function POST(
 
           .maybeSingle()
 
-
-
       if (beforeError) {
 
         throw beforeError
 
       }
-
-
 
       if (!before) {
 
@@ -3709,8 +3712,6 @@ export async function POST(
         )
 
       }
-
-
 
       const {
 
@@ -3752,15 +3753,11 @@ export async function POST(
 
           .single()
 
-
-
       if (error) {
 
         throw error
 
       }
-
-
 
       await logAudit(
 
@@ -3808,8 +3805,6 @@ export async function POST(
 
       )
 
-
-
       return NextResponse.json({
 
         success: true,
@@ -3825,8 +3820,6 @@ export async function POST(
       })
 
     }
-
-
 
     if (
 
@@ -3846,8 +3839,6 @@ export async function POST(
 
         )
 
-
-
       const status =
 
         body?.status ===
@@ -3857,8 +3848,6 @@ export async function POST(
           ? 'closed'
 
           : 'open'
-
-
 
       const {
 
@@ -3890,15 +3879,11 @@ export async function POST(
 
           .maybeSingle()
 
-
-
       if (beforeError) {
 
         throw beforeError
 
       }
-
-
 
       if (!before) {
 
@@ -3924,8 +3909,6 @@ export async function POST(
 
       }
 
-
-
       const update = {
 
         status,
@@ -3945,8 +3928,6 @@ export async function POST(
             : null,
 
       }
-
-
 
       const {
 
@@ -3982,15 +3963,11 @@ export async function POST(
 
           .single()
 
-
-
       if (error) {
 
         throw error
 
       }
-
-
 
       await logAudit(
 
@@ -4004,7 +3981,7 @@ export async function POST(
 
           action:
 
-            `help_centre_${status}`,
+            `help_centre\_${status}`,
 
           entityType:
 
@@ -4034,8 +4011,6 @@ export async function POST(
 
       )
 
-
-
       return NextResponse.json({
 
         success: true,
@@ -4056,8 +4031,6 @@ export async function POST(
 
     }
 
-
-
     if (
 
       action ===
@@ -4076,8 +4049,6 @@ export async function POST(
 
         ).toLowerCase()
 
-
-
       const workerId =
 
         cleanText(
@@ -4088,8 +4059,6 @@ export async function POST(
 
         )
 
-
-
       const active =
 
         Boolean(
@@ -4097,8 +4066,6 @@ export async function POST(
           body?.active
 
         )
-
-
 
       const table =
 
@@ -4115,8 +4082,6 @@ export async function POST(
             ? 'delivery_packers'
 
             : ''
-
-
 
       if (
 
@@ -4148,8 +4113,6 @@ export async function POST(
 
       }
 
-
-
       const {
 
         data: before,
@@ -4176,15 +4139,11 @@ export async function POST(
 
           .maybeSingle()
 
-
-
       if (beforeError) {
 
         throw beforeError
 
       }
-
-
 
       if (!before) {
 
@@ -4209,8 +4168,6 @@ export async function POST(
         )
 
       }
-
-
 
       const {
 
@@ -4244,15 +4201,11 @@ export async function POST(
 
           .single()
 
-
-
       if (error) {
 
         throw error
 
       }
-
-
 
       await logAudit(
 
@@ -4266,7 +4219,7 @@ export async function POST(
 
           action:
 
-            `${workerType}_${active ? 'enabled' : 'disabled'}`,
+            `${workerType}\_${active ? 'enabled' : 'disabled'}`,
 
           entityType:
 
@@ -4296,8 +4249,6 @@ export async function POST(
 
       )
 
-
-
       return NextResponse.json({
 
         success: true,
@@ -4305,8 +4256,6 @@ export async function POST(
       })
 
     }
-
-
 
     if (
 
@@ -4326,8 +4275,6 @@ export async function POST(
 
         )
 
-
-
       const enabled =
 
         Boolean(
@@ -4335,8 +4282,6 @@ export async function POST(
           body?.enabled
 
         )
-
-
 
       const {
 
@@ -4368,15 +4313,11 @@ export async function POST(
 
           .maybeSingle()
 
-
-
       if (beforeError) {
 
         throw beforeError
 
       }
-
-
 
       if (!before) {
 
@@ -4401,8 +4342,6 @@ export async function POST(
         )
 
       }
-
-
 
       const {
 
@@ -4444,15 +4383,11 @@ export async function POST(
 
           .single()
 
-
-
       if (error) {
 
         throw error
 
       }
-
-
 
       await logAudit(
 
@@ -4500,8 +4435,6 @@ export async function POST(
 
       )
 
-
-
       return NextResponse.json({
 
         success: true,
@@ -4509,8 +4442,6 @@ export async function POST(
       })
 
     }
-
-
 
     if (
 
@@ -4530,8 +4461,6 @@ export async function POST(
 
         )
 
-
-
       const isOpen =
 
         Boolean(
@@ -4539,8 +4468,6 @@ export async function POST(
           body?.isOpen
 
         )
-
-
 
       if (!restaurantId) {
 
@@ -4565,8 +4492,6 @@ export async function POST(
         )
 
       }
-
-
 
       const {
 
@@ -4598,15 +4523,11 @@ export async function POST(
 
           .maybeSingle()
 
-
-
       if (beforeError) {
 
         throw beforeError
 
       }
-
-
 
       if (!before) {
 
@@ -4631,8 +4552,6 @@ export async function POST(
         )
 
       }
-
-
 
       /*
 
@@ -4684,15 +4603,11 @@ export async function POST(
 
         )
 
-
-
       if (actionError) {
 
         throw actionError
 
       }
-
-
 
       if (
 
@@ -4711,8 +4626,6 @@ export async function POST(
         )
 
       }
-
-
 
       const {
 
@@ -4739,8 +4652,6 @@ export async function POST(
           )
 
           .maybeSingle()
-
-
 
       await logAudit(
 
@@ -4788,8 +4699,6 @@ export async function POST(
 
       )
 
-
-
       return NextResponse.json({
 
         success: true,
@@ -4799,8 +4708,6 @@ export async function POST(
       })
 
     }
-
-
 
     if (
 
@@ -4820,8 +4727,6 @@ export async function POST(
 
         )
 
-
-
       const itemId =
 
         cleanText(
@@ -4832,8 +4737,6 @@ export async function POST(
 
         )
 
-
-
       const quantity =
 
         Number(
@@ -4841,8 +4744,6 @@ export async function POST(
           body?.quantity
 
         )
-
-
 
       if (
 
@@ -4886,8 +4787,6 @@ export async function POST(
 
       }
 
-
-
       const {
 
         data: before,
@@ -4930,15 +4829,11 @@ export async function POST(
 
           .maybeSingle()
 
-
-
       if (beforeError) {
 
         throw beforeError
 
       }
-
-
 
       if (!before) {
 
@@ -4963,8 +4858,6 @@ export async function POST(
         )
 
       }
-
-
 
       if (
 
@@ -4995,8 +4888,6 @@ export async function POST(
         )
 
       }
-
-
 
       const {
 
@@ -5044,15 +4935,11 @@ export async function POST(
 
         )
 
-
-
       if (restockError) {
 
         throw restockError
 
       }
-
-
 
       if (
 
@@ -5071,8 +4958,6 @@ export async function POST(
         )
 
       }
-
-
 
       const {
 
@@ -5112,8 +4997,6 @@ export async function POST(
 
           .maybeSingle()
 
-
-
       await logAudit(
 
         admin,
@@ -5148,8 +5031,6 @@ export async function POST(
 
       )
 
-
-
       return NextResponse.json({
 
         success: true,
@@ -5160,121 +5041,201 @@ export async function POST(
 
     }
 
-
-
     if (action === 'update_custom_plan_request') {
+
       const requestId = cleanText(body?.requestId, 100)
+
       const status = cleanText(body?.status, 50).toLowerCase()
+
       const adminNotes = cleanText(body?.adminNotes, 5000)
+
       const rawQuote = body?.quotedMonthlyPrice
+
       const quotedMonthlyPrice =
+
         rawQuote === null || rawQuote === undefined || rawQuote === ''
+
           ? null
+
           : Number(rawQuote)
 
       if (!requestId || !VALID_CUSTOM_PLAN_STATUS.has(status)) {
+
         return NextResponse.json(
+
           { success: false, message: 'Invalid custom plan request update.' },
+
           { status: 400 }
+
         )
+
       }
 
       if (
+
         quotedMonthlyPrice !== null &&
+
         (!Number.isFinite(quotedMonthlyPrice) ||
+
           quotedMonthlyPrice < 0 ||
+
           quotedMonthlyPrice > 10000000)
+
       ) {
+
         return NextResponse.json(
+
           { success: false, message: 'Enter a valid quotation amount.' },
+
           { status: 400 }
+
         )
+
       }
 
       const { data: before, error: beforeError } = await admin
+
         .from('custom_plan_requests')
+
         .select('*')
+
         .eq('id', requestId)
+
         .maybeSingle()
 
       if (beforeError) throw beforeError
 
       if (!before) {
+
         return NextResponse.json(
+
           { success: false, message: 'Custom plan request was not found.' },
+
           { status: 404 }
+
         )
+
       }
 
       const now = new Date().toISOString()
+
       const update = {
+
         status,
+
         admin_notes: adminNotes || null,
+
         quoted_monthly_price: quotedMonthlyPrice,
+
       }
 
       if (
+
         ['contacted', 'quoted', 'accepted'].includes(status) &&
+
         !before.contacted_at
+
       ) {
+
         update.contacted_at = now
+
       }
 
       if (['quoted', 'accepted'].includes(status) && !before.quoted_at) {
+
         update.quoted_at = now
+
       }
 
       if (status === 'accepted' && !before.accepted_at) {
+
         update.accepted_at = now
+
       }
 
       const { data: after, error } = await admin
+
         .from('custom_plan_requests')
+
         .update(update)
+
         .eq('id', requestId)
+
         .select('*')
+
         .single()
 
       if (error) throw error
 
       await logAudit(admin, session, request, {
+
         action: 'update_custom_plan_request',
+
         entityType: 'custom_plan_request',
+
         entityId: requestId,
+
         beforeData: {
+
           status: before.status,
+
           quoted_monthly_price: before.quoted_monthly_price,
+
           admin_notes: before.admin_notes,
+
           contacted_at: before.contacted_at,
+
           quoted_at: before.quoted_at,
+
           accepted_at: before.accepted_at,
+
         },
+
         afterData: {
+
           status: after.status,
+
           quoted_monthly_price: after.quoted_monthly_price,
+
           admin_notes: after.admin_notes,
+
           contacted_at: after.contacted_at,
+
           quoted_at: after.quoted_at,
+
           accepted_at: after.accepted_at,
+
         },
+
       })
 
       return NextResponse.json({
+
         success: true,
+
         customPlanRequest: {
+
           id: after.id,
+
           status: after.status,
+
           quoted_monthly_price: after.quoted_monthly_price,
+
           admin_notes: after.admin_notes || '',
+
           contacted_at: after.contacted_at,
+
           quoted_at: after.quoted_at,
+
           accepted_at: after.accepted_at,
+
           updated_at: after.updated_at,
+
         },
+
       })
+
     }
-
-
 
     return NextResponse.json(
 
@@ -5305,8 +5266,6 @@ export async function POST(
       error
 
     )
-
-
 
     return NextResponse.json(
 
