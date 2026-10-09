@@ -866,9 +866,10 @@ export default function AdminControlCenter() {
   const action =
     async (
       payload,
-      refreshAfter = true
+      refreshAfter = true,
+      allowSequentialSave = false
     ) => {
-      if (actionLoading) {
+      if (actionLoading && !allowSequentialSave) {
         return null
       }
 
@@ -1454,7 +1455,8 @@ export default function AdminControlCenter() {
               ...(tenantEditor.features || {}),
             },
           },
-          false
+          false,
+          true // Run the second step even if React has not re-rendered loading state.
         )
 
       if (!featureResult) {
