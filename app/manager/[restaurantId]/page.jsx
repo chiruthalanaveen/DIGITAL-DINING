@@ -5,6 +5,7 @@ import ThemeToggle from '@/app/components/ThemeToggle'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
 import ManagerDeliveryManagement from '@/app/components/ManagerDeliveryManagement'
+import ManagerWalletReadOnly from '@/app/components/ManagerWalletReadOnly'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 import { appConfirm, appNotice } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
@@ -1136,26 +1137,42 @@ export default function RestaurantManagerDashboard({ params }) {
   const fetchDashboard = useCallback(async () => {
     if (!restaurantId) return
 
-    const token = String(sessionTokenRef.current || '').trim()
-    if (!sessionModeRef.current || !token) return
+    const usingSession = Boolean(sessionModeRef.current && sessionTokenRef.current)
+    const code = String(restaurantCodeRef.current || '').trim()
+    const user = String(loginUserIdRef.current || '').trim().toLowerCase()
+    const pass = String(loginPasswordRef.current || '').trim()
+
+    if (!usingSession && (!code || !user || !pass)) return
 
     setLoading(true)
     try {
-      const dashboardResult = await supabase.rpc(
-        'get_manager_dashboard_data_session',
-        { p_session_token: token }
-      )
+      let dashboardResult
+
+      if (usingSession) {
+        dashboardResult = await supabase.rpc('get_manager_dashboard_data_session', {
+          p_session_token: sessionTokenRef.current,
+        })
+      } else {
+        dashboardResult = await supabase.rpc('get_manager_dashboard_data', {
+          p_restaurant_id: String(restaurantId),
+          p_restaurant_code: code,
+          p_user_id: user,
+          p_password: pass,
+        })
+      }
 
       const { data, error } = dashboardResult
       if (error) throw error
 
       if (!data?.success) {
-        clearSavedManagerSession()
-        sessionTokenRef.current = ''
-        sessionModeRef.current = false
-        setSessionToken('')
-        setSessionMode(false)
-        setAuthenticated(false)
+        if (usingSession) {
+          clearSavedManagerSession()
+          sessionTokenRef.current = ''
+          sessionModeRef.current = false
+          setSessionToken('')
+          setSessionMode(false)
+          setAuthenticated(false)
+        }
         throw new Error(data?.message || 'Unable to load manager dashboard.')
       }
 
@@ -1170,10 +1187,19 @@ export default function RestaurantManagerDashboard({ params }) {
       setStaffList(Array.isArray(data.staffList) ? data.staffList : [])
       setStoreOpen(data.restaurant?.is_open ?? true)
 
-      const tableResponse = await supabase.rpc(
-        'get_manager_table_inventory_session',
-        { p_session_token: token }
-      )
+      let tableResponse
+      if (usingSession) {
+        tableResponse = await supabase.rpc('get_manager_table_inventory_session', {
+          p_session_token: sessionTokenRef.current,
+        })
+      } else {
+        tableResponse = await supabase.rpc('get_manager_table_inventory', {
+          p_restaurant_id: String(restaurantId),
+          p_restaurant_code: code,
+          p_user_id: user,
+          p_password: pass,
+        })
+      }
 
       const { data: tableResult, error: tableError } = tableResponse
       if (tableError) {
@@ -1190,26 +1216,44 @@ export default function RestaurantManagerDashboard({ params }) {
   }, [restaurantId, clearSavedManagerSession])
 
   const managerRpcAction = useCallback(async (action, payload = {}) => {
-    const token = String(sessionTokenRef.current || '').trim()
+    const usingSession = Boolean(sessionModeRef.current && sessionTokenRef.current)
+    const code = String(restaurantCodeRef.current || '').trim()
+    const user = String(loginUserIdRef.current || '').trim().toLowerCase()
+    const pass = String(loginPasswordRef.current || '').trim()
 
-    if (!restaurantId || !sessionModeRef.current || !token) {
+    if (!restaurantId || (!usingSession && (!code || !user || !pass))) {
       throw new Error('Manager session is missing. Please sign in again.')
     }
 
-    const { data, error } = await supabase.rpc('manager_action_session', {
-      p_session_token: token,
-      p_action: action,
-      p_payload: payload,
-    })
+    let response
+    if (usingSession) {
+      response = await supabase.rpc('manager_action_session', {
+        p_session_token: sessionTokenRef.current,
+        p_action: action,
+        p_payload: payload,
+      })
+    } else {
+      response = await supabase.rpc('manager_action', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: code,
+        p_user_id: user,
+        p_password: pass,
+        p_action: action,
+        p_payload: payload,
+      })
+    }
 
+    const { data, error } = response
     if (error) throw error
     if (!data?.success) {
-      clearSavedManagerSession()
-      sessionTokenRef.current = ''
-      sessionModeRef.current = false
-      setSessionToken('')
-      setSessionMode(false)
-      setAuthenticated(false)
+      if (usingSession) {
+        clearSavedManagerSession()
+        sessionTokenRef.current = ''
+        sessionModeRef.current = false
+        setSessionToken('')
+        setSessionMode(false)
+        setAuthenticated(false)
+      }
       throw new Error(data?.message || 'Manager action failed.')
     }
     return data
@@ -1852,27 +1896,38 @@ restaurantModuleEnabled,
 
     setSavingStaff(true)
     try {
-      const token = String(sessionTokenRef.current || '').trim()
-      if (!sessionModeRef.current || !token) {
-        throw new Error('Manager session is missing. Please sign in again.')
-      }
+      let result
 
-      const { data: result, error } = await supabase.rpc(
-        'manager_create_restaurant_staff_session',
-        {
-          p_session_token: token,
-          p_name: name,
-          p_user_id: userId,
-          p_password: password,
-          p_role: staffRole,
-        }
-      )
-
-      if (error) throw error
-      if (!result?.success) {
-        throw new Error(
-          result?.message || 'Unable to create staff account.'
+      if (sessionModeRef.current && sessionTokenRef.current) {
+        const { data, error } = await supabase.rpc(
+          'manager_create_restaurant_staff_session',
+          {
+            p_session_token: sessionTokenRef.current,
+            p_name: name,
+            p_user_id: userId,
+            p_password: password,
+            p_role: staffRole,
+          }
         )
+
+        if (error) throw error
+        if (!data?.success) {
+          throw new Error(
+            data?.message || 'Unable to create staff account.'
+          )
+        }
+
+        result = data
+      } else {
+        // Temporary compatibility for a Manager signed in through the
+        // legacy credential flow. This can be removed once Manager login
+        // is fully session-only.
+        result = await managerRpcAction('create_staff', {
+          name,
+          user_id: userId,
+          password,
+          role: staffRole,
+        })
       }
       setStaffList((items) => [result.data, ...items])
       setStaffName('')
@@ -2090,18 +2145,22 @@ restaurantModuleEnabled,
     setProfileSaving(true)
 
     try {
-      const token = String(sessionTokenRef.current || '').trim()
-      if (!sessionModeRef.current || !token) {
-        throw new Error('Manager session is missing. Please sign in again.')
-      }
+      const usingSession = Boolean(sessionModeRef.current && sessionTokenRef.current)
+      const response = usingSession
+        ? await supabase.rpc('staff_update_profile_session', {
+            p_session_token: sessionTokenRef.current,
+            p_name: cleanName,
+          })
+        : await supabase.rpc('staff_update_profile', {
+            p_restaurant_id: String(restaurantId),
+            p_restaurant_code: String(restaurantCodeRef.current).trim(),
+            p_user_id: String(loginUserIdRef.current).trim().toLowerCase(),
+            p_password: String(loginPasswordRef.current).trim(),
+            p_role: 'manager',
+            p_name: cleanName,
+          })
 
-      const { data, error } = await supabase.rpc(
-        'staff_update_profile_session',
-        {
-          p_session_token: token,
-          p_name: cleanName,
-        }
-      )
+      const { data, error } = response
 
       if (error) throw error
       if (!data?.success) {
@@ -2610,6 +2669,14 @@ restaurantModuleEnabled,
         )}
 
         {notice && <div className="fixed right-5 top-5 z-50 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice}</div>}
+
+        {/* Read-only wallet for every approved manager, regardless of module. */}
+        {authenticated && sessionMode && sessionToken && (
+          <ManagerWalletReadOnly
+            restaurantId={String(restaurantId || '')}
+            sessionToken={sessionToken}
+          />
+        )}
 
         {deliveryModuleEnabled && authenticated && (
           <NativeDeliveryPush

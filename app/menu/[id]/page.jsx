@@ -225,6 +225,10 @@ export default function CustomerMenuPage() {
   const [placedOrderNumber, setPlacedOrderNumber] = useState(null)
   const [paymentDetails, setPaymentDetails] = useState(null)
   const [paymentLoading, setPaymentLoading] = useState(false)
+  // A payment may be captured before the restaurant order is fully recorded.
+  // Keep its verification details through page reloads so guests can retry
+  // confirmation WITHOUT paying a second time.
+  const [pendingQrVerification, setPendingQrVerification] = useState(null)
 
   const [paymentMethod, setPaymentMethod] = useState('online')
 
@@ -379,6 +383,28 @@ export default function CustomerMenuPage() {
     if (!restaurantId) {
       setQrAccessAllowed(false)
       setQrAccessMessage('Restaurant ID is missing. Please scan a valid QR code.')
+      return false
+    }
+
+    // STEP 15B: Same platform wallet applies to RESTAURANT QR and DELIVERY.
+    // This check fails closed on an RPC/network error: no unpaid wallet can
+    // take an order even when the feature-entitlements API is temporarily down.
+    try {
+      const { data: walletAllowed, error: walletError } = await supabase.rpc(
+        'digital_dine_wallet_is_orderable',
+        { p_restaurant_id: restaurantId }
+      )
+      if (walletError) throw walletError
+      if (walletAllowed !== true) {
+        const message = 'This restaurant is temporarily not accepting new orders. Please contact the restaurant staff.'
+        setQrAccessAllowed(false)
+        setQrAccessMessage(message)
+        return false
+      }
+    } catch (walletError) {
+      console.error('[QR MENU] Wallet availability check failed:', walletError)
+      setQrAccessAllowed(false)
+      setQrAccessMessage('Unable to verify restaurant order availability. Please try again shortly.')
       return false
     }
 
@@ -1249,6 +1275,11 @@ export default function CustomerMenuPage() {
         hint: error.hint
       })
 
+      if (/RESTAURANT_WALLET_LOW_BALANCE|DELIVERY_WALLET_LOW_BALANCE|WALLET_NOT_CONFIGURED|STORE_NOT_APPROVED/i.test(String(error.message || ''))) {
+        setQrAccessAllowed(false)
+        setQrAccessMessage('This restaurant is temporarily not accepting new orders. Please contact the restaurant staff.')
+        throw new Error('This restaurant is temporarily unable to take new orders.')
+      }
       throw new Error(
         error.message ||
           'Unable to place order. Please try again.'
@@ -1295,11 +1326,18 @@ export default function CustomerMenuPage() {
       qty: Number(item.quantity || 0),
       food_type: item.food_type || (item.is_veg ? 'veg' : 'non-veg'),
       description: item.description || '',
-      image_url: item.image_url || ''
+      image_url: item.image_url || '',
+      // The secure API verifies active daily-offer prices on the server.
+      is_daily_offer: item.is_daily_offer === true,
+      ...(item.is_daily_offer === true ? { offer_title: item.offer_title || item.name } : {})
     }))
   }
 
   const handlePayAtCounter = async () => {
+    if (pendingQrVerification) {
+      appNotice('Confirm your previous Razorpay payment before placing another order.')
+      return
+    }
     if (!counterPaymentEnabled) {
       appNotice('Pay at Counter is currently unavailable.')
       return
@@ -1315,6 +1353,13 @@ export default function CustomerMenuPage() {
 
     if (!cartItemsArray.length) {
       appNotice('Please add at least one item to your cart.')
+      return
+    }
+
+    // Check before submitting a counter order OR opening paid checkout.
+    // createPublicOrder checks again; the database trigger is authoritative.
+    if (!(await fetchQrAccess())) {
+      appNotice('New orders are temporarily unavailable. Please contact the restaurant staff.')
       return
     }
 
@@ -1376,134 +1421,231 @@ export default function CustomerMenuPage() {
     }
   }
 
+  // Recover verification details if checkout finished but the tab reloaded.
+  useEffect(() => {
+    if (!restaurantId || typeof window === 'undefined') return
+    try {
+      const raw = window.sessionStorage.getItem(`digitaldine_pending_qr_payment_${restaurantId}`)
+      const saved = raw ? JSON.parse(raw) : null
+      if (saved?.intentId && saved?.razorpay_payment_id && saved?.razorpay_signature) {
+        setPendingQrVerification(saved)
+      }
+    } catch (error) {
+      console.error('[QR MENU] Unable to restore pending verification:', error)
+    }
+  }, [restaurantId])
+
+  const verifyQrPaymentAttempt = async attempt => {
+    if (!attempt?.intentId || !attempt?.razorpay_payment_id) return
+    setPaymentLoading(true)
+    try {
+      const response = await fetch('/api/restaurant/qr-payment/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          intentId: attempt.intentId,
+          razorpay_order_id: attempt.razorpay_order_id,
+          razorpay_payment_id: attempt.razorpay_payment_id,
+          razorpay_signature: attempt.razorpay_signature
+        })
+      })
+      const result = await response.json().catch(() => null)
+      if (!response.ok || !result?.success) {
+        const message = result?.message ||
+          'Payment confirmation is pending. Please do not pay again.'
+        // Even if the server is temporarily unreachable, preserve the details
+        // instead of inviting the customer to start another Razorpay payment.
+        setPendingQrVerification(attempt)
+        appNotice(message)
+        return
+      }
+
+      const order = result.order
+      const dailyOrderNumber = Number(order?.order_number ?? result.orderNumber)
+      if (!Number.isSafeInteger(dailyOrderNumber) || dailyOrderNumber < 1) {
+        throw new Error('Payment was verified but the order number was missing. Retry confirmation; do not pay again.')
+      }
+
+      const summary = attempt.summary || {}
+      if (summary.customerName) setCustomerName(summary.customerName)
+      if (summary.customerMobile) setCustomerMobile(summary.customerMobile)
+      if (!result.alreadyFinalized && Array.isArray(attempt.itemsSnapshot)) {
+        await incrementOrderedItems(attempt.itemsSnapshot)
+      }
+      setConfirmedBillSummary({
+        subtotal: Number(summary.subtotal || 0),
+        sgstRate: Number(summary.sgstRate ?? 2.5),
+        cgstRate: Number(summary.cgstRate ?? 2.5),
+        gstAmount: Number(summary.gstAmount || 0),
+        packingFee: Number(summary.packingFee || 0),
+        totalAmount: Number(summary.totalAmount || 0),
+        diningMode: summary.diningMode || 'Dine-In',
+        customerMobile: summary.customerMobile || customerMobile.trim()
+      })
+      setPlacedOrderNumber(dailyOrderNumber)
+      setPaymentDetails({
+        paymentId: attempt.razorpay_payment_id,
+        method: 'Razorpay Secure Gateway',
+        timestamp: new Date().toLocaleTimeString()
+      })
+      mergePlacedOrderIntoCustomerOrders(order)
+      setCart({})
+      setShowCart(false)
+      setOrderPlaced(true)
+      setPendingQrVerification(null)
+      try {
+        window.sessionStorage.removeItem(`digitaldine_pending_qr_payment_${restaurantId}`)
+      } catch {}
+      // Refresh order status without hiding a successfully verified order if
+      // an optional customer-history read fails.
+      try {
+        await fetchCustomerOrders(summary.customerMobile || customerMobile.trim())
+      } catch (historyError) {
+        console.error('[QR MENU] Order history refresh failed:', historyError)
+      }
+    } catch (error) {
+      console.error('[QR MENU] Razorpay verification error:', error)
+      setPendingQrVerification(attempt)
+      appNotice('Payment confirmation is pending. Do not pay again. ' +
+        (error?.message || 'Please retry verification.'))
+    } finally {
+      setPaymentLoading(false)
+    }
+  }
+
   const handleRazorpayCheckout = async () => {
+    if (paymentLoading || pendingQrVerification) {
+      appNotice('A payment is awaiting confirmation. Retry verification instead of paying again.')
+      return
+    }
     if (!razorpayEnabled) {
       appNotice('Online payment is currently unavailable.')
       return
     }
-
-    if (
-      (orderType === 'dine-in' && !dineInEnabled) ||
-      (orderType === 'parcel' && !takeawayEnabled)
-    ) {
+    if ((orderType === 'dine-in' && !dineInEnabled) ||
+        (orderType === 'parcel' && !takeawayEnabled)) {
       appNotice('The selected order type is currently unavailable.')
       return
     }
-
     if (!cartItemsArray.length) {
       appNotice('Please add at least one item to your cart.')
       return
     }
-
-    setPaymentLoading(true)
-
-    const finalSubtotal = subtotalAmount
-    const finalGst = gstAmount
-    const finalPacking = packingFee
-    const finalBillTotal = totalAmount
-    const finalMode =
-      orderType === 'parcel' ? `Parcel (${tableNumber})` : `Dine-In (${tableNumber})`
-    const finalMobile = customerMobile.trim()
-
-    const sdkLoaded = await loadRazorpayScript()
-    if (!sdkLoaded) {
-      appNotice('Razorpay SDK failed to load. Please check your internet connection.')
-      setPaymentLoading(false)
+    // The server will check the wallet and recalculate every line item and
+    // total from the database. The client price is only a mismatch check.
+    if (!(await fetchQrAccess())) {
+      appNotice('New orders are temporarily unavailable. Please contact the restaurant staff.')
       return
     }
 
-    const activeKeyId = restaurant?.razorpay_key_id?.trim()
-    if (!activeKeyId) {
-      appNotice(
-        'This restaurant has not configured their Razorpay Key in their dashboard yet. Please ask the staff or counter.'
-      )
-      setPaymentLoading(false)
-      return
+    setPaymentLoading(true)
+    const finalItems = createItemsSnapshot()
+    const finalMobile = customerMobile.trim()
+    const finalTable = orderType === 'parcel' ? `Parcel (${tableNumber})` : tableNumber
+    const billSummary = {
+      subtotal: subtotalAmount,
+      sgstRate,
+      cgstRate,
+      gstAmount,
+      packingFee,
+      totalAmount,
+      diningMode: orderType === 'parcel' ? `Parcel (${tableNumber})` : `Dine-In (${tableNumber})`,
+      customerMobile: finalMobile,
+      customerName
     }
 
     try {
+      const sdkLoaded = await loadRazorpayScript()
+      if (!sdkLoaded || typeof window.Razorpay !== 'function') {
+        throw new Error('Razorpay checkout is unavailable. Check your internet connection.')
+      }
+
+      const createResponse = await fetch('/api/restaurant/qr-payment/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          restaurantId,
+          tableNumber: finalTable,
+          customerName,
+          customerMobile: finalMobile,
+          orderType,
+          items: finalItems,
+          totalAmount
+        })
+      })
+      const checkout = await createResponse.json().catch(() => null)
+      if (!createResponse.ok || !checkout?.success) {
+        throw new Error(checkout?.message || 'Unable to start a secure Razorpay order.')
+      }
+      if (!checkout.intentId || !checkout.razorpayOrderId || !checkout.keyId) {
+        throw new Error('Missing secure payment details. Please try again.')
+      }
+
+      let paymentHandlerStarted = false
       const options = {
-        key: activeKeyId,
-        amount: Math.round(finalBillTotal * 100),
+        key: checkout.keyId,
+        order_id: checkout.razorpayOrderId,
+        amount: checkout.amountPaise,
         currency: 'INR',
         name: restaurant?.name || 'Digital Dining',
         description: `Table ${tableNumber} Order (${customerName})`,
-        handler: async response => {
-          try {
-            const itemsSnapshot = createItemsSnapshot()
-            const { orderNumber: dailyOrderNumber, order: createdOrder } = await createPublicOrder({
-              paymentMode: 'Razorpay Online',
-              status: 'paid',
-              itemsSnapshot,
-              totalAmount: finalBillTotal,
-              taxAmount: finalGst,
-              packingFeeAmount: finalPacking,
-              diningTable:
-                orderType === 'parcel' ? `Parcel (${tableNumber})` : tableNumber,
-              customerFullName: customerName,
-              customerPhone: finalMobile
-            })
-
-            await incrementOrderedItems(cartItemsArray)
-
-            setConfirmedBillSummary({
-              subtotal: finalSubtotal,
-              sgstRate,
-              cgstRate,
-              gstAmount: finalGst,
-              packingFee: finalPacking,
-              totalAmount: finalBillTotal,
-              diningMode: finalMode,
-              customerMobile: finalMobile
-            })
-
-            setPlacedOrderNumber(dailyOrderNumber)
-            setPaymentDetails({
-              paymentId: response?.razorpay_payment_id || null,
-              method: 'Razorpay Secure Gateway',
-              timestamp: new Date().toLocaleTimeString()
-            })
-
-            mergePlacedOrderIntoCustomerOrders(createdOrder)
-            setCart({})
-            setShowCart(false)
-            setOrderPlaced(true)
-            await fetchCustomerOrders(finalMobile)
-          } catch (error) {
-            console.error('Online order logging error:', error)
-            appNotice('Payment received, but failed to log order: ' + error.message)
-          } finally {
-            setPaymentLoading(false)
+        handler: async result => {
+          paymentHandlerStarted = true
+          const attempt = {
+            intentId: checkout.intentId,
+            razorpay_order_id: result?.razorpay_order_id || checkout.razorpayOrderId,
+            razorpay_payment_id: result?.razorpay_payment_id,
+            razorpay_signature: result?.razorpay_signature,
+            summary: billSummary,
+            itemsSnapshot: finalItems
           }
+          if (!attempt.razorpay_payment_id || !attempt.razorpay_signature) {
+            appNotice('Payment confirmation data is missing. If you were charged, do not pay again. Contact restaurant support.')
+            setPaymentLoading(false)
+            return
+          }
+          setPendingQrVerification(attempt)
+          try {
+            window.sessionStorage.setItem(
+              `digitaldine_pending_qr_payment_${restaurantId}`,
+              JSON.stringify(attempt)
+            )
+          } catch (storageError) {
+            console.error('[QR MENU] Failed to save pending payment retry:', storageError)
+          }
+          await verifyQrPaymentAttempt(attempt)
         },
         prefill: {
           name: customerName,
-          contact: customerMobile,
+          contact: finalMobile,
           email: 'guest@digitaldining.com'
         },
-        theme: {
-          color: '#ef3340'
-        },
+        theme: { color: '#ef3340' },
         modal: {
           ondismiss: () => {
-            setPaymentLoading(false)
+            if (!paymentHandlerStarted) setPaymentLoading(false)
           }
         }
       }
 
       const rzp = new window.Razorpay(options)
       rzp.on('payment.failed', response => {
-        appNotice(
-          `Payment Failed: ${
-            response?.error?.description || 'Please try again.'
-          }`
-        )
+        appNotice(`Payment Failed: ${response?.error?.description || 'Please try again.'}`)
         setPaymentLoading(false)
       })
+      // New wallets must remain eligible until starting checkout. Once Razorpay
+      // charges the customer, the server can finalize that *existing* intent
+      // even if the wallet subsequently crosses the threshold.
+      if (!(await fetchQrAccess())) {
+        throw new Error('Restaurant ordering has been paused. Your payment was not started.')
+      }
       rzp.open()
+      setPaymentLoading(false)
     } catch (error) {
-      console.error('Razorpay checkout error:', error)
-      appNotice('Checkout Error: ' + error.message)
+      console.error('[QR MENU] Secure checkout error:', error)
+      appNotice('Checkout Error: ' + (error?.message || 'Please try again.'))
       setPaymentLoading(false)
     }
   }
@@ -1538,6 +1680,20 @@ export default function CustomerMenuPage() {
   }
 
   const money = value => `₹${Number(value || 0).toFixed(2)}`
+
+  // Visible on the guest screen, in the live menu and even while a store is
+  // low-balance blocked: a previously captured payment must remain recoverable.
+  const pendingQrBanner = pendingQrVerification && !orderPlaced ? (
+    <div className="mx-auto my-4 max-w-2xl rounded-2xl border border-amber-300 bg-amber-50 p-4 text-center shadow-sm">
+      <p className="text-sm font-black text-amber-900">Your previous Razorpay payment is awaiting order confirmation.</p>
+      <p className="mt-1 text-xs text-amber-800">Please do not pay again. Retry to confirm the existing payment.</p>
+      <button type="button" onClick={() => verifyQrPaymentAttempt(pendingQrVerification)}
+        disabled={paymentLoading}
+        className="mt-3 rounded-xl bg-amber-800 px-5 py-2.5 text-xs font-black text-white disabled:opacity-50">
+        {paymentLoading ? 'Checking payment...' : 'Retry Payment Confirmation'}
+      </button>
+    </div>
+  ) : null
 
   if (loading) {
     return (
@@ -1579,6 +1735,8 @@ export default function CustomerMenuPage() {
               'Online ordering is temporarily unavailable for this restaurant.'}
           </p>
 
+          {pendingQrBanner}
+
           <button
             type="button"
             onClick={() => {
@@ -1605,6 +1763,7 @@ export default function CustomerMenuPage() {
           <p className="mt-2 text-sm leading-6 text-neutral-500">
             Please scan a valid table QR code and try again.
           </p>
+          {pendingQrBanner}
         </div>
       </main>
     )
@@ -1644,6 +1803,7 @@ export default function CustomerMenuPage() {
 
         <main className="dd-mobile-shell bg-[#f7f6f2] text-neutral-900">
           <div className="dd-mobile-frame min-h-[100dvh] pb-[max(2rem,env(safe-area-inset-bottom))]">
+            {pendingQrBanner}
             <div className="relative h-[205px] min-[390px]:h-[230px] overflow-hidden bg-neutral-900">
               {restaurant.banner_url ? (
                 <img
@@ -2327,6 +2487,8 @@ export default function CustomerMenuPage() {
             </div>
           </header>
 
+          {pendingQrBanner}
+
           {/* HERO */}
           <section className="px-3 min-[390px]:px-4 pt-4">
             <div className="relative h-[150px] min-[390px]:h-[164px] overflow-hidden rounded-[26px] min-[390px]:rounded-[30px] bg-neutral-900 shadow-[0_20px_45px_rgba(15,23,42,.14)]">
@@ -2992,7 +3154,7 @@ export default function CustomerMenuPage() {
                           <button
                             type="button"
                             onClick={handleRazorpayCheckout}
-                            disabled={paymentLoading}
+                            disabled={paymentLoading || Boolean(pendingQrVerification)}
                             className="w-full rounded-2xl bg-orange-500 py-4 text-sm font-black text-white shadow-lg shadow-orange-500/20 disabled:opacity-50"
                           >
                             {paymentLoading
@@ -3003,7 +3165,7 @@ export default function CustomerMenuPage() {
                           <button
                             type="button"
                             onClick={handlePayAtCounter}
-                            disabled={paymentLoading || !counterPaymentEnabled}
+                            disabled={paymentLoading || Boolean(pendingQrVerification) || !counterPaymentEnabled}
                             className="w-full rounded-2xl bg-emerald-600 py-4 text-sm font-black text-white shadow-lg shadow-emerald-600/15 disabled:opacity-50"
                           >
                             {paymentLoading

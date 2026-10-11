@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
 import OwnerDeliveryManagement from '@/app/components/OwnerDeliveryManagement'
+import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
@@ -21,7 +22,7 @@ function RestaurantChatWidget({ restaurantId }) {
     '👨‍🍳 Kitchen / Orders',
     '👨‍💼 Waiter',
     '📦 Delivery',
-    '💰 Subscription',
+    '💳 Wallet / Platform Fees',
     '🐛 Technical Problem',
     '⚙️ Other',
   ]
@@ -1183,6 +1184,61 @@ function DashboardEntryLoader({
   )
 }
 
+// STEP 18B: Owner-only order transport (non-UI helpers).
+// Existing Supabase Auth session is reused; credentials never enter URLs.
+async function ownerOrdersAccessToken() {
+  const { data, error } = await supabase.auth.getSession()
+  if (error || !data?.session?.access_token) {
+    throw new Error('Your owner session has expired. Please sign in again.')
+  }
+  return data.session.access_token
+}
+
+async function fetchOwnerOrdersSecure(restaurantId) {
+  const accessToken = await ownerOrdersAccessToken()
+  const result = []
+  const pageSize = 900
+  let offset = 0
+
+  for (let page = 0; page < 112; page += 1) {
+    const url = `/api/owner/restaurant-orders?restaurantId=${encodeURIComponent(restaurantId)}&limit=${pageSize}&offset=${offset}`
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || payload?.success !== true) {
+      throw new Error(payload?.message || 'Unable to load restaurant orders.')
+    }
+    const rows = Array.isArray(payload.orders) ? payload.orders : []
+    result.push(...rows)
+    if (!payload.hasMore) return result
+    if (rows.length === 0) throw new Error('Order history pagination failed.')
+    offset += rows.length
+  }
+
+  throw new Error('Order history is too large for one refresh. Contact support.')
+}
+
+async function updateOwnerOrderStatusSecure(restaurantId, orderId, newStatus) {
+  const accessToken = await ownerOrdersAccessToken()
+  const response = await fetch('/api/owner/restaurant-orders', {
+    method: 'PATCH',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ restaurantId, orderId, newStatus }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || payload?.success !== true || !payload?.order) {
+    throw new Error(payload?.message || 'Unable to update order status.')
+  }
+  return payload.order
+}
+
 export default function RestaurantDashboard() {
   useMobileViewportLock()
   const params = useParams()
@@ -1190,6 +1246,9 @@ export default function RestaurantDashboard() {
   const router = useRouter()
   const [restaurant, setRestaurant] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
+  // Accounts remain locked until the Super Admin approves registration.
+  const [approvalStatus, setApprovalStatus] = useState('checking')
+  const [approvalRestaurantName, setApprovalRestaurantName] = useState('')
   const [entryLoaderDone, setEntryLoaderDone] = useState(false)
   const entryLoaderStartedAtRef = useRef(Date.now())
 
@@ -1555,7 +1614,7 @@ restaurantModuleEnabled,
 
       const { data: ownedRestaurant, error: ownershipError } = await supabase
         .from('restaurants')
-        .select('id, name, subscription_status')
+        .select('id, name, subscription_status, approval_status')
         .eq('id', user.id)
         .maybeSingle()
 
@@ -1574,7 +1633,12 @@ restaurantModuleEnabled,
   return
 }
 
-      if (!cancelled) setAuthChecked(true)
+      if (!cancelled) {
+        const status = String(ownedRestaurant.approval_status || 'pending').toLowerCase()
+        setApprovalRestaurantName(String(ownedRestaurant.name || ''))
+        setApprovalStatus(status)
+        setAuthChecked(true)
+      }
     }
 
     verifyDashboardAccess()
@@ -1614,7 +1678,7 @@ restaurantModuleEnabled,
 
   useEffect(() => {
     async function fetchDashboard() {
-      if (!authChecked || !restaurantId) return
+      if (!authChecked || approvalStatus !== 'approved' || !restaurantId) return
 
       const {
         data: { user },
@@ -1628,7 +1692,7 @@ restaurantModuleEnabled,
 
       const { data: ownedRestaurant, error: ownershipError } = await supabase
         .from('restaurants')
-        .select('id, owner_id')
+        .select('id, owner_id, approval_status')
         .eq('id', restaurantId)
         .eq('owner_id', user.id)
         .maybeSingle()
@@ -1636,6 +1700,14 @@ restaurantModuleEnabled,
       if (ownershipError || !ownedRestaurant) {
         console.error('Dashboard ownership check failed:', ownershipError)
         router.replace('/login')
+        return
+      }
+
+      // Revalidate approval before every dashboard refresh. This also locks
+      // the owner view promptly if an administrator withdraws approval.
+      if (String(ownedRestaurant.approval_status || 'pending').toLowerCase() !== 'approved') {
+        setApprovalStatus(String(ownedRestaurant.approval_status || 'pending').toLowerCase())
+        setRestaurant(null)
         return
       }
 
@@ -1765,11 +1837,15 @@ if (staffError) {
   )
 }
 
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false })
+      // Step 18B: Orders are loaded through the authenticated Owner API.
+      // Keep the original order fields, sorting, reports and alarm behavior.
+      let orderData = null
+      try {
+        orderData = await fetchOwnerOrdersSecure(restaurantId)
+      } catch (orderLoadError) {
+        console.error('[OWNER SECURE ORDERS LOAD]', orderLoadError)
+        // Retain the previously loaded orders during a temporary API outage.
+      }
 
       const { data: tableData, error: tableError } = await supabase
         .from('tables')
@@ -1810,6 +1886,7 @@ if (staffError) {
     return () => clearInterval(interval)
   }, [
     authChecked,
+    approvalStatus,
     restaurantId,
     router,
     currentPlanCode,
@@ -1837,18 +1914,32 @@ if (staffError) {
   const availableTableCount = Math.max(0, configuredTableNumbers.length - occupiedTableCount)
 
   const updateOrderStatus = async (orderId, newStatus) => {
-    setOrders(
-      orders.map((o) =>
-        o.id === orderId
-          ? { ...o, status: newStatus }
-          : o
-      )
-    )
+    // Preserve the existing instant UI response, but roll it back if the
+    // owner-only server rejects the change (including cross-tenant orders).
+    const previousOrder = orders.find((order) => String(order.id) === String(orderId))
+    if (!previousOrder) return
+    setOrders((current) => current.map((order) =>
+      String(order.id) === String(orderId)
+        ? { ...order, status: newStatus }
+        : order
+    ))
 
-    await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', orderId)
+    try {
+      const updatedOrder = await updateOwnerOrderStatusSecure(
+        restaurantId, orderId, newStatus
+      )
+      setOrders((current) => current.map((order) =>
+        String(order.id) === String(orderId) ? updatedOrder : order
+      ))
+    } catch (error) {
+      console.error('[OWNER SECURE ORDERS STATUS]', error)
+      setOrders((current) => current.map((order) =>
+        String(order.id) === String(orderId)
+          ? previousOrder
+          : order
+      ))
+      appNotice(error?.message || 'Unable to update order status. Please try again.')
+    }
   }
 
   const toggleItemAvailability = async (
@@ -3710,6 +3801,61 @@ if (staffError) {
       menuItems
     )
 
+  if (authChecked && approvalStatus !== 'approved') {
+    const rejected = approvalStatus === 'rejected'
+    return (
+      <main className="min-h-screen bg-neutral-950 px-4 py-12 text-neutral-100 flex items-center justify-center">
+        <section className="w-full max-w-xl rounded-3xl border border-neutral-800 bg-neutral-900 p-6 sm:p-9 text-center shadow-2xl">
+          <div className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl text-3xl ${rejected ? 'bg-red-500/10' : 'bg-amber-500/10'}`}>
+            {rejected ? '!' : '⏳'}
+          </div>
+          <p className={`text-xs font-black uppercase tracking-widest ${rejected ? 'text-red-400' : 'text-amber-400'}`}>
+            {rejected ? 'Registration requires attention' : 'Awaiting Super Admin approval'}
+          </p>
+          <h1 className="mt-3 text-2xl font-black text-white">
+            {rejected ? 'Your registration was not approved' : 'Registration received successfully'}
+          </h1>
+          {approvalRestaurantName && (
+            <p className="mt-2 text-sm font-semibold text-neutral-300">{approvalRestaurantName}</p>
+          )}
+          <p className="mt-4 text-sm leading-6 text-neutral-400">
+            {rejected
+              ? 'Please contact the Digital Dine-In Super Admin for a review. You cannot access your Owner Portal until your business is approved.'
+              : 'Please contact the Digital Dine-In Super Admin to request account activation. Your Owner Portal will open only after the Super Admin approves your business.'}
+          </p>
+          <div className="mt-6 rounded-2xl border border-neutral-700 bg-neutral-950 px-4 py-4 text-left">
+            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Account status</p>
+            <p className={`mt-1 font-bold ${rejected ? 'text-red-400' : 'text-amber-400'}`}>
+              {rejected ? 'Rejected — contact admin' : 'Pending approval'}
+            </p>
+          </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-xl bg-orange-500 px-5 py-3 text-sm font-black text-white hover:bg-orange-600"
+            >
+              Check Approval Again
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await supabase.auth.signOut()
+                router.replace('/login')
+              }}
+              className="rounded-xl border border-neutral-700 bg-neutral-800 px-5 py-3 text-sm font-bold text-white hover:bg-neutral-700"
+            >
+              Sign Out
+            </button>
+          </div>
+          <p className="mt-5 text-xs text-neutral-500">
+            Your account will open after Super Admin approves the registration.
+          </p>
+        </section>
+      </main>
+    )
+  }
+
   if (!authChecked || !restaurant || !entryLoaderDone) {
     return (
       <DashboardEntryLoader
@@ -4275,9 +4421,7 @@ if (staffError) {
                 <p className="mt-2 text-[10px] font-mono text-neutral-500 break-all">
                   Restaurant ID: {restaurant?.id || restaurantId}
                 </p>
-                <p className="mt-1 text-[10px] font-black text-orange-400">
-                  Plan: {currentPlanDisplay}
-                </p>
+
               </div>
 
               <div className="flex gap-2 pt-1">
@@ -4315,7 +4459,7 @@ if (staffError) {
                 {restaurant.name}
               </h2>
               <p className="mt-1 text-xs text-neutral-500">
-                Manage the Restaurant, Resort and Delivery modules included in your active subscription from one place.
+                Manage your business operations, delivery wallet and team from one place.
               </p>
             </div>
           </div>
@@ -4329,6 +4473,9 @@ if (staffError) {
             dashboardPath={`/dashboard/${restaurantId}?module=delivery`}
           />
         )}
+
+        {/* Wallet is available to every approved restaurant/business owner. */}
+        <OwnerDeliveryWallet restaurantId={restaurantId} />
 
         {/* Owner workspace switch. Module visibility follows plan_code exactly. */}
         <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
@@ -4433,37 +4580,6 @@ if (staffError) {
             <p className="text-2xl font-black text-orange-400 mt-1">
               {activeOrders.length}
             </p>
-          </div>
-
-          <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm flex flex-col justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-                Partner Tier
-              </p>
-
-              <p className="text-xl font-black text-amber-400 mt-0.5">
-                {currentPlanDisplay}
-              </p>
-            </div>
-
-            <p className="text-[10px] text-neutral-500 mt-1">
-              ₹{currentPlanMonthlyPrice.toLocaleString('en-IN')} / month
-            </p>
-
-            <div className="grid grid-cols-1 gap-1.5 pt-3">
-              {Object.values(PLAN_FEATURES)
-                .filter((plan) => plan.code !== currentPlanCode)
-                .map((plan) => (
-                  <button
-                    key={plan.code}
-                    type="button"
-                    onClick={() => handleUpgradePlan(plan.code)}
-                    className="w-full bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold text-[10px] py-2 px-2 rounded-lg transition text-left"
-                  >
-                    {plan.name} · ₹{plan.monthlyPrice.toLocaleString('en-IN')}/mo
-                  </button>
-                ))}
-            </div>
           </div>
 
           <div className="bg-neutral-900 border border-orange-500/20 p-5 rounded-3xl shadow-sm">
@@ -6965,7 +7081,7 @@ if (staffError) {
                 </span>
                 <h2 className="text-2xl font-black text-white mt-3">Restaurant Overview</h2>
                 <p className="text-xs text-neutral-400 mt-2">
-                  Basic analytics are included with {currentPlanDisplay}.
+                  A quick overview of your restaurant activity.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
                   <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5">
@@ -6983,18 +7099,11 @@ if (staffError) {
                 </div>
               </div>
 
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6">
                 <h3 className="text-lg font-black text-white">Advanced Analytics & Reports</h3>
-                <p className="text-xs text-neutral-300 mt-2">
-                  CSV reports, period reports, average order value, peak-hour analysis and advanced reporting are available with Restaurant Pro or Restaurant + Resort Pro.
+                <p className="text-xs text-neutral-400 mt-2">
+                  Advanced reporting is currently unavailable for this business configuration. Contact Super Admin for access.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => handleUpgradePlan(planFeatures.resort ? 'restaurant_resort_pro' : 'restaurant_pro')}
-                  className="mt-4 bg-orange-500 hover:bg-orange-600 text-white px-5 py-3 rounded-xl text-xs font-black transition"
-                >
-                  Upgrade for Advanced Analytics 🚀
-                </button>
               </div>
             </div>
           )

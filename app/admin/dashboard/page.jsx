@@ -11,11 +11,16 @@ import {
   useRouter,
 } from 'next/navigation'
 
+import AdminWalletControls from '@/app/components/AdminWalletControls'
+
 const NAV = [
   ['overview', 'Overview'],
   ['custom-plans', 'Custom Plans'],
+  ['registrations', 'Registrations'],
+  ['wallet-controls', 'Wallet Controls'],
   ['tenants', 'Tenants & Access'],
   ['operations', 'Operations'],
+  ['delivery-orders', 'Delivery Orders'],
   ['people', 'Users & Staff'],
   ['inventory', 'Inventory'],
   ['live-support', 'Live Support'],
@@ -658,6 +663,530 @@ function CustomPlanRequestCard({
   )
 }
 
+
+
+// Dedicated, server-paginated order report. Does not change any existing admin
+// pages or actions, and never accesses privileged Supabase tables in the browser.
+function DeliveryOrdersReport() {
+  const router = useRouter()
+  const emptyFilters = () => ({
+    search: '', storeId: '', status: '', paymentStatus: '', paymentMethod: '',
+    fromDate: '', toDate: '',
+  })
+  const [draft, setDraft] = useState(emptyFilters)
+  const [applied, setApplied] = useState(emptyFilters)
+  const [page, setPage] = useState(1)
+  const [reload, setReload] = useState(0)
+  const [report, setReport] = useState(null)
+  const [busy, setBusy] = useState(true)
+  const [reportError, setReportError] = useState('')
+  const [expandedId, setExpandedId] = useState(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 20000)
+    let mounted = true
+
+    async function loadOrders() {
+      setBusy(true)
+      setReportError('')
+      try {
+        const query = new URLSearchParams({
+          page: String(page),
+          pageSize: '25',
+        })
+        for (const [key, value] of Object.entries(applied)) {
+          if (value) query.set(key, value)
+        }
+        const response = await fetch(`/api/admin/delivery-orders?${query}`, {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal: controller.signal,
+        })
+        const result = await response.json().catch(() => ({}))
+        if (response.status === 401) {
+          router.replace('/admin')
+          return
+        }
+        if (!response.ok || result.success !== true) {
+          throw new Error(result.message || 'Unable to load delivery orders.')
+        }
+        if (mounted) {
+          setReport(result)
+          setExpandedId(null)
+        }
+      } catch (error) {
+        if (mounted) {
+          setReportError(error.name === 'AbortError'
+            ? 'The order request timed out. Press Refresh to try again.'
+            : error.message || 'Unable to load delivery orders.')
+        }
+      } finally {
+        window.clearTimeout(timeout)
+        if (mounted) setBusy(false)
+      }
+    }
+
+    loadOrders()
+    return () => {
+      mounted = false
+      window.clearTimeout(timeout)
+      controller.abort()
+    }
+  }, [applied, page, reload, router])
+
+  const rows = Array.isArray(report?.orders) ? report.orders : []
+  const stores = Array.isArray(report?.stores) ? report.stores : []
+  const totalCount = Number(report?.totalCount || 0)
+  const totalPages = Number(report?.totalPages || 0)
+  const pageOrderValue = rows.reduce((sum, row) => sum + (Number(row.total_amount) || 0), 0)
+  const deliveredOnPage = rows.filter((row) => row.order_status === 'delivered').length
+  const pageStores = new Set(rows.map((row) => row.restaurant_id)).size
+  const breakdown = useMemo(() => {
+    const byStore = new Map()
+    for (const order of rows) {
+      const id = String(order.restaurant_id || '')
+      const entry = byStore.get(id) || { id, name: order.store_name || 'Unknown store', count: 0, value: 0 }
+      entry.count += 1
+      entry.value += Number(order.total_amount) || 0
+      byStore.set(id, entry)
+    }
+    return [...byStore.values()].sort((a, b) => b.count - a.count)
+  }, [report])
+
+  const fieldClass = 'w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-semibold text-white outline-none focus:border-red-500'
+
+  function updateField(key, value) {
+    setDraft((previous) => ({ ...previous, [key]: value }))
+  }
+
+  function applyFilters(event) {
+    event.preventDefault()
+    if (draft.fromDate && draft.toDate && draft.fromDate > draft.toDate) {
+      setReportError('The start date cannot be later than the end date.')
+      return
+    }
+    setReportError('')
+    setPage(1)
+    setApplied({ ...draft })
+  }
+
+  function clearFilters() {
+    setDraft(emptyFilters())
+    setApplied(emptyFilters())
+    setPage(1)
+    setReportError('')
+    setReload((value) => value + 1)
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-400">Multi-store operations</p>
+          <h1 className="mt-1 text-2xl font-black text-white sm:text-3xl">All Delivery Orders</h1>
+          <p className="mt-2 text-xs leading-6 text-neutral-500">
+            Secure store-wise records with server-side filtering and pagination through the full order history.
+          </p>
+        </div>
+        <button type="button" onClick={() => setReload((value) => value + 1)}
+          disabled={busy}
+          className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-neutral-200 disabled:opacity-50">
+          {busy ? 'Loading...' : 'Refresh Orders'}
+        </button>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Metric label="Matching Orders (All Pages)" value={totalCount.toLocaleString('en-IN')} />
+        <Metric label="Orders on This Page" value={rows.length} />
+        <Metric label="Delivered on This Page" value={deliveredOnPage} />
+        <Metric label="Order Value (This Page)" value={money(pageOrderValue)} hint="All statuses; not paid revenue" />
+      </div>
+
+      <form onSubmit={applyFilters} className="mt-5 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-black text-white">Search and Filter</h2>
+          <button type="button" onClick={clearFilters} className="text-[10px] font-black text-red-400 hover:text-red-300">
+            Clear All Filters
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="block xl:col-span-2">
+            <span className="mb-1.5 block text-[10px] font-bold text-neutral-500">Order code, customer name or mobile</span>
+            <input value={draft.search} onChange={(event) => updateField('search', event.target.value)}
+              placeholder="Find an order..." maxLength={80} className={fieldClass} />
+          </label>
+          <label className="block xl:col-span-2">
+            <span className="mb-1.5 block text-[10px] font-bold text-neutral-500">Delivery store</span>
+            <select value={draft.storeId} onChange={(event) => updateField('storeId', event.target.value)} className={fieldClass}>
+              <option value="">All stores</option>
+              {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-bold text-neutral-500">Order status</span>
+            <select value={draft.status} onChange={(event) => updateField('status', event.target.value)} className={fieldClass}>
+              <option value="">All statuses</option>
+              {['received', 'confirmed', 'preparing', 'packed', 'out_for_delivery', 'delivered', 'cancelled'].map((item) => (
+                <option key={item} value={item}>{label(item)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-bold text-neutral-500">Payment status</span>
+            <select value={draft.paymentStatus} onChange={(event) => updateField('paymentStatus', event.target.value)} className={fieldClass}>
+              <option value="">All statuses</option>
+              {['pending', 'paid', 'failed', 'refunded', 'unpaid'].map((item) => (
+                <option key={item} value={item}>{label(item)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-bold text-neutral-500">Payment method</span>
+            <select value={draft.paymentMethod} onChange={(event) => updateField('paymentMethod', event.target.value)} className={fieldClass}>
+              <option value="">All methods</option>
+              <option value="cod">Cash on Delivery</option>
+              <option value="razorpay">Razorpay</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-bold text-neutral-500">From date (IST)</span>
+            <input type="date" value={draft.fromDate} max={draft.toDate || undefined}
+              onChange={(event) => updateField('fromDate', event.target.value)} className={fieldClass} />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-bold text-neutral-500">To date (IST)</span>
+            <input type="date" value={draft.toDate} min={draft.fromDate || undefined}
+              onChange={(event) => updateField('toDate', event.target.value)} className={fieldClass} />
+          </label>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button type="submit" disabled={busy} className="rounded-xl bg-red-600 px-6 py-3 text-xs font-black text-white disabled:opacity-50">
+            Apply Filters
+          </button>
+        </div>
+      </form>
+
+      {reportError && (
+        <div role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-xs font-bold text-red-200">
+          {reportError}
+        </div>
+      )}
+
+      <div className="mt-5 overflow-x-auto rounded-3xl border border-neutral-800 bg-neutral-900">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 px-4 py-4">
+          <h2 className="text-sm font-black text-white">Store-Wise Delivery Orders</h2>
+          <span className="text-[10px] font-bold text-neutral-500">
+            Page {page} of {Math.max(totalPages, 1)} · {pageStores} stores on this page
+          </span>
+        </div>
+        {busy && !report ? (
+          <div className="p-6 text-xs text-neutral-400">Loading delivery order history...</div>
+        ) : rows.length ? (
+          <table className="w-full min-w-[1120px] text-left">
+            <thead className="border-b border-neutral-800 bg-neutral-950 text-[9px] uppercase tracking-wider text-neutral-500">
+              <tr>
+                <th className="p-4">Order ID</th><th className="p-4">Store</th>
+                <th className="p-4">Customer</th><th className="p-4">Order Status</th>
+                <th className="p-4">Payment</th><th className="p-4">Date</th>
+                <th className="p-4 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-800 text-xs">
+              {rows.map((order) => (
+                <tr key={order.id} className="hover:bg-neutral-800/30">
+                  <td className="p-4">
+                    <button type="button" onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}
+                      className="break-all text-left font-mono text-[10px] font-bold text-red-300 underline underline-offset-4">
+                      {order.order_code || order.id}
+                    </button>
+                    {expandedId === order.id && (
+                      <p className="mt-2 break-all font-mono text-[9px] text-neutral-500">Internal ID: {order.id}</p>
+                    )}
+                  </td>
+                  <td className="p-4">
+                    <p className="font-black text-white">{order.store_name || 'Unknown store'}</p>
+                    <p className="mt-1 break-all font-mono text-[9px] text-neutral-500">{order.restaurant_id}</p>
+                  </td>
+                  <td className="p-4">
+                    <p className="text-neutral-200">{order.customer_name || '—'}</p>
+                    <p className="mt-1 text-[10px] text-neutral-500">{order.customer_mobile || '—'}</p>
+                  </td>
+                  <td className="p-4"><StatusPill value={order.order_status} /></td>
+                  <td className="p-4">
+                    <StatusPill value={order.payment_status} />
+                    <p className="mt-1 text-[10px] text-neutral-500">{label(order.payment_method || 'unknown')}</p>
+                  </td>
+                  <td className="whitespace-nowrap p-4 text-[10px] text-neutral-400">{formatDate(order.created_at)}</td>
+                  <td className="p-4 text-right font-black text-white">{money(order.total_amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="p-6"><Empty>{busy ? 'Loading...' : 'No delivery orders match these filters.'}</Empty></div>
+        )}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <p className="text-[10px] text-neutral-500">
+          Showing {totalCount ? (page - 1) * 25 + 1 : 0}–{Math.min(page * 25, totalCount)} of {totalCount} matching orders
+        </p>
+        <div className="flex gap-2">
+          <button type="button" disabled={busy || page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}
+            className="rounded-xl border border-neutral-700 px-4 py-2 text-xs font-black disabled:opacity-30">Previous</button>
+          <button type="button" disabled={busy || page >= totalPages} onClick={() => setPage((value) => value + 1)}
+            className="rounded-xl border border-neutral-700 px-4 py-2 text-xs font-black disabled:opacity-30">Next</button>
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+        <h2 className="text-sm font-black text-white">Store Summary — Current Page</h2>
+        <p className="mt-2 text-[10px] leading-5 text-neutral-500">
+          Exact matching-order count above covers all pages. The values below cover only the {rows.length} orders on this page.
+          Order value is not settled revenue and may include unpaid or cancelled orders.
+        </p>
+        {breakdown.length ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {breakdown.map((store) => (
+              <div key={store.id} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <p className="truncate text-xs font-black text-white">{store.name}</p>
+                <p className="mt-2 text-[10px] text-neutral-400">Orders: {store.count}</p>
+                <p className="mt-1 text-[10px] font-black text-neutral-200">Order value: {money(store.value)}</p>
+              </div>
+            ))}
+          </div>
+        ) : <div className="mt-3"><Empty>No orders to summarize.</Empty></div>}
+      </div>
+    </div>
+  )
+}
+
+// Super Admin only. Uses the authenticated server API, never a client service key.
+function AdminRegistrationApprovals() {
+  const [statusFilter, setStatusFilter] = useState('pending')
+  const [registrations, setRegistrations] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [savingId, setSavingId] = useState('')
+  const [notes, setNotes] = useState({})
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const load = useCallback(async (filter) => {
+    setLoading(true)
+    setError('')
+    try {
+      const response = await fetch(
+        `/api/admin/registrations?status=${encodeURIComponent(filter)}`,
+        { cache: 'no-store' }
+      )
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || result.success !== true) {
+        throw new Error(result.message || 'Unable to load registrations.')
+      }
+      setRegistrations(Array.isArray(result.registrations) ? result.registrations : [])
+    } catch (err) {
+      setError(err?.message || 'Unable to load registrations.')
+      setRegistrations([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load(statusFilter)
+  }, [load, statusFilter])
+
+  const decide = async (row, action) => {
+    if (savingId || row.approval_status !== 'pending') return
+    const approving = action === 'approve'
+    const name = row.name || row.restaurant_code || 'this business'
+    const note = String(notes[row.id] || '').trim()
+
+    if (!approving && !note) {
+      setError('Enter a reason before rejecting a registration.')
+      return
+    }
+    if (!window.confirm(
+      `${approving ? 'Approve' : 'Reject'} ${name}?\n\n${approving ? 'This changes its approval status. Owner access will be enforced separately.' : 'The applicant will remain ineligible for portal access.'}`
+    )) return
+
+    setSavingId(row.id)
+    setError('')
+    setNotice('')
+    try {
+      const response = await fetch('/api/admin/registrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: row.id,
+          action,
+          note,
+        }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || result.success !== true) {
+        throw new Error(result.message || 'Unable to update registration.')
+      }
+      setNotice(result.message || 'Registration updated.')
+      await load(statusFilter)
+    } catch (err) {
+      setError(err?.message || 'Unable to update registration.')
+    } finally {
+      setSavingId('')
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-400">
+            Super Admin / Business Accounts
+          </p>
+          <h1 className="mt-1 text-2xl font-black text-white">Registration Approvals</h1>
+          <p className="mt-2 text-xs leading-5 text-neutral-400">
+            Review new owner registrations before enabling their business accounts.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => load(statusFilter)}
+          disabled={loading || Boolean(savingId)}
+          className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-bold text-white hover:border-neutral-500 disabled:opacity-50"
+        >
+          {loading ? 'Loading...' : 'Refresh Registrations'}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Registration status filter">
+        {[
+          ['pending', 'Pending'],
+          ['approved', 'Approved'],
+          ['rejected', 'Rejected'],
+          ['all', 'All'],
+        ].map(([value, label]) => (
+          <button
+            type="button"
+            key={value}
+            onClick={() => { setNotice(''); setError(''); setStatusFilter(value) }}
+            className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${
+              statusFilter === value
+                ? 'bg-red-600 text-white'
+                : 'border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-white'
+            }`}
+            aria-pressed={statusFilter === value}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-xs font-bold text-red-300">
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs font-bold text-emerald-300">
+          {notice}
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-xs text-neutral-300">
+        Showing {registrations.length} {statusFilter === 'all' ? '' : statusFilter} registration(s)
+        {registrations.length === 200 && <span className="ml-2 text-amber-300">(First 200 only)</span>}
+      </div>
+
+      {loading ? (
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6 text-sm text-neutral-400">
+          Loading registrations...
+        </div>
+      ) : registrations.length === 0 ? (
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-8 text-center">
+          <p className="text-lg font-bold text-white">No registrations found</p>
+          <p className="mt-2 text-xs text-neutral-500">
+            {statusFilter === 'pending'
+              ? 'New businesses will appear here after an owner completes registration.'
+              : 'Try another registration status filter.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {registrations.map((row) => (
+            <article key={row.id} className="min-w-0 rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="break-words text-base font-black text-white">
+                    {row.name || 'Unnamed business'}
+                  </h2>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    {row.business_type || 'Business'} · {row.restaurant_code || 'No store code'}
+                  </p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase ${
+                  row.approval_status === 'approved'
+                    ? 'bg-emerald-500/10 text-emerald-300'
+                    : row.approval_status === 'rejected'
+                      ? 'bg-red-500/10 text-red-300'
+                      : 'bg-amber-500/10 text-amber-300'
+                }`}>
+                  {row.approval_status || 'pending'}
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-2 text-xs text-neutral-400">
+                <p>Email: <span className="break-all text-neutral-200">{row.email || 'Not provided'}</span></p>
+                <p>Phone: <span className="text-neutral-200">{row.phone || 'Not provided'}</span></p>
+                <p>Registered: <span className="text-neutral-200">{row.created_at ? new Date(row.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Unknown'}</span></p>
+                {row.approved_by && <p>Approved by: <span className="text-neutral-200">{row.approved_by}</span></p>}
+                {row.approval_note && <p>Admin note: <span className="text-neutral-200">{row.approval_note}</span></p>}
+              </div>
+
+              {row.approval_status === 'pending' && (
+                <div className="mt-5 space-y-3 border-t border-neutral-800 pt-4">
+                  <label className="block text-[11px] font-bold text-neutral-300" htmlFor={`approval-note-${row.id}`}>
+                    Admin note (required for rejection)
+                  </label>
+                  <textarea
+                    id={`approval-note-${row.id}`}
+                    value={notes[row.id] || ''}
+                    onChange={(event) => setNotes((prev) => ({
+                      ...prev,
+                      [row.id]: event.target.value.slice(0, 1000),
+                    }))}
+                    rows={2}
+                    placeholder="Optional approval note or reason for rejection"
+                    className="w-full rounded-xl border border-neutral-700 bg-neutral-950 p-3 text-xs text-white outline-none focus:border-red-500"
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => decide(row, 'approve')}
+                      disabled={Boolean(savingId) || loading}
+                      className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white hover:bg-emerald-500 disabled:opacity-50"
+                    >
+                      {savingId === row.id ? 'Processing...' : 'Approve'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => decide(row, 'reject')}
+                      disabled={Boolean(savingId) || loading}
+                      className="rounded-xl bg-red-600 px-4 py-3 text-xs font-black text-white hover:bg-red-500 disabled:opacity-50"
+                    >
+                      {savingId === row.id ? 'Processing...' : 'Reject'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AdminControlCenter() {
   const router =
     useRouter()
@@ -715,6 +1244,59 @@ export default function AdminControlCenter() {
     setActionLoading,
   ] =
     useState(false)
+
+  const [otpEnabled, setOtpEnabled] = useState(true)
+  const [otpSettingsLoading, setOtpSettingsLoading] = useState(false)
+  const [otpSettingsSaving, setOtpSettingsSaving] = useState(false)
+  const [otpSettingsError, setOtpSettingsError] = useState('')
+  const [otpSettingsNotice, setOtpSettingsNotice] = useState('')
+
+  const loadOtpSettings = useCallback(async () => {
+    setOtpSettingsLoading(true)
+    setOtpSettingsError('')
+    try {
+      const response = await fetch('/api/admin/customer-auth-settings', {
+        cache: 'no-store',
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || result.success !== true || typeof result.otpEnabled !== 'boolean') {
+        throw new Error(result.message || 'Unable to load customer OTP settings.')
+      }
+      setOtpEnabled(result.otpEnabled)
+    } catch (err) {
+      setOtpSettingsError(err.message || 'Unable to load customer OTP settings.')
+    } finally {
+      setOtpSettingsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (section === 'system') loadOtpSettings()
+  }, [section, loadOtpSettings])
+
+  const saveOtpSettings = async () => {
+    if (otpSettingsSaving || otpSettingsLoading) return
+    setOtpSettingsSaving(true)
+    setOtpSettingsError('')
+    setOtpSettingsNotice('')
+    try {
+      const response = await fetch('/api/admin/customer-auth-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otpEnabled }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || result.success !== true || typeof result.otpEnabled !== 'boolean') {
+        throw new Error(result.message || 'Unable to save customer OTP settings.')
+      }
+      setOtpEnabled(result.otpEnabled)
+      setOtpSettingsNotice('Customer login OTP setting saved successfully.')
+    } catch (err) {
+      setOtpSettingsError(err.message || 'Unable to save customer OTP settings.')
+    } finally {
+      setOtpSettingsSaving(false)
+    }
+  }
 
   const [
     liveSupportSessions,
@@ -2406,6 +2988,18 @@ export default function AdminControlCenter() {
             </div>
           )}
 
+          {section === 'registrations' && (
+            <AdminRegistrationApprovals />
+          )}
+
+          {section === 'wallet-controls' && (
+            <AdminWalletControls />
+          )}
+
+          {section === 'delivery-orders' && (
+            <DeliveryOrdersReport />
+          )}
+
           {section ===
             'people' && (
             <div>
@@ -3482,6 +4076,44 @@ export default function AdminControlCenter() {
               <h1 className="mt-1 text-2xl font-black text-white">
                 Platform Control & Health
               </h1>
+
+              <div className="mt-5 rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-red-400">Customer Login Security</p>
+                    <h2 className="mt-1 text-lg font-black text-white">Mobile OTP Verification</h2>
+                    <p className="mt-2 text-xs leading-5 text-neutral-400">
+                      Control whether customer login requests OTP verification. Turning OTP off must not expose private order history or saved addresses without a verified session.
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-3 text-xs font-bold text-white">
+                    <span>{otpEnabled ? 'OTP ON' : 'OTP OFF'}</span>
+                    <input
+                      type="checkbox"
+                      checked={otpEnabled}
+                      disabled={otpSettingsLoading || otpSettingsSaving}
+                      onChange={(event) => {
+                        setOtpEnabled(event.target.checked)
+                        setOtpSettingsNotice('')
+                      }}
+                      className="h-5 w-5 accent-red-600"
+                    />
+                  </label>
+                </div>
+                {otpSettingsError && <p role="alert" className="mt-3 text-xs text-red-400">{otpSettingsError}</p>}
+                {otpSettingsNotice && <p role="status" className="mt-3 text-xs text-emerald-400">{otpSettingsNotice}</p>}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={saveOtpSettings}
+                    disabled={otpSettingsLoading || otpSettingsSaving || Boolean(otpSettingsError)}
+                    className="rounded-xl bg-red-600 px-5 py-3 text-xs font-black text-white disabled:opacity-50">
+                    {otpSettingsSaving ? 'Saving...' : 'Save OTP Setting'}
+                  </button>
+                  <button type="button" onClick={loadOtpSettings} disabled={otpSettingsSaving || otpSettingsLoading}
+                    className="rounded-xl border border-neutral-700 px-4 py-3 text-xs font-bold text-neutral-300 disabled:opacity-50">
+                    {otpSettingsLoading ? 'Loading...' : 'Reload Setting'}
+                  </button>
+                </div>
+              </div>
 
               <div className="mt-5 grid gap-4 xl:grid-cols-2">
                 <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
