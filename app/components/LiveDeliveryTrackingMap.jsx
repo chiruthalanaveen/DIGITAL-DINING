@@ -2,26 +2,24 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-// Digital Dine-In | Customer live delivery map
-// Compatible with the existing DeliveryTrackingPage props.
-// This component displays actual GPS updates only. It never invents rider positions.
-// A dashed line is a straight-line guide, NOT a road/navigation route.
-// To draw a real route, pass routeCoordinates from your own routing provider.
+// Digital Dine-In — customer delivery tracking map.
+// Existing component props are preserved. Rider positions must come from the
+// application's real location updates; this component never invents GPS points.
 
 const LEAFLET_VERSION = '1.9.4'
 const LEAFLET_CSS = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.css`
-const LEAFLET_JS = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.js`
+const LEAFLET_SOURCES = [
+  `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.js`,
+  `https://cdn.jsdelivr.net/npm/leaflet@${LEAFLET_VERSION}/dist/leaflet.js`,
+]
 const GREEN = '#84cc35'
 const DARK = '#26351b'
 
 function validCoordinate(latitude, longitude) {
-  // Number(null) and Number('') are zero, but an empty GPS value is not a location.
   if (
-    latitude === null || latitude === undefined ||
-    longitude === null || longitude === undefined ||
+    latitude == null || longitude == null ||
     String(latitude).trim() === '' || String(longitude).trim() === ''
   ) return false
-
   const lat = Number(latitude)
   const lng = Number(longitude)
   return (
@@ -46,11 +44,9 @@ function escapeHtml(value) {
 }
 
 function safeHttpUrl(value) {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
   try {
-    const parsed = new URL(raw)
-    return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : ''
+    const url = new URL(String(value || '').trim())
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : ''
   } catch {
     return ''
   }
@@ -71,25 +67,21 @@ function distanceMeters(a, b) {
   const rad = (value) => (value * Math.PI) / 180
   const dLat = rad(b.lat - a.lat)
   const dLng = rad(b.lng - a.lng)
-  const sinLat = Math.sin(dLat / 2)
-  const sinLng = Math.sin(dLng / 2)
-  const h = sinLat * sinLat +
-    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * sinLng * sinLng
-  return 2 * 6371008.8 * Math.asin(Math.min(1, Math.sqrt(h)))
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * 6371008.8 * Math.asin(Math.min(1, Math.sqrt(Math.max(0, h))))
 }
 
-function getHeading(value, previous, next) {
-  if (value !== undefined && value !== null && String(value).trim() !== '' &&
-      Number.isFinite(Number(value))) {
+function getHeading(value, previous, next, fallback = 0) {
+  if (value != null && String(value).trim() !== '' && Number.isFinite(Number(value))) {
     return ((Number(value) % 360) + 360) % 360
   }
-  if (!previous || !next || distanceMeters(previous, next) < 2) return 0
-
+  if (!previous || !next || distanceMeters(previous, next) < 2) return fallback
   const rad = (value) => (value * Math.PI) / 180
-  const lngDiff = rad(next.lng - previous.lng)
-  const y = Math.sin(lngDiff) * Math.cos(rad(next.lat))
+  const dLng = rad(next.lng - previous.lng)
+  const y = Math.sin(dLng) * Math.cos(rad(next.lat))
   const x = Math.cos(rad(previous.lat)) * Math.sin(rad(next.lat)) -
-    Math.sin(rad(previous.lat)) * Math.cos(rad(next.lat)) * Math.cos(lngDiff)
+    Math.sin(rad(previous.lat)) * Math.cos(rad(next.lat)) * Math.cos(dLng)
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
 }
 
@@ -103,97 +95,122 @@ function normalizedRouteCoordinates(input) {
   return points.map(({ lat, lng }) => [lat, lng])
 }
 
-function ensureLeaflet() {
-  if (typeof window === 'undefined') {
-    return Promise.reject(new Error('The map is available only in the browser.'))
+function addLeafletCss() {
+  if (document.querySelector('link[data-digital-dine-leaflet="true"]')) return
+  const link = document.createElement('link')
+  link.rel = 'stylesheet'
+  link.href = LEAFLET_CSS
+  link.dataset.digitalDineLeaflet = 'true'
+  // If the primary CDN is unreachable, load the stylesheet from a second CDN.
+  link.onerror = () => {
+    if (link.dataset.fallbackTried === 'true') return
+    link.dataset.fallbackTried = 'true'
+    link.href = `https://cdn.jsdelivr.net/npm/leaflet@${LEAFLET_VERSION}/dist/leaflet.css`
   }
-  if (window.L?.map) return Promise.resolve(window.L)
-  if (window.__digitalDineLeafletPromise) {
-    return window.__digitalDineLeafletPromise.catch((error) => {
-      // A previous map instance may have cached a failed CDN load.
-      window.__digitalDineLeafletPromise = null
-      throw error
-    })
-  }
+  document.head.appendChild(link)
+}
 
-  window.__digitalDineLeafletPromise = new Promise((resolve, reject) => {
-    if (!document.querySelector('link[data-digital-dine-leaflet="true"]')) {
-      const link = document.createElement('link')
-      link.rel = 'stylesheet'
-      link.href = LEAFLET_CSS
-      link.dataset.digitalDineLeaflet = 'true'
-      document.head.appendChild(link)
-    }
-
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script')
     let settled = false
-    let timer
-    let script = document.querySelector('script[data-digital-dine-leaflet="true"]')
-
-    const done = (error) => {
+    let timer = null
+    const clean = () => {
+      if (timer !== null) window.clearTimeout(timer)
+      script.removeEventListener('load', onLoad)
+      script.removeEventListener('error', onError)
+    }
+    const finish = (error) => {
       if (settled) return
       settled = true
-      window.clearTimeout(timer)
-      script?.removeEventListener('load', loaded)
-      script?.removeEventListener('error', failed)
+      clean()
       if (error) {
-        // Recover cleanly after an unavailable CDN or failed initial load.
-        window.__digitalDineLeafletPromise = null
-        script?.remove()
+        script.remove()
         reject(error)
       } else {
         resolve(window.L)
       }
     }
-    const loaded = () => {
-      if (window.L?.map) done()
-      else done(new Error('The map library did not initialize.'))
+    const onLoad = () => {
+      if (window.L?.map && window.L?.tileLayer) finish()
+      else finish(new Error('Leaflet loaded but did not initialize.'))
     }
-    const failed = () => done(new Error('Unable to load the map library. Check your connection.'))
-
-    if (!script) {
-      script = document.createElement('script')
-      script.src = LEAFLET_JS
-      script.async = true
-      script.dataset.digitalDineLeaflet = 'true'
-      script.addEventListener('load', loaded)
-      script.addEventListener('error', failed)
-      document.body.appendChild(script)
-    } else {
-      script.addEventListener('load', loaded)
-      script.addEventListener('error', failed)
-      // Another component may have loaded Leaflet just before our handlers attached.
-      if (window.L?.map) loaded()
-    }
-    timer = window.setTimeout(
-      () => done(new Error('The map took too long to load. Please retry.')),
-      15000
-    )
+    const onError = () => finish(new Error('Map script could not be downloaded.'))
+    script.src = src
+    script.async = true
+    script.dataset.digitalDineLeaflet = 'true'
+    script.addEventListener('load', onLoad)
+    script.addEventListener('error', onError)
+    timer = window.setTimeout(() => finish(new Error('Map script loading timed out.')), 14000)
+    document.body.appendChild(script)
   })
-
-  return window.__digitalDineLeafletPromise
 }
 
-function driverIconHtml({
-  markerType,
-  markerImageUrl,
-  markerLabel,
-  driverName,
-  heading,
-  advertisement,
-}) {
+// Shares Leaflet with the original DeliveryLocationMap and other map instances.
+async function ensureLeaflet() {
+  if (typeof window === 'undefined') {
+    throw new Error('The live map is available only in a browser.')
+  }
+  if (window.L?.map && window.L?.tileLayer) return window.L
+
+  if (window.__digitalDineLeafletPromise) {
+    try {
+      const existing = await Promise.race([
+        window.__digitalDineLeafletPromise,
+        new Promise((_, reject) => window.setTimeout(
+          () => reject(new Error('Previous map loader timed out.')),
+          12000
+        )),
+      ])
+      if (existing?.map && existing?.tileLayer) return existing
+    } catch {
+      // Recover below if the previously cached loader failed.
+    }
+    if (window.L?.map && window.L?.tileLayer) return window.L
+    window.__digitalDineLeafletPromise = null
+  }
+
+  const promise = (async () => {
+    addLeafletCss()
+    // A previous failed attempt can leave a stale script that never fires load.
+    document.querySelectorAll('script[data-digital-dine-leaflet="true"]').forEach((node) => {
+      if (!window.L?.map) node.remove()
+    })
+    let lastError = null
+    for (const src of LEAFLET_SOURCES) {
+      if (window.L?.map && window.L?.tileLayer) return window.L
+      try {
+        return await loadScript(src)
+      } catch (error) {
+        lastError = error
+      }
+    }
+    throw lastError || new Error('Unable to load the tracking map.')
+  })()
+
+  window.__digitalDineLeafletPromise = promise
+  try {
+    return await promise
+  } catch (error) {
+    if (window.__digitalDineLeafletPromise === promise) {
+      window.__digitalDineLeafletPromise = null
+    }
+    throw error
+  }
+}
+
+function driverIconHtml({ markerType, markerImageUrl, markerLabel, driverName, heading, advertisement }) {
   const type = String(markerType || 'bike').toLowerCase()
   const imageUrl = safeHttpUrl(markerImageUrl)
-  const useImage = ['logo', 'custom'].includes(type) && imageUrl
+  const useImage = ['logo', 'custom'].includes(type) && Boolean(imageUrl)
   const safeLabel = escapeHtml(markerLabel || driverName || 'Delivery partner')
   const angle = Number.isFinite(Number(heading)) ? Number(heading) : 0
 
-  // Preserve owner/manager-configured ads above the marker.
-  const adsEnabled = Boolean(advertisement?.enabled)
   const adPosition = String(advertisement?.position || 'above_marker')
-  const adAbove = adsEnabled && ['above_marker', 'both'].includes(adPosition)
+  const showAd = Boolean(advertisement?.enabled) && ['above_marker', 'both'].includes(adPosition)
   const adTitle = escapeHtml(advertisement?.title || 'Delivery offer')
   const adImageUrl = safeHttpUrl(advertisement?.image_url)
-  const adHtml = adAbove ? `
+  const adHtml = showAd ? `
     <div style="max-width:148px;margin-bottom:8px;overflow:hidden;padding:7px;border:1px solid #deebd1;border-radius:13px;background:#fff;box-shadow:0 5px 16px #16250f26;text-align:center;font-size:10px;line-height:1.3;font-weight:800;color:#27351c;">
       ${adImageUrl ? `<img src="${escapeHtml(adImageUrl)}" alt="" style="display:block;width:100%;max-height:58px;object-fit:cover;border-radius:8px;margin-bottom:5px;" />` : ''}
       ${adTitle}
@@ -204,55 +221,52 @@ function driverIconHtml({
     : `<span style="font-size:26px;line-height:1;">${markerEmoji(type)}</span>`
 
   return `
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;transform:translateY(-1px);">
+    <div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;">
       ${adHtml}
-      <div style="position:relative;display:grid;place-items:center;width:53px;height:53px;background:${useImage ? '#fff' : GREEN};border:3px solid white;border-radius:19px;overflow:visible;box-shadow:0 7px 21px #26351b42;">
+      <div style="position:relative;display:grid;place-items:center;width:53px;height:53px;background:${useImage ? '#fff' : GREEN};border:3px solid white;border-radius:19px;box-shadow:0 7px 21px #26351b42;">
         <div style="display:grid;place-items:center;overflow:hidden;width:100%;height:100%;border-radius:16px;">${visual}</div>
-        <span style="position:absolute;top:-10px;right:-11px;display:grid;place-items:center;width:24px;height:24px;background:#26351b;color:#fff;border:2px solid #fff;border-radius:50%;font-size:12px;box-shadow:0 3px 8px #17240e38;transform:rotate(${angle}deg);">▲</span>
-        <span style="position:absolute;bottom:-9px;left:50%;transform:translateX(-50%) rotate(45deg);width:13px;height:13px;background:#fff;border-radius:2px;"></span>
+        <span style="position:absolute;top:-10px;right:-11px;display:grid;place-items:center;width:24px;height:24px;background:#26351b;color:#fff;border:2px solid #fff;border-radius:50%;font-size:12px;transform:rotate(${angle}deg);">▲</span>
+        <span style="position:absolute;bottom:-9px;left:50%;transform:translateX(-50%) rotate(45deg);width:13px;height:13px;background:white;border-radius:2px;"></span>
       </div>
-      <div style="max-width:156px;margin-top:12px;padding:6px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:999px;background:#26351b;color:#fff;box-shadow:0 4px 11px #26351b2e;font-size:10px;font-weight:800;line-height:1.3;">${safeLabel}</div>
+      <div style="max-width:156px;margin-top:12px;padding:6px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:999px;background:#26351b;color:white;box-shadow:0 4px 11px #26351b2e;font-size:10px;font-weight:800;line-height:1.3;">${safeLabel}</div>
     </div>`
 }
 
 function customerIconHtml() {
   return `
     <div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;">
-      <div style="width:46px;height:46px;display:grid;place-items:center;border-radius:19px;border:3px solid white;background:#fbfff6;color:#30441e;box-shadow:0 5px 18px #26351b42;font-size:22px;">📍</div>
+      <div style="width:46px;height:46px;display:grid;place-items:center;border-radius:19px;border:3px solid white;background:#fbfff6;box-shadow:0 5px 18px #26351b42;font-size:22px;">📍</div>
       <div style="margin-top:5px;border-radius:999px;padding:5px 10px;background:white;color:#26351b;box-shadow:0 3px 12px #26351b26;font-size:10px;font-weight:800;white-space:nowrap;">Delivery address</div>
     </div>`
 }
 
-function animateToMarker(marker, target, animationRef, onFrame) {
-  if (!marker) return
-  if (animationRef.current !== null) {
+function cancelMarkerAnimation(animationRef) {
+  if (animationRef.current != null && typeof window !== 'undefined') {
     window.cancelAnimationFrame(animationRef.current)
-    animationRef.current = null
   }
-  const start = marker.getLatLng()
-  const from = { lat: start.lat, lng: start.lng }
-  const distance = distanceMeters(from, target)
-  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+  animationRef.current = null
+}
 
-  if (!Number.isFinite(distance) || distance < 1 || distance > 2500 || reduceMotion) {
-    marker.setLatLng(target)
-    onFrame?.(target)
+function animateToMarker(marker, target, animationRef) {
+  if (!marker || typeof window === 'undefined') return
+  cancelMarkerAnimation(animationRef)
+  const from = marker.getLatLng()
+  const distance = distanceMeters(from, target)
+  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+  if (!Number.isFinite(distance) || distance < 1 || distance > 2500 || prefersReducedMotion) {
+    marker.setLatLng([target.lat, target.lng])
     return
   }
-
-  // Smooth between actual GPS samples; does not generate additional GPS locations.
+  const began = window.performance.now()
   const duration = 850
-  const began = performance.now()
-  const frame = (time) => {
-    const ratio = Math.min(1, Math.max(0, (time - began) / duration))
-    const easing = 1 - Math.pow(1 - ratio, 3)
-    const point = {
-      lat: from.lat + (target.lat - from.lat) * easing,
-      lng: from.lng + (target.lng - from.lng) * easing,
-    }
-    marker.setLatLng(point)
-    onFrame?.(point)
-    if (ratio < 1) animationRef.current = window.requestAnimationFrame(frame)
+  const frame = (now) => {
+    const progress = Math.min(1, Math.max(0, (now - began) / duration))
+    const eased = 1 - (1 - progress) ** 3
+    marker.setLatLng([
+      from.lat + (target.lat - from.lat) * eased,
+      from.lng + (target.lng - from.lng) * eased,
+    ])
+    if (progress < 1) animationRef.current = window.requestAnimationFrame(frame)
     else animationRef.current = null
   }
   animationRef.current = window.requestAnimationFrame(frame)
@@ -270,34 +284,42 @@ export default function LiveDeliveryTrackingMap({
   markerLabel = '',
   advertisement = null,
   height = 360,
-  // Optional: real road route from YOUR routing service as [[lat,lng], ...].
-  // No third-party request is made with the customer's precise location.
   routeCoordinates = null,
   showControls = true,
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
-  const driverMarkerRef = useRef(null)
-  const customerMarkerRef = useRef(null)
-  const guideLineRef = useRef(null)
+  const riderMarkerRef = useRef(null)
+  const homeMarkerRef = useRef(null)
+  const routeLineRef = useRef(null)
   const animationRef = useRef(null)
-  const previousDriverRef = useRef(null)
+  const lastRiderRef = useRef(null)
+  const latestCoordinatesRef = useRef({ driver: null, customer: null })
   const lastHeadingRef = useRef(0)
-  const firstFitRef = useRef(false)
-  const followingRef = useRef(true)
-  const latestPropsRef = useRef(null)
+  const cameraInitializedRef = useRef(false)
+  const hadRiderRef = useRef(false)
+  const autoFollowRef = useRef(true)
+
   const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState('')
-  const [retry, setRetry] = useState(0)
+  const [retryKey, setRetryKey] = useState(0)
   const [following, setFollowing] = useState(true)
 
-  const driverPoint = toPoint(driverLatitude, driverLongitude)
-  const customerPoint = toPoint(customerLatitude, customerLongitude)
-  const safeRoute = useMemo(() => normalizedRouteCoordinates(routeCoordinates), [routeCoordinates])
+  const driver = useMemo(
+    () => toPoint(driverLatitude, driverLongitude),
+    [driverLatitude, driverLongitude]
+  )
+  const customer = useMemo(
+    () => toPoint(customerLatitude, customerLongitude),
+    [customerLatitude, customerLongitude]
+  )
+  const route = useMemo(
+    () => normalizedRouteCoordinates(routeCoordinates),
+    [routeCoordinates]
+  )
   const bottomAdvertisement = useMemo(() => {
     if (!advertisement?.enabled) return null
-    const position = String(advertisement?.position || 'above_marker')
-    if (!['bottom', 'both'].includes(position)) return null
+    if (!['bottom', 'both'].includes(String(advertisement.position || 'above_marker'))) return null
     return {
       title: String(advertisement.title || '').trim(),
       text: String(advertisement.text || '').trim(),
@@ -306,109 +328,112 @@ export default function LiveDeliveryTrackingMap({
     }
   }, [advertisement])
 
-  latestPropsRef.current = { driverPoint, customerPoint }
+  // Update after render rather than mutating refs while rendering (React 19 safe).
+  useEffect(() => {
+    latestCoordinatesRef.current = { driver, customer }
+  }, [driver, customer])
 
   const followRider = () => {
-    followingRef.current = true
+    autoFollowRef.current = true
     setFollowing(true)
     const map = mapRef.current
-    const point = latestPropsRef.current?.driverPoint
-    if (map && point) map.flyTo([point.lat, point.lng], Math.max(map.getZoom(), 15), { duration: 0.6 })
+    const point = latestCoordinatesRef.current.driver
+    if (map && point) {
+      map.flyTo([point.lat, point.lng], Math.max(map.getZoom(), 15), { duration: 0.6 })
+    }
   }
 
-  const showWholeRoute = () => {
+  const viewBoth = () => {
     const map = mapRef.current
-    if (!map) return
-    const driver = latestPropsRef.current?.driverPoint
-    const customer = latestPropsRef.current?.customerPoint
-    if (!driver || !customer) return
-    followingRef.current = false
+    const { driver: point, customer: destination } = latestCoordinatesRef.current
+    if (!map || !point || !destination) return
+    autoFollowRef.current = false
     setFollowing(false)
-    const bounds = guideLineRef.current?.getBounds?.()
-    map.fitBounds(bounds?.isValid?.() ? bounds : [[driver.lat, driver.lng], [customer.lat, customer.lng]], {
-      padding: [52, 54], maxZoom: 16, animate: true,
-    })
+    const bounds = routeLineRef.current?.getBounds?.()
+    const points = (bounds && bounds.isValid())
+      ? bounds
+      : [[point.lat, point.lng], [destination.lat, destination.lng]]
+    map.fitBounds(points, { padding: [52, 54], maxZoom: 16, animate: true })
   }
 
+  // Create exactly one Leaflet map for each mount/retry; destroy it on cleanup.
   useEffect(() => {
-    let mounted = true
-    let resizeObserver = null
-    let resizeTimeout = null
+    let active = true
     let map = null
+    let resizeObserver = null
+    let resizeTimer = null
 
-    const start = async () => {
+    const initialize = async () => {
       try {
         const L = await ensureLeaflet()
-        if (!mounted || !containerRef.current) return
-
-        const driver = latestPropsRef.current?.driverPoint
-        const customer = latestPropsRef.current?.customerPoint
-        const startPoint = driver || customer || { lat: 20.5937, lng: 78.9629 }
+        if (!active || !containerRef.current) return
+        const { driver: point, customer: destination } = latestCoordinatesRef.current
+        const center = point || destination || { lat: 20.5937, lng: 78.9629 }
         map = L.map(containerRef.current, {
           zoomControl: !showControls,
           attributionControl: true,
           scrollWheelZoom: false,
-        }).setView([startPoint.lat, startPoint.lng], driver || customer ? 15 : 5)
-
+        }).setView([center.lat, center.lng], point || destination ? 15 : 5)
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
           attribution: '&copy; OpenStreetMap contributors',
         }).addTo(map)
         mapRef.current = map
 
-        // Manual gestures pause auto-follow so customers can inspect the route.
         map.on('dragstart zoomstart', (event) => {
-          if (!event?.originalEvent) return
-          followingRef.current = false
-          setFollowing(false)
+          if (event?.originalEvent) {
+            autoFollowRef.current = false
+            setFollowing(false)
+          }
         })
-
         if (typeof ResizeObserver !== 'undefined') {
-          resizeObserver = new ResizeObserver(() => map?.invalidateSize({ pan: false }))
+          resizeObserver = new ResizeObserver(() => {
+            if (active && map) map.invalidateSize({ pan: false })
+          })
           resizeObserver.observe(containerRef.current)
         }
-        resizeTimeout = window.setTimeout(() => {
-          if (mounted && map) map.invalidateSize({ pan: false })
-        }, 120)
-
-        if (mounted) {
-          setMapReady(true)
+        resizeTimer = window.setTimeout(() => {
+          if (active && map) map.invalidateSize({ pan: false })
+        }, 160)
+        if (active) {
           setMapError('')
+          setMapReady(true)
         }
       } catch (error) {
-        if (mounted) setMapError(error?.message || 'Unable to load live tracking map.')
+        if (active) {
+          setMapReady(false)
+          setMapError(error?.message || 'Unable to load the live tracking map.')
+        }
       }
     }
 
-    start()
+    initialize()
     return () => {
-      mounted = false
-      if (resizeTimeout !== null) window.clearTimeout(resizeTimeout)
+      active = false
+      if (resizeTimer != null) window.clearTimeout(resizeTimer)
       resizeObserver?.disconnect()
-      if (animationRef.current !== null) window.cancelAnimationFrame(animationRef.current)
-      animationRef.current = null
-      try { map?.remove() } catch { /* Map may already be destroyed. */ }
+      cancelMarkerAnimation(animationRef)
+      try { map?.remove() } catch { /* Ignore cleanup races. */ }
       mapRef.current = null
-      driverMarkerRef.current = null
-      customerMarkerRef.current = null
-      guideLineRef.current = null
-      previousDriverRef.current = null
-      firstFitRef.current = false
+      riderMarkerRef.current = null
+      homeMarkerRef.current = null
+      routeLineRef.current = null
+      lastRiderRef.current = null
+      cameraInitializedRef.current = false
+      hadRiderRef.current = false
     }
-    // Leaflet maps must be created only once per mount or manual retry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [retry])
+  }, [retryKey, showControls])
 
   useEffect(() => {
     if (!mapReady || !mapRef.current || typeof window === 'undefined') return
     const L = window.L
-    if (!L) return
+    if (!L?.marker || !L?.polyline) return
     const map = mapRef.current
 
-    if (customerPoint) {
-      const location = [customerPoint.lat, customerPoint.lng]
-      if (!customerMarkerRef.current) {
-        customerMarkerRef.current = L.marker(location, {
+    // Customer destination may arrive AFTER the map has initialized.
+    if (customer) {
+      if (!homeMarkerRef.current) {
+        homeMarkerRef.current = L.marker([customer.lat, customer.lng], {
           keyboard: false,
           icon: L.divIcon({
             className: 'dd-live-delivery-customer-marker',
@@ -417,19 +442,17 @@ export default function LiveDeliveryTrackingMap({
             iconAnchor: [65, 40],
           }),
         }).addTo(map)
-      } else customerMarkerRef.current.setLatLng(location)
-    } else if (customerMarkerRef.current) {
-      customerMarkerRef.current.remove()
-      customerMarkerRef.current = null
+      } else {
+        homeMarkerRef.current.setLatLng([customer.lat, customer.lng])
+      }
+    } else if (homeMarkerRef.current) {
+      homeMarkerRef.current.remove()
+      homeMarkerRef.current = null
     }
 
-    if (driverPoint) {
-      const previous = previousDriverRef.current
-      const heading = (driverHeading === null || driverHeading === undefined || String(driverHeading).trim() === '')
-        ? previous && distanceMeters(previous, driverPoint) >= 2
-          ? getHeading(null, previous, driverPoint)
-          : lastHeadingRef.current
-        : getHeading(driverHeading, previous, driverPoint)
+    if (driver) {
+      const previous = lastRiderRef.current
+      const heading = getHeading(driverHeading, previous, driver, lastHeadingRef.current)
       lastHeadingRef.current = heading
       const icon = L.divIcon({
         className: 'dd-live-delivery-rider-marker',
@@ -440,74 +463,81 @@ export default function LiveDeliveryTrackingMap({
         iconSize: [180, 175],
         iconAnchor: [90, 111],
       })
-      if (!driverMarkerRef.current) {
-        driverMarkerRef.current = L.marker([driverPoint.lat, driverPoint.lng], {
+      if (!riderMarkerRef.current) {
+        riderMarkerRef.current = L.marker([driver.lat, driver.lng], {
           keyboard: false,
           zIndexOffset: 1000,
           icon,
         }).addTo(map)
       } else {
-        driverMarkerRef.current.setIcon(icon)
-        if (!previous || distanceMeters(previous, driverPoint) > 0.5) {
-          animateToMarker(driverMarkerRef.current, driverPoint, animationRef)
+        riderMarkerRef.current.setIcon(icon)
+        if (!previous || distanceMeters(previous, driver) > 0.5) {
+          animateToMarker(riderMarkerRef.current, driver, animationRef)
         }
       }
+      const moved = previous && distanceMeters(previous, driver) > 1
+      const firstRider = !hadRiderRef.current
+      lastRiderRef.current = driver
+      hadRiderRef.current = true
 
-      const changed = previous && distanceMeters(previous, driverPoint) > 1
-      previousDriverRef.current = driverPoint
-
-      if (!firstFitRef.current) {
-        firstFitRef.current = true
-        if (customerPoint && distanceMeters(driverPoint, customerPoint) > 50) {
-          map.fitBounds(
-            [[driverPoint.lat, driverPoint.lng], [customerPoint.lat, customerPoint.lng]],
-            { padding: [52, 54], maxZoom: 16, animate: false }
-          )
+      // First available rider: show both driver and customer when possible.
+      if (firstRider || !cameraInitializedRef.current) {
+        cameraInitializedRef.current = true
+        if (customer && distanceMeters(driver, customer) > 50) {
+          map.fitBounds([[driver.lat, driver.lng], [customer.lat, customer.lng]], {
+            padding: [55, 60], maxZoom: 16, animate: false,
+          })
         } else {
-          map.setView([driverPoint.lat, driverPoint.lng], 16, { animate: false })
+          map.setView([driver.lat, driver.lng], 16, { animate: false })
         }
-      } else if (followingRef.current && changed) {
-        map.panTo([driverPoint.lat, driverPoint.lng], { animate: true, duration: 0.65 })
+      } else if (autoFollowRef.current && moved) {
+        map.panTo([driver.lat, driver.lng], { animate: true, duration: 0.65 })
       }
-    } else if (driverMarkerRef.current) {
-      if (animationRef.current !== null) window.cancelAnimationFrame(animationRef.current)
-      animationRef.current = null
-      driverMarkerRef.current.remove()
-      driverMarkerRef.current = null
-      previousDriverRef.current = null
-      firstFitRef.current = false
+    } else {
+      if (riderMarkerRef.current) {
+        cancelMarkerAnimation(animationRef)
+        riderMarkerRef.current.remove()
+        riderMarkerRef.current = null
+      }
+      lastRiderRef.current = null
+      hadRiderRef.current = false
+      if (customer && !cameraInitializedRef.current) {
+        cameraInitializedRef.current = true
+        map.setView([customer.lat, customer.lng], 16, { animate: false })
+      }
     }
 
-    // Real road route: use only geometry provided by the app's route service.
-    // Fallback: visibly dashed, straight-line guidance; NOT street directions.
-    const linePoints = driverPoint && customerPoint
-      ? safeRoute || [[driverPoint.lat, driverPoint.lng], [customerPoint.lat, customerPoint.lng]]
+    // Real route geometry is used only if supplied by the calling app.
+    // Otherwise the dashed line is a DIRECT-LINE guide, not a road route.
+    const linePoints = driver && customer
+      ? (route || [[driver.lat, driver.lng], [customer.lat, customer.lng]])
       : null
     if (linePoints) {
-      const isRoadRoute = Boolean(safeRoute)
-      const lineStyle = {
-        color: isRoadRoute ? '#62ad20' : '#719849',
-        weight: isRoadRoute ? 5 : 3,
-        opacity: isRoadRoute ? 0.85 : 0.75,
-        dashArray: isRoadRoute ? undefined : '7 9',
+      const hasRoadRoute = Boolean(route)
+      const style = {
+        color: hasRoadRoute ? '#62ad20' : '#719849',
+        weight: hasRoadRoute ? 5 : 3,
+        opacity: hasRoadRoute ? 0.85 : 0.75,
+        dashArray: hasRoadRoute ? undefined : '7 9',
         lineJoin: 'round',
       }
-      if (guideLineRef.current) {
-        guideLineRef.current.setLatLngs(linePoints)
-        guideLineRef.current.setStyle(lineStyle)
+      if (routeLineRef.current) {
+        routeLineRef.current.setLatLngs(linePoints)
+        routeLineRef.current.setStyle(style)
       } else {
-        guideLineRef.current = L.polyline(linePoints, lineStyle).addTo(map)
-        guideLineRef.current.bringToBack()
+        routeLineRef.current = L.polyline(linePoints, style).addTo(map)
+        routeLineRef.current.bringToBack()
       }
-    } else if (guideLineRef.current) {
-      guideLineRef.current.remove()
-      guideLineRef.current = null
+    } else if (routeLineRef.current) {
+      routeLineRef.current.remove()
+      routeLineRef.current = null
     }
   }, [
-    mapReady, driverLatitude, driverLongitude, driverHeading,
-    customerLatitude, customerLongitude, markerType, markerImageUrl,
-    markerLabel, driverName, advertisement, safeRoute,
+    mapReady, driver, customer, driverHeading, driverName, markerType,
+    markerImageUrl, markerLabel, advertisement, route,
   ])
+
+  const mapHeight = Math.max(260, Number.isFinite(Number(height)) ? Number(height) : 360)
 
   return (
     <div
@@ -515,30 +545,26 @@ export default function LiveDeliveryTrackingMap({
       style={{ isolation: 'isolate' }}
       aria-label="Delivery rider location map"
     >
-      <div
-        ref={containerRef}
-        style={{ height: `${Math.max(260, Number(height) || 360)}px`, width: '100%' }}
-        className="w-full"
-      />
+      <div ref={containerRef} className="w-full" style={{ height: `${mapHeight}px`, width: '100%' }} />
 
       {mapReady && (
         <>
           <div
-            className="pointer-events-none absolute bottom-3 left-3 z-[450] max-w-[185px] rounded-full bg-white/95 px-3 py-2 text-[10px] font-extrabold shadow-md"
+            className="pointer-events-none absolute bottom-3 left-3 z-[450] max-w-[195px] rounded-full bg-white/95 px-3 py-2 text-[10px] font-extrabold shadow-md"
             style={{ color: DARK }}
           >
             <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-[#84cc35]" />
-            {driverPoint
-              ? (safeRoute ? 'Rider GPS · road route' : customerPoint ? 'Rider GPS · direct-line guide' : 'Rider GPS location')
+            {driver
+              ? (route ? 'Rider GPS · road route' : customer ? 'Rider GPS · direct-line guide' : 'Rider GPS location')
               : 'Waiting for rider location'}
           </div>
 
           {showControls && (
             <div className="absolute bottom-12 right-3 z-[450] flex flex-col gap-2" aria-label="Map controls">
-              {driverPoint && (
+              {driver && (
                 <button
                   type="button"
-                  aria-label="Center map on delivery rider"
+                  aria-label="Follow delivery rider"
                   title="Follow rider"
                   onClick={followRider}
                   className="grid h-10 w-10 place-items-center rounded-full border border-[#e3ebd8] bg-white text-xl font-bold shadow-lg"
@@ -547,12 +573,12 @@ export default function LiveDeliveryTrackingMap({
                   ⌖
                 </button>
               )}
-              {driverPoint && customerPoint && (
+              {driver && customer && (
                 <button
                   type="button"
                   aria-label="Show rider and delivery address"
                   title="View both locations"
-                  onClick={showWholeRoute}
+                  onClick={viewBoth}
                   className="grid h-10 w-10 place-items-center rounded-full border border-[#e3ebd8] bg-white text-lg font-bold shadow-lg"
                   style={{ color: DARK }}
                 >
@@ -596,7 +622,7 @@ export default function LiveDeliveryTrackingMap({
             onClick={() => {
               setMapError('')
               setMapReady(false)
-              setRetry((value) => value + 1)
+              setRetryKey((key) => key + 1)
             }}
           >
             Retry map
