@@ -1,3 +1,4 @@
+// Paste into: app/api/restaurant/qr-payment/verify/route.js
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { qrAdmin, qrRespond, qrError, qrGateway, QR_ID_RE } from '@/lib/server/qrPaymentServer'
 

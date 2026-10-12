@@ -1195,30 +1195,35 @@ async function ownerOrdersAccessToken() {
 }
 
 async function fetchOwnerOrdersSecure(restaurantId) {
-  const accessToken = await ownerOrdersAccessToken()
+  // The Owner Dashboard already has an authenticated Supabase session.
+  // Call the owner-restricted SECURITY DEFINER RPC directly; this avoids a
+  // Next.js API or service-role misconfiguration making reports look empty.
+  // The RPC MUST validate auth.uid() and ownership server-side.
   const result = []
   const pageSize = 900
   let offset = 0
-
   for (let page = 0; page < 112; page += 1) {
-    const url = `/api/owner/restaurant-orders?restaurantId=${encodeURIComponent(restaurantId)}&limit=${pageSize}&offset=${offset}`
-    const response = await fetch(url, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const { data, error } = await supabase.rpc('owner_get_restaurant_orders_secure', {
+      p_restaurant_id: restaurantId,
+      p_limit: pageSize,
+      p_offset: offset,
     })
-    const payload = await response.json().catch(() => ({}))
-    if (!response.ok || payload?.success !== true) {
-      throw new Error(payload?.message || 'Unable to load restaurant orders.')
+    if (error) {
+      console.error('[OWNER REPORTS RPC]', error.code, error.message)
+      throw new Error(
+        `Secure restaurant order query failed: ${error.message || error.code || 'Unknown database error'}`
+      )
     }
-    const rows = Array.isArray(payload.orders) ? payload.orders : []
+    if (!data || data.success !== true || !Array.isArray(data.orders)) {
+      throw new Error('Secure restaurant order RPC returned an invalid response.')
+    }
+    const rows = data.orders
     result.push(...rows)
-    if (!payload.hasMore) return result
-    if (rows.length === 0) throw new Error('Order history pagination failed.')
+    if (!data.hasMore) return result
+    if (rows.length === 0) throw new Error('Restaurant order pagination returned no rows.')
     offset += rows.length
   }
-
-  throw new Error('Order history is too large for one refresh. Contact support.')
+  throw new Error('More than 100,000 orders found. Use a date-scoped report export.')
 }
 
 async function updateOwnerOrderStatusSecure(restaurantId, orderId, newStatus) {
@@ -1261,6 +1266,11 @@ export default function RestaurantDashboard() {
   const [menuItems, setMenuItems] = useState([])
   const [dailyOffers, setDailyOffers] = useState([])
   const [orders, setOrders] = useState([])
+  // Reports must not display a silent ₹0 when secured order loading fails.
+  const [ordersLoadError, setOrdersLoadError] = useState('')
+  const [ordersHaveLoaded, setOrdersHaveLoaded] = useState(false)
+  const [ordersLastSynced, setOrdersLastSynced] = useState(null)
+  const [ordersRefreshTick, setOrdersRefreshTick] = useState(0)
   const [restaurantTables, setRestaurantTables] = useState([])
   const [activeTab, setActiveTab] = useState('settlements')
   const [dashboardMode, setDashboardMode] = useState('restaurant')
@@ -1329,7 +1339,8 @@ export default function RestaurantDashboard() {
   const [syncingSwiggy, setSyncingSwiggy] = useState(false)
 
   // Reports Timeframe State
-  const [reportTimeframe, setReportTimeframe] = useState('daily')
+  // Default to this month so earlier orders are visible even when today has none.
+  const [reportTimeframe, setReportTimeframe] = useState('monthly')
 
   // Billing & Bill Settings States
   const [selectedBillOrder, setSelectedBillOrder] = useState(null)
@@ -1690,14 +1701,21 @@ restaurantModuleEnabled,
         return
       }
 
+      // Registration may use restaurants.id = auth.users.id, even if the
+      // optional owner_id is absent or differs. The first owner guard already
+      // verified restaurantId === user.id. Do not require BOTH identities.
       const { data: ownedRestaurant, error: ownershipError } = await supabase
         .from('restaurants')
         .select('id, owner_id, approval_status')
         .eq('id', restaurantId)
-        .eq('owner_id', user.id)
         .maybeSingle()
 
-      if (ownershipError || !ownedRestaurant) {
+      if (
+        ownershipError ||
+        !ownedRestaurant ||
+        (String(ownedRestaurant.id) !== String(user.id) &&
+         String(ownedRestaurant.owner_id || '') !== String(user.id))
+      ) {
         console.error('Dashboard ownership check failed:', ownershipError)
         router.replace('/login')
         return
@@ -1837,15 +1855,8 @@ if (staffError) {
   )
 }
 
-      // Step 18B: Orders are loaded through the authenticated Owner API.
-      // Keep the original order fields, sorting, reports and alarm behavior.
-      let orderData = null
-      try {
-        orderData = await fetchOwnerOrdersSecure(restaurantId)
-      } catch (orderLoadError) {
-        console.error('[OWNER SECURE ORDERS LOAD]', orderLoadError)
-        // Retain the previously loaded orders during a temporary API outage.
-      }
+      // Order history has its own short, authenticated polling effect below.
+      // Do not block it behind gateway, staff-list or menu-data requests.
 
       const { data: tableData, error: tableError } = await supabase
         .from('tables')
@@ -1859,24 +1870,7 @@ if (staffError) {
         setRestaurantTables(Array.isArray(tableData) ? tableData : [])
       }
 
-      if (orderData) {
-        if (
-          hasRealtimeOrderAlarm &&
-          orderData.length > prevOrdersLengthRef.current &&
-          prevOrdersLengthRef.current > 0
-        ) {
-          if (audioRef.current) {
-            audioRef.current
-              .play()
-              .catch((e) =>
-                console.log('Audio play blocked:', e)
-              )
-          }
-        }
-
-        prevOrdersLengthRef.current = orderData.length
-        setOrders(orderData)
-      }
+      // Order updates are not coupled to this metadata refresh.
     }
 
     fetchDashboard()
@@ -1893,6 +1887,55 @@ if (staffError) {
     hasInitializedKeys,
     savingPayment
   ])
+
+  // Independent, authenticated order loader for Owner analytics, billing,
+  // table occupancy and alarm. The Manager uses a similar secured RPC flow.
+  useEffect(() => {
+    if (!authChecked || approvalStatus !== 'approved' || !restaurantId) return undefined
+
+    let cancelled = false
+    let busy = false
+    setOrdersHaveLoaded(false)
+    setOrdersLoadError('')
+
+    const refreshOrders = async () => {
+      if (busy || cancelled) return
+      busy = true
+      try {
+        const orderData = await fetchOwnerOrdersSecure(restaurantId)
+        if (cancelled) return
+        if (
+          hasRealtimeOrderAlarm &&
+          orderData.length > prevOrdersLengthRef.current &&
+          prevOrdersLengthRef.current > 0
+        ) {
+          audioRef.current?.play()?.catch((error) => {
+            console.info('Order alarm could not autoplay:', error)
+          })
+        }
+        prevOrdersLengthRef.current = orderData.length
+        setOrders(orderData)
+        setOrdersHaveLoaded(true)
+        setOrdersLoadError('')
+        setOrdersLastSynced(new Date())
+      } catch (error) {
+        if (!cancelled) {
+          console.error('[OWNER ORDER REPORTS LOAD ERROR]', error)
+          setOrdersLoadError(error?.message || 'Unable to fetch secure order history.')
+          // Keep the previous successful orders rather than presenting errors as ₹0.
+        }
+      } finally {
+        busy = false
+      }
+    }
+
+    refreshOrders()
+    const interval = window.setInterval(refreshOrders, 5000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [authChecked, approvalStatus, restaurantId, hasRealtimeOrderAlarm, ordersRefreshTick])
 
   const configuredTableNumbers = [...new Set(
     restaurantTables
@@ -3139,6 +3182,14 @@ if (staffError) {
     return createdAt >= reportRange.start && createdAt <= reportRange.end
   })
 
+  const allTimeValidOrders = orders.filter(
+    (order) => String(order?.status || '').toLowerCase() !== 'cancelled'
+  )
+  const allTimeRevenue = allTimeValidOrders.reduce(
+    (total, order) => total + Number(order?.total_amount || 0),
+    0
+  )
+
   const reportOrderCount = reportOrders.length
 
   const reportRevenue = reportOrders.reduce(
@@ -3251,6 +3302,10 @@ if (staffError) {
   const salesGraphData = buildSalesGraphData(reportTimeframe, orders)
 
   const handleGenerateAnalyticsReport = () => {
+    if (ordersLoadError || !ordersHaveLoaded) {
+      appNotice('Orders are not synced yet. Please check the report loading message and try again.')
+      return
+    }
     if (reportOrders.length === 0) {
       appNotice('There are no orders in the selected period to generate a report.')
       return
@@ -6934,6 +6989,32 @@ if (staffError) {
                 >
                   Print Report 🖨️
                 </button>
+              </div>
+            </div>
+
+            {ordersLoadError ? (
+              <div role="alert" className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-200">
+                <p className="font-black">Order reporting could not sync</p>
+                <p className="mt-1">{ordersLoadError}</p>
+                <p className="mt-1 text-red-300/80">Sales exist in Supabase but are not reaching this dashboard. Check the Supabase RPC permission / ownership error above; no values have been silently overwritten.</p>
+                <button type="button" onClick={() => setOrdersRefreshTick((tick) => tick + 1)} className="mt-3 rounded-xl bg-red-500/20 px-4 py-2 font-black text-red-100 hover:bg-red-500/30">Retry Order Sync</button>
+              </div>
+            ) : !ordersHaveLoaded ? (
+              <div role="status" className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs text-neutral-300">Loading authenticated restaurant order history…</div>
+            ) : (
+              <div role="status" className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-xs text-emerald-200">
+                Order history connected · {orders.length} total order{orders.length === 1 ? '' : 's'} loaded (including cancelled). {ordersLastSynced ? `Updated ${ordersLastSynced.toLocaleTimeString('en-IN')}. ` : ''}Report cards below show the selected date range.
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">All-Time Restaurant Orders</p>
+                <p className="mt-2 text-2xl font-black text-white">{ordersHaveLoaded ? allTimeValidOrders.length : '—'}</p>
+              </div>
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">All-Time Restaurant Sales</p>
+                <p className="mt-2 text-2xl font-black text-emerald-400">{ordersHaveLoaded ? formatCurrency(allTimeRevenue) : '—'}</p>
               </div>
             </div>
 

@@ -1,5 +1,4 @@
 'use client'
-
 import {
   use,
   useEffect,
@@ -13,8 +12,7 @@ import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 import InstallAppButton from '@/app/components/InstallAppButton'
 import DeliveryCustomerSupportChat from '@/app/components/DeliveryCustomerSupportChat'
-
-
+import '@/app/components/delivery-reference-mobile.css'
 const EMPTY_CHECKOUT = {
   customerName: '',
   customerMobile: '',
@@ -31,47 +29,38 @@ const EMPTY_CHECKOUT = {
   locationAccuracy: '',
   customerNote: '',
 }
-
 function money(value) {
   return `₹${Number(value || 0).toLocaleString('en-IN', {
     maximumFractionDigits: 2,
   })}`
 }
-
 function digits(value, max) {
   return String(value || '')
     .replace(/\D/g, '')
     .slice(0, max)
 }
-
 function distanceKm(lat1, lng1, lat2, lng2) {
   const firstLat = Number(lat1)
   const firstLng = Number(lng1)
   const secondLat = Number(lat2)
   const secondLng = Number(lng2)
-
   if (![firstLat, firstLng, secondLat, secondLng].every(Number.isFinite)) {
     return null
   }
-
   const toRadians = (value) => (value * Math.PI) / 180
   const earthRadiusKm = 6371.0088
   const dLat = toRadians(secondLat - firstLat)
   const dLng = toRadians(secondLng - firstLng)
-
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRadians(firstLat)) *
       Math.cos(toRadians(secondLat)) *
       Math.sin(dLng / 2) ** 2
-
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(a))
 }
-
 function deliveryStockInfo(item) {
   const tracked =
     item?.track_stock === true
-
   const available = tracked
     ? Math.max(
         0,
@@ -82,7 +71,6 @@ function deliveryStockInfo(item) {
         )
       )
     : null
-
   const lowThreshold = tracked
     ? Math.max(
         0,
@@ -93,7 +81,6 @@ function deliveryStockInfo(item) {
         )
       )
     : null
-
   return {
     tracked,
     available,
@@ -101,12 +88,10 @@ function deliveryStockInfo(item) {
     outOfStock:
       tracked &&
       available <= 0,
-
     lowStock:
       tracked &&
       available > 0 &&
       available <= lowThreshold,
-
     maxCartQuantity:
       tracked
         ? Math.max(
@@ -119,14 +104,12 @@ function deliveryStockInfo(item) {
         : 20,
   }
 }
-
 export default function DeliveryStorePage({
   params,
 }) {
   const unwrappedParams = use(params)
   const router = useRouter()
   useMobileViewportLock()
-
   // Support either dynamic-folder spelling:
   // app/delivery/[restaurantCode]/page.jsx
   // app/delivery/[restaurantcode]/page.jsx
@@ -135,43 +118,48 @@ export default function DeliveryStorePage({
       unwrappedParams?.restaurantcode ||
       ''
   ).trim()
-
   const [loading, setLoading] =
     useState(true)
   const [storeData, setStoreData] =
     useState(null)
+  // ERP platform fee quote. Only the server sets the actual fee.
+  const [platformFeeQuote, setPlatformFeeQuote] = useState({
+    loaded: false,
+    customerAmount: 0,
+  })
   const [error, setError] =
     useState('')
-
   const [search, setSearch] =
     useState('')
   const [category, setCategory] =
     useState('All')
   const [cart, setCart] =
     useState({})
-
   const [
     checkoutOpen,
     setCheckoutOpen,
   ] = useState(false)
-
+  const [checkoutStage, setCheckoutStage] = useState('cart')
+  const [locationMapOpen, setLocationMapOpen] = useState(false)
+  const openCheckout = () => {
+    setMessage('')
+    setCheckoutStage('cart')
+    setCheckoutOpen(true)
+  }
   const [
     checkout,
     setCheckout,
   ] = useState(
     EMPTY_CHECKOUT
   )
-
   const [
     paymentMethod,
     setPaymentMethod,
   ] = useState('cod')
-
   const [placing, setPlacing] =
     useState(false)
   const [message, setMessage] =
     useState('')
-
   const [trackingOpen, setTrackingOpen] =
     useState(false)
   const [trackingMobile, setTrackingMobile] =
@@ -190,93 +178,72 @@ export default function DeliveryStorePage({
     useState('')
   const [locationConfirmed, setLocationConfirmed] =
     useState(false)
-
   const [productReviews, setProductReviews] =
     useState({})
-
   // Delivery customer app session.
   // This keeps Home / Orders / Account available while the customer is inside a store.
   const [customerUser, setCustomerUser] = useState(null)
   const [customerProfile, setCustomerProfile] = useState(null)
   const [customerAuthLoading, setCustomerAuthLoading] = useState(true)
   const [accountOpen, setAccountOpen] = useState(false)
-
-
   useEffect(() => {
     let active = true
-
     async function syncDeliveryCustomer(session) {
       const user = session?.user || null
       if (!active) return
-
       setCustomerUser(user)
-
       if (!user) {
         setCustomerProfile(null)
         setCustomerAuthLoading(false)
         return
       }
-
       const { data, error: profileError } = await supabase
         .from('delivery_customer_profiles')
         .select('id, full_name, email, phone, avatar_url')
         .eq('id', user.id)
         .maybeSingle()
-
       if (!active) return
-
       if (profileError) {
         console.warn('Delivery customer profile load warning:', profileError)
         setCustomerProfile(null)
       } else {
         setCustomerProfile(data || null)
       }
-
       setCustomerAuthLoading(false)
     }
-
     supabase.auth.getSession().then(({ data, error: sessionError }) => {
       if (!active) return
-
       if (sessionError) {
         console.warn('Delivery customer session warning:', sessionError)
         setCustomerAuthLoading(false)
         return
       }
-
       syncDeliveryCustomer(data?.session || null)
     })
-
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       syncDeliveryCustomer(session)
     })
-
     return () => {
       active = false
       subscription?.unsubscribe()
     }
   }, [])
-
   const openCustomerAccount = () => {
     if (customerAuthLoading) return
-
     if (!customerUser) {
       const next = `/delivery/${encodeURIComponent(restaurantCode)}`
       router.push(`/delivery/login?next=${encodeURIComponent(next)}`)
       return
     }
-
     setAccountOpen(true)
   }
-
   const signOutDeliveryCustomer = async () => {
     try {
       setCustomerAuthLoading(true)
       const { error: signOutError } = await supabase.auth.signOut()
       if (signOutError) throw signOutError
-
       setAccountOpen(false)
       setCustomerUser(null)
       setCustomerProfile(null)
@@ -287,18 +254,15 @@ export default function DeliveryStorePage({
       setCustomerAuthLoading(false)
     }
   }
-
   const openCustomerOrders = () => {
     if (!customerUser) {
       const next = `/delivery/${encodeURIComponent(restaurantCode)}`
       router.push(`/delivery/login?next=${encodeURIComponent(next)}`)
       return
     }
-
     // Keep the customer inside the store/app and reuse the existing order tracker.
     openTracking()
   }
-
   const settings =
     storeData?.settings || {}
   const surge =
@@ -319,7 +283,6 @@ export default function DeliveryStorePage({
     )
       ? storeData.daily_offers
       : []
-
   const coverageEnabled = Boolean(
     coverage?.delivery_radius_enabled
   )
@@ -332,7 +295,6 @@ export default function DeliveryStorePage({
   const coverageOriginLongitude = Number(
     coverage?.delivery_origin_longitude
   )
-
   const selectedDistanceKm = useMemo(() => {
     if (
       !coverageEnabled ||
@@ -343,7 +305,6 @@ export default function DeliveryStorePage({
     ) {
       return null
     }
-
     return distanceKm(
       coverageOriginLatitude,
       coverageOriginLongitude,
@@ -357,14 +318,12 @@ export default function DeliveryStorePage({
     checkout.latitude,
     checkout.longitude,
   ])
-
   const outsideDeliveryRadius = Boolean(
     coverageEnabled &&
       coverageRadiusKm > 0 &&
       selectedDistanceKm !== null &&
       selectedDistanceKm > coverageRadiusKm
   )
-
   const loadStore = async (
     quiet = false
   ) => {
@@ -375,12 +334,10 @@ export default function DeliveryStorePage({
       setLoading(false)
       return
     }
-
     if (!quiet) {
       setLoading(true)
       setError('')
     }
-
     try {
       const {
         data,
@@ -392,20 +349,16 @@ export default function DeliveryStorePage({
             restaurantCode,
         }
       )
-
       if (rpcError) {
         throw rpcError
       }
-
       if (!data?.success) {
         throw new Error(
           data?.message ||
             'Delivery store is unavailable.'
         )
       }
-
       let coverageData = {}
-
       try {
         const {
           data: radiusData,
@@ -417,7 +370,6 @@ export default function DeliveryStorePage({
               restaurantCode,
           }
         )
-
         if (radiusError) throw radiusError
         if (radiusData?.success) {
           coverageData = radiusData
@@ -428,12 +380,33 @@ export default function DeliveryStorePage({
           radiusLoadError
         )
       }
-
+      // Query the SERVER-calculated public fee, never a value set by the owner
+      // or submitted by the browser. Initial load only; validate again at pay.
+      if (!quiet) {
+        try {
+          const { data: feeData, error: feeError } = await supabase.rpc(
+            'get_public_delivery_platform_fee_quote',
+            { p_restaurant_code: restaurantCode }
+          )
+          if (feeError) throw feeError
+          if (!feeData?.success) {
+            throw new Error(feeData?.message || 'Fee quote unavailable')
+          }
+          const amount = Number(feeData.customerAmount || 0)
+          if (!Number.isFinite(amount) || amount < 0 || amount > 1000) {
+            throw new Error('Invalid checkout fee quote')
+          }
+          setPlatformFeeQuote({ loaded: true, customerAmount: amount })
+        } catch (feeLoadError) {
+          console.error('Delivery platform fee quote error:', feeLoadError)
+          // Block CHECKOUT, not product browsing, until quote is available.
+          setPlatformFeeQuote({ loaded: false, customerAmount: 0 })
+        }
+      }
       setStoreData({
         ...data,
         coverage: coverageData,
       })
-
       if (!quiet) {
         if (
           data?.settings
@@ -454,7 +427,6 @@ export default function DeliveryStorePage({
         'Delivery store load error:',
         loadError
       )
-
       if (!quiet) {
         setError(
           loadError?.message ||
@@ -467,13 +439,11 @@ export default function DeliveryStorePage({
       }
     }
   }
-
   const loadProductReviews = async () => {
     if (!restaurantCode) {
       setProductReviews({})
       return
     }
-
     try {
       const {
         data,
@@ -485,11 +455,9 @@ export default function DeliveryStorePage({
             restaurantCode,
         }
       )
-
       if (reviewError) {
         throw reviewError
       }
-
       const rows =
         data?.success &&
         Array.isArray(
@@ -497,21 +465,17 @@ export default function DeliveryStorePage({
         )
           ? data.products
           : []
-
       const next = {}
-
       rows.forEach((row) => {
         const id =
           String(
             row?.menu_item_id ||
               ''
           ).trim()
-
         if (id) {
           next[id] = row
         }
       })
-
       setProductReviews(next)
     } catch (reviewLoadError) {
       // Reviews are additive. Do not block ordering if review
@@ -522,19 +486,16 @@ export default function DeliveryStorePage({
       )
     }
   }
-
   useEffect(() => {
     loadStore()
     loadProductReviews()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantCode])
-
   useLiveDeliveryRefresh(
     () => loadStore(true),
     Boolean(restaurantCode && storeData),
     1000
   )
-
   const categories =
     useMemo(() => {
       return [
@@ -550,14 +511,12 @@ export default function DeliveryStorePage({
         ),
       ]
     }, [menuItems])
-
   const filteredItems =
     useMemo(() => {
       const term =
         search
           .trim()
           .toLowerCase()
-
       return menuItems.filter(
         (item) => {
           if (
@@ -567,9 +526,7 @@ export default function DeliveryStorePage({
           ) {
             return false
           }
-
           if (!term) return true
-
           return [
             item.name,
             item.category,
@@ -591,7 +548,6 @@ export default function DeliveryStorePage({
       search,
       category,
     ])
-
   const cartRows =
     useMemo(() => {
       return menuItems
@@ -609,7 +565,6 @@ export default function DeliveryStorePage({
             ),
         }))
     }, [menuItems, cart])
-
   /*
    * Inventory can change while the customer is browsing.
    * Keep the cart inside the latest public available-stock limit.
@@ -619,13 +574,11 @@ export default function DeliveryStorePage({
     if (!menuItems.length) {
       return
     }
-
     setCart((current) => {
       let changed = false
       const nextCart = {
         ...current,
       }
-
       for (const [
         itemId,
         rawQuantity,
@@ -636,16 +589,13 @@ export default function DeliveryStorePage({
               String(row.id) ===
               String(itemId)
           )
-
         if (!item) {
           delete nextCart[itemId]
           changed = true
           continue
         }
-
         const stock =
           deliveryStockInfo(item)
-
         const currentQuantity =
           Math.max(
             0,
@@ -655,19 +605,16 @@ export default function DeliveryStorePage({
               )
             )
           )
-
         const nextQuantity =
           Math.min(
             currentQuantity,
             stock.maxCartQuantity
           )
-
         if (
           nextQuantity !==
           currentQuantity
         ) {
           changed = true
-
           if (nextQuantity <= 0) {
             delete nextCart[itemId]
           } else {
@@ -676,20 +623,17 @@ export default function DeliveryStorePage({
           }
         }
       }
-
       return changed
         ? nextCart
         : current
     })
   }, [menuItems])
-
   const cartCount =
     cartRows.reduce(
       (sum, item) =>
         sum + item.quantity,
       0
     )
-
   const subtotal =
     cartRows.reduce(
       (sum, item) =>
@@ -700,7 +644,6 @@ export default function DeliveryStorePage({
           item.quantity,
       0
     )
-
   const minimumOrderAmount =
     Math.max(
       0,
@@ -708,7 +651,6 @@ export default function DeliveryStorePage({
         settings.minimum_order_amount || 0
       )
     )
-
   const configuredDeliveryFee =
     Math.max(
       0,
@@ -716,7 +658,6 @@ export default function DeliveryStorePage({
         settings.delivery_fee || 0
       )
     )
-
   const previewDeliveryFee =
     minimumOrderAmount > 0
       ? subtotal < minimumOrderAmount
@@ -727,7 +668,6 @@ export default function DeliveryStorePage({
           subtotal >= Number(settings.free_delivery_above)
         ? 0
         : configuredDeliveryFee
-
   const previewPacking =
     Math.max(
       0,
@@ -735,7 +675,6 @@ export default function DeliveryStorePage({
         settings.packing_charge || 0
       )
     )
-
   const previewHandling =
     Math.max(
       0,
@@ -743,7 +682,6 @@ export default function DeliveryStorePage({
         settings.handling_charge || 0
       )
     )
-
   const previewSurge =
     Boolean(surge.active)
       ? Math.max(
@@ -755,7 +693,6 @@ export default function DeliveryStorePage({
           )
         )
       : 0
-
   const previewSgst =
     settings.tax_enabled
       ? (
@@ -763,7 +700,6 @@ export default function DeliveryStorePage({
           Number(settings.sgst_rate || 0)
         ) / 100
       : 0
-
   const previewCgst =
     settings.tax_enabled
       ? (
@@ -771,54 +707,46 @@ export default function DeliveryStorePage({
           Number(settings.cgst_rate || 0)
         ) / 100
       : 0
-
   const previewTax =
     previewSgst +
     previewCgst
-
+  const previewPlatformFee = Math.max(0, Number(platformFeeQuote.customerAmount || 0))
   const previewTotal =
     subtotal +
     previewDeliveryFee +
     previewPacking +
     previewHandling +
     previewSurge +
-    previewTax
-
+    previewTax +
+    previewPlatformFee
   const updateQuantity = (
     itemId,
     next
   ) => {
     const requestedQuantity = Math.max(0, Math.floor(Number(next || 0)))
-
     if (requestedQuantity > 0 && !customerUser) {
       setMessage('Please login to add items to your cart.')
       const nextPath = `/delivery/${encodeURIComponent(restaurantCode)}`
       router.push(`/delivery/login?next=${encodeURIComponent(nextPath)}`)
       return
     }
-
     const item =
       menuItems.find(
         (row) =>
           String(row.id) ===
           String(itemId)
       )
-
     if (!item) {
       return
     }
-
     const stock =
       deliveryStockInfo(item)
-
     const requested = requestedQuantity
-
     const safe =
       Math.min(
         requested,
         stock.maxCartQuantity
       )
-
     if (
       stock.tracked &&
       requested >
@@ -838,22 +766,18 @@ export default function DeliveryStorePage({
             } available right now.`
       )
     }
-
     setCart((current) => {
       const copy = {
         ...current,
       }
-
       if (safe <= 0) {
         delete copy[itemId]
       } else {
         copy[itemId] = safe
       }
-
       return copy
     })
   }
-
   const loadRazorpay = () => {
     return new Promise(
       (resolve) => {
@@ -864,56 +788,46 @@ export default function DeliveryStorePage({
           resolve(false)
           return
         }
-
         if (window.Razorpay) {
           resolve(true)
           return
         }
-
         const existing =
           document.querySelector(
             'script[data-digital-dining-delivery-razorpay="true"]'
           )
-
         if (existing) {
           existing.addEventListener(
             'load',
             () => resolve(true),
             { once: true }
           )
-
           existing.addEventListener(
             'error',
             () => resolve(false),
             { once: true }
           )
-
           return
         }
-
         const script =
           document.createElement(
             'script'
           )
-
         script.src =
           'https://checkout.razorpay.com/v1/checkout.js'
         script.async = true
         script.dataset.digitalDiningDeliveryRazorpay =
           'true'
-
         script.onload = () =>
           resolve(true)
         script.onerror = () =>
           resolve(false)
-
         document.body.appendChild(
           script
         )
       }
     )
   }
-
   const rememberTrackingMobile = (
     orderCode,
     mobile
@@ -927,7 +841,6 @@ export default function DeliveryStorePage({
       // Storage can be unavailable in strict privacy mode.
     }
   }
-
   const goToTracking = (
     orderCode,
     mobile
@@ -936,7 +849,6 @@ export default function DeliveryStorePage({
       orderCode,
       mobile
     )
-
     router.push(
       `/delivery/${encodeURIComponent(
         restaurantCode
@@ -945,29 +857,23 @@ export default function DeliveryStorePage({
       )}`
     )
   }
-
   const openTracking = () => {
     setTrackingError('')
     setTrackingOrders([])
     setTrackingOpen(true)
   }
-
   const submitTracking = async (event) => {
     event.preventDefault()
-
     const mobile = digits(trackingMobile, 10)
-
     if (mobile.length !== 10) {
       setTrackingError(
         'Enter the 10-digit mobile number used for your Delivery orders.'
       )
       return
     }
-
     setTrackingLoading(true)
     setTrackingError('')
     setTrackingOrders([])
-
     try {
       const { data, error: rpcError } = await supabase.rpc(
         'get_public_delivery_orders_by_mobile',
@@ -976,15 +882,12 @@ export default function DeliveryStorePage({
           p_customer_mobile: mobile,
         }
       )
-
       if (rpcError) throw rpcError
       if (!data?.success) {
         throw new Error(data?.message || 'Unable to find Delivery orders.')
       }
-
       const rows = Array.isArray(data?.orders) ? data.orders : []
       setTrackingOrders(rows)
-
       if (!rows.length) {
         setTrackingError(
           'No recent Delivery orders were found for this mobile number.'
@@ -999,22 +902,17 @@ export default function DeliveryStorePage({
       setTrackingLoading(false)
     }
   }
-
-
   const fillAddressFromLocation =
     async (latitude, longitude) => {
       const lat = Number(latitude)
       const lng = Number(longitude)
-
       if (
         !Number.isFinite(lat) ||
         !Number.isFinite(lng)
       ) {
         return false
       }
-
       setAddressLoading(true)
-
       try {
         const response = await fetch(
           `/api/location/reverse?lat=${encodeURIComponent(
@@ -1027,20 +925,16 @@ export default function DeliveryStorePage({
             cache: 'no-store',
           }
         )
-
         const data = await response
           .json()
           .catch(() => ({}))
-
         if (!response.ok || !data?.success) {
           throw new Error(
             data?.message ||
               'Unable to identify this address.'
           )
         }
-
         const address = data.address || {}
-
         setCheckout((current) => ({
           ...current,
           addressLine1:
@@ -1064,29 +958,24 @@ export default function DeliveryStorePage({
             6
           ),
         }))
-
         return true
       } catch (addressError) {
         console.error(
           'Automatic address lookup error:',
           addressError
         )
-
         setLocationError(
           'Your location pin was found, but the written address could not be filled automatically. You can enter it manually.'
         )
-
         return false
       } finally {
         setAddressLoading(false)
       }
     }
-
   const chooseLiveLocation = () => {
     if (locationLoading || addressLoading) {
       return
     }
-
     if (
       typeof navigator === 'undefined' ||
       !navigator.geolocation
@@ -1096,24 +985,19 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     setLocationLoading(true)
     setLocationError('')
-
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const latitude = Number(
           position.coords.latitude
         )
-
         const longitude = Number(
           position.coords.longitude
         )
-
         const accuracy = Number(
           position.coords.accuracy || 0
         )
-
         setCheckout((current) => ({
           ...current,
           latitude: latitude.toFixed(7),
@@ -1122,14 +1006,11 @@ export default function DeliveryStorePage({
             ? accuracy.toFixed(2)
             : '',
         }))
-
         setLocationConfirmed(false)
-
         await fillAddressFromLocation(
           latitude,
           longitude
         )
-
         setLocationLoading(false)
       },
       (geoError) => {
@@ -1137,9 +1018,7 @@ export default function DeliveryStorePage({
           'Customer geolocation error:',
           geoError
         )
-
         setLocationLoading(false)
-
         setLocationError(
           geoError?.code === 1
             ? 'Location permission was denied. Allow location access and tap Use My Current Location again.'
@@ -1153,33 +1032,27 @@ export default function DeliveryStorePage({
       }
     )
   }
-
   const placeOrder = async (
     event
   ) => {
     event.preventDefault()
-
     if (placing) return
-
     if (!customerUser) {
       setMessage('Please login before placing your Delivery order.')
       const nextPath = `/delivery/${encodeURIComponent(restaurantCode)}`
       router.push(`/delivery/login?next=${encodeURIComponent(nextPath)}`)
       return
     }
-
     const {
       data: { session },
       error: sessionError,
     } = await supabase.auth.getSession()
-
     if (sessionError || !session?.access_token) {
       setMessage('Your login session has expired. Please login again.')
       const nextPath = `/delivery/${encodeURIComponent(restaurantCode)}`
       router.push(`/delivery/login?next=${encodeURIComponent(nextPath)}`)
       return
     }
-
     const cleanName =
       checkout.customerName.trim()
     const cleanMobile =
@@ -1197,7 +1070,6 @@ export default function DeliveryStorePage({
         checkout.pincode,
         6
       )
-
     if (
       cleanName.length < 2
     ) {
@@ -1206,7 +1078,6 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     if (
       cleanMobile.length !== 10
     ) {
@@ -1215,7 +1086,6 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     if (
       cleanAlternate &&
       cleanAlternate.length !==
@@ -1226,7 +1096,6 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     if (
       !checkout.addressLine1.trim() ||
       !checkout.city.trim() ||
@@ -1238,24 +1107,20 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     const selectedLatitude = Number(checkout.latitude)
     const selectedLongitude = Number(checkout.longitude)
-
     if (!locationConfirmed) {
       setMessage(
         'Choose your location on the map and tap Confirm Delivery Pin before placing the order.'
       )
       return
     }
-
     if (outsideDeliveryRadius) {
       setMessage(
         `This location is outside the store delivery area. Delivery is available within ${coverageRadiusKm.toFixed(1)} km.`
       )
       return
     }
-
     if (
       !Number.isFinite(selectedLatitude) ||
       !Number.isFinite(selectedLongitude) ||
@@ -1269,19 +1134,16 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     if (!cartRows.length) {
       setMessage(
         'Your cart is empty.'
       )
       return
     }
-
     const stockConflict =
       cartRows.find((item) => {
         const stock =
           deliveryStockInfo(item)
-
         return (
           stock.tracked &&
           (
@@ -1292,13 +1154,11 @@ export default function DeliveryStorePage({
           )
         )
       })
-
     if (stockConflict) {
       const stock =
         deliveryStockInfo(
           stockConflict
         )
-
       setMessage(
         stock.outOfStock
           ? `${stockConflict.name} is now out of stock. Your cart has been updated.`
@@ -1312,14 +1172,37 @@ export default function DeliveryStorePage({
                 : 'are'
             } available now. Your cart has been updated.`
       )
-
       await loadStore(true)
       return
     }
-
+    // Revalidate right before order submission. If the ERP fee or owner
+    // preference changed since the displayed total, require another tap.
+    if (!platformFeeQuote.loaded) {
+      setMessage('Unable to verify platform fee. Please refresh the store and try again.')
+      return
+    }
+    let latestPlatformFee = 0
+    try {
+      const { data: feeData, error: feeError } = await supabase.rpc(
+        'get_public_delivery_platform_fee_quote',
+        { p_restaurant_code: restaurantCode }
+      )
+      if (feeError || !feeData?.success) throw new Error('Platform fee quote unavailable')
+      latestPlatformFee = Number(feeData.customerAmount || 0)
+      if (!Number.isFinite(latestPlatformFee) || latestPlatformFee < 0) {
+        throw new Error('Invalid platform fee quote')
+      }
+    } catch (feeError) {
+      setMessage('Unable to verify platform fee. Please try again.')
+      return
+    }
+    if (Math.round(latestPlatformFee * 100) !== Math.round(previewPlatformFee * 100)) {
+      setPlatformFeeQuote({ loaded: true, customerAmount: latestPlatformFee })
+      setMessage('Platform fee changed. Review the updated total and tap Place Order again.')
+      return
+    }
     setPlacing(true)
     setMessage('')
-
     try {
       const response = await fetch(
         '/api/delivery/orders/create',
@@ -1367,6 +1250,8 @@ export default function DeliveryStorePage({
               checkout.customerNote
                 .trim(),
             paymentMethod,
+            // Expected amount confirms consent only. SQL computes the real fee.
+            expectedPlatformFeePaise: Math.round(previewPlatformFee * 100),
             items:
               cartRows.map(
                 (item) => ({
@@ -1378,12 +1263,10 @@ export default function DeliveryStorePage({
           }),
         }
       )
-
       const data =
         await response
           .json()
           .catch(() => ({}))
-
       if (
         !response.ok ||
         !data?.success
@@ -1393,24 +1276,20 @@ export default function DeliveryStorePage({
             'Unable to place order.'
         )
       }
-
       if (
         data.paymentMethod ===
         'cod'
       ) {
         setCart({})
         setCheckoutOpen(false)
-
         goToTracking(
           data.order.orderCode,
           cleanMobile
         )
         return
       }
-
       const loaded =
         await loadRazorpay()
-
       if (
         !loaded ||
         !window.Razorpay
@@ -1419,7 +1298,6 @@ export default function DeliveryStorePage({
           'Unable to load Razorpay Checkout.'
         )
       }
-
       const paymentObject =
         new window.Razorpay({
           key: data.keyId,
@@ -1435,7 +1313,6 @@ export default function DeliveryStorePage({
             `Delivery order ${data.deliveryOrderCode}`,
           order_id:
             data.orderId,
-
           prefill: {
             name:
               cleanName,
@@ -1445,22 +1322,18 @@ export default function DeliveryStorePage({
             contact:
               cleanMobile,
           },
-
           notes: {
             delivery_order_code:
               data.deliveryOrderCode,
           },
-
           theme: {
             color: '#059669',
           },
-
           handler:
             async (
               razorpayResponse
             ) => {
               setPlacing(true)
-
               try {
                 const verifyResponse =
                   await fetch(
@@ -1487,14 +1360,12 @@ export default function DeliveryStorePage({
                         ),
                     }
                   )
-
                 const verifyData =
                   await verifyResponse
                     .json()
                     .catch(
                       () => ({})
                     )
-
                 if (
                   !verifyResponse.ok ||
                   !verifyData?.success
@@ -1504,12 +1375,10 @@ export default function DeliveryStorePage({
                       'Payment verification failed.'
                   )
                 }
-
                 setCart({})
                 setCheckoutOpen(
                   false
                 )
-
                 goToTracking(
                   verifyData.orderCode,
                   cleanMobile
@@ -1521,7 +1390,6 @@ export default function DeliveryStorePage({
                   'Delivery payment verify error:',
                   verifyError
                 )
-
                 setMessage(
                   verifyError?.message ||
                     'Payment was received but could not be verified. Contact the store before paying again.'
@@ -1530,7 +1398,6 @@ export default function DeliveryStorePage({
                 setPlacing(false)
               }
             },
-
           modal: {
             ondismiss: () => {
               setPlacing(false)
@@ -1540,12 +1407,10 @@ export default function DeliveryStorePage({
             },
           },
         })
-
       paymentObject.on(
         'payment.failed',
         (failure) => {
           setPlacing(false)
-
           setMessage(
             failure?.error
               ?.description ||
@@ -1553,23 +1418,34 @@ export default function DeliveryStorePage({
           )
         }
       )
-
       paymentObject.open()
     } catch (placeError) {
       console.error(
         'Delivery checkout error:',
         placeError
       )
-
-      setMessage(
-        placeError?.message ||
-          'Unable to place order.'
-      )
-
+      if (String(placeError?.message || '').includes('PLATFORM_FEE_CHANGED_REVIEW_TOTAL')) {
+        try {
+          const { data: quoteData } = await supabase.rpc(
+            'get_public_delivery_platform_fee_quote',
+            { p_restaurant_code: restaurantCode }
+          )
+          if (quoteData?.success) {
+            setPlatformFeeQuote({
+              loaded: true,
+              customerAmount: Math.max(0, Number(quoteData.customerAmount || 0)),
+            })
+          }
+        } catch (refreshError) {
+          console.warn('Delivery fee quote refresh warning:', refreshError)
+        }
+        setMessage('Platform fee changed. Review the updated total and place the order again.')
+      } else {
+        setMessage(placeError?.message || 'Unable to place order.')
+      }
       setPlacing(false)
     }
   }
-
   if (loading) {
     return (
       <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] px-3 py-6 text-neutral-950 sm:px-4 sm:py-10">
@@ -1583,7 +1459,6 @@ export default function DeliveryStorePage({
       </main>
     )
   }
-
   if (error || !storeData) {
     return (
       <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] px-3 py-6 text-neutral-950 sm:px-4 sm:py-10">
@@ -1591,16 +1466,13 @@ export default function DeliveryStorePage({
           <div className="text-4xl">
             🚚
           </div>
-
           <h1 className="mt-4 text-xl font-black">
             Delivery unavailable
           </h1>
-
           <p className="mt-2 text-sm text-neutral-500">
             {error ||
               'This Delivery store is not available.'}
           </p>
-
           <button
             type="button"
             onClick={loadStore}
@@ -1612,9 +1484,8 @@ export default function DeliveryStorePage({
       </main>
     )
   }
-
   return (
-    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] pb-[calc(12rem+env(safe-area-inset-bottom))] text-neutral-950">
+    <main className="dd-ref-store min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] pb-[calc(12rem+env(safe-area-inset-bottom))] text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-5xl px-3 pb-3 sm:px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="mb-2 flex items-center justify-between">
@@ -1629,12 +1500,10 @@ export default function DeliveryStorePage({
               </span>
               <span>DIGITAL DINE</span>
             </button>
-
             <span className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-600">
               Delivery
             </span>
           </div>
-
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-2xl sm:h-12 sm:w-12 border border-neutral-200 bg-neutral-100 shadow-sm">
               {restaurant.logo_url ? (
@@ -1649,7 +1518,6 @@ export default function DeliveryStorePage({
                 </div>
               )}
             </div>
-
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="truncate text-[15px] font-black tracking-tight text-neutral-950">
@@ -1661,21 +1529,17 @@ export default function DeliveryStorePage({
                   }`}
                 />
               </div>
-
               <p className="mt-0.5 truncate text-[10px] font-semibold text-neutral-500">
                 {settings.is_open
                   ? `Open now · ${settings.estimated_delivery_minutes || 45} min delivery`
                   : 'Currently closed'}
               </p>
             </div>
-
             <div className="flex shrink-0 items-center gap-1.5">
               <InstallAppButton
                 label="App"
                 className="!h-10 !min-h-10 !rounded-xl !px-2.5 sm:!px-3"
               />
-
-
               <button
                 type="button"
                 onClick={openTracking}
@@ -1683,24 +1547,20 @@ export default function DeliveryStorePage({
                 aria-label="Track order"
               >
                 <span aria-hidden="true">⌖</span>
-
                 <span className="hidden min-[390px]:inline">
                   Track
                 </span>
               </button>
-
               <button
                 type="button"
-                onClick={() => setCheckoutOpen(true)}
+                onClick={openCheckout}
                 className="relative flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-neutral-950 px-2.5 sm:px-3.5 text-[10px] font-black text-white shadow-sm transition active:scale-[0.98]"
                 aria-label="Open cart"
               >
                 <span aria-hidden="true">🛒</span>
-
                 <span className="hidden min-[390px]:inline">
                   Cart
                 </span>
-
                 {cartCount > 0 && (
                   <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black text-white ring-2 ring-white">
                     {cartCount}
@@ -1709,7 +1569,6 @@ export default function DeliveryStorePage({
               </button>
             </div>
           </div>
-
           <div className="relative mt-3">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-neutral-400">
               ⌕
@@ -1723,7 +1582,6 @@ export default function DeliveryStorePage({
           </div>
         </div>
       </header>
-
       <div className="mx-auto w-full max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
         <section className="overflow-hidden rounded-[28px] border border-neutral-200/80 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
           <div className="relative">
@@ -1736,9 +1594,7 @@ export default function DeliveryStorePage({
             ) : (
               <div className="h-28 bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-700 sm:h-36" />
             )}
-
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-
             <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3 text-white">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/75">
@@ -1748,7 +1604,6 @@ export default function DeliveryStorePage({
                   {settings.store_name || restaurant.name || 'Delivery Store'}
                 </h2>
               </div>
-
               <span
                 className={`shrink-0 rounded-full px-3 py-1.5 text-[9px] font-black uppercase ${
                   settings.is_open
@@ -1760,14 +1615,12 @@ export default function DeliveryStorePage({
               </span>
             </div>
           </div>
-
           <div className="p-4 sm:p-5">
             {settings.description && (
               <p className="text-sm leading-6 text-neutral-600">
                 {settings.description}
               </p>
             )}
-
             <div className={`${settings.description ? 'mt-4' : ''} grid grid-cols-2 gap-2 sm:grid-cols-4`}>
               <div className="rounded-2xl bg-neutral-50 px-3 py-3">
                 <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
@@ -1777,7 +1630,6 @@ export default function DeliveryStorePage({
                   ~{settings.estimated_delivery_minutes || 45} min
                 </p>
               </div>
-
               <div className="rounded-2xl bg-neutral-50 px-3 py-3">
                 <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
                   Delivery fee
@@ -1795,7 +1647,6 @@ export default function DeliveryStorePage({
                     </p>
                   )}
               </div>
-
               <div className="rounded-2xl bg-neutral-50 px-3 py-3">
                 <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
                   Free delivery from
@@ -1811,7 +1662,6 @@ export default function DeliveryStorePage({
                         : 'Standard fee'}
                 </p>
               </div>
-
               <div className="rounded-2xl bg-neutral-50 px-3 py-3">
                 <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
                   Service area
@@ -1823,7 +1673,6 @@ export default function DeliveryStorePage({
                 </p>
               </div>
             </div>
-
             {(settings.address || settings.city) && (
               <p className="mt-3 flex items-start gap-2 text-[11px] leading-5 text-neutral-500">
                 <span className="mt-0.5">⌖</span>
@@ -1836,7 +1685,6 @@ export default function DeliveryStorePage({
             )}
           </div>
         </section>
-
         {offers.length > 0 && (
           <section className="mt-7">
             <div className="mb-3 flex items-end justify-between">
@@ -1852,7 +1700,6 @@ export default function DeliveryStorePage({
                 Swipe
               </span>
             </div>
-
             <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {offers.map((offer) => (
                 <article
@@ -1860,7 +1707,6 @@ export default function DeliveryStorePage({
                   className="relative min-w-[285px] snap-start overflow-hidden rounded-[24px] border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-4 shadow-sm"
                 >
                   <div className="absolute -right-7 -top-7 h-24 w-24 rounded-full bg-orange-200/30" />
-
                   <div className="relative flex items-start gap-3">
                     {offer.image_url && (
                       <img
@@ -1869,7 +1715,6 @@ export default function DeliveryStorePage({
                         className="h-16 w-16 shrink-0 rounded-2xl object-cover"
                       />
                     )}
-
                     <div className="min-w-0 flex-1">
                       <p className="text-[9px] font-black uppercase tracking-wider text-orange-600">
                         {offer.discount_text || 'Special offer'}
@@ -1884,7 +1729,6 @@ export default function DeliveryStorePage({
                       )}
                     </div>
                   </div>
-
                   <div className="relative mt-4 flex items-center justify-between">
                     <p className="text-base font-black text-orange-700">
                       {money(offer.offer_price)}
@@ -1898,7 +1742,6 @@ export default function DeliveryStorePage({
             </div>
           </section>
         )}
-
         <section className="mt-7">
           <div className="mb-3 flex items-center justify-between">
             <div>
@@ -1913,7 +1756,6 @@ export default function DeliveryStorePage({
               {filteredItems.length} items
             </span>
           </div>
-
           <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {categories.map(
               (itemCategory) => (
@@ -1939,7 +1781,6 @@ export default function DeliveryStorePage({
             )}
           </div>
         </section>
-
         <section className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredItems.map(
             (item) => {
@@ -1947,7 +1788,6 @@ export default function DeliveryStorePage({
                 Number(
                   cart[item.id] || 0
                 )
-
               const hasDiscount =
                 Number(
                   item.base_price || 0
@@ -1955,41 +1795,34 @@ export default function DeliveryStorePage({
                 Number(
                   item.price || 0
                 )
-
               const stock =
                 deliveryStockInfo(item)
-
               const packagedProduct =
                 String(
                   item.item_type ||
                     'food'
                 ) ===
                 'packaged_product'
-
               const reviewInfo =
                 productReviews[
                   String(item.id)
                 ] || null
-
               const averageRating =
                 Number(
                   reviewInfo?.average_rating ||
                     0
                 )
-
               const reviewCount =
                 Number(
                   reviewInfo?.review_count ||
                     0
                 )
-
               const recentReview =
                 Array.isArray(
                   reviewInfo?.recent_reviews
                 )
                   ? reviewInfo.recent_reviews[0]
                   : null
-
               return (
                 <article
                   key={item.id}
@@ -2014,7 +1847,6 @@ export default function DeliveryStorePage({
                       </div>
                     )}
                   </div>
-
                   <div className="flex min-w-0 flex-1 flex-col p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -2030,21 +1862,18 @@ export default function DeliveryStorePage({
                               ? 'veg'
                               : 'non-veg')}
                         </p>
-
                         <h3 className="mt-1 truncate font-black">
                           {
                             item.name
                           }
                         </h3>
                       </div>
-
                       <div className="text-right">
                         <p className="font-black">
                           {money(
                             item.price
                           )}
                         </p>
-
                         {hasDiscount && (
                           <p className="text-[10px] text-neutral-400 line-through">
                             {money(
@@ -2054,7 +1883,6 @@ export default function DeliveryStorePage({
                         )}
                       </div>
                     </div>
-
                     {item.description && (
                       <p className="mt-2 line-clamp-2 text-xs leading-5 text-neutral-500">
                         {
@@ -2062,14 +1890,12 @@ export default function DeliveryStorePage({
                         }
                       </p>
                     )}
-
                     {reviewCount > 0 && (
                       <div className="mt-2">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="rounded-full bg-amber-50 px-2 py-1 text-[9px] font-black text-amber-700">
                             ★ {averageRating.toFixed(1)}
                           </span>
-
                           <span className="text-[9px] font-bold text-neutral-400">
                             {reviewCount}{' '}
                             verified{' '}
@@ -2078,13 +1904,11 @@ export default function DeliveryStorePage({
                               : 'reviews'}
                           </span>
                         </div>
-
                         {recentReview?.review && (
                           <div className="mt-2 rounded-xl bg-neutral-50 px-3 py-2">
                             <p className="line-clamp-2 text-[10px] leading-4 text-neutral-600">
                               “{recentReview.review}”
                             </p>
-
                             <p className="mt-1 text-[8px] font-black text-neutral-400">
                               {recentReview.customer_name ||
                                 'Verified customer'}{' '}
@@ -2099,7 +1923,6 @@ export default function DeliveryStorePage({
                         )}
                       </div>
                     )}
-
                     {stock.tracked && (
                       <div
                         className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[9px] font-black ${
@@ -2117,7 +1940,6 @@ export default function DeliveryStorePage({
                             : `${stock.available} IN STOCK`}
                       </div>
                     )}
-
                     <div className="mt-4">
                       {quantity <= 0 ? (
                         <button
@@ -2153,11 +1975,9 @@ export default function DeliveryStorePage({
                           >
                             −
                           </button>
-
                           <div className="flex items-center justify-center bg-emerald-600 text-sm font-black text-white">
                             {quantity}
                           </div>
-
                           <button
                             type="button"
                             disabled={
@@ -2184,7 +2004,6 @@ export default function DeliveryStorePage({
               )
             }
           )}
-
           {!filteredItems.length && (
             <div className="col-span-full rounded-[28px] border border-dashed border-neutral-300 bg-white px-6 py-16 text-center shadow-sm">
               <div className="text-4xl">🍽️</div>
@@ -2198,7 +2017,6 @@ export default function DeliveryStorePage({
           )}
         </section>
       </div>
-
       {cartCount > 0 && (
         <div className="fixed inset-x-0 bottom-[68px] z-40 px-2 sm:px-3">
           <div className="mx-auto flex max-w-2xl items-center gap-3 rounded-[22px] border border-neutral-800 bg-neutral-950 p-2.5 pl-4 text-white shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
@@ -2213,10 +2031,9 @@ export default function DeliveryStorePage({
                 </span>
               </p>
             </div>
-
             <button
               type="button"
-              onClick={() => setCheckoutOpen(true)}
+              onClick={openCheckout}
               className="flex h-12 shrink-0 items-center gap-2 rounded-2xl bg-emerald-500 px-5 text-xs font-black text-white shadow-sm transition active:scale-[0.98]"
             >
               View cart
@@ -2225,57 +2042,6 @@ export default function DeliveryStorePage({
           </div>
         </div>
       )}
-
-
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur-xl">
-        <div className="mx-auto grid max-w-md grid-cols-4 px-3 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2">
-          <button
-            type="button"
-            onClick={() => router.push('/delivery')}
-            className="flex flex-col items-center gap-1 py-1 text-neutral-500 transition active:scale-[0.98]"
-          >
-            <span className="text-xl" aria-hidden="true">🏠</span>
-            <span className="text-[10px] font-black">Home</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              window.scrollTo({ top: 0, behavior: 'smooth' })
-              window.setTimeout(() => {
-                document.querySelector('input[placeholder="Search food, drinks or categories"]')?.focus()
-              }, 250)
-            }}
-            className="flex flex-col items-center gap-1 py-1 text-emerald-700 transition active:scale-[0.98]"
-          >
-            <span className="text-xl" aria-hidden="true">🔎</span>
-            <span className="text-[10px] font-black">Search</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={openTracking}
-            className="flex flex-col items-center gap-1 py-1 text-neutral-500 transition active:scale-[0.98]"
-          >
-            <span className="text-xl" aria-hidden="true">📦</span>
-            <span className="text-[10px] font-black">Orders</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new Event('digitaldine:open-help-centre'))
-              }
-            }}
-            className="flex flex-col items-center gap-1 py-1 text-violet-600 transition active:scale-[0.98]"
-            aria-label="Open Help Centre"
-          >
-            <span className="text-xl" aria-hidden="true">❓</span>
-            <span className="text-[10px] font-black">Help</span>
-          </button>
-        </div>
-      </nav>
-
       <DeliveryCustomerSupportChat
         restaurantCode={restaurantCode}
         onReviewSubmitted={
@@ -2283,8 +2049,6 @@ export default function DeliveryStorePage({
         }
         hideLauncher
       />
-
-
       {trackingOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
           <div className="max-h-[92dvh] w-full min-w-0 max-w-md overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:rounded-[30px]">
@@ -2293,16 +2057,13 @@ export default function DeliveryStorePage({
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">
                   Delivery Tracking
                 </p>
-
                 <h2 className="mt-1 text-xl font-black text-neutral-950">
                   Find orders by mobile
                 </h2>
-
                 <p className="mt-1 text-xs leading-5 text-neutral-500">
                   Enter the mobile number used while placing the order. Your recent Delivery orders will appear below.
                 </p>
               </div>
-
               <button
                 type="button"
                 onClick={() => {
@@ -2316,13 +2077,11 @@ export default function DeliveryStorePage({
                 ✕
               </button>
             </div>
-
             <form onSubmit={submitTracking} className="mt-5 space-y-4">
               <label className="block">
                 <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
                   Mobile Number
                 </span>
-
                 <input
                   type="tel"
                   inputMode="numeric"
@@ -2336,13 +2095,11 @@ export default function DeliveryStorePage({
                   className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:bg-white"
                 />
               </label>
-
               {trackingError && (
                 <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
                   {trackingError}
                 </div>
               )}
-
               <button
                 type="submit"
                 disabled={trackingLoading || trackingMobile.length !== 10}
@@ -2351,13 +2108,11 @@ export default function DeliveryStorePage({
                 {trackingLoading ? 'Finding Orders...' : 'Find My Orders'}
               </button>
             </form>
-
             {trackingOrders.length > 0 && (
               <div className="mt-5 space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
                   Recent Orders
                 </p>
-
                 {trackingOrders.map((order) => (
                   <button
                     key={order.order_code}
@@ -2384,12 +2139,10 @@ export default function DeliveryStorePage({
                             : ''}
                         </p>
                       </div>
-
                       <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[9px] font-black uppercase text-emerald-700">
                         {String(order.order_status || '').replaceAll('_', ' ')}
                       </span>
                     </div>
-
                     <div className="mt-3 flex items-center justify-between text-xs">
                       <span className="text-neutral-500">
                         {order.driver_assigned ? 'Driver assigned' : 'Preparing dispatch'}
@@ -2402,33 +2155,27 @@ export default function DeliveryStorePage({
                 ))}
               </div>
             )}
-
             <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[10px] font-semibold leading-5 text-violet-700">
               Need help with this order? Close tracking and open Help Centre to raise a request or chat with the store Manager.
             </div>
-
-
             <p className="mt-4 text-[10px] leading-5 text-neutral-500">
               Order progress refreshes every 1 minute on the tracking page.
             </p>
           </div>
         </div>
       )}
-
       {checkoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/55 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-5">
-          <div className="max-h-[94dvh] w-full min-w-0 overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:max-w-2xl sm:rounded-[30px]">
+        <div className="dd-ref-modal fixed inset-0 z-[70] flex items-end bg-black/55 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-5" role="presentation">
+          <div className="dd-ref-checkout max-h-[96dvh] w-full min-w-0 overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:max-w-2xl sm:rounded-[30px]" role="dialog" aria-modal="true" aria-label={checkoutStage === 'cart' ? 'Your cart' : 'Delivery checkout'}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
-                  Delivery checkout
+                  {checkoutStage === 'cart' ? 'Your selection' : 'Almost there'}
                 </p>
-
                 <h2 className="mt-1 text-xl font-black">
-                  Your order
+                  {checkoutStage === 'cart' ? `Cart · ${cartCount} ${cartCount === 1 ? 'item' : 'items'}` : 'Checkout'}
                 </h2>
               </div>
-
               <button
                 type="button"
                 onClick={() =>
@@ -2441,25 +2188,24 @@ export default function DeliveryStorePage({
                 ✕
               </button>
             </div>
-
-            <div className="mt-5 space-y-3">
+            {checkoutStage === 'cart' && <div className="mt-5 space-y-3 dd-ref-cart-items">
               {cartRows.map(
                 (item) => {
                   const stock =
                     deliveryStockInfo(
                       item
                     )
-
                   return (
                     <div
                       key={item.id}
                       className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200 p-3"
                     >
-                      <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="dd-ref-cart-photo">{item.image_url ? <img src={item.image_url} alt="" /> : <span>🛍️</span>}</div>
+                        <div className="min-w-0">
                         <p className="truncate text-sm font-black">
                           {item.name}
                         </p>
-
                         <p className="mt-1 text-xs text-neutral-500">
                           {money(
                             item.price
@@ -2469,7 +2215,6 @@ export default function DeliveryStorePage({
                             item.quantity
                           }
                         </p>
-
                         {stock.tracked && (
                           <p
                             className={`mt-1 text-[9px] font-black ${
@@ -2485,8 +2230,8 @@ export default function DeliveryStorePage({
                               : `${stock.available} available`}
                           </p>
                         )}
+                        </div>
                       </div>
-
                       <div className="flex shrink-0 items-center gap-3">
                         <button
                           type="button"
@@ -2501,13 +2246,11 @@ export default function DeliveryStorePage({
                         >
                           −
                         </button>
-
                         <span className="text-sm font-black">
                           {
                             item.quantity
                           }
                         </span>
-
                         <button
                           type="button"
                           disabled={
@@ -2531,36 +2274,67 @@ export default function DeliveryStorePage({
                   )
                 }
               )}
-            </div>
-
-            <div className="mt-5 rounded-[22px] border border-neutral-200 bg-neutral-50 p-4 text-xs">
+            </div>}
+            {checkoutStage === 'cart' && (
+              <div className="dd-ref-cart-footer">
+                <div>
+                  <p className="text-[11px] font-semibold text-neutral-500">Subtotal · {cartCount} items</p>
+                  <p className="text-xl font-black text-neutral-950">{money(subtotal)}</p>
+                  <p className="text-[10px] text-neutral-500">Delivery fees and taxes shown at checkout</p>
+                </div>
+                <button type="button" disabled={!cartRows.length} onClick={() => setCheckoutStage('checkout')} className="dd-ref-green-btn" >Checkout ({cartCount}) →</button>
+              </div>
+            )}
+            {checkoutStage === 'checkout' && (
+              <div className="dd-ref-checkout-summary">
+                <button type="button" className="dd-ref-edit-cart" onClick={() => setCheckoutStage('cart')}>← Edit cart · {cartCount} items</button>
+                <div className="dd-ref-shipping-card">
+                  <div className="flex items-center justify-between gap-2"><strong>⌖ Deliver to your address</strong><button type="button" onClick={() => setLocationMapOpen(true)}>Change →</button></div>
+                  <p>{locationConfirmed ? [checkout.addressLine1, checkout.addressLine2, checkout.city].filter(Boolean).join(', ') || 'Pin confirmed — enter the written address below' : 'Choose your precise delivery location on the map'}</p>
+                </div>
+                <div className="dd-ref-checkout-items mt-3 rounded-2xl border border-neutral-200 bg-white p-3">
+                  <p className="text-[11px] font-black text-neutral-800">Your items</p>
+                  {cartRows.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-3 border-b border-neutral-100 py-2 last:border-b-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-neutral-100">{item.image_url ? <img src={item.image_url} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full items-center justify-center">🍽️</span>}</div>
+                        <span className="truncate text-xs font-bold">{item.quantity} × {item.name}</span>
+                      </div>
+                      <span className="shrink-0 text-xs font-black">{money(Number(item.price || 0) * item.quantity)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {checkoutStage === 'checkout' && <div className="mt-5 rounded-[22px] border border-neutral-200 bg-neutral-50 p-4 text-xs">
               <BillRow
                 label="Item Subtotal"
                 value={money(subtotal)}
               />
-
               <BillRow
                 label="Delivery Fee"
                 value={previewDeliveryFee === 0 ? 'FREE' : money(previewDeliveryFee)}
               />
-
               <BillRow
                 label="Handling Charge"
                 value={money(previewHandling)}
               />
-
               <BillRow
                 label="Packing Charge"
                 value={money(previewPacking)}
               />
-
               {previewSurge > 0 && (
                 <BillRow
                   label="High Demand Charge"
                   value={money(previewSurge)}
                 />
               )}
-
+              {previewPlatformFee > 0 && (
+                <BillRow
+                  label="Platform Fee"
+                  value={money(previewPlatformFee)}
+                />
+              )}
               {settings.tax_enabled && (
                 <>
                   <BillRow
@@ -2573,12 +2347,10 @@ export default function DeliveryStorePage({
                   />
                 </>
               )}
-
               <div className="mt-3 flex items-center justify-between border-t border-neutral-200 pt-3 text-sm font-black">
                 <span>Estimated Total</span>
                 <span>{money(previewTotal)}</span>
               </div>
-
               {minimumOrderAmount > 0 &&
                 subtotal > 0 &&
                 subtotal < minimumOrderAmount && (
@@ -2586,19 +2358,17 @@ export default function DeliveryStorePage({
                     Add {money(Math.max(0, minimumOrderAmount - subtotal))} more for free delivery.
                   </div>
                 )}
-
               {Boolean(surge.active) && previewSurge > 0 && (
                 <div className="mt-2 rounded-xl bg-orange-50 px-3 py-2 text-[10px] font-semibold leading-4 text-orange-700">
                   High demand is active right now. The current demand charge is {money(previewSurge)}.
                 </div>
               )}
-
               <p className="mt-3 text-[10px] leading-4 text-neutral-400">
-                Item prices, delivery fee, handling, packing, demand charges and taxes are recalculated securely when the order is placed.
+                Item prices, delivery fee, handling, packing, demand charges, taxes and any ERP-set platform fee are recalculated securely when the order is placed. If the platform fee changes, you must review the updated total.
               </p>
             </div>
-
-            <form
+            }
+            {checkoutStage === 'checkout' && <form
               onSubmit={placeOrder}
               className="mt-5 space-y-3"
             >
@@ -2618,7 +2388,6 @@ export default function DeliveryStorePage({
                     )
                   }
                 />
-
                 <CheckoutField
                   label="Mobile"
                   value={
@@ -2637,7 +2406,6 @@ export default function DeliveryStorePage({
                     )
                   }
                 />
-
                 <CheckoutField
                   label="Alternate Mobile"
                   value={
@@ -2656,7 +2424,6 @@ export default function DeliveryStorePage({
                     )
                   }
                 />
-
                 <CheckoutField
                   label="Email"
                   type="email"
@@ -2674,7 +2441,6 @@ export default function DeliveryStorePage({
                   }
                   placeholder="Optional"
                 />
-
                 <div className="sm:col-span-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -2685,7 +2451,6 @@ export default function DeliveryStorePage({
                         Use your current GPS location or tap/drag the pin on the map to the exact delivery point. We will try to fill the written address automatically, and you can edit it before ordering.
                       </p>
                     </div>
-
                     <button
                       type="button"
                       onClick={chooseLiveLocation}
@@ -2697,29 +2462,18 @@ export default function DeliveryStorePage({
                         : 'Use My Current Location'}
                     </button>
                   </div>
-
-                  <div className="mt-4">
-                    <DeliveryLocationMap
-                      latitude={checkout.latitude}
-                      longitude={checkout.longitude}
-                      referenceLatitude={coverageOriginLatitude}
-                      referenceLongitude={coverageOriginLongitude}
-                      radiusKm={coverageRadiusKm}
-                      showRadius={coverageEnabled}
-                      onChange={({ latitude, longitude }) => {
-                        setCheckout((current) => ({
-                          ...current,
-                          latitude,
-                          longitude,
-                          locationAccuracy: '',
-                        }))
-                        setLocationConfirmed(false)
-                        setLocationError('')
-                      }}
-                      height={300}
-                    />
+                  <div className="mt-4 dd-ref-location-preview">
+                    {checkout.latitude && checkout.longitude ? (
+                      <div className="pointer-events-none" aria-hidden="true">
+                        <DeliveryLocationMap latitude={checkout.latitude} longitude={checkout.longitude} referenceLatitude={coverageOriginLatitude} referenceLongitude={coverageOriginLongitude} radiusKm={coverageRadiusKm} showRadius={coverageEnabled} readOnly customerPin height={145} zoom={15} />
+                      </div>
+                    ) : (
+                      <div className="dd-ref-location-placeholder">⌖ <span>Pin your location accurately for delivery</span></div>
+                    )}
+                    <button type="button" className="dd-ref-open-map" onClick={() => setLocationMapOpen(true)}>
+                      {checkout.latitude && checkout.longitude ? 'Change location on full map →' : 'Open location map →'}
+                    </button>
                   </div>
-
                   {checkout.latitude && checkout.longitude && (
                     <div
                       className={`mt-3 rounded-xl border px-3 py-3 ${
@@ -2747,7 +2501,6 @@ export default function DeliveryStorePage({
                                 ? '✓ Delivery pin confirmed'
                                 : 'Pin selected — confirm this location'}
                           </p>
-
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-neutral-500">
                             <span>
                               {Number(checkout.latitude).toFixed(5)}, {Number(checkout.longitude).toFixed(5)}
@@ -2761,14 +2514,12 @@ export default function DeliveryStorePage({
                               </span>
                             )}
                           </div>
-
                           {coverageEnabled && coverageRadiusKm > 0 && (
                             <p className="mt-1 text-[10px] font-bold text-neutral-500">
                               This store delivers within {coverageRadiusKm.toFixed(1)} km of its delivery center.
                             </p>
                           )}
                         </div>
-
                         <button
                           type="button"
                           disabled={
@@ -2782,15 +2533,12 @@ export default function DeliveryStorePage({
                             ) {
                               return
                             }
-
                             const addressFilled =
                               await fillAddressFromLocation(
                                 checkout.latitude,
                                 checkout.longitude
                               )
-
                             setLocationConfirmed(true)
-
                             if (addressFilled) {
                               setLocationError('')
                             }
@@ -2804,14 +2552,12 @@ export default function DeliveryStorePage({
                       </div>
                     </div>
                   )}
-
                   {locationError && (
                     <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-bold leading-5 text-red-700">
                       {locationError}
                     </div>
                   )}
                 </div>
-
                 {locationConfirmed && (
                   <>
                     <div className="sm:col-span-2 mt-1">
@@ -2822,7 +2568,6 @@ export default function DeliveryStorePage({
                         We filled what we could from your selected location. Check the house, street, locality and landmark details and edit anything that needs correction.
                       </p>
                     </div>
-
                     <CheckoutField
                       label="House / Street"
                       value={checkout.addressLine1}
@@ -2833,7 +2578,6 @@ export default function DeliveryStorePage({
                         }))
                       }
                     />
-
                     <CheckoutField
                       label="Area / Locality"
                       value={checkout.addressLine2}
@@ -2845,7 +2589,6 @@ export default function DeliveryStorePage({
                       }
                       placeholder="Optional"
                     />
-
                     <CheckoutField
                       label="Landmark"
                       value={checkout.landmark}
@@ -2857,7 +2600,6 @@ export default function DeliveryStorePage({
                       }
                       placeholder="Optional"
                     />
-
                     <CheckoutField
                       label="City"
                       value={checkout.city}
@@ -2868,7 +2610,6 @@ export default function DeliveryStorePage({
                         }))
                       }
                     />
-
                     <CheckoutField
                       label="State"
                       value={checkout.state}
@@ -2879,7 +2620,6 @@ export default function DeliveryStorePage({
                         }))
                       }
                     />
-
                     <CheckoutField
                       label="Pincode"
                       value={checkout.pincode}
@@ -2893,12 +2633,10 @@ export default function DeliveryStorePage({
                   </>
                 )}
               </div>
-
               <label className="block">
                 <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
                   Delivery Note
                 </span>
-
                 <textarea
                   rows="3"
                   value={
@@ -2918,12 +2656,10 @@ export default function DeliveryStorePage({
                   className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3.5 py-3 text-sm font-medium outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-50"
                 />
               </label>
-
               <div>
                 <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-neutral-500">
                   Payment
                 </p>
-
                 <div className="grid gap-2 sm:grid-cols-2">
                   {settings.cod_enabled && (
                     <button
@@ -2943,14 +2679,12 @@ export default function DeliveryStorePage({
                       <p className="text-sm font-black">
                         Cash on Delivery
                       </p>
-
                       <p className="mt-1 text-xs text-neutral-500">
                         Pay when the order
                         arrives.
                       </p>
                     </button>
                   )}
-
                   {settings.online_payment_enabled && (
                     <button
                       type="button"
@@ -2969,7 +2703,6 @@ export default function DeliveryStorePage({
                       <p className="text-sm font-black">
                         Pay Online
                       </p>
-
                       <p className="mt-1 text-xs text-neutral-500">
                         Razorpay secure
                         checkout.
@@ -2978,13 +2711,11 @@ export default function DeliveryStorePage({
                   )}
                 </div>
               </div>
-
               {message && (
                 <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
                   {message}
                 </div>
               )}
-
               <button
                 type="submit"
                 disabled={
@@ -3001,54 +2732,59 @@ export default function DeliveryStorePage({
                     ? 'Continue to Razorpay'
                     : 'Place Delivery Order'}
               </button>
-            </form>
+            </form>}
           </div>
         </div>
       )}
-    
-      {/* Persistent Delivery customer app navigation */}
-      <nav className="fixed inset-x-0 bottom-0 z-[55] border-t border-neutral-200 bg-white/95 backdrop-blur-xl">
-        <div className="mx-auto grid max-w-md grid-cols-4 px-3 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2">
-          <button
-            type="button"
-            onClick={() => router.push('/delivery')}
-            className="flex flex-col items-center gap-1 py-1 text-neutral-400"
-          >
-            <span className="text-xl">🏠</span>
-            <span className="text-[10px] font-black">Home</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="flex flex-col items-center gap-1 py-1 text-emerald-700"
-          >
-            <span className="text-xl">🏪</span>
-            <span className="text-[10px] font-black">Store</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={openCustomerOrders}
-            className="flex flex-col items-center gap-1 py-1 text-neutral-400"
-          >
-            <span className="text-xl">📦</span>
-            <span className="text-[10px] font-black">Orders</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={openCustomerAccount}
-            className="flex flex-col items-center gap-1 py-1 text-neutral-400"
-          >
-            <span className="text-xl">{customerUser ? '👤' : '🔐'}</span>
-            <span className="text-[10px] font-black">
-              {customerUser ? 'Account' : 'Sign In'}
-            </span>
-          </button>
+      {checkoutOpen && locationMapOpen && (
+        <div className="dd-ref-map-modal fixed inset-0 z-[95] flex flex-col bg-white" role="dialog" aria-modal="true" aria-label="Select delivery location">
+          <div className="dd-ref-map-head">
+            <button type="button" onClick={() => setLocationMapOpen(false)} aria-label="Back to checkout">←</button>
+            <div><h2>Select delivery location</h2><p>Tap the map or drag the pin</p></div>
+            <button type="button" onClick={chooseLiveLocation} disabled={locationLoading} className="dd-ref-my-location" aria-label="Use my GPS location">{locationLoading ? '…' : '◎'}</button>
+          </div>
+          <div className="dd-ref-map-area">
+            <DeliveryLocationMap
+              latitude={checkout.latitude}
+              longitude={checkout.longitude}
+              referenceLatitude={coverageOriginLatitude}
+              referenceLongitude={coverageOriginLongitude}
+              radiusKm={coverageRadiusKm}
+              showRadius={coverageEnabled}
+              customerPin
+              onChange={({latitude,longitude}) => {
+                setCheckout((current) => ({...current,latitude,longitude,locationAccuracy:''}))
+                setLocationConfirmed(false)
+                setLocationError('')
+              }}
+              height={typeof window !== 'undefined' ? Math.max(320, window.innerHeight - 250) : 440}
+              zoom={16}
+            />
+          </div>
+          <div className="dd-ref-map-confirm">
+            <p className="font-black text-sm">⌖ {checkout.latitude && checkout.longitude ? `${Number(checkout.latitude).toFixed(5)}, ${Number(checkout.longitude).toFixed(5)}` : 'Choose your delivery pin'}</p>
+            {outsideDeliveryRadius && <p className="text-red-600 text-xs">Outside the store's delivery radius. Move the pin closer.</p>}
+            {locationError && <p className="text-red-600 text-xs">{locationError}</p>}
+            <button type="button" className="dd-ref-green-btn w-full" disabled={!checkout.latitude || !checkout.longitude || outsideDeliveryRadius || addressLoading} onClick={async () => {
+              if (!checkout.latitude || !checkout.longitude || outsideDeliveryRadius || addressLoading) return
+              const filled = await fillAddressFromLocation(checkout.latitude, checkout.longitude)
+              setLocationConfirmed(true)
+              if (filled) setLocationError('')
+              setLocationMapOpen(false)
+            }}>{addressLoading ? 'Finding address…' : 'Confirm location'}</button>
+          </div>
+        </div>
+      )}
+      {/* One persistent nav: previous duplicate navs consolidated. */}
+      <nav className="dd-ref-bottom-nav fixed inset-x-0 bottom-0 z-[55] border-t border-neutral-200 bg-white/95 backdrop-blur-xl" aria-label="Delivery customer navigation">
+        <div className="mx-auto grid max-w-md grid-cols-5 px-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2">
+          <button type="button" onClick={() => router.push('/delivery')} className="dd-ref-nav-btn"><span aria-hidden="true">⌂</span><small>Home</small></button>
+          <button type="button" onClick={() => { window.scrollTo({top:0,behavior:'smooth'}); window.setTimeout(() => document.querySelector('input[placeholder="Search food, drinks or categories"]')?.focus(),250) }} className="dd-ref-nav-btn is-current"><span aria-hidden="true">⌕</span><small>Search</small></button>
+          <button type="button" onClick={openCustomerOrders} className="dd-ref-nav-btn"><span aria-hidden="true">▣</span><small>Orders</small></button>
+          <button type="button" onClick={() => window.dispatchEvent(new Event('digitaldine:open-help-centre'))} className="dd-ref-nav-btn"><span aria-hidden="true">?</span><small>Help</small></button>
+          <button type="button" onClick={openCustomerAccount} className="dd-ref-nav-btn"><span aria-hidden="true">♙</span><small>{customerUser ? 'Account' : 'Sign in'}</small></button>
         </div>
       </nav>
-
       {accountOpen && customerUser ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 backdrop-blur-[2px] sm:items-center sm:p-4">
           <button
@@ -3057,10 +2793,8 @@ export default function DeliveryStorePage({
             onClick={() => setAccountOpen(false)}
             className="absolute inset-0"
           />
-
           <section className="relative z-10 w-full max-w-md rounded-t-[30px] bg-white p-5 shadow-2xl sm:rounded-[30px]">
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200 sm:hidden" />
-
             <div className="flex items-center gap-4">
               <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-emerald-50 text-2xl">
                 {customerProfile?.avatar_url ? (
@@ -3074,7 +2808,6 @@ export default function DeliveryStorePage({
                   '👤'
                 )}
               </div>
-
               <div className="min-w-0 flex-1">
                 <p className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-600">
                   Delivery Account
@@ -3089,7 +2822,6 @@ export default function DeliveryStorePage({
                   {customerProfile?.email || customerUser?.email || ''}
                 </p>
               </div>
-
               <button
                 type="button"
                 onClick={() => setAccountOpen(false)}
@@ -3098,7 +2830,6 @@ export default function DeliveryStorePage({
                 ✕
               </button>
             </div>
-
             <button
               type="button"
               onClick={() => {
@@ -3115,7 +2846,6 @@ export default function DeliveryStorePage({
               </span>
               <span className="text-lg">📦</span>
             </button>
-
             <button
               type="button"
               onClick={signOutDeliveryCustomer}
@@ -3127,11 +2857,9 @@ export default function DeliveryStorePage({
           </section>
         </div>
       ) : null}
-
 </main>
   )
 }
-
 function CheckoutField({
   label,
   value,
@@ -3144,7 +2872,6 @@ function CheckoutField({
       <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
         {label}
       </span>
-
       <input
         type={type}
         value={value}
@@ -3159,7 +2886,6 @@ function CheckoutField({
     </label>
   )
 }
-
 function BillRow({
   label,
   value,

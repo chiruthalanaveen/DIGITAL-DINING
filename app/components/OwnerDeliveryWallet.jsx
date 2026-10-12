@@ -81,6 +81,10 @@ export default function OwnerDeliveryWallet({ restaurantId }) {
   const [busy, setBusy] = useState(false)
   const [amount, setAmount] = useState('2000')
   const [expanded, setExpanded] = useState(false)
+  // Fee-rate amounts remain controlled exclusively by Super Admin / ERP.
+  const [restaurantChargeCustomer, setRestaurantChargeCustomer] = useState(false)
+  const [deliveryChargeCustomer, setDeliveryChargeCustomer] = useState(false)
+  const [savingFeePreferences, setSavingFeePreferences] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -98,6 +102,8 @@ export default function OwnerDeliveryWallet({ restaurantId }) {
       )
       const data = await parseResponse(response)
       setWallet(data.wallet)
+      setRestaurantChargeCustomer(data.wallet?.restaurantChargeCustomer === true)
+      setDeliveryChargeCustomer(data.wallet?.deliveryChargeCustomer === true)
       setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
       setErrorMessage('')
     } catch (error) {
@@ -118,6 +124,35 @@ export default function OwnerDeliveryWallet({ restaurantId }) {
     () => Math.ceil(Number(wallet?.minimumTopupPaise || 200000) / 100),
     [wallet?.minimumTopupPaise]
   )
+
+  const saveFeePreferences = async () => {
+    if (!wallet || savingFeePreferences) return
+    setSavingFeePreferences(true)
+    setNotice('')
+    setErrorMessage('')
+    try {
+      const token = await getOwnerToken()
+      const response = await fetch('/api/owner/platform-fee-preferences', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          restaurantId,
+          restaurantChargeCustomer,
+          deliveryChargeCustomer,
+        }),
+      })
+      const payload = await parseResponse(response)
+      setNotice(payload.message || 'Fee payer preferences saved.')
+      await loadWallet({ silent: true })
+    } catch (error) {
+      setErrorMessage(error?.message || 'Unable to save fee payer preferences.')
+    } finally {
+      setSavingFeePreferences(false)
+    }
+  }
 
   const recharge = async () => {
     if (busy || !wallet) return
@@ -239,12 +274,71 @@ export default function OwnerDeliveryWallet({ restaurantId }) {
               ['Pending Platform Fees', formatMoney(wallet.pendingFeesPaise), 'text-amber-400'],
               ['Spendable Balance', formatMoney(wallet.spendablePaise), wallet.lowBalance ? 'text-red-400' : 'text-white'],
               ['Fee Per Delivered Order', formatMoney(wallet.platformFeePaise), 'text-orange-400'],
+              ['Fee Per Restaurant Order', formatMoney(wallet.restaurantPlatformFeePaise ?? 500), 'text-orange-400'],
             ].map(([label, value, color]) => (
               <div key={label} className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">{label}</p>
                 <p className={`mt-2 text-xl font-black ${color}`}>{value}</p>
               </div>
             ))}
+          </div>
+
+          {/* Step 20A: save only who bears the existing ERP platform fee.
+              Billing changes are activated in Step 20B with server-side checkout. */}
+          <div className="mt-5 space-y-4 rounded-2xl border border-neutral-700 bg-neutral-950 p-4">
+            <div>
+              <h4 className="text-sm font-black">Who pays the ERP platform fee?</h4>
+              <p className="mt-1 text-xs leading-5 text-neutral-400">
+                The Super Admin sets the amount. You can only choose whether it is added to your customer's bill or absorbed by your business.
+              </p>
+              <p className="mt-1 text-[11px] font-semibold text-amber-300">
+                Preferences can be saved now. Customer billing is not active until the checkout migration is installed.
+              </p>
+            </div>
+            {[
+              {
+                id: 'restaurant-platform-fee-payer',
+                label: 'Restaurant · Dine-in and Takeaway',
+                amount: wallet.restaurantPlatformFeePaise ?? 500,
+                checked: restaurantChargeCustomer,
+                change: setRestaurantChargeCustomer,
+              },
+              {
+                id: 'delivery-platform-fee-payer',
+                label: 'Delivery',
+                amount: wallet.platformFeePaise ?? 500,
+                checked: deliveryChargeCustomer,
+                change: setDeliveryChargeCustomer,
+              },
+            ].map((pref) => (
+              <label key={pref.id} htmlFor={pref.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-800 p-3">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-bold text-white">{pref.label}</span>
+                  <span className="mt-1 block text-[11px] text-neutral-400">
+                    ERP platform fee: {formatMoney(pref.amount)} · {pref.checked ? 'Customer bears fee' : 'Owner absorbs fee'}
+                  </span>
+                </span>
+                <span className="flex items-center gap-2 text-[11px] font-bold text-neutral-300">
+                  Charge customer
+                  <input
+                    id={pref.id}
+                    type="checkbox"
+                    checked={pref.checked}
+                    disabled={savingFeePreferences}
+                    onChange={(event) => pref.change(event.target.checked)}
+                    className="h-5 w-5 accent-orange-500"
+                  />
+                </span>
+              </label>
+            ))}
+            <button
+              type="button"
+              onClick={() => void saveFeePreferences()}
+              disabled={savingFeePreferences || loading}
+              className="rounded-xl bg-orange-500 px-5 py-3 text-xs font-black text-white disabled:opacity-50"
+            >
+              {savingFeePreferences ? 'Saving preferences...' : 'Save Fee Payer Preferences'}
+            </button>
           </div>
 
           <div className="mt-5 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">

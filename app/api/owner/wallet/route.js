@@ -29,7 +29,7 @@ export async function GET(request) {
       admin
         .from('delivery_store_wallets')
         .select(
-          'restaurant_id,balance_paise,pending_fee_paise,platform_fee_paise,order_block_threshold_paise,min_topup_paise,updated_at'
+          'restaurant_id,balance_paise,pending_fee_paise,platform_fee_paise,restaurant_platform_fee_paise,restaurant_fee_charge_customer,delivery_fee_charge_customer,order_block_threshold_paise,min_topup_paise,updated_at'
         )
         .eq('restaurant_id', access.restaurantId)
         .maybeSingle(),
@@ -67,6 +67,9 @@ export async function GET(request) {
         pendingFeesPaise,
         spendablePaise,
         platformFeePaise: Number(wallet.platform_fee_paise || 0),
+        restaurantPlatformFeePaise: Number(wallet.restaurant_platform_fee_paise ?? 500),
+        restaurantChargeCustomer: wallet.restaurant_fee_charge_customer === true,
+        deliveryChargeCustomer: wallet.delivery_fee_charge_customer === true,
         thresholdPaise,
         minimumTopupPaise: Number(wallet.min_topup_paise || 200000),
         lowBalance: spendablePaise <= thresholdPaise,

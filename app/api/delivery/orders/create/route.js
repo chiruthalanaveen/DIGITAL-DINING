@@ -179,20 +179,28 @@ function getAdminClient() {
 
 
 
-async function getAuthenticatedDeliveryCustomer(request, admin) {
-  const authorization = String(
-    request.headers.get('authorization') || ''
-  ).trim()
+async function getAuthenticatedDeliveryCustomer(request) {
+  const { url } = serverConfig()
 
-  const match = authorization.match(/^Bearer\s+(.+)$/i)
-  const accessToken = match?.[1]?.trim() || ''
-
-  if (!accessToken) return null
+  const auth = createServerClient(
+    url,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll() {
+          // Read-only auth client for this request.
+        },
+      },
+    }
+  )
 
   const {
     data: { user },
     error,
-  } = await admin.auth.getUser(accessToken)
+  } = await auth.auth.getUser()
 
   if (error || !user?.id) return null
   return user
@@ -1217,6 +1225,10 @@ function publicOrder(order) {
 
 
 
+    platformFeeCustomerAmount: Number(order?.platform_fee_customer_amount || 0),
+    platformFeeChargeCustomer: Boolean(order?.platform_fee_charge_customer),
+    platformFeePaise: Number(order?.platform_fee_paise || 0),
+
     totalAmount:
 
 
@@ -1653,20 +1665,9 @@ export async function POST(request) {
 
   // Never trust a customer user id sent by the browser.
   const authenticatedCustomer =
-    await getAuthenticatedDeliveryCustomer(request, admin)
+    await getAuthenticatedDeliveryCustomer(request)
   const customerUserId =
     authenticatedCustomer?.id || null
-
-    if (!customerUserId) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'AUTH_REQUIRED',
-          message: 'Please login before placing a Delivery order.',
-        },
-        { status: 401 }
-      )
-    }
 
 
 
@@ -1974,6 +1975,20 @@ export async function POST(request) {
 
 
 
+    // Customer consent quote (in paise), never trusted as the real fee.
+    // Supabase independently computes the fee, then atomically compares it.
+    const expectedPlatformFeePaise = Number(body?.expectedPlatformFeePaise)
+    if (
+      !Number.isSafeInteger(expectedPlatformFeePaise) ||
+      expectedPlatformFeePaise < 0 ||
+      expectedPlatformFeePaise > 100000
+    ) {
+      return NextResponse.json({
+        success: false,
+        message: 'Platform fee quote is missing. Refresh the checkout and retry.',
+      }, { status: 400 })
+    }
+
     const {
 
 
@@ -1990,13 +2005,15 @@ export async function POST(request) {
 
 
 
-      'create_delivery_order_secure',
+      'create_delivery_order_fee_confirmed',
 
 
 
       {
 
 
+
+        p_expected_fee_paise: expectedPlatformFeePaise,
 
         p_restaurant_code:
 

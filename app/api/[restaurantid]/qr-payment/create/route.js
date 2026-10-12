@@ -1,5 +1,6 @@
+// Paste into: app/api/restaurant/qr-payment/create/route.js
 import { qrAdmin, qrRespond, qrError, qrSafeError, qrAssert, qrEligible,
-  qrGateway, qrBuildVerifiedCart, qrRupees, QR_ID_RE } from '@/lib/server/qrPaymentServer'
+  qrGateway, qrBuildVerifiedCart, qrRupees, qrRestaurantCustomerFee, QR_ID_RE } from '@/lib/server/qrPaymentServer'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -60,7 +61,9 @@ export async function POST(request) {
     qrAssert(Number.isFinite(packing) && packing >= 0 && packing <= 10000,
       'INVALID_ITEM_PRICE', 'Restaurant packing settings are invalid.')
     const finalPacking = qrRupees(packing)
-    const total = qrRupees(subtotal + tax + finalPacking)
+    // Server-approved customer-paid platform fee, never a browser value.
+    const fee = await qrRestaurantCustomerFee(admin, restaurantId)
+    const total = qrRupees(subtotal + tax + finalPacking + fee.customerAmount)
     const amountPaise = Math.round(total * 100)
     qrAssert(Number.isSafeInteger(amountPaise) && amountPaise >= 100 && amountPaise <= 100_000_000,
       'INVALID_ITEM_PRICE', 'The order total is invalid or below ₹1.')
@@ -79,6 +82,10 @@ export async function POST(request) {
       tax_rupees: tax,
       packing_rupees: finalPacking,
       total_rupees: total,
+      platform_fee_paise: fee.feePaise,
+      platform_fee_snapshot_locked: true,
+      platform_fee_charge_customer: fee.chargeCustomer,
+      platform_fee_customer_amount: fee.customerAmount,
       customer_name: name,
       customer_mobile: mobile,
       table_number: tableNumber,
@@ -122,6 +129,9 @@ export async function POST(request) {
       keyId: gateway.keyId,
       razorpayOrderId: providerOrder.id,
       amountPaise,
+      platformFeePaise: fee.feePaise,
+      platformFeeChargeCustomer: fee.chargeCustomer,
+      platformFeeCustomerAmount: fee.customerAmount,
       currency: 'INR',
     })
   } catch (error) {

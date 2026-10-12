@@ -230,6 +230,67 @@ export default function CustomerMenuPage() {
   // confirmation WITHOUT paying a second time.
   const [pendingQrVerification, setPendingQrVerification] = useState(null)
 
+  // ERP-controlled platform fee for dine-in / takeaway. The owner can only
+  // choose customer-paid ON/OFF. A separate rollout flag starts OFF.
+  const [restaurantFeeQuote, setRestaurantFeeQuote] = useState({
+    loaded: false, customerAmountPaise: 0, feePaise: 0
+  })
+  const [restaurantFeeQuoteError, setRestaurantFeeQuoteError] = useState('')
+
+  const refreshRestaurantFeeQuote = async () => {
+    if (!restaurantId) throw new Error('Restaurant ID is missing.')
+    const response = await fetch(
+      `/api/restaurant/qr-platform-fee?restaurantId=${encodeURIComponent(restaurantId)}`,
+      { cache: 'no-store' }
+    )
+    const data = await response.json().catch(() => null)
+    if (!response.ok || !data?.success ||
+        !Number.isSafeInteger(Number(data.customerAmountPaise))) {
+      const message = data?.message || 'Unable to verify the restaurant platform fee.'
+      setRestaurantFeeQuoteError(message)
+      setRestaurantFeeQuote({ loaded: false, customerAmountPaise: 0, feePaise: 0 })
+      throw new Error(message)
+    }
+    setRestaurantFeeQuote({
+      loaded: true,
+      customerAmountPaise: Number(data.customerAmountPaise),
+      feePaise: Number(data.feePaise || 0),
+    })
+    setRestaurantFeeQuoteError('')
+    return data
+  }
+
+  useEffect(() => {
+    let active = true
+    if (!restaurantId) return undefined
+    const load = async () => {
+      try {
+        const response = await fetch(
+          `/api/restaurant/qr-platform-fee?restaurantId=${encodeURIComponent(restaurantId)}`,
+          { cache: 'no-store' }
+        )
+        const data = await response.json().catch(() => null)
+        if (!active) return
+        if (!response.ok || !data?.success ||
+            !Number.isSafeInteger(Number(data.customerAmountPaise))) {
+          throw new Error(data?.message || 'Unable to load restaurant platform-fee settings.')
+        }
+        setRestaurantFeeQuote({
+          loaded: true,
+          customerAmountPaise: Number(data.customerAmountPaise),
+          feePaise: Number(data.feePaise || 0),
+        })
+        setRestaurantFeeQuoteError('')
+      } catch (error) {
+        if (!active) return
+        setRestaurantFeeQuote({ loaded: false, customerAmountPaise: 0, feePaise: 0 })
+        setRestaurantFeeQuoteError(error?.message || 'Unable to load platform fee.')
+      }
+    }
+    void load()
+    return () => { active = false }
+  }, [restaurantId])
+
   const [paymentMethod, setPaymentMethod] = useState('online')
 
   const [confirmedBillSummary, setConfirmedBillSummary] = useState({
@@ -931,7 +992,10 @@ export default function CustomerMenuPage() {
   const packingFee =
     orderType === 'parcel' ? Number(restaurant?.packing_charge ?? 20) : 0
 
-  const totalAmount = subtotalAmount + gstAmount + packingFee
+  const restaurantCustomerFee = restaurantFeeQuote.loaded
+    ? Number(restaurantFeeQuote.customerAmountPaise || 0) / 100
+    : 0
+  const totalAmount = subtotalAmount + gstAmount + packingFee + restaurantCustomerFee
 
   const totalItemsCount = cartItemsArray.reduce(
     (sum, item) => sum + Number(item.quantity || 0),
@@ -1249,41 +1313,29 @@ export default function CustomerMenuPage() {
       throw new Error('Your cart is empty.')
     }
 
-    const { data, error } = await supabase.rpc(
-      'create_public_qr_order',
-      {
-        p_restaurant_id: String(restaurantId),
-        p_table_number: String(diningTable || tableNumber || '1'),
-        p_customer_name: cleanName,
-        p_customer_mobile: cleanMobile,
-        p_items: itemsSnapshot,
-        p_total_amount: Number(totalAmount || 0),
-        p_tax_amount: Number(taxAmount || 0),
-        p_packing_fee: Number(packingFeeAmount || 0),
-        p_payment_mode: String(paymentMode || 'Pay at Counter'),
-        p_status: String(status || 'pending'),
-        p_order_type: orderType
-      }
-    )
-
-    if (error) {
-      console.error('[QR MENU] Public order RPC failed:', {
-        restaurantId,
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      })
-
-      if (/RESTAURANT_WALLET_LOW_BALANCE|DELIVERY_WALLET_LOW_BALANCE|WALLET_NOT_CONFIGURED|STORE_NOT_APPROVED/i.test(String(error.message || ''))) {
+    // Pay at Counter now goes through a server-verified checkout. The browser
+    // cannot set payment status, restaurant platform-fee rate, or item prices.
+    const response = await fetch('/api/restaurant/qr-counter-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({
+        restaurantId: String(restaurantId),
+        tableNumber: String(diningTable || tableNumber || '1'),
+        customerName: cleanName,
+        customerMobile: cleanMobile,
+        orderType,
+        items: itemsSnapshot,
+        totalAmount: Number(totalAmount || 0),
+      }),
+    })
+    const data = await response.json().catch(() => null)
+    if (!response.ok || !data?.success) {
+      if (data?.code === 'WALLET_LOW_BALANCE') {
         setQrAccessAllowed(false)
-        setQrAccessMessage('This restaurant is temporarily not accepting new orders. Please contact the restaurant staff.')
-        throw new Error('This restaurant is temporarily unable to take new orders.')
+        setQrAccessMessage('Restaurant wallet balance is too low for new orders.')
       }
-      throw new Error(
-        error.message ||
-          'Unable to place order. Please try again.'
-      )
+      throw new Error(data?.message || 'Unable to place order. Please retry.')
     }
 
     let result = data
@@ -1366,6 +1418,12 @@ export default function CustomerMenuPage() {
     setPaymentLoading(true)
 
     try {
+      const freshQuote = await refreshRestaurantFeeQuote()
+      const refreshedTotal = Math.round((subtotalAmount + gstAmount + packingFee +
+        Number(freshQuote.customerAmountPaise || 0) / 100) * 100) / 100
+      if (Math.abs(refreshedTotal - totalAmount) >= 0.011) {
+        throw new Error('The platform fee changed. Review the updated bill and place your order again.')
+      }
       const finalSubtotal = subtotalAmount
       const finalGst = gstAmount
       const finalPacking = packingFee
@@ -1396,7 +1454,8 @@ export default function CustomerMenuPage() {
         cgstRate,
         gstAmount: finalGst,
         packingFee: finalPacking,
-        totalAmount: finalBillTotal,
+        totalAmount: Number(createdOrder?.total_amount ?? finalBillTotal),
+        platformFee: Number(createdOrder?.platform_fee_customer_amount ?? restaurantCustomerFee),
         diningMode: finalMode,
         customerMobile: finalMobile
       })
@@ -1479,7 +1538,8 @@ export default function CustomerMenuPage() {
         cgstRate: Number(summary.cgstRate ?? 2.5),
         gstAmount: Number(summary.gstAmount || 0),
         packingFee: Number(summary.packingFee || 0),
-        totalAmount: Number(summary.totalAmount || 0),
+        totalAmount: Number(order?.total_amount ?? summary.totalAmount ?? 0),
+        platformFee: Number(order?.platform_fee_customer_amount ?? summary.platformFee ?? 0),
         diningMode: summary.diningMode || 'Dine-In',
         customerMobile: summary.customerMobile || customerMobile.trim()
       })
@@ -1556,6 +1616,12 @@ export default function CustomerMenuPage() {
     }
 
     try {
+      const freshQuote = await refreshRestaurantFeeQuote()
+      const refreshedTotal = Math.round((subtotalAmount + gstAmount + packingFee +
+        Number(freshQuote.customerAmountPaise || 0) / 100) * 100) / 100
+      if (Math.abs(refreshedTotal - totalAmount) >= 0.011) {
+        throw new Error('The platform fee changed. Review the updated bill and retry payment.')
+      }
       const sdkLoaded = await loadRazorpayScript()
       if (!sdkLoaded || typeof window.Razorpay !== 'function') {
         throw new Error('Razorpay checkout is unavailable. Check your internet connection.')
@@ -1598,7 +1664,11 @@ export default function CustomerMenuPage() {
             razorpay_order_id: result?.razorpay_order_id || checkout.razorpayOrderId,
             razorpay_payment_id: result?.razorpay_payment_id,
             razorpay_signature: result?.razorpay_signature,
-            summary: billSummary,
+            summary: {
+              ...billSummary,
+              platformFee: Number(checkout.platformFeeCustomerAmount || 0),
+              totalAmount: Number(checkout.amountPaise || 0) / 100,
+            },
             itemsSnapshot: finalItems
           }
           if (!attempt.razorpay_payment_id || !attempt.razorpay_signature) {
@@ -2298,6 +2368,12 @@ export default function CustomerMenuPage() {
                   <div className="flex justify-between">
                     <span className="text-neutral-500">Packing</span>
                     <span>{money(confirmedBillSummary.packingFee)}</span>
+                  </div>
+                )}
+                {Number(confirmedBillSummary.platformFee || 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Platform fee (ERP rate)</span>
+                    <span>{money(confirmedBillSummary.platformFee)}</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-neutral-200 pt-3">
@@ -3100,6 +3176,17 @@ export default function CustomerMenuPage() {
                               <span className="font-bold">{money(packingFee)}</span>
                             </div>
                           )}
+                          {restaurantCustomerFee > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-neutral-400">Platform fee (ERP rate)</span>
+                              <span className="font-bold">{money(restaurantCustomerFee)}</span>
+                            </div>
+                          )}
+                          {!restaurantFeeQuote.loaded && (
+                            <div className="rounded-lg bg-amber-950/50 p-2 text-[10px] text-amber-200">
+                              {restaurantFeeQuoteError || 'Checking platform-fee settings...'}
+                            </div>
+                          )}
                           <div className="mt-3 flex justify-between border-t border-white/10 pt-3">
                             <span className="font-black">Total</span>
                             <span className="text-xl font-black text-orange-400">
@@ -3154,7 +3241,7 @@ export default function CustomerMenuPage() {
                           <button
                             type="button"
                             onClick={handleRazorpayCheckout}
-                            disabled={paymentLoading || Boolean(pendingQrVerification)}
+                            disabled={paymentLoading || Boolean(pendingQrVerification) || !restaurantFeeQuote.loaded}
                             className="w-full rounded-2xl bg-orange-500 py-4 text-sm font-black text-white shadow-lg shadow-orange-500/20 disabled:opacity-50"
                           >
                             {paymentLoading
@@ -3165,7 +3252,7 @@ export default function CustomerMenuPage() {
                           <button
                             type="button"
                             onClick={handlePayAtCounter}
-                            disabled={paymentLoading || Boolean(pendingQrVerification) || !counterPaymentEnabled}
+                            disabled={paymentLoading || Boolean(pendingQrVerification) || !counterPaymentEnabled || !restaurantFeeQuote.loaded}
                             className="w-full rounded-2xl bg-emerald-600 py-4 text-sm font-black text-white shadow-lg shadow-emerald-600/15 disabled:opacity-50"
                           >
                             {paymentLoading
