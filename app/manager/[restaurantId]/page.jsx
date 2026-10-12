@@ -1093,6 +1093,10 @@ export default function RestaurantManagerDashboard({ params }) {
   const [menuItems, setMenuItems] = useState([])
   const [dailyOffers, setDailyOffers] = useState([])
   const [orders, setOrders] = useState([])
+  // Track only IDs returned by the authenticated staff RPC (never a raw
+  // public.orders Realtime row). Initialize from the first successful snapshot.
+  const knownManagerOrderIdsRef = useRef(null)
+  const managerOrderSyncInFlightRef = useRef(false)
   const [restaurantTables, setRestaurantTables] = useState([])
   const [staffList, setStaffList] = useState([])
   const [activeTab, setActiveTab] = useState('settlements')
@@ -1135,7 +1139,7 @@ export default function RestaurantManagerDashboard({ params }) {
   }, [])
 
   const fetchDashboard = useCallback(async () => {
-    if (!restaurantId) return
+    if (!restaurantId || managerOrderSyncInFlightRef.current) return
 
     const usingSession = Boolean(sessionModeRef.current && sessionTokenRef.current)
     const code = String(restaurantCodeRef.current || '').trim()
@@ -1144,6 +1148,7 @@ export default function RestaurantManagerDashboard({ params }) {
 
     if (!usingSession && (!code || !user || !pass)) return
 
+    managerOrderSyncInFlightRef.current = true
     setLoading(true)
     try {
       let dashboardResult
@@ -1183,7 +1188,22 @@ export default function RestaurantManagerDashboard({ params }) {
       setRestaurant(data.restaurant || null)
       setMenuItems(Array.isArray(data.menuItems) ? data.menuItems : [])
       setDailyOffers(Array.isArray(data.dailyOffers) ? data.dailyOffers : [])
-      setOrders(Array.isArray(data.orders) ? data.orders : [])
+      // Detect new orders from the restaurant-scoped, session-validated RPC.
+      // A first snapshot does not cause a false new-order alert.
+      const nextOrders = Array.isArray(data.orders) ? data.orders : []
+      const nextIds = new Set(nextOrders.map((order) => String(order?.id || '')).filter(Boolean))
+      if (knownManagerOrderIdsRef.current !== null) {
+        const newOrderCount = nextOrders.filter((order) =>
+          order?.id && !knownManagerOrderIdsRef.current.has(String(order.id))
+        ).length
+        if (newOrderCount > 0) {
+          notify(newOrderCount === 1
+            ? '🔔 New order received'
+            : `🔔 ${newOrderCount} new orders received`)
+        }
+      }
+      knownManagerOrderIdsRef.current = nextIds
+      setOrders(nextOrders)
       setStaffList(Array.isArray(data.staffList) ? data.staffList : [])
       setStoreOpen(data.restaurant?.is_open ?? true)
 
@@ -1211,6 +1231,7 @@ export default function RestaurantManagerDashboard({ params }) {
       console.error('Manager dashboard loading error:', error)
       setNotice(`Loading issue: ${error.message}`)
     } finally {
+      managerOrderSyncInFlightRef.current = false
       setLoading(false)
     }
   }, [restaurantId, clearSavedManagerSession])
@@ -1433,74 +1454,27 @@ export default function RestaurantManagerDashboard({ params }) {
     }
   }, [restaurantId, clearSavedManagerSession, fetchDashboard])
 
+  // Step 22E: Never subscribe to public.orders rows. Staff credentials live in
+  // our session RPC, not in a Supabase JWT suitable for per-tenant Realtime RLS.
+  // The secure RPC below refreshes order status and detects new orders.
   useEffect(() => {
-    if (!authenticated || !restaurantId) return undefined
-
-    const channel = supabase
-      .channel(`manager-live-orders-${restaurantId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'orders',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        (payload) => {
-          setOrders((current) => {
-            if (current.some((order) => String(order.id) === String(payload.new.id))) {
-              return current
-            }
-            return [payload.new, ...current]
-          })
-          setNotice('🔔 New order received')
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        (payload) => {
-          setOrders((current) =>
-            current.map((order) =>
-              String(order.id) === String(payload.new.id) ? payload.new : order,
-            ),
-          )
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'orders',
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        (payload) => {
-          setOrders((current) =>
-            current.filter((order) => String(order.id) !== String(payload.old.id)),
-          )
-        },
-      )
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          console.error('Live order subscription failed')
-        }
-      })
-
-    return () => {
-      supabase.removeChannel(channel)
+    if (!authenticated) {
+      knownManagerOrderIdsRef.current = null
+      return undefined
     }
-  }, [authenticated, restaurantId])
-
-  useEffect(() => {
-    if (!authenticated) return undefined
-    const interval = window.setInterval(fetchDashboard, 15000)
-    return () => window.clearInterval(interval)
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void fetchDashboard()
+    }, 10000)
+    const refreshNow = () => {
+      if (document.visibilityState === 'visible') void fetchDashboard()
+    }
+    document.addEventListener('visibilitychange', refreshNow)
+    window.addEventListener('online', refreshNow)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshNow)
+      window.removeEventListener('online', refreshNow)
+    }
   }, [authenticated, fetchDashboard])
 
   // Final five-plan module control.

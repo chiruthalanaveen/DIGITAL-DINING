@@ -118,6 +118,10 @@ export default function DeliveryStorePage({
       unwrappedParams?.restaurantcode ||
       ''
   ).trim()
+  useEffect(() => {
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(restaurantCode)) return
+    try { localStorage.setItem('digitaldine_delivery_last_store_code', restaurantCode) } catch { /* optional browser storage */ }
+  }, [restaurantCode])
   const [loading, setLoading] =
     useState(true)
   const [storeData, setStoreData] =
@@ -170,6 +174,10 @@ export default function DeliveryStorePage({
     useState(false)
   const [trackingOrders, setTrackingOrders] =
     useState([])
+  const [trackingAccountUnauthorized, setTrackingAccountUnauthorized] = useState(false)
+  const [otherStoreOrderCount, setOtherStoreOrderCount] = useState(0)
+  const [trackingAccountEmail, setTrackingAccountEmail] = useState('')
+  const [trackingAccountType, setTrackingAccountType] = useState('')
   const [locationLoading, setLocationLoading] =
     useState(false)
   const [addressLoading, setAddressLoading] =
@@ -255,12 +263,8 @@ export default function DeliveryStorePage({
     }
   }
   const openCustomerOrders = () => {
-    if (!customerUser) {
-      const next = `/delivery/${encodeURIComponent(restaurantCode)}`
-      router.push(`/delivery/login?next=${encodeURIComponent(next)}`)
-      return
-    }
-    // Keep the customer inside the store/app and reuse the existing order tracker.
+    // Google or mobile/PIN sessions are verified on the server.
+    // Do not require the customer to type a delivery phone number again.
     openTracking()
   }
   const settings =
@@ -860,44 +864,41 @@ export default function DeliveryStorePage({
   const openTracking = () => {
     setTrackingError('')
     setTrackingOrders([])
+    setTrackingAccountUnauthorized(false)
+    setOtherStoreOrderCount(0)
+    setTrackingAccountEmail('')
+    setTrackingAccountType('')
     setTrackingOpen(true)
+    void loadAccountOrders()
   }
-  const submitTracking = async (event) => {
-    event.preventDefault()
-    const mobile = digits(trackingMobile, 10)
-    if (mobile.length !== 10) {
-      setTrackingError(
-        'Enter the 10-digit mobile number used for your Delivery orders.'
-      )
-      return
-    }
+  const loadAccountOrders = async () => {
     setTrackingLoading(true)
     setTrackingError('')
-    setTrackingOrders([])
+    setTrackingAccountUnauthorized(false)
     try {
-      const { data, error: rpcError } = await supabase.rpc(
-        'get_public_delivery_orders_by_mobile',
-        {
-          p_restaurant_code: restaurantCode,
-          p_customer_mobile: mobile,
-        }
-      )
-      if (rpcError) throw rpcError
-      if (!data?.success) {
-        throw new Error(data?.message || 'Unable to find Delivery orders.')
+      const { data: sessionData } = await supabase.auth.getSession()
+      const headers = {}
+      if (sessionData?.session?.access_token) {
+        headers.Authorization = `Bearer ${sessionData.session.access_token}`
       }
-      const rows = Array.isArray(data?.orders) ? data.orders : []
-      setTrackingOrders(rows)
-      if (!rows.length) {
-        setTrackingError(
-          'No recent Delivery orders were found for this mobile number.'
-        )
-      }
-    } catch (lookupError) {
-      console.error('Delivery mobile tracking lookup error:', lookupError)
-      setTrackingError(
-        lookupError?.message || 'Unable to find Delivery orders.'
+      const response = await fetch(
+        `/api/delivery/customer/my-orders?restaurantCode=${encodeURIComponent(restaurantCode)}&allStores=1`,
+        { headers, credentials: 'same-origin', cache: 'no-store' }
       )
+      const result = await response.json().catch(() => ({}))
+      if (response.status === 401) {
+        setTrackingAccountUnauthorized(true)
+        throw new Error('Sign in to your delivery account to view your orders.')
+      }
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Unable to load your orders.')
+      }
+      setTrackingOrders(Array.isArray(result.orders) ? result.orders : [])
+      setOtherStoreOrderCount(Math.max(0, Number(result.otherStoreOrderCount || 0)))
+      setTrackingAccountEmail(String(result.accountEmail || sessionData?.session?.user?.email || ''))
+      setTrackingAccountType(String(result.accountType || ''))
+    } catch (error) {
+      setTrackingError(error?.message || 'Unable to load your orders.')
     } finally {
       setTrackingLoading(false)
     }
@@ -1216,6 +1217,7 @@ export default function DeliveryStorePage({
           },
           body: JSON.stringify({
             restaurantCode,
+            requireAccountLink: true,
             customerName:
               cleanName,
             customerMobile:
@@ -1275,6 +1277,11 @@ export default function DeliveryStorePage({
           data?.message ||
             'Unable to place order.'
         )
+      }
+      if (data.customerAccountLinked !== true) {
+        // Never make a customer retry payment after a server reports success.
+        // A prior deployed API might not include the new status field.
+        console.warn('Delivery server did not confirm the account link. Please check My Orders.')
       }
       if (
         data.paymentMethod ===
@@ -2054,113 +2061,63 @@ export default function DeliveryStorePage({
           <div className="max-h-[92dvh] w-full min-w-0 max-w-md overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:rounded-[30px]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">
-                  Delivery Tracking
-                </p>
-                <h2 className="mt-1 text-xl font-black text-neutral-950">
-                  Find orders by mobile
-                </h2>
-                <p className="mt-1 text-xs leading-5 text-neutral-500">
-                  Enter the mobile number used while placing the order. Your recent Delivery orders will appear below.
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">Delivery Tracking</p>
+                <h2 className="mt-1 text-xl font-black text-neutral-950">My Orders</h2>
+                <p className="mt-1 text-xs leading-5 text-neutral-500">Your orders across Digital Dine-In delivery stores.</p>
+                {trackingAccountEmail ? (
+                  <p className="mt-2 break-all text-[11px] font-semibold text-emerald-700">Signed in as {trackingAccountEmail}</p>
+                ) : null}
+              </div>
+              <button type="button" onClick={() => setTrackingOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-sm font-black text-neutral-600" aria-label="Close order tracking">✕</button>
+            </div>
+            {trackingLoading ? (
+              <p className="mt-5 rounded-xl bg-neutral-50 px-4 py-5 text-center text-xs font-bold text-neutral-600">Loading your orders…</p>
+            ) : null}
+            {!trackingLoading && trackingError ? (
+              <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold leading-5 text-red-700">{trackingError}</div>
+            ) : null}
+            {trackingAccountUnauthorized ? (
+              <button type="button" onClick={() => router.push(`/delivery/login?next=${encodeURIComponent(`/delivery/${restaurantCode}`)}`)} className="mt-4 w-full rounded-xl bg-emerald-600 px-5 py-4 text-sm font-black text-white">Sign in</button>
+            ) : null}
+            {!trackingLoading && !trackingError && trackingOrders.length === 0 ? (
+              <div className="mt-5 rounded-2xl border border-neutral-200 bg-neutral-50 p-5 text-center">
+                <p className="text-sm font-black text-neutral-900">No linked orders found</p>
+                <p className="mt-2 text-xs leading-5 text-neutral-500">
+                  {trackingAccountType === 'google'
+                    ? 'No orders belong to this signed-in Google account. Check the Google email shown above against the account used at checkout. Orders linked to a different account cannot be shown here.'
+                    : otherStoreOrderCount > 0
+                      ? `Your mobile/PIN session has no linked orders at this store. ${otherStoreOrderCount} order(s) are linked at other stores, which require their own store session.`
+                      : 'No orders are linked to this verified delivery session yet. Previous orders need verified recovery.'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setTrackingOpen(false)
-                  setTrackingError('')
-                  setTrackingOrders([])
-                }}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-sm font-black text-neutral-600"
-                aria-label="Close order tracking"
-              >
-                ✕
-              </button>
-            </div>
-            <form onSubmit={submitTracking} className="mt-5 space-y-4">
-              <label className="block">
-                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                  Mobile Number
-                </span>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  value={trackingMobile}
-                  onChange={(event) => {
-                    setTrackingMobile(digits(event.target.value, 10))
-                    setTrackingOrders([])
-                    setTrackingError('')
-                  }}
-                  placeholder="10-digit mobile number"
-                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:bg-white"
-                />
-              </label>
-              {trackingError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
-                  {trackingError}
-                </div>
-              )}
-              <button
-                type="submit"
-                disabled={trackingLoading || trackingMobile.length !== 10}
-                className="w-full rounded-xl bg-emerald-600 px-5 py-4 text-sm font-black text-white disabled:opacity-50"
-              >
-                {trackingLoading ? 'Finding Orders...' : 'Find My Orders'}
-              </button>
-            </form>
+            ) : null}
             {trackingOrders.length > 0 && (
               <div className="mt-5 space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                  Recent Orders
-                </p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Recent Orders</p>
                 {trackingOrders.map((order) => (
-                  <button
-                    key={order.order_code}
-                    type="button"
-                    onClick={() => {
-                      setTrackingOpen(false)
-                      goToTracking(order.order_code, trackingMobile)
-                    }}
-                    className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50/50"
-                  >
+                  <button key={order.order_code} type="button" onClick={() => {
+                    setTrackingOpen(false)
+                    const trackingStore = String(order.restaurant_code || restaurantCode)
+                    router.push(`/delivery/${encodeURIComponent(trackingStore)}/track/${encodeURIComponent(order.order_code)}`)
+                  }} className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50/50">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-mono text-xs font-black text-neutral-900">
-                          {order.order_code}
-                        </p>
-                        <p className="mt-1 text-[10px] text-neutral-500">
-                          {order.created_at
-                            ? new Date(order.created_at).toLocaleString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : ''}
-                        </p>
+                        <p className="font-mono text-xs font-black text-neutral-900">{order.order_code}</p>
+                        <p className="mt-1 text-[10px] text-neutral-500">{order.created_at ? new Date(order.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                        {order.restaurant_code ? (<p className="mt-1 text-[10px] font-semibold text-neutral-600">{order.restaurant_name || 'Delivery store'} · {order.restaurant_code}</p>) : null}
                       </div>
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[9px] font-black uppercase text-emerald-700">
-                        {String(order.order_status || '').replaceAll('_', ' ')}
-                      </span>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[9px] font-black uppercase text-emerald-700">{String(order.order_status || '').replaceAll('_', ' ')}</span>
                     </div>
                     <div className="mt-3 flex items-center justify-between text-xs">
-                      <span className="text-neutral-500">
-                        {order.driver_assigned ? 'Driver assigned' : 'Preparing dispatch'}
-                      </span>
-                      <span className="font-black text-neutral-900">
-                        {money(order.total_amount)}
-                      </span>
+                      <span className="text-neutral-500">{order.driver_assigned ? 'Driver assigned' : 'Preparing dispatch'}</span>
+                      <span className="font-black text-neutral-900">{money(order.total_amount)}</span>
                     </div>
                   </button>
                 ))}
               </div>
             )}
-            <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[10px] font-semibold leading-5 text-violet-700">
-              Need help with this order? Close tracking and open Help Centre to raise a request or chat with the store Manager.
-            </div>
-            <p className="mt-4 text-[10px] leading-5 text-neutral-500">
-              Order progress refreshes every 1 minute on the tracking page.
-            </p>
+            <button type="button" onClick={loadAccountOrders} disabled={trackingLoading} className="mt-4 w-full rounded-xl border border-neutral-200 bg-white px-5 py-3 text-xs font-bold text-neutral-900 disabled:opacity-50">Refresh orders</button>
+            <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-[10px] font-semibold leading-5 text-violet-700">Need help with an order? Open Help Centre to chat with your store Manager.</div>
           </div>
         </div>
       )}
@@ -2778,7 +2735,7 @@ export default function DeliveryStorePage({
       {/* One persistent nav: previous duplicate navs consolidated. */}
       <nav className="dd-ref-bottom-nav fixed inset-x-0 bottom-0 z-[55] border-t border-neutral-200 bg-white/95 backdrop-blur-xl" aria-label="Delivery customer navigation">
         <div className="mx-auto grid max-w-md grid-cols-5 px-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2">
-          <button type="button" onClick={() => router.push('/delivery')} className="dd-ref-nav-btn"><span aria-hidden="true">⌂</span><small>Home</small></button>
+          <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="dd-ref-nav-btn" aria-label="Store home"><span aria-hidden="true">⌂</span><small>Home</small></button>
           <button type="button" onClick={() => { window.scrollTo({top:0,behavior:'smooth'}); window.setTimeout(() => document.querySelector('input[placeholder="Search food, drinks or categories"]')?.focus(),250) }} className="dd-ref-nav-btn is-current"><span aria-hidden="true">⌕</span><small>Search</small></button>
           <button type="button" onClick={openCustomerOrders} className="dd-ref-nav-btn"><span aria-hidden="true">▣</span><small>Orders</small></button>
           <button type="button" onClick={() => window.dispatchEvent(new Event('digitaldine:open-help-centre'))} className="dd-ref-nav-btn"><span aria-hidden="true">?</span><small>Help</small></button>

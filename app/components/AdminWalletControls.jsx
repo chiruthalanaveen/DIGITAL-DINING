@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import AdminWalletAdjustments from '@/app/components/AdminWalletAdjustments'
 
 const INR = new Intl.NumberFormat('en-IN', {
   style: 'currency', currency: 'INR', minimumFractionDigits: 2,
@@ -22,6 +23,7 @@ function readableDate(value) {
 
 function WalletEditor({ store, onCancel, onSaved }) {
   const [fee, setFee] = useState(rupeesInput(store.platformFeePaise))
+  const [restaurantFee, setRestaurantFee] = useState(rupeesInput(store.restaurantPlatformFeePaise ?? 500))
   const [threshold, setThreshold] = useState(rupeesInput(store.thresholdPaise))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -30,20 +32,21 @@ function WalletEditor({ store, onCancel, onSaved }) {
     event.preventDefault()
     if (saving) return
     const numberPattern = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/
-    if (!numberPattern.test(fee) || !numberPattern.test(threshold)) {
+    if (!numberPattern.test(fee) || !numberPattern.test(restaurantFee) || !numberPattern.test(threshold)) {
       setError('Enter valid ₹ amounts with at most two decimal places.')
       return
     }
-    if (Number(fee) > 1000 || Number(threshold) > 1000000) {
-      setError('Maximum platform fee ₹1,000; maximum threshold ₹10,00,000.')
+    if (Number(fee) > 1000 || Number(restaurantFee) > 1000 || Number(threshold) > 1000000) {
+      setError('Maximum per-order fee ₹1,000; maximum threshold ₹10,00,000.')
       return
     }
 
     if (!window.confirm(
       `Save wallet settings for ${store.restaurantName}?\n\n` +
-      `Platform fee per delivered order: ₹${fee}\n` +
+      `Delivery fee per delivered order: ₹${fee}\n` +
+      `Restaurant fee per placed order: ₹${restaurantFee}\n` +
       `Low-balance block threshold: ₹${threshold}\n\n` +
-      'Fee changes apply to future delivered-order accruals. Existing fees are unchanged.'
+      'Fee changes apply to future restaurant and delivered delivery orders. Existing fee records remain unchanged.'
     )) return
 
     setSaving(true)
@@ -56,6 +59,7 @@ function WalletEditor({ store, onCancel, onSaved }) {
         body: JSON.stringify({
           restaurantId: store.restaurantId,
           platformFeeRupees: fee,
+          restaurantFeeRupees: restaurantFee,
           thresholdRupees: threshold,
         }),
       })
@@ -76,10 +80,18 @@ function WalletEditor({ store, onCancel, onSaved }) {
       <p className="text-sm font-black text-white">Configure {store.restaurantName}</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="block text-[11px] font-bold text-neutral-300">Platform fee per delivered order (₹)</span>
+          <span className="block text-[11px] font-bold text-neutral-300">Delivery fee per delivered order (₹)</span>
           <input
             type="number" inputMode="decimal" min="0" max="1000" step="0.01" required
             value={fee} onChange={(event) => setFee(event.target.value)}
+            className="mt-2 w-full rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-red-500"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-[11px] font-bold text-neutral-300">Restaurant fee per placed order (₹)</span>
+          <input
+            type="number" inputMode="decimal" min="0" max="1000" step="0.01" required
+            value={restaurantFee} onChange={(event) => setRestaurantFee(event.target.value)}
             className="mt-2 w-full rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-red-500"
           />
         </label>
@@ -93,9 +105,8 @@ function WalletEditor({ store, onCancel, onSaved }) {
         </label>
       </div>
       <p className="text-[11px] leading-5 text-neutral-400">
-        Spendable balance = wallet balance − outstanding platform fees. The configured threshold
-        is used by eligibility checks; final enforcement in customer store listings and order
-        creation will be added in the next step. The minimum owner recharge remains {money(store.minimumTopupPaise)}.
+        Spendable balance = wallet balance − outstanding restaurant and delivery platform fees.
+        The configured threshold already applies to QR and delivery orders. The minimum owner recharge remains {money(store.minimumTopupPaise)}.
       </p>
       {error && <p className="text-xs font-bold text-red-400" role="alert">{error}</p>}
       <div className="flex flex-wrap gap-2">
@@ -124,6 +135,7 @@ export default function AdminWalletControls() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [editId, setEditId] = useState('')
+  const [adjustId, setAdjustId] = useState('')
 
   const refresh = useCallback(() => setReload((value) => value + 1), [])
 
@@ -166,7 +178,7 @@ export default function AdminWalletControls() {
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-400">Super Admin / Wallet Settings</p>
           <h1 className="mt-1 text-2xl font-black text-white">Restaurant Wallet Controls</h1>
           <p className="mt-2 max-w-3xl text-xs leading-5 text-neutral-400">
-            Set the delivery platform fee and minimum spendable wallet threshold independently for each business.
+            Set delivery and restaurant per-order fees independently, plus the shared wallet blocking threshold for each business.
             Changing these settings does not credit, debit or settle a wallet.
           </p>
         </div>
@@ -177,8 +189,8 @@ export default function AdminWalletControls() {
       </div>
 
       <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4 text-xs text-orange-200">
-        Default fee: <strong>₹5 per delivered order</strong>. Default threshold: <strong>₹500</strong>.
-        The fee for an already delivered order stays at the amount originally accrued.
+        Default fees: <strong>₹5 per delivered delivery order</strong> and <strong>₹5 per placed restaurant order</strong>. Default threshold: <strong>₹500</strong>.
+        Existing delivery/restaurant fee records keep their original amounts.
       </div>
 
       <form onSubmit={(event) => { event.preventDefault(); setPage(1); setSearch(searchDraft.trim()); setEditId('') }} className="flex flex-wrap gap-2">
@@ -220,7 +232,8 @@ export default function AdminWalletControls() {
                     ['Wallet balance', store.balancePaise],
                     ['Pending fees', store.pendingFeesPaise],
                     ['Spendable balance', store.spendablePaise],
-                    ['Platform fee / order', store.platformFeePaise],
+                    ['Delivery fee / order', store.platformFeePaise],
+                    ['Restaurant fee / order', store.restaurantPlatformFeePaise ?? 500],
                     ['Block threshold', store.thresholdPaise],
                     ['Minimum recharge', store.minimumTopupPaise],
                   ].map(([label, value]) => (
@@ -240,8 +253,30 @@ export default function AdminWalletControls() {
                 ) : (
                   <button type="button" onClick={() => { setEditId(store.restaurantId); setNotice('') }}
                     className="mt-4 w-full rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black text-red-300 hover:bg-red-500/20">
-                    Edit Platform Fee & Threshold
+                    Edit Both Fees & Threshold
                   </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdjustId((current) => current === store.restaurantId ? '' : store.restaurantId)
+                    setEditId('')
+                    setNotice('')
+                  }}
+                  className="mt-3 w-full rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs font-black text-emerald-200 hover:bg-emerald-500/20"
+                >
+                  {adjustId === store.restaurantId ? 'Close audited balance adjustment' : 'Adjust Balance · Admin + Proof Required'}
+                </button>
+                {adjustId === store.restaurantId && (
+                  <div className="mt-4">
+                    <AdminWalletAdjustments
+                      restaurantId={store.restaurantId}
+                      onAdjusted={() => {
+                        setNotice(`Wallet adjustment recorded for ${store.restaurantName}.`)
+                        refresh()
+                      }}
+                    />
+                  </div>
                 )}
               </>
             )}

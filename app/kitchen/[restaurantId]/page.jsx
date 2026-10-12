@@ -1252,9 +1252,13 @@ export default function KitchenPortal({ params }) {
             await fetchKitchenSnapshot()
 
           if (!rows) {
+            setIsConnected(false)
             return
           }
 
+          // Connected means the staff-scoped RPC succeeded, not that a
+          // public Postgres Changes subscription exists.
+          setIsConnected(true)
           applyActiveOrders(
             rows,
             announceNew
@@ -1969,136 +1973,12 @@ export default function KitchenPortal({ params }) {
 
   /*
    * ---------------------------------------------------------
-   * REALTIME ORDERS
+   * SECURE ORDER UPDATES (STAFF SESSION RPC)
    * ---------------------------------------------------------
+   * Step 22E: public.orders Postgres Changes are not a safe tenant auth
+   * mechanism for staff sessions. The existing 5-second secure RPC refresh
+   * below detects new orders and triggers the original kitchen alarms.
    */
-
-  useEffect(() => {
-    if (
-      !isAuthenticated ||
-      !restaurantId
-    ) {
-      return undefined
-    }
-
-    let mounted = true
-
-    const channel =
-      supabase
-        .channel(
-          `kitchen-orders-${restaurantId}`
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'orders',
-
-            filter:
-              `restaurant_id=eq.${restaurantId}`,
-          },
-          async (payload) => {
-            if (!mounted) {
-              return
-            }
-
-            if (
-              payload.eventType ===
-              'INSERT'
-            ) {
-              const insertedId =
-                String(
-                  payload?.new?.id ||
-                    ''
-                )
-
-              if (
-                insertedId &&
-                !knownOrderIdsRef.current.has(
-                  insertedId
-                )
-              ) {
-                knownOrderIdsRef.current.add(
-                  insertedId
-                )
-
-                triggerNewOrderAlert(
-                  payload.new
-                )
-              }
-            }
-
-            await refreshKitchenData(
-              {
-                showLoader:
-                  false,
-
-                announceNew:
-                  true,
-              }
-            )
-          }
-        )
-        .subscribe(
-          (status) => {
-            console.log(
-              '[KITCHEN REALTIME]',
-              {
-                status,
-                restaurantId,
-
-                url:
-                  typeof window !==
-                  'undefined'
-                    ? window
-                        .location
-                        .href
-                    : '',
-              }
-            )
-
-            if (!mounted) {
-              return
-            }
-
-            if (
-              status ===
-              'SUBSCRIBED'
-            ) {
-              setIsConnected(
-                true
-              )
-            } else if (
-              status ===
-                'CHANNEL_ERROR' ||
-              status ===
-                'TIMED_OUT' ||
-              status ===
-                'CLOSED'
-            ) {
-              setIsConnected(
-                false
-              )
-            }
-          }
-        )
-
-    return () => {
-      mounted = false
-
-      setIsConnected(false)
-
-      supabase.removeChannel(
-        channel
-      )
-    }
-  }, [
-    isAuthenticated,
-    restaurantId,
-    refreshKitchenData,
-    triggerNewOrderAlert,
-  ])
 
   /*
    * ---------------------------------------------------------
