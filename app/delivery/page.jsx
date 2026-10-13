@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // app/delivery/page.jsx
-// Location -> all approved, wallet-eligible nearby stores -> customer selection.
+// Location -> approved, wallet-eligible, Delivery-plan stores -> customer selection.
 // The store page continues to handle login, account, My Orders, menu and checkout.
 
 const VALID_STORE_CODE = /^[A-Za-z0-9_-]{1,80}$/
@@ -84,16 +84,35 @@ function locationErrorMessage(error) {
   return 'Could not detect your location. Please try again.'
 }
 
+// Intersect independent database checks. Store listings alone are not trusted
+// to determine whether a tenant purchased the Delivery module.
 async function getEligibleIds(stores) {
   const ids = [...new Set(stores.map(restaurantIdOf).filter((id) => UUID_RE.test(id)))].slice(0, 100)
   if (!ids.length) throw new Error('Nearby store information is incomplete. Please try again later.')
-  const { data, error } = await supabase.rpc('delivery_wallet_eligible_restaurant_ids', {
-    p_restaurant_ids: ids,
-  })
-  if (error) throw new Error('Could not verify delivery store availability. Please try again.')
-  return new Set((Array.isArray(data) ? data : []).map((row) =>
+
+  const [walletResult, planResult] = await Promise.all([
+    supabase.rpc('delivery_wallet_eligible_restaurant_ids', {
+      p_restaurant_ids: ids,
+    }),
+    supabase.rpc('delivery_plan_eligible_restaurant_ids', {
+      p_restaurant_ids: ids,
+    }),
+  ])
+
+  if (walletResult.error) {
+    throw new Error('Could not verify store approval or wallet eligibility. Please try again.')
+  }
+  if (planResult.error) {
+    console.error('[Delivery] Plan eligibility lookup failed:', planResult.error)
+    throw new Error('Could not verify delivery subscription plans. Install the Delivery plan visibility SQL or try again.')
+  }
+
+  const resultIds = (data) => new Set((Array.isArray(data) ? data : []).map((row) =>
     String(typeof row === 'string' ? row : row?.restaurant_id ?? row?.restaurantId ?? '').trim().toLowerCase()
   ))
+  const walletIds = resultIds(walletResult.data)
+  const planIds = resultIds(planResult.data)
+  return new Set(ids.filter((id) => walletIds.has(id) && planIds.has(id)))
 }
 
 export default function DeliveryCustomerHome() {
@@ -121,18 +140,11 @@ export default function DeliveryCustomerHome() {
     setMessage(`Checking ${storeNameOf(row.store)}…`)
 
     try {
-      // Re-check the selected store immediately before opening: wallets or
-      // approval can change while the customer is choosing.
-      const { data, error: checkError } = await supabase.rpc(
-        'delivery_wallet_eligible_restaurant_ids',
-        { p_restaurant_ids: [id] }
-      )
-      if (checkError) throw new Error('Unable to verify this store. Please retry.')
-      const eligibleIds = new Set((Array.isArray(data) ? data : []).map((item) =>
-        String(typeof item === 'string' ? item : item?.restaurant_id ?? item?.restaurantId ?? '').trim().toLowerCase()
-      ))
+      // Re-check BOTH wallet/approval and purchased Delivery plan, because
+      // an admin may change either after the list was displayed.
+      const eligibleIds = await getEligibleIds([row.store])
       if (!eligibleIds.has(id)) {
-        throw new Error('This store is temporarily unavailable for new orders. Choose another store.')
+        throw new Error('This store is no longer eligible for delivery orders. Choose another store.')
       }
 
       // Never select a previously visited / cached store: use the selected code.
@@ -188,7 +200,7 @@ export default function DeliveryCustomerHome() {
           if (!mountedRef.current || runRef.current !== run) return
           const eligible = normalizeEligibleStores(stores, eligibleIds)
           if (!eligible.length) {
-            throw new Error('No approved, open stores with ordering enabled are currently available near you.')
+            throw new Error('No approved, open stores with an active Delivery module and ordering enabled are currently available near you.')
           }
 
           setAvailableStores(eligible)
@@ -300,7 +312,7 @@ export default function DeliveryCustomerHome() {
             ))}
             {nearbyCount > availableStores.length && (
               <p className="rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
-                Some nearby stores are currently closed, awaiting approval, or unavailable for new orders.
+                Other nearby businesses may have a restaurant-only plan, be closed, await approval, or be unavailable for new orders.
               </p>
             )}
             <p className="px-1 pt-1 text-center text-xs leading-5 text-slate-500">
