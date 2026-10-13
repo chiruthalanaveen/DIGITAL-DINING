@@ -1,11 +1,10 @@
 'use client'
 
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { startDeliveryGoogleOAuth } from '@/lib/deliveryGoogleAuth'
-
-const REGISTRATION_ENABLED = false
+import { supabase } from '@/lib/supabase'
 
 function safeNextPath(value) {
 
@@ -159,6 +158,49 @@ function SignupContent() {
   const [recoveryCode, setRecoveryCode] = useState('')
 
   const [recoverySaved, setRecoverySaved] = useState(false)
+  const [otpSent, setOtpSent] = useState(false)
+  const [otp, setOtp] = useState('')
+  const [otpMobile, setOtpMobile] = useState('')
+  const [verifiedAccessToken, setVerifiedAccessToken] = useState('')
+  const [signupMode, setSignupMode] = useState('loading')
+  const [policyRetry, setPolicyRetry] = useState(0)
+  const [securityQuestionKey, setSecurityQuestionKey] = useState('private_phrase')
+  const [securityAnswer, setSecurityAnswer] = useState('')
+
+  useEffect(() => {
+    let active = true
+    const loadSignupMode = async () => {
+      if (active) setSignupMode('loading')
+      try {
+        const response = await fetch('/api/delivery/customer/signup-policy', {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'same-origin',
+        })
+        const result = await response.json().catch(() => null)
+        if (response.status === 404) {
+          throw new Error('Customer signup settings API is missing. Ask the administrator to install the signup-policy route.')
+        }
+        if (!response.ok || result?.success !== true || !['otp','pin_question'].includes(result?.signupMode)) {
+          throw new Error(
+            result?.message || `Unable to load signup settings (HTTP ${response.status}). Please retry.`
+          )
+        }
+        if (active) {
+          setSignupMode(result.signupMode)
+          setError('')
+        }
+      } catch (policyError) {
+        if (active) {
+          setSignupMode('unavailable')
+          setError(policyError?.message || 'Signup settings are temporarily unavailable.')
+        }
+      }
+    }
+    void loadSignupMode()
+    return () => { active = false }
+  }, [policyRetry])
+
 
   const loginQuery = new URLSearchParams({
 
@@ -191,153 +233,161 @@ function SignupContent() {
   }
 
   async function handleSignup(event) {
-
     event.preventDefault()
-
+    if (loading || googleLoading) return
     setError('')
 
-    if (!REGISTRATION_ENABLED) {
-
-      setError(
-
-        'Mobile registration is temporarily unavailable. Please continue with Google sign-in.'
-
-      )
-
-      return
-
-    }
-
     const cleanName = name.trim()
-
     const cleanMobile = mobile.replace(/\D/g, '')
-
     if (!storeCode) {
-
-      setError(
-
-        'Please select a delivery store before creating an account.'
-
-      )
-
+      setError('Please select a delivery store before creating an account.')
       return
-
     }
-
     if (cleanName.length < 2 || cleanName.length > 100) {
-
       setError('Enter your full name (2–100 characters).')
-
       return
-
     }
-
     if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
-
-      setError('Enter a valid 10-digit mobile number.')
-
+      setError('Enter a valid 10-digit Indian mobile number.')
       return
-
     }
-
     if (!/^\d{4}$/.test(pin)) {
-
       setError('Create a valid 4-digit PIN.')
-
       return
-
+    }
+    if (pin !== confirmPin) {
+      setError('Your PIN and confirmation PIN do not match.')
+      return
     }
 
-    if (pin !== confirmPin) {
-
-      setError('Your PIN and confirmation PIN do not match.')
-
+    if (signupMode !== 'otp' && signupMode !== 'pin_question') {
+      setError('Signup is not configured. Try again after the admin enables registration.')
       return
-
+    }
+    if (signupMode === 'pin_question' &&
+       (!securityQuestionKey || securityAnswer.trim().length < 8 || new TextEncoder().encode(securityAnswer.trim()).length > 72)) {
+      setError('Select a security question and enter a private answer of 8–72 bytes.')
+      return
     }
 
     setLoading(true)
-
     try {
-
-      const response = await fetch(
-
-        '/api/delivery/customer/register',
-
-        {
-
-          method: 'POST',
-
-          credentials: 'same-origin',
-
-          headers: {
-
-            'Content-Type': 'application/json',
-
-          },
-
-          body: JSON.stringify({
-
-            restaurantCode: storeCode,
-
-            name: cleanName,
-
-            mobile: cleanMobile,
-
-            pin,
-
-          }),
-
-        }
-
-      )
-
-      const result = await response.json()
-
-      if (!response.ok || !result?.success) {
-
-        throw new Error(
-
-          result?.message || 'Unable to create your account.'
-
-        )
-
+      if (signupMode === 'pin_question') {
+        const response = await fetch('/api/delivery/customer/register-pin-question', {
+          method:'POST',credentials:'same-origin',cache:'no-store',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({restaurantCode:storeCode,name:cleanName,mobile:cleanMobile,pin,
+            securityQuestionKey,securityAnswer}),
+        })
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok || result?.success !== true) throw new Error(result?.message || 'Account registration failed.')
+        if (!result?.recoveryCode) throw new Error('Account was created but no recovery code returned. Contact support; do not retry.')
+        setRecoveryCode(result.recoveryCode)
+        setPin('');setConfirmPin('');setSecurityAnswer('')
+        setRegistered(true)
+        return
+      }
+      const phone = `+91${cleanMobile}`
+      if (!otpSent) {
+        // Supabase Phone Auth must have an SMS provider configured.
+        const { error: smsError } = await supabase.auth.signInWithOtp({
+          phone,
+          options: { shouldCreateUser: true },
+        })
+        if (smsError) throw smsError
+        setOtpSent(true)
+        setOtpMobile(cleanMobile)
+        setVerifiedAccessToken('')
+        setOtp('')
+        return
       }
 
+      if (otpMobile !== cleanMobile) {
+        throw new Error('Mobile number changed. Please request a fresh OTP.')
+      }
+      if (!verifiedAccessToken && !/^\d{6,8}$/.test(otp)) {
+        throw new Error('Enter the SMS verification code sent to your mobile.')
+      }
+
+      let accessToken = verifiedAccessToken
+      if (!accessToken) {
+        const { data: verification, error: verificationError } = await supabase.auth.verifyOtp({
+          phone,
+          token: otp.trim(),
+          type: 'sms',
+        })
+        if (verificationError) throw verificationError
+        accessToken = verification?.session?.access_token || ''
+        if (!accessToken) throw new Error('Phone verified, but no secure session was returned. Retry signing in.')
+        setVerifiedAccessToken(accessToken)
+      }
+
+      // The server independently verifies this Supabase Auth session and the
+      // phone number. PIN/recovery code never go into browser persistence.
+      const response = await fetch('/api/delivery/customer/register-verified', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          restaurantCode: storeCode,
+          name: cleanName,
+          mobile: cleanMobile,
+          pin,
+        }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || 'Unable to create your verified mobile account.')
+      }
       if (!result?.recoveryCode) {
-
-        throw new Error(
-
-          'Your account was created, but your recovery code could not be displayed. Please contact support.'
-
-        )
-
+        throw new Error('Registration succeeded but the recovery code was not received. Please contact support; do not register again.')
       }
-
       setRecoveryCode(result.recoveryCode)
-
       setPin('')
-
       setConfirmPin('')
-
+      setOtp('')
+      setVerifiedAccessToken('')
       setRegistered(true)
-
     } catch (signupError) {
-
-      setError(
-
-        signupError?.message ||
-
-          'Unable to create your account. Please try again.'
-
-      )
-
+      const raw = String(signupError?.message || '')
+      setError(/unsupported phone provider/i.test(raw)
+        ? 'SMS OTP is not configured in Supabase. Ask your platform admin to connect an SMS provider or switch signup to Mobile PIN + security question.'
+        : (raw || 'Unable to complete mobile registration. Please try again.'))
     } finally {
-
       setLoading(false)
-
     }
+  }
 
+  async function resendOtp() {
+    if (loading || googleLoading || !otpSent) return
+    setLoading(true)
+    setError('')
+    try {
+      const { error: smsError } = await supabase.auth.signInWithOtp({
+        phone: `+91${otpMobile}`,
+        options: { shouldCreateUser: true },
+      })
+      if (smsError) throw smsError
+      setOtp('')
+      setVerifiedAccessToken('')
+    } catch (smsError) {
+      setError(smsError?.message || 'Unable to resend OTP. Wait a moment and try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function editMobile() {
+    if (loading) return
+    setOtpSent(false)
+    setOtpMobile('')
+    setOtp('')
+    setVerifiedAccessToken('')
+    setError('')
   }
 
   async function copyRecoveryCode() {
@@ -396,6 +446,8 @@ function SignupContent() {
 
     inputMode,
 
+    disabled = false,
+
   }) {
 
     return (
@@ -433,6 +485,7 @@ function SignupContent() {
           inputMode={inputMode}
 
           required
+          disabled={disabled}
 
           className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3.5 text-sm font-semibold outline-none transition focus:border-emerald-500"
 
@@ -518,7 +571,7 @@ function SignupContent() {
 
               {registered
 
-                ? 'Keep your recovery code safe. You may need it if you forget your PIN.'
+                ? 'Keep your recovery code safe. PIN recovery requires it along with the security answer, or support for OTP-based accounts.'
 
                 : 'Sign up to manage orders, track deliveries and save your addresses.'}
 
@@ -646,27 +699,29 @@ function SignupContent() {
                 </div>
                 <form onSubmit={handleSignup} className="space-y-4">
 
-                {!REGISTRATION_ENABLED && (
-
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-
-                    <p className="text-xs font-black text-amber-900">
-
-                      Mobile registration coming soon
-
-                    </p>
-
-                    <p className="mt-2 text-xs leading-5 text-amber-800">
-
-                      Account security improvements are in progress.
-
-                      You can continue using Google sign-up above.
-
-                    </p>
-
-                  </div>
-
-                )}
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-xs font-black text-emerald-900">
+                    Secure mobile registration
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-emerald-800">
+                    {signupMode === 'otp' ? 'Admin requires SMS OTP verification before creating your PIN account.' :
+                     signupMode === 'pin_question' ? 'Admin enabled mobile + PIN + security question signup. Mobile ownership will not be verified. Save your recovery code.' :
+                     signupMode === 'unavailable' ? 'Mobile signup is temporarily unavailable until the admin configuration is restored.' :
+                     'Loading signup requirements...'}
+                  </p>
+                  {signupMode === 'unavailable' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError('')
+                        setPolicyRetry((value) => value + 1)
+                      }}
+                      className="mt-3 rounded-xl bg-white px-4 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200"
+                    >
+                      Retry signup settings
+                    </button>
+                  )}
+                </div>
 
                 {renderInput({
 
@@ -685,6 +740,7 @@ function SignupContent() {
                   autoComplete: 'name',
 
                   maxLength: 100,
+                  disabled: otpSent,
 
                 })}
 
@@ -739,6 +795,7 @@ function SignupContent() {
                       placeholder="10-digit mobile number"
 
                       maxLength={10}
+                      disabled={otpSent}
 
                       required
 
@@ -795,6 +852,7 @@ function SignupContent() {
                       placeholder="Enter your PIN"
 
                       maxLength={4}
+                      disabled={otpSent}
 
                       required
 
@@ -849,8 +907,47 @@ function SignupContent() {
                   inputMode: 'numeric',
 
                   maxLength: 4,
+                  disabled: otpSent,
 
                 })}
+
+                {signupMode === 'pin_question' && (
+                  <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <label htmlFor="security-question" className="block text-xs font-black text-neutral-700">Security question for PIN recovery</label>
+                    <select id="security-question" value={securityQuestionKey}
+                      onChange={(event) => setSecurityQuestionKey(event.target.value)}
+                      className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold">
+                      <option value="private_phrase">What is your private recovery phrase hint?</option>
+                      <option value="first_trip">Which place did you first travel alone to?</option>
+                      <option value="childhood_street">Which street did you grow up on?</option>
+                      <option value="first_teacher">What was your first teacher's name?</option>
+                    </select>
+                    <label htmlFor="security-answer" className="block text-xs font-black text-neutral-700">Private answer (8+ characters)</label>
+                    <input id="security-answer" type="password" minLength={8} maxLength={72}
+                      autoComplete="off" value={securityAnswer}
+                      onChange={event => setSecurityAnswer(event.target.value)}
+                      placeholder="Enter a private answer" required
+                      className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold" />
+                    <p className="text-[11px] leading-5 text-emerald-900">Don't use a publicly known answer. PIN recovery requires this answer AND your recovery code.</p>
+                  </div>
+                )}
+
+                {otpSent && signupMode === 'otp' && (
+                  <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-black text-emerald-900">Verify mobile +91{otpMobile}</p>
+                      <button type="button" onClick={editMobile} disabled={loading}
+                        className="text-xs font-black text-emerald-700 underline">Edit number</button>
+                    </div>
+                    <label htmlFor="mobile-otp" className="block text-xs font-bold text-neutral-700">SMS verification code</label>
+                    <input id="mobile-otp" type="text" inputMode="numeric"
+                      autoComplete="one-time-code" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 8))}
+                      placeholder="Enter OTP" minLength={6} maxLength={8} required
+                      className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold tracking-widest outline-none focus:border-emerald-500" />
+                    <button type="button" onClick={resendOtp} disabled={loading}
+                      className="text-xs font-bold text-emerald-700 underline disabled:opacity-40">Resend OTP</button>
+                  </div>
+                )}
 
                 {error && (
 
@@ -872,17 +969,13 @@ function SignupContent() {
 
                   type="submit"
 
-                  disabled={loading || !REGISTRATION_ENABLED}
+                  disabled={loading || googleLoading || !['otp','pin_question'].includes(signupMode)}
 
                   className="w-full rounded-2xl bg-neutral-950 px-5 py-4 text-sm font-black text-white transition disabled:cursor-not-allowed disabled:opacity-40"
 
                 >
 
-                  {loading
-
-                    ? 'Creating Account...'
-
-                    : 'Create Account'}
+                  {loading ? 'Please wait...' : signupMode === 'pin_question' ? 'Create PIN Account' : otpSent ? 'Verify OTP & Create Account' : 'Send Verification OTP'}
 
                 </button>
 

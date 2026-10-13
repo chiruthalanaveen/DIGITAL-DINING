@@ -394,6 +394,9 @@ function DeliveryLoginContent() {
 
   }
 
+  const forgotPinQuery = new URLSearchParams({ next: nextPath })
+  if (storeCode) forgotPinQuery.set('store', storeCode)
+
   const signupQuery = new URLSearchParams({
 
     next: nextPath,
@@ -818,6 +821,14 @@ function DeliveryLoginContent() {
 
                     : 'Sign In with Mobile'}
 
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => router.push(`/delivery/forgot-pin?${forgotPinQuery.toString()}`)}
+                  className="w-full rounded-xl border border-neutral-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-800"
+                >
+                  Forgot PIN? Answer your security question
                 </button>
 
                 {/* Signup */}

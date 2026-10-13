@@ -8,7 +8,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
-import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
+import DeliveryAddressBook from '@/app/components/DeliveryAddressBook'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 import InstallAppButton from '@/app/components/InstallAppButton'
 import DeliveryCustomerSupportChat from '@/app/components/DeliveryCustomerSupportChat'
@@ -144,7 +144,6 @@ export default function DeliveryStorePage({
     setCheckoutOpen,
   ] = useState(false)
   const [checkoutStage, setCheckoutStage] = useState('cart')
-  const [locationMapOpen, setLocationMapOpen] = useState(false)
   const openCheckout = () => {
     setMessage('')
     setCheckoutStage('cart')
@@ -186,6 +185,96 @@ export default function DeliveryStorePage({
     useState('')
   const [locationConfirmed, setLocationConfirmed] =
     useState(false)
+  // Carry the verified location chosen on /delivery to checkout.
+  // Saved address fields are applied only for the SAME currently signed-in
+  // Supabase user. A location is NEVER accepted as proof of store coverage;
+  // the existing server order validation remains authoritative.
+  useEffect(() => {
+    let active = true
+    const restore = async () => {
+      try {
+        const raw = sessionStorage.getItem('digitaldine_delivery_selected_location_v1')
+        if (!raw) return
+        const selected = JSON.parse(raw)
+        const latitude = Number(selected?.latitude)
+        const longitude = Number(selected?.longitude)
+        const selectedAt = Number(selected?.selectedAt)
+        if (!Number.isFinite(selectedAt) || Date.now() - selectedAt > 2 * 60 * 60 * 1000 ||
+            !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+            !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return
+        const saved = selected.source === 'saved'
+        if (saved) {
+          const { data, error } = await supabase.auth.getUser()
+          if (error || !data?.user?.id || data.user.id !== selected.ownerUserId) return
+          // Re-read the address from the protected table. Do not trust
+          // editable browser storage as a source for account address fields.
+          const { data: address, error: addrError } = await supabase
+            .from('delivery_customer_saved_addresses')
+            .select('id,address_line1,address_line2,landmark,city,state,pincode,recipient_name,recipient_mobile,latitude,longitude,gps_accuracy_m')
+            .eq('id', String(selected.savedAddressId || ''))
+            .eq('user_id', data.user.id)
+            .maybeSingle()
+          if (!active || addrError || !address) return
+          // Ensure this saved pin is the same as the selected location.
+          if (Math.abs(Number(address.latitude) - latitude) > 0.0000002 ||
+              Math.abs(Number(address.longitude) - longitude) > 0.0000002) return
+          setCheckout((current) => current.latitude && current.longitude ? current : ({
+            ...current,
+            latitude: latitude.toFixed(7), longitude: longitude.toFixed(7),
+            locationAccuracy: address.gps_accuracy_m != null ? String(address.gps_accuracy_m) : '',
+            addressLine1: address.address_line1 || '', addressLine2: address.address_line2 || '',
+            landmark: address.landmark || '', city: address.city || '', state: address.state || '',
+            pincode: address.pincode || '',
+            customerName: current.customerName || address.recipient_name || '',
+            customerMobile: current.customerMobile || address.recipient_mobile || '',
+          }))
+          setLocationConfirmed(true)
+          return
+        }
+        if (!active) return
+        setCheckout((current) => current.latitude && current.longitude ? current : ({
+          ...current,
+          latitude: latitude.toFixed(7), longitude: longitude.toFixed(7),
+          locationAccuracy: selected.source === 'gps' && Number(selected.accuracy) > 0
+            ? String(Number(selected.accuracy).toFixed(2)) : '',
+        }))
+        setLocationConfirmed(false)
+        // A GPS/map destination was selected on /delivery. Resolve its
+        // written address and validate coverage automatically so checkout can
+        // display a confirmed address rather than another map/pin form.
+        // If reverse-geocoding is incomplete, the customer chooses/edits an
+        // address in their saved-address book instead of placing a blind order.
+        try {
+          const response = await fetch(
+            `/api/location/reverse?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`,
+            { method: 'GET', cache: 'no-store' }
+          )
+          const payload = await response.json().catch(() => ({}))
+          if (!active || !response.ok || payload?.success !== true) return
+          const address = payload.address || {}
+          const point = {
+            latitude, longitude, accuracy: selected.source === 'gps' ? selected.accuracy : null,
+            addressLine1: String(address.addressLine1 || '').trim(),
+            addressLine2: String(address.addressLine2 || '').trim(),
+            landmark: String(address.landmark || '').trim(),
+            city: String(address.city || '').trim(),
+            state: String(address.state || '').trim(),
+            pincode: digits(address.pincode, 6),
+          }
+          if (point.addressLine1 && point.city && point.state && point.pincode.length === 6) {
+            await selectSavedAddressAtCheckout(point)
+          }
+        } catch {
+          // The address picker remains available. Never invent address data.
+        }
+      } catch {
+        // Optional browser storage can be unavailable. Checkout still works.
+      }
+    }
+    void restore()
+    return () => { active = false }
+  }, [restaurantCode])
+
   const [productReviews, setProductReviews] =
     useState({})
   // Delivery customer app session.
@@ -903,135 +992,126 @@ export default function DeliveryStorePage({
       setTrackingLoading(false)
     }
   }
-  const fillAddressFromLocation =
-    async (latitude, longitude) => {
-      const lat = Number(latitude)
-      const lng = Number(longitude)
-      if (
-        !Number.isFinite(lat) ||
-        !Number.isFinite(lng)
-      ) {
-        return false
-      }
-      setAddressLoading(true)
-      try {
-        const response = await fetch(
-          `/api/location/reverse?lat=${encodeURIComponent(
-            lat
-          )}&lng=${encodeURIComponent(
-            lng
-          )}`,
-          {
-            method: 'GET',
-            cache: 'no-store',
-          }
-        )
-        const data = await response
-          .json()
-          .catch(() => ({}))
-        if (!response.ok || !data?.success) {
-          throw new Error(
-            data?.message ||
-              'Unable to identify this address.'
-          )
-        }
-        const address = data.address || {}
-        setCheckout((current) => ({
-          ...current,
-          addressLine1:
-            address.addressLine1 ||
-            current.addressLine1,
-          addressLine2:
-            address.addressLine2 ||
-            current.addressLine2,
-          landmark:
-            address.landmark ||
-            current.landmark,
-          city:
-            address.city ||
-            current.city,
-          state:
-            address.state ||
-            current.state,
-          pincode: digits(
-            address.pincode ||
-              current.pincode,
-            6
-          ),
-        }))
-        return true
-      } catch (addressError) {
-        console.error(
-          'Automatic address lookup error:',
-          addressError
-        )
-        setLocationError(
-          'Your location pin was found, but the written address could not be filled automatically. You can enter it manually.'
-        )
-        return false
-      } finally {
-        setAddressLoading(false)
-      }
-    }
+  // The checkout no longer renders an embedded map or a second address form.
+  // A live GPS destination is reverse-geocoded, then checked against THIS
+  // store's delivery eligibility before it becomes the selected address.
   const chooseLiveLocation = () => {
-    if (locationLoading || addressLoading) {
-      return
-    }
-    if (
-      typeof navigator === 'undefined' ||
-      !navigator.geolocation
-    ) {
-      setLocationError(
-        'Live location is not supported on this device/browser. Please allow location access or choose your location on the map.'
-      )
+    if (locationLoading || addressLoading) return
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationError('GPS is unavailable. Open Saved addresses / Add new address to choose a delivery address.')
       return
     }
     setLocationLoading(true)
+    setAddressLoading(true)
     setLocationError('')
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const latitude = Number(
-          position.coords.latitude
-        )
-        const longitude = Number(
-          position.coords.longitude
-        )
-        const accuracy = Number(
-          position.coords.accuracy || 0
-        )
-        setCheckout((current) => ({
-          ...current,
-          latitude: latitude.toFixed(7),
-          longitude: longitude.toFixed(7),
-          locationAccuracy: accuracy
-            ? accuracy.toFixed(2)
-            : '',
-        }))
-        setLocationConfirmed(false)
-        await fillAddressFromLocation(
-          latitude,
-          longitude
-        )
-        setLocationLoading(false)
+        try {
+          const latitude = Number(position.coords.latitude)
+          const longitude = Number(position.coords.longitude)
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+              latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            throw new Error('Unable to verify your current GPS location.')
+          }
+          const response = await fetch(
+            `/api/location/reverse?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`,
+            { method: 'GET', cache: 'no-store' }
+          )
+          const result = await response.json().catch(() => ({}))
+          if (!response.ok || result?.success !== true) {
+            throw new Error(result?.message || 'Could not identify the written address. Add a saved address to continue.')
+          }
+          const address = result.address || {}
+          const point = {
+            latitude, longitude,
+            accuracy: Number(position.coords.accuracy) > 0 ? Number(position.coords.accuracy) : null,
+            addressLine1: String(address.addressLine1 || '').trim(),
+            addressLine2: String(address.addressLine2 || '').trim(),
+            landmark: String(address.landmark || '').trim(),
+            city: String(address.city || '').trim(),
+            state: String(address.state || '').trim(),
+            pincode: digits(address.pincode, 6),
+          }
+          if (!point.addressLine1 || !point.city || !point.state || point.pincode.length !== 6) {
+            throw new Error('GPS found a location but its address is incomplete. Please add an address with house, city, state and pincode in Saved addresses.')
+          }
+          // This function checks coverage, delivery plan, approval and wallet.
+          await selectSavedAddressAtCheckout(point)
+        } catch (geoError) {
+          setLocationError(geoError?.message || 'Could not use your GPS location. Choose a saved address instead.')
+        } finally {
+          setLocationLoading(false)
+          setAddressLoading(false)
+        }
       },
       (geoError) => {
-        console.error(
-          'Customer geolocation error:',
-          geoError
-        )
         setLocationLoading(false)
+        setAddressLoading(false)
         setLocationError(
           geoError?.code === 1
-            ? 'Location permission was denied. Allow location access and tap Use My Current Location again.'
-            : 'Unable to read your current location. Check GPS/location services and try again.'
+            ? 'Location permission was denied. Allow GPS or choose a saved address.'
+            : 'Could not detect current GPS. Choose a saved address or retry.'
         )
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
-      }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     )
+  }
+  // Selecting an account address during checkout must not discard the cart.
+  // Also verify that THIS store is eligible at the selected pin, not merely
+  // that some OTHER store delivers to the saved address.
+  const selectSavedAddressAtCheckout = async (point) => {
+    try {
+      setLocationError('')
+      const line1 = String(point?.addressLine1 || '').trim()
+      const city = String(point?.city || '').trim()
+      const state = String(point?.state || '').trim()
+      const pincode = digits(point?.pincode, 6)
+      if (!line1 || !city || !state || pincode.length !== 6) {
+        throw new Error('This address is incomplete. Edit it in Saved addresses before checkout.')
+      }
+      const lat = Number(point?.latitude)
+      const lng = Number(point?.longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('Invalid address coordinates.')
+      const { data, error: nearbyError } = await supabase.rpc('get_nearby_delivery_stores', {
+        p_latitude: lat, p_longitude: lng,
+      })
+      if (nearbyError || data?.success !== true) throw nearbyError || new Error(data?.message || 'Unable to verify delivery coverage.')
+      const matches = (Array.isArray(data?.stores) ? data.stores : []).filter((store) =>
+        String(store.restaurantCode || store.restaurant_code || '') === restaurantCode &&
+        store.isOpen !== false && store.is_open !== false
+      )
+      const target = matches[0]
+      if (!target) throw new Error('This store does not deliver to that saved address. Select another address or choose a different store.')
+      const id = String(target.restaurantId || target.restaurant_id || '')
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        throw new Error('Store coverage could not be verified.')
+      }
+      const [wallet, plan] = await Promise.all([
+        supabase.rpc('delivery_wallet_eligible_restaurant_ids', { p_restaurant_ids: [id] }),
+        supabase.rpc('delivery_plan_eligible_restaurant_ids', { p_restaurant_ids: [id] }),
+      ])
+      if (wallet.error || plan.error) throw new Error('Could not verify this store’s eligibility. Please retry.')
+      const allowed = (rows) => (Array.isArray(rows) ? rows : []).some((row) =>
+        String(typeof row === 'string' ? row : row?.restaurant_id ?? row?.restaurantId ?? '').toLowerCase() === id.toLowerCase()
+      )
+      if (!allowed(wallet.data) || !allowed(plan.data)) {
+        throw new Error('This store cannot take orders for that saved address right now.')
+      }
+      setCheckout((current) => ({
+        ...current,
+        latitude: lat.toFixed(7), longitude: lng.toFixed(7),
+        locationAccuracy: point.accuracy != null ? String(point.accuracy) : '',
+        addressLine1: line1, addressLine2: String(point.addressLine2 || ''),
+        landmark: String(point.landmark || ''), city, state, pincode,
+        customerName: current.customerName || String(point.recipientName || ''),
+        customerMobile: current.customerMobile || String(point.recipientMobile || ''),
+      }))
+      setLocationConfirmed(true)
+      return true
+    } catch (error) {
+      setLocationError(error?.message || 'This saved address is unavailable for this store.')
+      return false
+    }
   }
   const placeOrder = async (
     event
@@ -1112,7 +1192,7 @@ export default function DeliveryStorePage({
     const selectedLongitude = Number(checkout.longitude)
     if (!locationConfirmed) {
       setMessage(
-        'Choose your location on the map and tap Confirm Delivery Pin before placing the order.'
+        'Select a verified delivery address in Saved addresses before placing your order.'
       )
       return
     }
@@ -1131,7 +1211,7 @@ export default function DeliveryStorePage({
       selectedLongitude > 180
     ) {
       setMessage(
-        'Choose your live delivery location before placing the order.'
+        'Select an address with a valid GPS location before placing your order.'
       )
       return
     }
@@ -2245,10 +2325,54 @@ export default function DeliveryStorePage({
             {checkoutStage === 'checkout' && (
               <div className="dd-ref-checkout-summary">
                 <button type="button" className="dd-ref-edit-cart" onClick={() => setCheckoutStage('cart')}>← Edit cart · {cartCount} items</button>
-                <div className="dd-ref-shipping-card">
-                  <div className="flex items-center justify-between gap-2"><strong>⌖ Deliver to your address</strong><button type="button" onClick={() => setLocationMapOpen(true)}>Change →</button></div>
-                  <p>{locationConfirmed ? [checkout.addressLine1, checkout.addressLine2, checkout.city].filter(Boolean).join(', ') || 'Pin confirmed — enter the written address below' : 'Choose your precise delivery location on the map'}</p>
+                <div className={`mt-3 rounded-2xl border p-4 ${
+                  outsideDeliveryRadius
+                    ? 'border-red-200 bg-red-50'
+                    : locationConfirmed && checkout.addressLine1 && checkout.city && checkout.state && digits(checkout.pincode, 6).length === 6
+                      ? 'border-emerald-200 bg-emerald-50'
+                      : 'border-amber-200 bg-amber-50'
+                }`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-800">⌖ Selected Delivery Address</p>
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                      outsideDeliveryRadius ? 'bg-red-100 text-red-700' :
+                      locationConfirmed && checkout.addressLine1 && checkout.city && checkout.state && digits(checkout.pincode, 6).length === 6
+                        ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {outsideDeliveryRadius ? 'Not available here' :
+                        locationConfirmed && checkout.addressLine1 && checkout.city && checkout.state && digits(checkout.pincode, 6).length === 6
+                          ? 'Verified for this store' : 'Select address'}
+                    </span>
+                  </div>
+                  {locationConfirmed && checkout.addressLine1 ? (
+                    <div className="mt-3 text-sm leading-6 text-slate-800">
+                      <p className="font-black">{checkout.addressLine1}</p>
+                      <p className="font-medium">{[
+                        checkout.addressLine2, checkout.landmark,
+                        checkout.city, checkout.state, checkout.pincode,
+                      ].filter(Boolean).join(', ')}</p>
+                      {outsideDeliveryRadius && <p className="mt-2 text-xs font-bold text-red-700">This store cannot deliver to this address. Choose another address.</p>}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs leading-5 text-amber-900">Choose a saved address or add a new one to confirm the exact delivery location. You do not need to enter the address again at checkout.</p>
+                  )}
                 </div>
+                <DeliveryAddressBook
+                  compact
+                  destination={{
+                    latitude: checkout.latitude, longitude: checkout.longitude,
+                    source: locationConfirmed ? 'saved' : 'manual',
+                    addressLine1: checkout.addressLine1, city: checkout.city,
+                  }}
+                  onUseLocation={selectSavedAddressAtCheckout}
+                  onUseCurrentGps={chooseLiveLocation}
+                />
+                {(locationLoading || addressLoading) && (
+                  <p className="mt-2 text-xs font-bold text-emerald-700">Checking your live GPS address and store coverage…</p>
+                )}
+                {locationError && (
+                  <p role="alert" className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{locationError}</p>
+                )}
                 <div className="dd-ref-checkout-items mt-3 rounded-2xl border border-neutral-200 bg-white p-3">
                   <p className="text-[11px] font-black text-neutral-800">Your items</p>
                   {cartRows.map((item) => (
@@ -2398,197 +2522,6 @@ export default function DeliveryStorePage({
                   }
                   placeholder="Optional"
                 />
-                <div className="sm:col-span-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
-                        1. Pin Your Delivery Location
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-emerald-900/70">
-                        Use your current GPS location or tap/drag the pin on the map to the exact delivery point. We will try to fill the written address automatically, and you can edit it before ordering.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={chooseLiveLocation}
-                      disabled={locationLoading}
-                      className="shrink-0 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
-                    >
-                      {locationLoading
-                        ? 'Getting Location...'
-                        : 'Use My Current Location'}
-                    </button>
-                  </div>
-                  <div className="mt-4 dd-ref-location-preview">
-                    {checkout.latitude && checkout.longitude ? (
-                      <div className="pointer-events-none" aria-hidden="true">
-                        <DeliveryLocationMap latitude={checkout.latitude} longitude={checkout.longitude} referenceLatitude={coverageOriginLatitude} referenceLongitude={coverageOriginLongitude} radiusKm={coverageRadiusKm} showRadius={coverageEnabled} readOnly customerPin height={145} zoom={15} />
-                      </div>
-                    ) : (
-                      <div className="dd-ref-location-placeholder">⌖ <span>Pin your location accurately for delivery</span></div>
-                    )}
-                    <button type="button" className="dd-ref-open-map" onClick={() => setLocationMapOpen(true)}>
-                      {checkout.latitude && checkout.longitude ? 'Change location on full map →' : 'Open location map →'}
-                    </button>
-                  </div>
-                  {checkout.latitude && checkout.longitude && (
-                    <div
-                      className={`mt-3 rounded-xl border px-3 py-3 ${
-                        outsideDeliveryRadius
-                          ? 'border-red-200 bg-red-50'
-                          : locationConfirmed
-                            ? 'border-emerald-200 bg-white'
-                            : 'border-amber-200 bg-amber-50'
-                      }`}
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p
-                            className={`text-xs font-black ${
-                              outsideDeliveryRadius
-                                ? 'text-red-700'
-                                : locationConfirmed
-                                  ? 'text-emerald-700'
-                                  : 'text-amber-700'
-                            }`}
-                          >
-                            {outsideDeliveryRadius
-                              ? 'Outside delivery area'
-                              : locationConfirmed
-                                ? '✓ Delivery pin confirmed'
-                                : 'Pin selected — confirm this location'}
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-neutral-500">
-                            <span>
-                              {Number(checkout.latitude).toFixed(5)}, {Number(checkout.longitude).toFixed(5)}
-                            </span>
-                            {checkout.locationAccuracy && (
-                              <span>· GPS ±{Math.round(Number(checkout.locationAccuracy))}m</span>
-                            )}
-                            {selectedDistanceKm !== null && (
-                              <span>
-                                · {selectedDistanceKm.toFixed(2)} km from store
-                              </span>
-                            )}
-                          </div>
-                          {coverageEnabled && coverageRadiusKm > 0 && (
-                            <p className="mt-1 text-[10px] font-bold text-neutral-500">
-                              This store delivers within {coverageRadiusKm.toFixed(1)} km of its delivery center.
-                            </p>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          disabled={
-                            outsideDeliveryRadius ||
-                            addressLoading
-                          }
-                          onClick={async () => {
-                            if (
-                              outsideDeliveryRadius ||
-                              addressLoading
-                            ) {
-                              return
-                            }
-                            const addressFilled =
-                              await fillAddressFromLocation(
-                                checkout.latitude,
-                                checkout.longitude
-                              )
-                            setLocationConfirmed(true)
-                            if (addressFilled) {
-                              setLocationError('')
-                            }
-                          }}
-                          className="shrink-0 rounded-xl bg-neutral-950 px-4 py-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-neutral-300"
-                        >
-                          {addressLoading
-                            ? 'Finding Address...'
-                            : 'Confirm Delivery Pin'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {locationError && (
-                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-bold leading-5 text-red-700">
-                      {locationError}
-                    </div>
-                  )}
-                </div>
-                {locationConfirmed && (
-                  <>
-                    <div className="sm:col-span-2 mt-1">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                        2. Confirm Your Delivery Address
-                      </p>
-                      <p className="mt-1 text-[10px] leading-4 text-neutral-400">
-                        We filled what we could from your selected location. Check the house, street, locality and landmark details and edit anything that needs correction.
-                      </p>
-                    </div>
-                    <CheckoutField
-                      label="House / Street"
-                      value={checkout.addressLine1}
-                      onChange={(value) =>
-                        setCheckout((current) => ({
-                          ...current,
-                          addressLine1: value,
-                        }))
-                      }
-                    />
-                    <CheckoutField
-                      label="Area / Locality"
-                      value={checkout.addressLine2}
-                      onChange={(value) =>
-                        setCheckout((current) => ({
-                          ...current,
-                          addressLine2: value,
-                        }))
-                      }
-                      placeholder="Optional"
-                    />
-                    <CheckoutField
-                      label="Landmark"
-                      value={checkout.landmark}
-                      onChange={(value) =>
-                        setCheckout((current) => ({
-                          ...current,
-                          landmark: value,
-                        }))
-                      }
-                      placeholder="Optional"
-                    />
-                    <CheckoutField
-                      label="City"
-                      value={checkout.city}
-                      onChange={(value) =>
-                        setCheckout((current) => ({
-                          ...current,
-                          city: value,
-                        }))
-                      }
-                    />
-                    <CheckoutField
-                      label="State"
-                      value={checkout.state}
-                      onChange={(value) =>
-                        setCheckout((current) => ({
-                          ...current,
-                          state: value,
-                        }))
-                      }
-                    />
-                    <CheckoutField
-                      label="Pincode"
-                      value={checkout.pincode}
-                      onChange={(value) =>
-                        setCheckout((current) => ({
-                          ...current,
-                          pincode: digits(value, 6),
-                        }))
-                      }
-                    />
-                  </>
-                )}
               </div>
               <label className="block">
                 <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
@@ -2690,45 +2623,6 @@ export default function DeliveryStorePage({
                     : 'Place Delivery Order'}
               </button>
             </form>}
-          </div>
-        </div>
-      )}
-      {checkoutOpen && locationMapOpen && (
-        <div className="dd-ref-map-modal fixed inset-0 z-[95] flex flex-col bg-white" role="dialog" aria-modal="true" aria-label="Select delivery location">
-          <div className="dd-ref-map-head">
-            <button type="button" onClick={() => setLocationMapOpen(false)} aria-label="Back to checkout">←</button>
-            <div><h2>Select delivery location</h2><p>Tap the map or drag the pin</p></div>
-            <button type="button" onClick={chooseLiveLocation} disabled={locationLoading} className="dd-ref-my-location" aria-label="Use my GPS location">{locationLoading ? '…' : '◎'}</button>
-          </div>
-          <div className="dd-ref-map-area">
-            <DeliveryLocationMap
-              latitude={checkout.latitude}
-              longitude={checkout.longitude}
-              referenceLatitude={coverageOriginLatitude}
-              referenceLongitude={coverageOriginLongitude}
-              radiusKm={coverageRadiusKm}
-              showRadius={coverageEnabled}
-              customerPin
-              onChange={({latitude,longitude}) => {
-                setCheckout((current) => ({...current,latitude,longitude,locationAccuracy:''}))
-                setLocationConfirmed(false)
-                setLocationError('')
-              }}
-              height={typeof window !== 'undefined' ? Math.max(320, window.innerHeight - 250) : 440}
-              zoom={16}
-            />
-          </div>
-          <div className="dd-ref-map-confirm">
-            <p className="font-black text-sm">⌖ {checkout.latitude && checkout.longitude ? `${Number(checkout.latitude).toFixed(5)}, ${Number(checkout.longitude).toFixed(5)}` : 'Choose your delivery pin'}</p>
-            {outsideDeliveryRadius && <p className="text-red-600 text-xs">Outside the store's delivery radius. Move the pin closer.</p>}
-            {locationError && <p className="text-red-600 text-xs">{locationError}</p>}
-            <button type="button" className="dd-ref-green-btn w-full" disabled={!checkout.latitude || !checkout.longitude || outsideDeliveryRadius || addressLoading} onClick={async () => {
-              if (!checkout.latitude || !checkout.longitude || outsideDeliveryRadius || addressLoading) return
-              const filled = await fillAddressFromLocation(checkout.latitude, checkout.longitude)
-              setLocationConfirmed(true)
-              if (filled) setLocationError('')
-              setLocationMapOpen(false)
-            }}>{addressLoading ? 'Finding address…' : 'Confirm location'}</button>
           </div>
         </div>
       )}

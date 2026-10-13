@@ -12,12 +12,14 @@ import {
 } from 'next/navigation'
 
 import AdminWalletControls from '@/app/components/AdminWalletControls'
+import AdminDeliverySignupSettings from '@/app/components/AdminDeliverySignupSettings'
 
 const NAV = [
   ['overview', 'Overview'],
   ['custom-plans', 'Custom Plans'],
   ['registrations', 'Registrations'],
   ['wallet-controls', 'Wallet Controls'],
+  ['delivery-signup', 'Delivery Signup'],
   ['tenants', 'Tenants & Access'],
   ['operations', 'Operations'],
   ['delivery-orders', 'Delivery Orders'],
@@ -2994,6 +2996,10 @@ export default function AdminControlCenter() {
 
           {section === 'wallet-controls' && (
             <AdminWalletControls />
+          )}
+
+          {section === 'delivery-signup' && (
+            <AdminDeliverySignupSettings />
           )}
 
           {section === 'delivery-orders' && (

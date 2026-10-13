@@ -29,7 +29,7 @@ export async function GET(request) {
       admin
         .from('delivery_store_wallets')
         .select(
-          'restaurant_id,balance_paise,pending_fee_paise,platform_fee_paise,restaurant_platform_fee_paise,restaurant_fee_charge_customer,delivery_fee_charge_customer,order_block_threshold_paise,min_topup_paise,updated_at'
+          'restaurant_id,balance_paise,pending_fee_paise,platform_fee_paise,restaurant_platform_fee_paise,restaurant_fee_charge_customer,delivery_fee_charge_customer,restaurant_customer_fee_checkout_live,delivery_customer_fee_checkout_live,order_block_threshold_paise,min_topup_paise,updated_at'
         )
         .eq('restaurant_id', access.restaurantId)
         .maybeSingle(),
@@ -57,6 +57,10 @@ export async function GET(request) {
     const pendingFeesPaise = Number(wallet.pending_fee_paise || 0)
     const thresholdPaise = Number(wallet.order_block_threshold_paise || 0)
     const spendablePaise = balancePaise - pendingFeesPaise
+    const restaurantChargeCustomer = wallet.restaurant_fee_charge_customer === true
+    const deliveryChargeCustomer = wallet.delivery_fee_charge_customer === true
+    const restaurantCustomerCheckoutLive = wallet.restaurant_customer_fee_checkout_live === true
+    const deliveryCustomerCheckoutLive = wallet.delivery_customer_fee_checkout_live === true
 
     return reply({
       success: true,
@@ -68,8 +72,13 @@ export async function GET(request) {
         spendablePaise,
         platformFeePaise: Number(wallet.platform_fee_paise || 0),
         restaurantPlatformFeePaise: Number(wallet.restaurant_platform_fee_paise ?? 500),
-        restaurantChargeCustomer: wallet.restaurant_fee_charge_customer === true,
-        deliveryChargeCustomer: wallet.delivery_fee_charge_customer === true,
+        restaurantChargeCustomer,
+        deliveryChargeCustomer,
+        // These flags are server-controlled; the owner cannot activate them.
+        restaurantCustomerCheckoutLive,
+        deliveryCustomerCheckoutLive,
+        restaurantCustomerBillingActive: restaurantChargeCustomer && restaurantCustomerCheckoutLive,
+        deliveryCustomerBillingActive: deliveryChargeCustomer && deliveryCustomerCheckoutLive,
         thresholdPaise,
         minimumTopupPaise: Number(wallet.min_topup_paise || 200000),
         lowBalance: spendablePaise <= thresholdPaise,
