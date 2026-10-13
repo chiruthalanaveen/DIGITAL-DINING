@@ -279,8 +279,25 @@ function SignupContent() {
           body:JSON.stringify({restaurantCode:storeCode,name:cleanName,mobile:cleanMobile,pin,
             securityQuestionKey,securityAnswer}),
         })
-        const result = await response.json().catch(() => ({}))
-        if (!response.ok || result?.success !== true) throw new Error(result?.message || 'Account registration failed.')
+        // Registration may fail before Next.js returns JSON (e.g. 404 missing route
+        // or 500 module/compile error). Show the actual HTTP status instead of
+        // the misleading generic “Account registration failed” text.
+        const responseText = await response.text()
+        let result = null
+        try { result = responseText ? JSON.parse(responseText) : null } catch { /* HTML error page */ }
+        if (response.status === 404) {
+          throw new Error(
+            'PIN registration API is missing (HTTP 404). Install app/api/delivery/customer/register-pin-question/route.js and restart Next.js.'
+          )
+        }
+        if (!response.ok || result?.success !== true) {
+          const code = typeof result?.code === 'string' && /^[A-Z_]{3,65}$/.test(result.code)
+            ? ` [${result.code}]` : ''
+          const message = typeof result?.message === 'string' && result.message.trim()
+            ? result.message.trim()
+            : `PIN registration service returned HTTP ${response.status}. Check the Next.js terminal logs.`
+          throw new Error(`${message}${code}`)
+        }
         if (!result?.recoveryCode) throw new Error('Account was created but no recovery code returned. Contact support; do not retry.')
         setRecoveryCode(result.recoveryCode)
         setPin('');setConfirmPin('');setSecurityAnswer('')
