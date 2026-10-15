@@ -19,7 +19,8 @@ function safeNextPath(value) {
 
     next.includes('\\') ||
 
-    /[\r\n]/.test(next)
+    /[\r\n]/.test(next) ||
+    /^\/delivery\/(?:login|signup|forgot-pin)(?:[/?]|$)/i.test(next)
 
   ) {
 
@@ -360,21 +361,28 @@ function DeliveryLoginContent() {
 
       }
 
+      // Verify the HttpOnly mobile/PIN cookie was really installed before
+      // navigating. Otherwise the store immediately redirects back to login.
+      const sessionCheck = await fetch(
+        `/api/delivery/customer/session?restaurantCode=${encodeURIComponent(storeCode)}`,
+        { credentials: 'same-origin', cache: 'no-store' }
+      )
+      const sessionResult = await sessionCheck.json().catch(() => ({}))
+      if (!sessionCheck.ok || sessionResult?.success !== true) {
+        throw new Error(
+          sessionResult?.code === 'SESSION_UNAVAILABLE'
+            ? 'Cannot verify your login session right now. Please retry.'
+            : 'Your PIN was accepted, but the login cookie was not established. Update the customer login API and try again.'
+        )
+      }
+
       setPin('')
-
       setSuccess('Signed in successfully.')
-
-      const destination =
-
-        nextPath === '/delivery'
-
-          ? `/delivery/${encodeURIComponent(storeCode)}`
-
-          : nextPath
-
-      router.replace(destination)
-
-      router.refresh()
+      const destination = nextPath === '/delivery'
+        ? `/delivery/${encodeURIComponent(storeCode)}` : nextPath
+      // A full navigation reinitializes the client and reads the new
+      // HttpOnly cookie, preventing stale auth state and redirect loops.
+      window.location.replace(destination)
 
     } catch (loginError) {
 

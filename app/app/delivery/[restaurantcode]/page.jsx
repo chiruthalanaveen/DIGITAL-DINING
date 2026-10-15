@@ -10,6 +10,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
+import DeliveryAddressBook from '@/app/components/DeliveryAddressBook'
+import DeliveryCustomerSupportChat from '@/app/components/DeliveryCustomerSupportChat'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 import InstallAppButton from '@/app/components/InstallAppButton'
 
@@ -134,10 +136,19 @@ export default function DeliveryStorePage({
       ''
   ).trim()
 
+  useEffect(() => {
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(restaurantCode)) return
+    try { localStorage.setItem('digitaldine_delivery_last_store_code', restaurantCode) } catch { /* optional browser storage */ }
+  }, [restaurantCode])
   const [loading, setLoading] =
     useState(true)
   const [storeData, setStoreData] =
     useState(null)
+  // ERP platform fee quote. Only the server sets the actual fee.
+  const [platformFeeQuote, setPlatformFeeQuote] = useState({
+    loaded: false,
+    customerAmount: 0,
+  })
   const [error, setError] =
     useState('')
 
@@ -180,6 +191,10 @@ export default function DeliveryStorePage({
     useState(false)
   const [trackingOrders, setTrackingOrders] =
     useState([])
+  const [trackingAccountUnauthorized, setTrackingAccountUnauthorized] = useState(false)
+  const [otherStoreOrderCount, setOtherStoreOrderCount] = useState(0)
+  const [trackingAccountEmail, setTrackingAccountEmail] = useState('')
+  const [trackingAccountType, setTrackingAccountType] = useState('')
   const [locationLoading, setLocationLoading] =
     useState(false)
   const [addressLoading, setAddressLoading] =
@@ -188,6 +203,96 @@ export default function DeliveryStorePage({
     useState('')
   const [locationConfirmed, setLocationConfirmed] =
     useState(false)
+
+  // Carry the verified location chosen on /delivery to checkout.
+  // Saved address fields are applied only for the SAME currently signed-in
+  // Supabase user. A location is NEVER accepted as proof of store coverage;
+  // the existing server order validation remains authoritative.
+  useEffect(() => {
+    let active = true
+    const restore = async () => {
+      try {
+        const raw = sessionStorage.getItem('digitaldine_delivery_selected_location_v1')
+        if (!raw) return
+        const selected = JSON.parse(raw)
+        const latitude = Number(selected?.latitude)
+        const longitude = Number(selected?.longitude)
+        const selectedAt = Number(selected?.selectedAt)
+        if (!Number.isFinite(selectedAt) || Date.now() - selectedAt > 2 * 60 * 60 * 1000 ||
+            !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+            !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return
+        const saved = selected.source === 'saved'
+        if (saved) {
+          const { data, error } = await supabase.auth.getUser()
+          if (error || !data?.user?.id || data.user.id !== selected.ownerUserId) return
+          // Re-read the address from the protected table. Do not trust
+          // editable browser storage as a source for account address fields.
+          const { data: address, error: addrError } = await supabase
+            .from('delivery_customer_saved_addresses')
+            .select('id,address_line1,address_line2,landmark,city,state,pincode,recipient_name,recipient_mobile,latitude,longitude,gps_accuracy_m')
+            .eq('id', String(selected.savedAddressId || ''))
+            .eq('user_id', data.user.id)
+            .maybeSingle()
+          if (!active || addrError || !address) return
+          // Ensure this saved pin is the same as the selected location.
+          if (Math.abs(Number(address.latitude) - latitude) > 0.0000002 ||
+              Math.abs(Number(address.longitude) - longitude) > 0.0000002) return
+          setCheckout((current) => current.latitude && current.longitude ? current : ({
+            ...current,
+            latitude: latitude.toFixed(7), longitude: longitude.toFixed(7),
+            locationAccuracy: address.gps_accuracy_m != null ? String(address.gps_accuracy_m) : '',
+            addressLine1: address.address_line1 || '', addressLine2: address.address_line2 || '',
+            landmark: address.landmark || '', city: address.city || '', state: address.state || '',
+            pincode: address.pincode || '',
+            customerName: current.customerName || address.recipient_name || '',
+            customerMobile: current.customerMobile || address.recipient_mobile || '',
+          }))
+          setLocationConfirmed(true)
+          return
+        }
+        if (!active) return
+        setCheckout((current) => current.latitude && current.longitude ? current : ({
+          ...current,
+          latitude: latitude.toFixed(7), longitude: longitude.toFixed(7),
+          locationAccuracy: selected.source === 'gps' && Number(selected.accuracy) > 0
+            ? String(Number(selected.accuracy).toFixed(2)) : '',
+        }))
+        setLocationConfirmed(false)
+        // A GPS/map destination was selected on /delivery. Resolve its
+        // written address and validate coverage automatically so checkout can
+        // display a confirmed address rather than another map/pin form.
+        // If reverse-geocoding is incomplete, the customer chooses/edits an
+        // address in their saved-address book instead of placing a blind order.
+        try {
+          const response = await fetch(
+            `/api/location/reverse?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`,
+            { method: 'GET', cache: 'no-store' }
+          )
+          const payload = await response.json().catch(() => ({}))
+          if (!active || !response.ok || payload?.success !== true) return
+          const address = payload.address || {}
+          const point = {
+            latitude, longitude, accuracy: selected.source === 'gps' ? selected.accuracy : null,
+            addressLine1: String(address.addressLine1 || '').trim(),
+            addressLine2: String(address.addressLine2 || '').trim(),
+            landmark: String(address.landmark || '').trim(),
+            city: String(address.city || '').trim(),
+            state: String(address.state || '').trim(),
+            pincode: digits(address.pincode, 6),
+          }
+          if (point.addressLine1 && point.city && point.state && point.pincode.length === 6) {
+            await selectSavedAddressAtCheckout(point)
+          }
+        } catch {
+          // The address picker remains available. Never invent address data.
+        }
+      } catch {
+        // Optional browser storage can be unavailable. Checkout still works.
+      }
+    }
+    void restore()
+    return () => { active = false }
+  }, [restaurantCode])
 
   const [afterSalesOpen, setAfterSalesOpen] =
     useState(false)
@@ -222,6 +327,132 @@ export default function DeliveryStorePage({
   const [afterSalesCaseLoading, setAfterSalesCaseLoading] =
     useState(false)
 
+  const [productReviews, setProductReviews] =
+    useState({})
+  // Delivery customer app session.
+  // This keeps Home / Orders / Account available while the customer is inside a store.
+  const [customerUser, setCustomerUser] = useState(null)
+  const [customerProfile, setCustomerProfile] = useState(null)
+  const [customerAuthLoading, setCustomerAuthLoading] = useState(true)
+  const [mobileCustomer, setMobileCustomer] = useState(null)
+  const [mobileAuthLoading, setMobileAuthLoading] = useState(true)
+  const isCustomerSignedIn = Boolean(customerUser || mobileCustomer)
+  const isCustomerSessionLoading = customerAuthLoading || mobileAuthLoading
+  const [accountOpen, setAccountOpen] = useState(false)
+  // A mobile/PIN login uses a server-verified HttpOnly cookie, NOT Supabase Auth.
+  // Never infer a logged-in account from browser storage or a typed mobile.
+  useEffect(() => {
+    let active = true
+    const loadMobileSession = async () => {
+      setMobileAuthLoading(true)
+      setMobileCustomer(null)
+      try {
+        const response = await fetch(
+          `/api/delivery/customer/session?restaurantCode=${encodeURIComponent(restaurantCode)}`,
+          { credentials: 'same-origin', cache: 'no-store' }
+        )
+        const result = await response.json().catch(() => ({}))
+        if (!active) return
+        if (response.ok && result?.success === true && result?.accountType === 'mobile') {
+          setMobileCustomer(result.customer)
+          setCheckout((current) => ({
+            ...current,
+            customerName: current.customerName || result.customer?.name || '',
+            customerMobile: current.customerMobile || result.customer?.mobile || '',
+          }))
+        }
+      } catch (error) {
+        if (active) console.warn('Delivery mobile session check:', error?.message)
+      } finally {
+        if (active) setMobileAuthLoading(false)
+      }
+    }
+    if (restaurantCode) void loadMobileSession()
+    else setMobileAuthLoading(false)
+    return () => { active = false }
+  }, [restaurantCode])
+  useEffect(() => {
+    let active = true
+    async function syncDeliveryCustomer(session) {
+      const user = session?.user || null
+      if (!active) return
+      setCustomerUser(user)
+      if (!user) {
+        setCustomerProfile(null)
+        setCustomerAuthLoading(false)
+        return
+      }
+      const { data, error: profileError } = await supabase
+        .from('delivery_customer_profiles')
+        .select('id, full_name, email, phone, avatar_url')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (!active) return
+      if (profileError) {
+        console.warn('Delivery customer profile load warning:', profileError)
+        setCustomerProfile(null)
+      } else {
+        setCustomerProfile(data || null)
+      }
+      setCustomerAuthLoading(false)
+    }
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!active) return
+      if (sessionError) {
+        console.warn('Delivery customer session warning:', sessionError)
+        setCustomerAuthLoading(false)
+        return
+      }
+      syncDeliveryCustomer(data?.session || null)
+    })
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncDeliveryCustomer(session)
+    })
+    return () => {
+      active = false
+      subscription?.unsubscribe()
+    }
+  }, [])
+  const openCustomerAccount = () => {
+    if (isCustomerSessionLoading) return
+    if (!isCustomerSignedIn) {
+      const next = `/delivery/${encodeURIComponent(restaurantCode)}`
+      router.push(`/delivery/login?next=${encodeURIComponent(next)}`)
+      return
+    }
+    setAccountOpen(true)
+  }
+  const signOutDeliveryCustomer = async () => {
+    try {
+      setCustomerAuthLoading(true)
+      if (mobileCustomer) {
+        const response = await fetch('/api/delivery/customer/session', {
+          method: 'DELETE', credentials: 'same-origin', cache: 'no-store',
+        })
+        if (!response.ok) throw new Error('Unable to end your mobile login session.')
+      }
+      if (customerUser) {
+        const { error: signOutError } = await supabase.auth.signOut()
+        if (signOutError) throw signOutError
+      }
+      setAccountOpen(false)
+      setCustomerUser(null)
+      setMobileCustomer(null)
+      setCustomerProfile(null)
+    } catch (signOutError) {
+      console.error('Delivery customer sign out error:', signOutError)
+      setMessage(signOutError?.message || 'Unable to sign out. Please try again.')
+    } finally {
+      setCustomerAuthLoading(false)
+    }
+  }
+  const openCustomerOrders = () => {
+    // Google or mobile/PIN sessions are verified on the server.
+    // Do not require the customer to type a delivery phone number again.
+    openTracking()
+  }
   const settings =
     storeData?.settings || {}
   const surge =
@@ -352,6 +583,29 @@ export default function DeliveryStorePage({
         )
       }
 
+      // Query the SERVER-calculated public fee, never a value set by the owner
+      // or submitted by the browser. Initial load only; validate again at pay.
+      if (!quiet) {
+        try {
+          const { data: feeData, error: feeError } = await supabase.rpc(
+            'get_public_delivery_platform_fee_quote',
+            { p_restaurant_code: restaurantCode }
+          )
+          if (feeError) throw feeError
+          if (!feeData?.success) {
+            throw new Error(feeData?.message || 'Fee quote unavailable')
+          }
+          const amount = Number(feeData.customerAmount || 0)
+          if (!Number.isFinite(amount) || amount < 0 || amount > 1000) {
+            throw new Error('Invalid checkout fee quote')
+          }
+          setPlatformFeeQuote({ loaded: true, customerAmount: amount })
+        } catch (feeLoadError) {
+          console.error('Delivery platform fee quote error:', feeLoadError)
+          // Block CHECKOUT, not product browsing, until quote is available.
+          setPlatformFeeQuote({ loaded: false, customerAmount: 0 })
+        }
+      }
       setStoreData({
         ...data,
         coverage: coverageData,
@@ -391,17 +645,63 @@ export default function DeliveryStorePage({
     }
   }
 
+  const loadProductReviews = async () => {
+    if (!restaurantCode) {
+      setProductReviews({})
+      return
+    }
+    try {
+      const {
+        data,
+        error: reviewError,
+      } = await supabase.rpc(
+        'get_public_delivery_product_reviews',
+        {
+          p_restaurant_code:
+            restaurantCode,
+        }
+      )
+      if (reviewError) {
+        throw reviewError
+      }
+      const rows =
+        data?.success &&
+        Array.isArray(
+          data?.products
+        )
+          ? data.products
+          : []
+      const next = {}
+      rows.forEach((row) => {
+        const id =
+          String(
+            row?.menu_item_id ||
+              ''
+          ).trim()
+        if (id) {
+          next[id] = row
+        }
+      })
+      setProductReviews(next)
+    } catch (reviewLoadError) {
+      // Reviews are additive. Do not block ordering if review
+      // backend has not been installed yet.
+      console.warn(
+        'Delivery product review load warning:',
+        reviewLoadError
+      )
+    }
+  }
   useEffect(() => {
     loadStore()
+    loadProductReviews()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantCode])
-
   useLiveDeliveryRefresh(
     () => loadStore(true),
     Boolean(restaurantCode && storeData),
     1000
   )
-
   const categories =
     useMemo(() => {
       return [
@@ -655,34 +955,34 @@ export default function DeliveryStorePage({
     itemId,
     next
   ) => {
+    const requestedQuantity = Math.max(0, Math.floor(Number(next || 0)))
+    if (requestedQuantity > 0 && isCustomerSessionLoading) {
+      setMessage('Checking your delivery login. Please try again in a moment.')
+      return
+    }
+    if (requestedQuantity > 0 && !isCustomerSignedIn) {
+      setMessage('Please login to add items to your cart.')
+      const nextPath = `/delivery/${encodeURIComponent(restaurantCode)}`
+      router.push(`/delivery/login?next=${encodeURIComponent(nextPath)}`)
+      return
+    }
     const item =
       menuItems.find(
         (row) =>
           String(row.id) ===
           String(itemId)
       )
-
     if (!item) {
       return
     }
-
     const stock =
       deliveryStockInfo(item)
-
-    const requested =
-      Math.max(
-        0,
-        Math.floor(
-          Number(next || 0)
-        )
-      )
-
+    const requested = requestedQuantity
     const safe =
       Math.min(
         requested,
         stock.maxCartQuantity
       )
-
     if (
       stock.tracked &&
       requested >
@@ -702,22 +1002,18 @@ export default function DeliveryStorePage({
             } available right now.`
       )
     }
-
     setCart((current) => {
       const copy = {
         ...current,
       }
-
       if (safe <= 0) {
         delete copy[itemId]
       } else {
         copy[itemId] = safe
       }
-
       return copy
     })
   }
-
   const loadRazorpay = () => {
     return new Promise(
       (resolve) => {
@@ -813,57 +1109,45 @@ export default function DeliveryStorePage({
   const openTracking = () => {
     setTrackingError('')
     setTrackingOrders([])
+    setTrackingAccountUnauthorized(false)
+    setOtherStoreOrderCount(0)
+    setTrackingAccountEmail('')
+    setTrackingAccountType('')
     setTrackingOpen(true)
+    void loadAccountOrders()
   }
-
-  const submitTracking = async (event) => {
-    event.preventDefault()
-
-    const mobile = digits(trackingMobile, 10)
-
-    if (mobile.length !== 10) {
-      setTrackingError(
-        'Enter the 10-digit mobile number used for your Delivery orders.'
-      )
-      return
-    }
-
+  const loadAccountOrders = async () => {
     setTrackingLoading(true)
     setTrackingError('')
-    setTrackingOrders([])
-
+    setTrackingAccountUnauthorized(false)
     try {
-      const { data, error: rpcError } = await supabase.rpc(
-        'get_public_delivery_orders_by_mobile',
-        {
-          p_restaurant_code: restaurantCode,
-          p_customer_mobile: mobile,
-        }
-      )
-
-      if (rpcError) throw rpcError
-      if (!data?.success) {
-        throw new Error(data?.message || 'Unable to find Delivery orders.')
+      const { data: sessionData } = await supabase.auth.getSession()
+      const headers = {}
+      if (sessionData?.session?.access_token) {
+        headers.Authorization = `Bearer ${sessionData.session.access_token}`
       }
-
-      const rows = Array.isArray(data?.orders) ? data.orders : []
-      setTrackingOrders(rows)
-
-      if (!rows.length) {
-        setTrackingError(
-          'No recent Delivery orders were found for this mobile number.'
-        )
-      }
-    } catch (lookupError) {
-      console.error('Delivery mobile tracking lookup error:', lookupError)
-      setTrackingError(
-        lookupError?.message || 'Unable to find Delivery orders.'
+      const response = await fetch(
+        `/api/delivery/customer/my-orders?restaurantCode=${encodeURIComponent(restaurantCode)}&allStores=1`,
+        { headers, credentials: 'same-origin', cache: 'no-store' }
       )
+      const result = await response.json().catch(() => ({}))
+      if (response.status === 401) {
+        setTrackingAccountUnauthorized(true)
+        throw new Error('Sign in to your delivery account to view your orders.')
+      }
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Unable to load your orders.')
+      }
+      setTrackingOrders(Array.isArray(result.orders) ? result.orders : [])
+      setOtherStoreOrderCount(Math.max(0, Number(result.otherStoreOrderCount || 0)))
+      setTrackingAccountEmail(String(result.accountEmail || sessionData?.session?.user?.email || ''))
+      setTrackingAccountType(String(result.accountType || ''))
+    } catch (error) {
+      setTrackingError(error?.message || 'Unable to load your orders.')
     } finally {
       setTrackingLoading(false)
     }
   }
-
   const resetAfterSalesRequest = () => {
     setAfterSalesOrder(null)
     setAfterSalesError('')
@@ -1501,13 +1785,88 @@ export default function DeliveryStorePage({
     )
   }
 
+  // Selecting an account address during checkout must not discard the cart.
+  // Also verify that THIS store is eligible at the selected pin, not merely
+  // that some OTHER store delivers to the saved address.
+  const selectSavedAddressAtCheckout = async (point) => {
+    try {
+      setLocationError('')
+      const line1 = String(point?.addressLine1 || '').trim()
+      const city = String(point?.city || '').trim()
+      const state = String(point?.state || '').trim()
+      const pincode = digits(point?.pincode, 6)
+      if (!line1 || !city || !state || pincode.length !== 6) {
+        throw new Error('This address is incomplete. Edit it in Saved addresses before checkout.')
+      }
+      const lat = Number(point?.latitude)
+      const lng = Number(point?.longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('Invalid address coordinates.')
+      const { data, error: nearbyError } = await supabase.rpc('get_nearby_delivery_stores', {
+        p_latitude: lat, p_longitude: lng,
+      })
+      if (nearbyError || data?.success !== true) throw nearbyError || new Error(data?.message || 'Unable to verify delivery coverage.')
+      const matches = (Array.isArray(data?.stores) ? data.stores : []).filter((store) =>
+        String(store.restaurantCode || store.restaurant_code || '') === restaurantCode &&
+        store.isOpen !== false && store.is_open !== false
+      )
+      const target = matches[0]
+      if (!target) throw new Error('This store does not deliver to that saved address. Select another address or choose a different store.')
+      const id = String(target.restaurantId || target.restaurant_id || '')
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        throw new Error('Store coverage could not be verified.')
+      }
+      const [wallet, plan] = await Promise.all([
+        supabase.rpc('delivery_wallet_eligible_restaurant_ids', { p_restaurant_ids: [id] }),
+        supabase.rpc('delivery_plan_eligible_restaurant_ids', { p_restaurant_ids: [id] }),
+      ])
+      if (wallet.error || plan.error) throw new Error('Could not verify this store’s eligibility. Please retry.')
+      const allowed = (rows) => (Array.isArray(rows) ? rows : []).some((row) =>
+        String(typeof row === 'string' ? row : row?.restaurant_id ?? row?.restaurantId ?? '').toLowerCase() === id.toLowerCase()
+      )
+      if (!allowed(wallet.data) || !allowed(plan.data)) {
+        throw new Error('This store cannot take orders for that saved address right now.')
+      }
+      setCheckout((current) => ({
+        ...current,
+        latitude: lat.toFixed(7), longitude: lng.toFixed(7),
+        locationAccuracy: point.accuracy != null ? String(point.accuracy) : '',
+        addressLine1: line1, addressLine2: String(point.addressLine2 || ''),
+        landmark: String(point.landmark || ''), city, state, pincode,
+        customerName: current.customerName || String(point.recipientName || ''),
+        customerMobile: current.customerMobile || String(point.recipientMobile || ''),
+      }))
+      setLocationConfirmed(true)
+      return true
+    } catch (error) {
+      setLocationError(error?.message || 'This saved address is unavailable for this store.')
+      return false
+    }
+  }
   const placeOrder = async (
     event
   ) => {
     event.preventDefault()
-
     if (placing) return
-
+    if (isCustomerSessionLoading) {
+      setMessage('Checking your delivery login. Please try again in a moment.')
+      return
+    }
+    if (!isCustomerSignedIn) {
+      setMessage('Please login before placing your Delivery order.')
+      const nextPath = `/delivery/${encodeURIComponent(restaurantCode)}`
+      router.push(`/delivery/login?next=${encodeURIComponent(nextPath)}`)
+      return
+    }
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
+    if (customerUser && (sessionError || !session?.access_token)) {
+      setMessage('Your login session has expired. Please login again.')
+      const nextPath = `/delivery/${encodeURIComponent(restaurantCode)}`
+      router.push(`/delivery/login?next=${encodeURIComponent(nextPath)}`)
+      return
+    }
     const cleanName =
       checkout.customerName.trim()
     const cleanMobile =
@@ -1525,7 +1884,6 @@ export default function DeliveryStorePage({
         checkout.pincode,
         6
       )
-
     if (
       cleanName.length < 2
     ) {
@@ -1534,7 +1892,6 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     if (
       cleanMobile.length !== 10
     ) {
@@ -1543,7 +1900,6 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     if (
       cleanAlternate &&
       cleanAlternate.length !==
@@ -1554,7 +1910,6 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     if (
       !checkout.addressLine1.trim() ||
       !checkout.city.trim() ||
@@ -1566,24 +1921,20 @@ export default function DeliveryStorePage({
       )
       return
     }
-
     const selectedLatitude = Number(checkout.latitude)
     const selectedLongitude = Number(checkout.longitude)
-
     if (!locationConfirmed) {
       setMessage(
-        'Choose your location on the map and tap Confirm Delivery Pin before placing the order.'
+        'Select a verified delivery address in Saved addresses before placing your order.'
       )
       return
     }
-
     if (outsideDeliveryRadius) {
       setMessage(
         `This location is outside the store delivery area. Delivery is available within ${coverageRadiusKm.toFixed(1)} km.`
       )
       return
     }
-
     if (
       !Number.isFinite(selectedLatitude) ||
       !Number.isFinite(selectedLongitude) ||
@@ -1593,23 +1944,20 @@ export default function DeliveryStorePage({
       selectedLongitude > 180
     ) {
       setMessage(
-        'Choose your live delivery location before placing the order.'
+        'Select an address with a valid GPS location before placing your order.'
       )
       return
     }
-
     if (!cartRows.length) {
       setMessage(
         'Your cart is empty.'
       )
       return
     }
-
     const stockConflict =
       cartRows.find((item) => {
         const stock =
           deliveryStockInfo(item)
-
         return (
           stock.tracked &&
           (
@@ -1620,13 +1968,11 @@ export default function DeliveryStorePage({
           )
         )
       })
-
     if (stockConflict) {
       const stock =
         deliveryStockInfo(
           stockConflict
         )
-
       setMessage(
         stock.outOfStock
           ? `${stockConflict.name} is now out of stock. Your cart has been updated.`
@@ -1640,25 +1986,52 @@ export default function DeliveryStorePage({
                 : 'are'
             } available now. Your cart has been updated.`
       )
-
       await loadStore(true)
       return
     }
-
+    // Revalidate right before order submission. If the ERP fee or owner
+    // preference changed since the displayed total, require another tap.
+    if (!platformFeeQuote.loaded) {
+      setMessage('Unable to verify platform fee. Please refresh the store and try again.')
+      return
+    }
+    let latestPlatformFee = 0
+    try {
+      const { data: feeData, error: feeError } = await supabase.rpc(
+        'get_public_delivery_platform_fee_quote',
+        { p_restaurant_code: restaurantCode }
+      )
+      if (feeError || !feeData?.success) throw new Error('Platform fee quote unavailable')
+      latestPlatformFee = Number(feeData.customerAmount || 0)
+      if (!Number.isFinite(latestPlatformFee) || latestPlatformFee < 0) {
+        throw new Error('Invalid platform fee quote')
+      }
+    } catch (feeError) {
+      setMessage('Unable to verify platform fee. Please try again.')
+      return
+    }
+    if (Math.round(latestPlatformFee * 100) !== Math.round(previewPlatformFee * 100)) {
+      setPlatformFeeQuote({ loaded: true, customerAmount: latestPlatformFee })
+      setMessage('Platform fee changed. Review the updated total and tap Place Order again.')
+      return
+    }
     setPlacing(true)
     setMessage('')
-
     try {
       const response = await fetch(
         '/api/delivery/orders/create',
         {
           method: 'POST',
+          credentials: 'same-origin',
           headers: {
-            'Content-Type':
-              'application/json',
+            'Content-Type': 'application/json',
+            ...(customerUser && session?.access_token
+              ? { Authorization: `Bearer ${session.access_token}` }
+              : {}),
           },
           body: JSON.stringify({
             restaurantCode,
+            requireAccountLink: true,
             customerName:
               cleanName,
             customerMobile:
@@ -1693,6 +2066,8 @@ export default function DeliveryStorePage({
               checkout.customerNote
                 .trim(),
             paymentMethod,
+            // Expected amount confirms consent only. SQL computes the real fee.
+            expectedPlatformFeePaise: Math.round(previewPlatformFee * 100),
             items:
               cartRows.map(
                 (item) => ({
@@ -1704,12 +2079,10 @@ export default function DeliveryStorePage({
           }),
         }
       )
-
       const data =
         await response
           .json()
           .catch(() => ({}))
-
       if (
         !response.ok ||
         !data?.success
@@ -1719,24 +2092,25 @@ export default function DeliveryStorePage({
             'Unable to place order.'
         )
       }
-
+      if (data.customerAccountLinked !== true) {
+        // Never make a customer retry payment after a server reports success.
+        // A prior deployed API might not include the new status field.
+        console.warn('Delivery server did not confirm the account link. Please check My Orders.')
+      }
       if (
         data.paymentMethod ===
         'cod'
       ) {
         setCart({})
         setCheckoutOpen(false)
-
         goToTracking(
           data.order.orderCode,
           cleanMobile
         )
         return
       }
-
       const loaded =
         await loadRazorpay()
-
       if (
         !loaded ||
         !window.Razorpay
@@ -1745,7 +2119,6 @@ export default function DeliveryStorePage({
           'Unable to load Razorpay Checkout.'
         )
       }
-
       const paymentObject =
         new window.Razorpay({
           key: data.keyId,
@@ -1761,7 +2134,6 @@ export default function DeliveryStorePage({
             `Delivery order ${data.deliveryOrderCode}`,
           order_id:
             data.orderId,
-
           prefill: {
             name:
               cleanName,
@@ -1771,22 +2143,18 @@ export default function DeliveryStorePage({
             contact:
               cleanMobile,
           },
-
           notes: {
             delivery_order_code:
               data.deliveryOrderCode,
           },
-
           theme: {
             color: '#059669',
           },
-
           handler:
             async (
               razorpayResponse
             ) => {
               setPlacing(true)
-
               try {
                 const verifyResponse =
                   await fetch(
@@ -1813,14 +2181,12 @@ export default function DeliveryStorePage({
                         ),
                     }
                   )
-
                 const verifyData =
                   await verifyResponse
                     .json()
                     .catch(
                       () => ({})
                     )
-
                 if (
                   !verifyResponse.ok ||
                   !verifyData?.success
@@ -1830,12 +2196,10 @@ export default function DeliveryStorePage({
                       'Payment verification failed.'
                   )
                 }
-
                 setCart({})
                 setCheckoutOpen(
                   false
                 )
-
                 goToTracking(
                   verifyData.orderCode,
                   cleanMobile
@@ -1847,7 +2211,6 @@ export default function DeliveryStorePage({
                   'Delivery payment verify error:',
                   verifyError
                 )
-
                 setMessage(
                   verifyError?.message ||
                     'Payment was received but could not be verified. Contact the store before paying again.'
@@ -1856,7 +2219,6 @@ export default function DeliveryStorePage({
                 setPlacing(false)
               }
             },
-
           modal: {
             ondismiss: () => {
               setPlacing(false)
@@ -1866,12 +2228,10 @@ export default function DeliveryStorePage({
             },
           },
         })
-
       paymentObject.on(
         'payment.failed',
         (failure) => {
           setPlacing(false)
-
           setMessage(
             failure?.error
               ?.description ||
@@ -1879,23 +2239,34 @@ export default function DeliveryStorePage({
           )
         }
       )
-
       paymentObject.open()
     } catch (placeError) {
       console.error(
         'Delivery checkout error:',
         placeError
       )
-
-      setMessage(
-        placeError?.message ||
-          'Unable to place order.'
-      )
-
+      if (String(placeError?.message || '').includes('PLATFORM_FEE_CHANGED_REVIEW_TOTAL')) {
+        try {
+          const { data: quoteData } = await supabase.rpc(
+            'get_public_delivery_platform_fee_quote',
+            { p_restaurant_code: restaurantCode }
+          )
+          if (quoteData?.success) {
+            setPlatformFeeQuote({
+              loaded: true,
+              customerAmount: Math.max(0, Number(quoteData.customerAmount || 0)),
+            })
+          }
+        } catch (refreshError) {
+          console.warn('Delivery fee quote refresh warning:', refreshError)
+        }
+        setMessage('Platform fee changed. Review the updated total and place the order again.')
+      } else {
+        setMessage(placeError?.message || 'Unable to place order.')
+      }
       setPlacing(false)
     }
   }
-
   if (loading) {
     return (
       <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] px-3 py-6 text-neutral-950 sm:px-4 sm:py-10">
@@ -1940,7 +2311,7 @@ export default function DeliveryStorePage({
   }
 
   return (
-    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] pb-[calc(8rem+env(safe-area-inset-bottom))] text-neutral-950">
+    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f7f7f5] pb-[calc(12rem+env(safe-area-inset-bottom))] text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-5xl px-3 pb-3 sm:px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
@@ -1985,6 +2356,15 @@ export default function DeliveryStorePage({
 
               <button
                 type="button"
+                onClick={openCustomerAccount}
+                className="flex h-10 shrink-0 items-center rounded-xl border border-neutral-200 bg-white px-2.5 text-[10px] font-black text-neutral-800 shadow-sm"
+                aria-label={isCustomerSignedIn ? 'Customer account' : 'Sign in'}
+              >
+                {isCustomerSignedIn ? '👤' : 'Sign in'}
+              </button>
+
+              <button
+                type="button"
                 onClick={() =>
                   openAfterSales({
                     mobile:
@@ -2016,7 +2396,7 @@ export default function DeliveryStorePage({
 
               <button
                 type="button"
-                onClick={() => setCheckoutOpen(true)}
+                onClick={() => { setMessage(''); setCheckoutOpen(true) }}
                 className="relative flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-neutral-950 px-2.5 sm:px-3.5 text-[10px] font-black text-white shadow-sm transition active:scale-[0.98]"
                 aria-label="Open cart"
               >
@@ -2291,6 +2671,26 @@ export default function DeliveryStorePage({
                 ) ===
                 'packaged_product'
 
+              const reviewInfo =
+                productReviews[
+                  String(item.id)
+                ] || null
+              const averageRating =
+                Number(
+                  reviewInfo?.average_rating ||
+                    0
+                )
+              const reviewCount =
+                Number(
+                  reviewInfo?.review_count ||
+                    0
+                )
+              const recentReview =
+                Array.isArray(
+                  reviewInfo?.recent_reviews
+                )
+                  ? reviewInfo.recent_reviews[0]
+                  : null
               return (
                 <article
                   key={item.id}
@@ -2364,6 +2764,39 @@ export default function DeliveryStorePage({
                       </p>
                     )}
 
+                    {reviewCount > 0 && (
+                      <div className="mt-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full bg-amber-50 px-2 py-1 text-[9px] font-black text-amber-700">
+                            ★ {averageRating.toFixed(1)}
+                          </span>
+                          <span className="text-[9px] font-bold text-neutral-400">
+                            {reviewCount}{' '}
+                            verified{' '}
+                            {reviewCount === 1
+                              ? 'review'
+                              : 'reviews'}
+                          </span>
+                        </div>
+                        {recentReview?.review && (
+                          <div className="mt-2 rounded-xl bg-neutral-50 px-3 py-2">
+                            <p className="line-clamp-2 text-[10px] leading-4 text-neutral-600">
+                              “{recentReview.review}”
+                            </p>
+                            <p className="mt-1 text-[8px] font-black text-neutral-400">
+                              {recentReview.customer_name ||
+                                'Verified customer'}{' '}
+                              ·{' '}
+                              {Number(
+                                recentReview.rating ||
+                                  0
+                              )}{' '}
+                              ★
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {stock.tracked && (
                       <div
                         className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[9px] font-black ${
@@ -2464,7 +2897,7 @@ export default function DeliveryStorePage({
       </div>
 
       {cartCount > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 px-2 sm:px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="fixed inset-x-0 bottom-[72px] z-40 px-2 sm:px-3">
           <div className="mx-auto flex max-w-2xl items-center gap-3 rounded-[22px] border border-neutral-800 bg-neutral-950 p-2.5 pl-4 text-white shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
             <div className="min-w-0 flex-1">
               <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
@@ -2480,7 +2913,7 @@ export default function DeliveryStorePage({
 
             <button
               type="button"
-              onClick={() => setCheckoutOpen(true)}
+              onClick={() => { setMessage(''); setCheckoutOpen(true) }}
               className="flex h-12 shrink-0 items-center gap-2 rounded-2xl bg-emerald-500 px-5 text-xs font-black text-white shadow-sm transition active:scale-[0.98]"
             >
               View cart
@@ -2490,6 +2923,11 @@ export default function DeliveryStorePage({
         </div>
       )}
 
+      <DeliveryCustomerSupportChat
+        restaurantCode={restaurantCode}
+        onReviewSubmitted={loadProductReviews}
+        hideLauncher
+      />
       {afterSalesOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-0 backdrop-blur-[3px] sm:items-center sm:p-4">
           <div className="max-h-[94dvh] w-full min-w-0 max-w-xl overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:rounded-[30px]">
@@ -3085,140 +3523,67 @@ export default function DeliveryStorePage({
           <div className="max-h-[92dvh] w-full min-w-0 max-w-md overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:rounded-[30px]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">
-                  Delivery Tracking
-                </p>
-
-                <h2 className="mt-1 text-xl font-black text-neutral-950">
-                  Find orders by mobile
-                </h2>
-
-                <p className="mt-1 text-xs leading-5 text-neutral-500">
-                  Enter the mobile number used while placing the order. Your recent Delivery orders will appear below.
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">Delivery Tracking</p>
+                <h2 className="mt-1 text-xl font-black text-neutral-950">My Orders</h2>
+                <p className="mt-1 text-xs leading-5 text-neutral-500">Your orders across Digital Dine-In delivery stores.</p>
+                {trackingAccountEmail ? (
+                  <p className="mt-2 break-all text-[11px] font-semibold text-emerald-700">Signed in as {trackingAccountEmail}</p>
+                ) : null}
+              </div>
+              <button type="button" onClick={() => setTrackingOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-sm font-black text-neutral-600" aria-label="Close order tracking">✕</button>
+            </div>
+            {trackingLoading ? (
+              <p className="mt-5 rounded-xl bg-neutral-50 px-4 py-5 text-center text-xs font-bold text-neutral-600">Loading your orders…</p>
+            ) : null}
+            {!trackingLoading && trackingError ? (
+              <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold leading-5 text-red-700">{trackingError}</div>
+            ) : null}
+            {trackingAccountUnauthorized ? (
+              <button type="button" onClick={() => router.push(`/delivery/login?next=${encodeURIComponent(`/delivery/${restaurantCode}`)}`)} className="mt-4 w-full rounded-xl bg-emerald-600 px-5 py-4 text-sm font-black text-white">Sign in</button>
+            ) : null}
+            {!trackingLoading && !trackingError && trackingOrders.length === 0 ? (
+              <div className="mt-5 rounded-2xl border border-neutral-200 bg-neutral-50 p-5 text-center">
+                <p className="text-sm font-black text-neutral-900">No linked orders found</p>
+                <p className="mt-2 text-xs leading-5 text-neutral-500">
+                  {trackingAccountType === 'google'
+                    ? 'No orders belong to this signed-in Google account. Check the Google email shown above against the account used at checkout. Orders linked to a different account cannot be shown here.'
+                    : otherStoreOrderCount > 0
+                      ? `Your mobile/PIN session has no linked orders at this store. ${otherStoreOrderCount} order(s) are linked at other stores, which require their own store session.`
+                      : 'No orders are linked to this verified delivery session yet. Previous orders need verified recovery.'}
                 </p>
               </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTrackingOpen(false)
-                  setTrackingError('')
-                  setTrackingOrders([])
-                }}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-sm font-black text-neutral-600"
-                aria-label="Close order tracking"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={submitTracking} className="mt-5 space-y-4">
-              <label className="block">
-                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                  Mobile Number
-                </span>
-
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  value={trackingMobile}
-                  onChange={(event) => {
-                    setTrackingMobile(digits(event.target.value, 10))
-                    setTrackingOrders([])
-                    setTrackingError('')
-                  }}
-                  placeholder="10-digit mobile number"
-                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:bg-white"
-                />
-              </label>
-
-              {trackingError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
-                  {trackingError}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={trackingLoading || trackingMobile.length !== 10}
-                className="w-full rounded-xl bg-emerald-600 px-5 py-4 text-sm font-black text-white disabled:opacity-50"
-              >
-                {trackingLoading ? 'Finding Orders...' : 'Find My Orders'}
-              </button>
-            </form>
-
+            ) : null}
             {trackingOrders.length > 0 && (
               <div className="mt-5 space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                  Recent Orders
-                </p>
-
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Recent Orders</p>
                 {trackingOrders.map((order) => (
-                  <button
-                    key={order.order_code}
-                    type="button"
-                    onClick={() => {
-                      setTrackingOpen(false)
-                      goToTracking(order.order_code, trackingMobile)
-                    }}
-                    className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50/50"
-                  >
+                  <button key={order.order_code} type="button" onClick={() => {
+                    setTrackingOpen(false)
+                    const trackingStore = String(order.restaurant_code || restaurantCode)
+                    router.push(`/delivery/${encodeURIComponent(trackingStore)}/track/${encodeURIComponent(order.order_code)}`)
+                  }} className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50/50">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-mono text-xs font-black text-neutral-900">
-                          {order.order_code}
-                        </p>
-                        <p className="mt-1 text-[10px] text-neutral-500">
-                          {order.created_at
-                            ? new Date(order.created_at).toLocaleString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : ''}
-                        </p>
+                        <p className="font-mono text-xs font-black text-neutral-900">{order.order_code}</p>
+                        <p className="mt-1 text-[10px] text-neutral-500">{order.created_at ? new Date(order.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                        {order.restaurant_code ? (<p className="mt-1 text-[10px] font-semibold text-neutral-600">{order.restaurant_name || 'Delivery store'} · {order.restaurant_code}</p>) : null}
                       </div>
-
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[9px] font-black uppercase text-emerald-700">
-                        {String(order.order_status || '').replaceAll('_', ' ')}
-                      </span>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[9px] font-black uppercase text-emerald-700">{String(order.order_status || '').replaceAll('_', ' ')}</span>
                     </div>
-
                     <div className="mt-3 flex items-center justify-between text-xs">
-                      <span className="text-neutral-500">
-                        {order.driver_assigned ? 'Driver assigned' : 'Preparing dispatch'}
-                      </span>
-                      <span className="font-black text-neutral-900">
-                        {money(order.total_amount)}
-                      </span>
+                      <span className="text-neutral-500">{order.driver_assigned ? 'Driver assigned' : 'Preparing dispatch'}</span>
+                      <span className="font-black text-neutral-900">{money(order.total_amount)}</span>
                     </div>
                   </button>
                 ))}
               </div>
             )}
-
-            <button
-              type="button"
-              onClick={() => {
-                setTrackingOpen(false)
-                openAfterSales({
-                  mobile:
-                    trackingMobile,
-                })
-              }}
-              className="mt-4 w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-black text-violet-700"
-            >
-              ↩ Returns · Replacement · Refund
-            </button>
-
-            <p className="mt-4 text-[10px] leading-5 text-neutral-500">
-              Order progress refreshes every 1 minute on the tracking page.
-            </p>
+            <button type="button" onClick={loadAccountOrders} disabled={trackingLoading} className="mt-4 w-full rounded-xl border border-neutral-200 bg-white px-5 py-3 text-xs font-bold text-neutral-900 disabled:opacity-50">Refresh orders</button>
+            <button type="button" onClick={() => { setTrackingOpen(false); openAfterSales({ mobile: mobileCustomer?.mobile || trackingMobile }) }} className="mt-4 w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-black text-violet-700">↩ Existing Returns · Replacements · Refunds</button>
+            <p className="mt-3 text-xs text-neutral-500">For questions, use the Help tab to chat with your store Manager.</p>
           </div>
         </div>
       )}
-
       {checkoutOpen && (
         <div className="fixed inset-0 z-50 flex items-end bg-black/55 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-5">
           <div className="max-h-[94dvh] w-full min-w-0 overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-5 shadow-2xl sm:max-w-2xl sm:rounded-[30px]">
@@ -3378,6 +3743,12 @@ export default function DeliveryStorePage({
                 </>
               )}
 
+              {previewPlatformFee > 0 && (
+                <BillRow
+                  label="Digital Dine-In Platform Fee"
+                  value={money(previewPlatformFee)}
+                />
+              )}
               <div className="mt-3 flex items-center justify-between border-t border-neutral-200 pt-3 text-sm font-black">
                 <span>Estimated Total</span>
                 <span>{money(previewTotal)}</span>
@@ -3502,6 +3873,21 @@ export default function DeliveryStorePage({
                     </button>
                   </div>
 
+                  <div className="mt-4 rounded-2xl border border-neutral-200 bg-white p-3">
+                    <p className="mb-2 text-xs font-black text-neutral-800">Or select a saved delivery address</p>
+                    <DeliveryAddressBook
+                      compact
+                      destination={{
+                        latitude: checkout.latitude,
+                        longitude: checkout.longitude,
+                        source: locationConfirmed ? 'saved' : 'manual',
+                        addressLine1: checkout.addressLine1,
+                        city: checkout.city,
+                      }}
+                      onUseLocation={selectSavedAddressAtCheckout}
+                      onUseCurrentGps={chooseLiveLocation}
+                    />
+                  </div>
                   <div className="mt-4">
                     <DeliveryLocationMap
                       latitude={checkout.latitude}
@@ -3809,6 +4195,90 @@ export default function DeliveryStorePage({
           </div>
         </div>
       )}
+      <nav className="fixed inset-x-0 bottom-0 z-[55] border-t border-neutral-200 bg-white/95 backdrop-blur-xl" aria-label="Delivery application navigation">
+        <div className="mx-auto grid max-w-md grid-cols-5 gap-1 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-neutral-800"><span className="text-xl">⌂</span><span className="text-[10px] font-bold">Home</span></button>
+          <button type="button" onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); document.querySelector('input[placeholder="Search food, drinks or categories"]')?.focus() }} className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-emerald-700"><span className="text-xl">⌕</span><span className="text-[10px] font-bold">Search</span></button>
+          <button type="button" onClick={openCustomerOrders} className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-neutral-800"><span className="text-xl">▣</span><span className="text-[10px] font-bold">Orders</span></button>
+          <button type="button" onClick={() => window.dispatchEvent(new Event('digitaldine:open-help-centre'))} className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-neutral-800"><span className="text-xl">?</span><span className="text-[10px] font-bold">Help</span></button>
+          <button type="button" onClick={openCustomerAccount} className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-neutral-800"><span className="text-xl">♙</span><span className="text-[10px] font-bold">{isCustomerSignedIn ? 'Account' : 'Sign in'}</span></button>
+        </div>
+      </nav>
+      {accountOpen && isCustomerSignedIn ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 backdrop-blur-[2px] sm:items-center sm:p-4">
+          <button
+            type="button"
+            aria-label="Close account"
+            onClick={() => setAccountOpen(false)}
+            className="absolute inset-0"
+          />
+          <section className="relative z-10 w-full max-w-md rounded-t-[30px] bg-white p-5 shadow-2xl sm:rounded-[30px]">
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200 sm:hidden" />
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-emerald-50 text-2xl">
+                {customerUser && customerProfile?.avatar_url ? (
+                  <img
+                    src={customerProfile.avatar_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  '👤'
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-600">
+                  Delivery Account
+                </p>
+                <h2 className="mt-1 truncate text-xl font-black">
+                  {mobileCustomer?.name ||
+                    customerProfile?.full_name ||
+                    customerUser?.user_metadata?.full_name ||
+                    customerUser?.email?.split('@')?.[0] ||
+                    'Customer'}
+                </h2>
+                <p className="mt-1 truncate text-xs font-semibold text-neutral-500">
+                  {mobileCustomer?.mobile
+                    ? `Mobile + PIN · +91 ${mobileCustomer.mobile}`
+                    : customerProfile?.email || customerUser?.email || ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAccountOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100 text-xs font-black text-neutral-600"
+              >
+                ✕
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAccountOpen(false)
+                openTracking()
+              }}
+              className="mt-5 flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-left"
+            >
+              <span>
+                <span className="block text-sm font-black">My Orders</span>
+                <span className="mt-1 block text-[10px] font-semibold text-neutral-500">
+                  View and track your Delivery orders
+                </span>
+              </span>
+              <span className="text-lg">📦</span>
+            </button>
+            <button
+              type="button"
+              onClick={signOutDeliveryCustomer}
+              disabled={customerAuthLoading}
+              className="mt-3 w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-3.5 text-sm font-black text-red-700 disabled:opacity-50"
+            >
+              {customerAuthLoading ? 'Signing Out...' : 'Sign Out'}
+            </button>
+          </section>
+        </div>
+      ) : null}
     </main>
   )
 }

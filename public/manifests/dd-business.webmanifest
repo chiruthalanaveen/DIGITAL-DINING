@@ -1,0 +1,16 @@
+{
+  "id": "/dd-business",
+  "name": "DD Business - Digital Dine-In",
+  "short_name": "DD Business",
+  "description": "Restaurant and staff management for Digital Dine-In",
+  "start_url": "/dd-business?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f6fa",
+  "theme_color": "#151b3e",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/dd-apps/business-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/dd-apps/business-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

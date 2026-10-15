@@ -3,8 +3,9 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
-import DeliveryAddressBook from '@/app/components/DeliveryAddressBook'
+import DeliverySavedAddressPicker from '@/app/components/DeliverySavedAddressPicker'
+import DeliveryStoreExperience from '@/app/components/DeliveryStoreExperience'
+import '@/app/components/delivery-green-market.css'
 
 // Customer's selected delivery destination. It is not proof of GPS accuracy;
 // checkout still confirms the actual address, location pin and delivery radius.
@@ -148,14 +149,48 @@ function saveDestination(location) {
   }
 }
 
+const DD_CATEGORIES = [
+  { id: 'food', icon: '🍲', title: 'Food', subtitle: 'Fresh meals', tint: 'peach' },
+  { id: 'groceries', icon: '🛒', title: 'Groceries', subtitle: 'Daily essentials', tint: 'mint' },
+  { id: 'fruits', icon: '🍎', title: 'Fruits', subtitle: 'Naturally good', tint: 'rose' },
+  { id: 'vegetables', icon: '🥦', title: 'Vegetables', subtitle: 'Farm fresh', tint: 'lime' },
+]
+
+function DDIcon({ name, size = 20 }) {
+  const icons = {
+    home: <><path d="m3 10 9-7 9 7v10H3z" /><path d="M9 20v-7h6v7" /></>,
+    pin: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></>,
+    bag: <><rect x="4" y="7" width="16" height="14" rx="2" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    arrow: <><path d="M5 12h14m-6-6 6 6-6 6" /></>,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l4 2" /></>,
+    user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-5 16-5 16 0" /></>,
+    gps: <><circle cx="12" cy="12" r="6" /><path d="M12 2v4m0 12v4M2 12h4m12 0h4" /></>,
+    spark: <path d="m12 2 2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2Z" />,
+    refresh: <><path d="M3 12a9 9 0 0 1 15-6l2 2" /><path d="M20 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6l-2-2" /><path d="M4 21v-5h5" /></>,
+  }
+  return <svg width={size} height={size} viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[name] || icons.bag}</svg>
+}
+
+function storePicture(store) {
+  const uri = String(store?.banner_url ?? store?.bannerUrl ?? store?.logo_url ?? store?.logoUrl ?? '').trim()
+  return /^https:\/\//i.test(uri) ? uri : ''
+}
+
 function DeliveryCustomerHomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const forceChoose = searchParams?.get('choose') === '1'
+  const requestedStoreCode = String(searchParams?.get('store') || '').trim()
+  const inlineStoreCode = VALID_STORE_CODE.test(requestedStoreCode) ? requestedStoreCode : ''
+  const requestedStoreView = ['orders', 'account'].includes(searchParams?.get('view')) ? searchParams.get('view') : ''
+  const hasVisitedStoreRef = useRef(false)
   const requestSequenceRef = useRef(0)
   const mapOpenRef = useRef(false)
+  const hasSelectedDestinationRef = useRef(false)
 
   const [stage, setStage] = useState('loading')
+  const [initialAddressResolved, setInitialAddressResolved] = useState(false)
   const [message, setMessage] = useState('Detecting your current location…')
   const [error, setError] = useState('')
   const [destination, setDestination] = useState(null)
@@ -167,7 +202,63 @@ function DeliveryCustomerHomeContent() {
   const [longitudeInput, setLongitudeInput] = useState('')
   const [mapError, setMapError] = useState('')
   const [locating, setLocating] = useState(false)
+  const [storeSearch, setStoreSearch] = useState('')
+  const [accountLabel, setAccountLabel] = useState('Guest')
+  const [categoryChoice, setCategoryChoice] = useState('')
+  const [lastStoreCode, setLastStoreCode] = useState('')
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('dd_delivery_last_store_code_v1') || localStorage.getItem('digitaldine_delivery_last_store_code') || ''
+      if (VALID_STORE_CODE.test(stored)) setLastStoreCode(stored)
+    } catch { /* Browser storage is optional. */ }
+  }, [])
+  useEffect(() => {
+    let active = true
+    setAccountLabel('Guest')
+    const loadLabel = async () => {
+      // Same precedence as the store and My Orders APIs: a verified mobile
+      // session for the last store overrides a stale Google browser session.
+      if (VALID_STORE_CODE.test(lastStoreCode)) {
+        try {
+          const response = await fetch(`/api/delivery/customer/session?restaurantCode=${encodeURIComponent(lastStoreCode)}`, { credentials: 'same-origin', cache: 'no-store' })
+          const payload = await response.json().catch(() => ({}))
+          if (!active) return
+          if (response.ok && payload?.success === true && payload?.accountType === 'mobile' && payload.customer?.name) {
+            setAccountLabel(String(payload.customer.name))
+            return
+          }
+        } catch { /* Optional session lookup; do not guess an identity. */ }
+      }
+      const { data, error } = await supabase.auth.getUser().catch(() => ({ data: null, error: true }))
+      if (!active || error) return
+      const user = data?.user
+      if (user) setAccountLabel(String(user.user_metadata?.full_name || user.email?.split('@')[0] || 'Customer'))
+    }
+    void loadLabel()
+    return () => { active = false }
+  }, [lastStoreCode])
   const rankedStores = useMemo(() => stores, [stores])
+  const visibleStores = useMemo(() => rankedStores.filter((item, index) => storeName(item.store, index).toLowerCase().includes(storeSearch.trim().toLowerCase())), [rankedStores, storeSearch])
+  const activeCategory = DD_CATEGORIES.find((row) => row.id === categoryChoice)
+
+  const backToMarketplace = useCallback(() => {
+    hasVisitedStoreRef.current = true
+    setOpeningStore('')
+    if (stores.length) setStage('ready')
+    // choose=1 intentionally prevents auto-opening the only eligible store again.
+    router.push('/delivery?choose=1', { scroll: false })
+  }, [router, stores.length])
+
+  const openLastStoreView = useCallback((view = '') => {
+    if (!VALID_STORE_CODE.test(lastStoreCode)) {
+      router.push('/delivery/login?next=%2Fdelivery')
+      return
+    }
+    hasVisitedStoreRef.current = true
+    const suffix = view ? `&view=${encodeURIComponent(view)}` : ''
+    router.push(`/delivery?store=${encodeURIComponent(lastStoreCode)}${suffix}`, { scroll: false })
+  }, [lastStoreCode, router])
+
 
   const openStore = useCallback((item) => {
     const code = item?.code || restaurantCode(item?.store || item)
@@ -177,7 +268,12 @@ function DeliveryCustomerHomeContent() {
       return
     }
     setOpeningStore(code)
-    router.push(`/delivery/${encodeURIComponent(code)}`)
+    try { sessionStorage.setItem('dd_delivery_last_store_code_v1', code); localStorage.setItem('digitaldine_delivery_last_store_code', code) } catch { /* optional */ }
+    hasVisitedStoreRef.current = true
+    // Blinkit-like in-app navigation: /delivery stays mounted; only the
+    // selected store view changes. Back restores the nearby-store list.
+    window.scrollTo({ top: 0, behavior: 'instant' })
+    router.push(`/delivery?store=${encodeURIComponent(code)}`, { scroll: false })
   }, [router])
 
   const discoverStores = useCallback(async (point) => {
@@ -223,7 +319,7 @@ function DeliveryCustomerHomeContent() {
       const hasAccount = Boolean(authResult.data?.user?.id)
       if (requestSequenceRef.current !== sequence) return
       const explicitDestination = point?.source === 'saved' || point?.source === 'manual'
-      if (eligible.length === 1 && !forceChoose && (!hasAccount || explicitDestination)) {
+      if (eligible.length === 1 && !forceChoose && !hasVisitedStoreRef.current && !inlineStoreCode && (!hasAccount || explicitDestination)) {
         setStage('redirecting')
         setMessage('Opening the available delivery store…')
         openStore(eligible[0])
@@ -236,7 +332,7 @@ function DeliveryCustomerHomeContent() {
       setError(lookupError?.message || 'We could not load nearby stores.')
       setStage('error')
     }
-  }, [forceChoose, openStore])
+  }, [forceChoose, inlineStoreCode, openStore])
 
   const applyDestination = useCallback((point) => {
     const parsed = parsePoint(point?.latitude, point?.longitude)
@@ -262,6 +358,7 @@ function DeliveryCustomerHomeContent() {
         recipientMobile: point.recipientMobile,
       } : {}),
     }
+    hasSelectedDestinationRef.current = true
     setDestination(next)
     saveDestination(next)
     setMapError('')
@@ -300,7 +397,7 @@ function DeliveryCustomerHomeContent() {
         if (requestSequenceRef.current !== sequence) return
         setLocating(false)
         // Do not close the recipient picker if the initial GPS returns late.
-        if (mapOpenRef.current) return
+        if (mapOpenRef.current || hasSelectedDestinationRef.current) return
         applyDestination(location)
       },
       (gpsError) => {
@@ -313,10 +410,22 @@ function DeliveryCustomerHomeContent() {
   }, [applyDestination, requestGps])
 
   useEffect(() => {
+    if (inlineStoreCode || hasSelectedDestinationRef.current || !initialAddressResolved) return undefined
     detectCurrentGps()
     return () => { requestSequenceRef.current += 1 }
-    // In React StrictMode development this effect re-runs; stale callbacks are ignored.
-  }, [detectCurrentGps])
+    // Avoid invalidating in-flight nearby-store requests on GPS state changes.
+  }, [detectCurrentGps, inlineStoreCode, initialAddressResolved])
+
+  const previousEmbeddedStoreRef = useRef(inlineStoreCode)
+  useEffect(() => {
+    const previous = previousEmbeddedStoreRef.current
+    previousEmbeddedStoreRef.current = inlineStoreCode
+    if (previous && !inlineStoreCode) {
+      hasVisitedStoreRef.current = true
+      setOpeningStore('')
+      if (stores.length) setStage('ready')
+    }
+  }, [inlineStoreCode, stores.length])
 
   const openMap = () => {
     // If permission is denied, the map can still be used for manual selection.
@@ -365,105 +474,89 @@ function DeliveryCustomerHomeContent() {
     )
   }
 
+  // The store renders INSIDE the /delivery route without iframe or redirect.
+  // Its cart/payment/account state is owned by the original store component.
+  if (inlineStoreCode) {
+    return (
+      <DeliveryStoreExperience
+        key={inlineStoreCode}
+        restaurantCode={inlineStoreCode}
+        initialView={requestedStoreView}
+        onBackToStores={backToMarketplace}
+      />
+    )
+  }
+
   return (
-    <main className="min-h-[100dvh] bg-[#f5f7f6] text-slate-950">
-      <div className="mx-auto min-h-[100dvh] w-full max-w-[540px] px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
-        {/* Customer account address book (GPS + saved address + recipient). */}
-        <DeliveryAddressBook
-          destination={destination}
-          onUseLocation={applyDestination}
-          onUseCurrentGps={detectCurrentGps}
-          onOpenMap={openMap}
-        />
-
-        {stage === 'loading' || stage === 'redirecting' ? (
-          <section className="mt-5 rounded-[24px] border border-slate-200 bg-white p-7 text-center shadow-sm" aria-live="polite">
-            <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600" role="status" aria-label="Loading" />
-            <p className="mt-4 text-sm font-semibold text-slate-600">{message}</p>
-          </section>
-        ) : null}
-
-        {stage === 'error' || stage === 'empty' ? (
-          <section className="mt-5 rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm" aria-live="polite">
-            <h1 className="text-lg font-black text-slate-950">{stage === 'empty' ? 'No delivery stores found' : 'Unable to find stores'}</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{stage === 'empty' ? 'No open, approved and eligible delivery store currently serves this location. Try another delivery pin.' : error}</p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button type="button" onClick={openMap} className="rounded-xl bg-emerald-600 px-3 py-3 text-xs font-black text-white">Choose on map</button>
-              <button type="button" onClick={detectCurrentGps} disabled={locating} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs font-black text-slate-900 disabled:opacity-50">Retry GPS</button>
-            </div>
-          </section>
-        ) : null}
-
-        {stage === 'ready' ? (
-          <section className="mt-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h1 className="text-[20px] font-black tracking-tight text-slate-950">Available near you</h1>
-                <p className="mt-1 text-xs text-slate-500">{rankedStores.length} {rankedStores.length === 1 ? 'store' : 'stores'} deliver to this location</p>
-              </div>
-              <button type="button" onClick={detectCurrentGps} disabled={locating} className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-700 disabled:opacity-50">
-                {locating ? 'Locating…' : 'Use my GPS'}
-              </button>
-            </div>
-
-            <div className="grid gap-3">
-              {rankedStores.map((item, index) => {
-                const loading = openingStore === item.code
-                return (
-                  <button key={`${item.id}:${item.code}`} type="button" onClick={() => openStore(item)} disabled={loading}
-                    className="w-full rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-[0_5px_18px_rgba(15,23,42,0.04)] transition-colors hover:border-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500 disabled:opacity-60">
-                    <div className="flex items-center gap-4">
-                      <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px] bg-emerald-50 text-3xl" aria-hidden="true">🏬</span>
-                      <div className="min-w-0 flex-1">
-                        <h2 className="truncate text-[19px] font-black leading-6 text-slate-950">{storeName(item.store, index)}</h2>
-                        <p className="mt-1.5 text-sm font-semibold text-slate-500">{distanceLabel(item.distance)} <span aria-hidden="true">·</span> Store {item.code}</p>
-                        <p className="mt-2 text-xs text-emerald-700">Browse menu and order</p>
-                      </div>
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-xl text-white" aria-hidden="true">→</span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-        ) : null}
-      </div>
-
-      {mapOpen && (
-        <div className="fixed inset-0 z-[100] flex flex-col bg-white text-slate-950" role="dialog" aria-modal="true" aria-label="Choose delivery GPS location">
-          <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-            <button type="button" onClick={closeMap} aria-label="Close location picker" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 text-lg font-bold">←</button>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-base font-black">Choose delivery location</h2>
-              <p className="text-xs text-slate-500">For yourself or someone else</p>
-            </div>
-            <button type="button" onClick={useGpsInMap} disabled={locating} className="shrink-0 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 disabled:opacity-60">{locating ? 'Locating…' : '◎ My GPS'}</button>
+    <div className="dm-market dm-home">
+      <header className="dm-home-top">
+        <div className="dm-home-topinner">
+          <button type="button" className="dm-profile-avatar" onClick={() => openLastStoreView('account')} aria-label="Open account">
+            {accountLabel === 'Guest' ? '👤' : accountLabel.slice(0,1).toUpperCase()}
+          </button>
+          <div className="dm-greeting">
+            <small>Hi, {accountLabel.length > 21 ? `${accountLabel.slice(0,21)}…` : accountLabel}</small>
+            <strong className="dm-home-delivery-caption">Delivery from nearby stores</strong>
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden bg-slate-100">
-            {draftPin && (
-              <DeliveryLocationMap latitude={draftPin.latitude} longitude={draftPin.longitude} onChange={({ latitude, longitude }) => setPin(latitude, longitude)} height={Math.max(320, typeof window !== 'undefined' ? window.innerHeight - 365 : 430)} zoom={15} />
-            )}
-          </div>
-          <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-            <p className="text-xs font-bold text-slate-700">Tap or drag the pin to your recipient's location.</p>
-            <div className="mt-3 flex gap-2">
-              <label className="min-w-0 flex-1 text-[10px] font-bold text-slate-500">Latitude
-                <input type="text" inputMode="decimal" value={latitudeInput} onChange={(event) => setLatitudeInput(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900" placeholder="Latitude" />
-              </label>
-              <label className="min-w-0 flex-1 text-[10px] font-bold text-slate-500">Longitude
-                <input type="text" inputMode="decimal" value={longitudeInput} onChange={(event) => setLongitudeInput(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900" placeholder="Longitude" />
-              </label>
-              <button type="button" onClick={placeCoordinatePin} className="self-end rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700">Set pin</button>
-            </div>
-            {mapError && <p role="alert" className="mt-2 text-xs font-semibold text-red-600">{mapError}</p>}
-            <button type="button" onClick={() => applyDestination({ ...draftPin, source: 'manual' })} disabled={!draftPin} className="mt-3 w-full rounded-2xl bg-emerald-600 px-5 py-3.5 text-sm font-black text-white disabled:opacity-50">
-              Use this delivery location
-            </button>
-            <p className="mt-2 text-center text-[11px] text-slate-500">Confirm the full delivery address again at checkout.</p>
-          </div>
+
         </div>
-      )}
-    </main>
+        <div className="dm-home-address-select">
+          <DeliverySavedAddressPicker destination={destination} autoApplyDefault
+            onSelect={applyDestination} onReady={() => setInitialAddressResolved(true)} />
+        </div>
+        <div className="dm-home-search">
+          <DDIcon name="search" size={20} />
+          <input value={storeSearch} onChange={(event) => setStoreSearch(event.target.value)} placeholder="Search nearby stores" aria-label="Search nearby stores" />
+          {storeSearch && <button type="button" onClick={() => setStoreSearch('')} aria-label="Clear search">×</button>}
+        </div>
+      </header>
+
+      <main className="dm-home-body">
+        <section className="dm-promo" aria-label="Shop locally">
+          <div>
+            <span className="dm-promo-eyebrow">YOUR LOCAL MARKETPLACE</span>
+            <h1>Fresh finds,<br />right at your door.</h1>
+            <p>Explore food, groceries and everyday essentials from nearby stores.</p>
+            <button type="button" onClick={() => document.getElementById('dm-nearby-stores')?.scrollIntoView({ behavior: 'smooth' })}>Shop now <DDIcon name="arrow" size={15}/></button>
+          </div>
+          <div className="dm-promo-illustration" aria-hidden="true"><span>🥬</span><span>🥑</span><span>🍎</span><span>🥕</span></div>
+        </section>
+
+        <section className="dm-home-section" aria-label="Shopping categories">
+          <div className="dm-section-title"><h2>Categories</h2><button type="button" onClick={() => document.getElementById('dm-nearby-stores')?.scrollIntoView({ behavior: 'smooth' })}>See all</button></div>
+          <div className="dm-category-icons">{DD_CATEGORIES.map((entry) => (
+            <button type="button" key={entry.id} aria-pressed={categoryChoice===entry.id} className={`dm-category-option ${categoryChoice===entry.id ? 'selected' : ''}`}
+              onClick={() => { setCategoryChoice(entry.id); document.getElementById('dm-nearby-stores')?.scrollIntoView({ behavior: 'smooth' }) }}>
+              <span className="dm-category-bubble">{entry.icon}</span><span>{entry.title}</span>
+            </button>
+          ))}</div>
+        </section>
+
+        <section className="dm-home-section dm-nearby" id="dm-nearby-stores" aria-label="Available nearby stores">
+          <div className="dm-section-title"><h2>Nearby stores</h2></div>
+          {(stage === 'loading' || stage === 'redirecting') && <div className="dm-status" role="status"><span className="dm-spinner"/><strong>{stage === 'redirecting' ? 'Opening your store…' : 'Finding stores…'}</strong><p>{message}</p></div>}
+          {(stage === 'error' || stage === 'empty') && <div className="dm-status" role="alert"><span className="dm-status-emoji">📍</span><strong>{stage === 'empty' ? 'No eligible stores here' : 'Unable to find stores'}</strong><p>{stage === 'empty' ? 'Choose another delivery pin. Only approved stores with active plans and sufficient wallet balance appear.' : error}</p><div className="dm-status-actions"><button type="button" onClick={() => window.dispatchEvent(new Event('digitaldine:select-address'))}>Select address</button><button type="button" onClick={detectCurrentGps}>Retry GPS</button></div></div>}
+          {stage === 'ready' && <>
+            <p className="dm-count">{rankedStores.length} eligible {rankedStores.length===1 ? 'store' : 'stores'} in delivery range</p>
+            <div className="dm-store-grid">{visibleStores.map((item,index) => {
+              const picture=storePicture(item.store)
+              return <button type="button" className="dm-shop-card" key={`${item.id}:${item.code}`} disabled={openingStore===item.code} onClick={() => openStore(item)}>
+                <div className="dm-shop-photo">{picture ? <img src={picture} alt="" loading="lazy"/> : <span>🛍️</span>}<span className="dm-shop-open">● Open</span></div>
+                <div className="dm-shop-meta"><strong>{storeName(item.store,index)}</strong><span><DDIcon name="pin" size={13} /> {distanceLabel(item.distance)}</span><small>Store {item.code}</small></div>
+              </button>
+            })}</div>
+            {visibleStores.length===0 && <p className="dm-hint">No nearby stores match your search.</p>}
+          </>}
+        </section>
+      </main>
+      <nav className="dm-tabbar" aria-label="Delivery navigation">
+        <button type="button" className="active" onClick={() => window.scrollTo({top:0,behavior:'smooth'})}><DDIcon name="home"/><span>Home</span></button>
+        <button type="button" onClick={() => document.getElementById('dm-nearby-stores')?.scrollIntoView({behavior:'smooth'})}><DDIcon name="search"/><span>Explore</span></button>
+        <button type="button" className="dm-tab-main" onClick={() => lastStoreCode ? openLastStoreView() : document.getElementById('dm-nearby-stores')?.scrollIntoView({behavior:'smooth'})} aria-label="Open shopping store"><span className="dm-tab-main-bubble"><DDIcon name="bag"/></span><span>Shop</span></button>
+        <button type="button" onClick={() => openLastStoreView('orders')}><DDIcon name="clock"/><span>Orders</span></button>
+        <button type="button" onClick={() => openLastStoreView('account')}><DDIcon name="user"/><span>Profile</span></button>
+      </nav>
+    </div>
   )
 }
 
@@ -473,7 +566,7 @@ function DeliveryCustomerHomeContent() {
 // The fallback is intentionally free of navigation/search-param hooks.
 function DeliveryHomeLoadingFallback() {
   return (
-    <main className="min-h-[100dvh] bg-[#f5f7f6] text-slate-950">
+    <main className="min-h-[100dvh] bg-[#f6f8f6] text-slate-950">
       <div className="mx-auto min-h-[100dvh] w-full max-w-[540px] px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
         <section className="mt-5 rounded-[24px] border border-slate-200 bg-white p-7 text-center shadow-sm" role="status" aria-live="polite">
           <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600" aria-hidden="true" />

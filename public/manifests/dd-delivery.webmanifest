@@ -1,0 +1,16 @@
+{
+  "id": "/dd-delivery",
+  "name": "DD Delivery - Digital Dine-In",
+  "short_name": "DD Delivery",
+  "description": "Food and grocery delivery from nearby stores",
+  "start_url": "/dd-delivery?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f9f5",
+  "theme_color": "#174d3c",
+  "categories": ["food", "shopping", "lifestyle"],
+  "icons": [
+    { "src": "/dd-apps/delivery-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/dd-apps/delivery-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

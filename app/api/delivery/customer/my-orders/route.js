@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { createHash } from 'crypto'
+import { readDeliveryMobileSession } from '@/lib/server/deliveryCustomerMobileSession'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,7 +16,7 @@ function adminClient() {
 
 const fail = (status, message) => NextResponse.json(
   { success: false, message },
-  { status, headers: { 'Cache-Control': 'private, no-store' } }
+  { status, headers: { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie, Authorization' } }
 )
 
 function safeCode(value, max = 100) {
@@ -24,36 +24,29 @@ function safeCode(value, max = 100) {
   return /^[A-Za-z0-9_-]+$/.test(v) && v.length <= max ? v : ''
 }
 
-async function authenticatedIdentity(admin, request, restaurantId) {
-  // Verify Google/Supabase Auth using Supabase itself (never decode a JWT without verification).
-  const accessToken = String(request.headers.get('authorization') || '')
-    .match(/^Bearer\s+([^\s]+)$/i)?.[1] || ''
-  if (accessToken) {
-    const { data, error } = await admin.auth.getUser(accessToken)
-    if (error || !data?.user?.id) return null
-    return { kind: 'google', id: data.user.id, email: String(data.user.email || '') }
+async function authenticatedIdentity(admin, request, restaurantId, requestedAccountType) {
+  // Explicit selection determines WHICH credential is checked, not who the customer is.
+  // Never silently fall back from a missing Mobile/PIN login to an old Google session.
+  const mode = requestedAccountType || ''
+  if (!['', 'mobile', 'google'].includes(mode)) return null
+
+  // A mobile customer is limited to the exact delivery store where their
+  // cookie was issued. Their identity is verified server-side by token hash.
+  if (mode !== 'google') {
+    const mobileCustomer = await readDeliveryMobileSession(admin, request, restaurantId)
+    if (mobileCustomer?.id) {
+      return { kind: 'mobile', id: mobileCustomer.id, display: 'Mobile + PIN' }
+    }
+    if (mode === 'mobile') return null
   }
 
-  // Existing mobile+PIN accounts use 30-day, random 64-hex-character tokens
-  // stored hashed in delivery_customer_sessions. The login API may have put
-  // this token in an HttpOnly cookie. No mobile numbers or PINs are trusted.
-  const cookies = request.cookies.getAll()
-  const potentialTokens = cookies.map((cookie) => String(cookie.value || ''))
-    .filter((v) => /^[a-f0-9]{64}$/i.test(v)).slice(0, 8)
-  for (const raw of potentialTokens) {
-    const tokenHash = createHash('sha256').update(raw).digest('hex')
-    const { data: session, error } = await admin
-      .from('delivery_customer_sessions')
-      .select('customer_id, restaurant_id, expires_at')
-      .eq('token_hash', tokenHash)
-      .eq('restaurant_id', restaurantId)
-      .gt('expires_at', new Date().toISOString())
-      .maybeSingle()
-    if (!error && session?.customer_id) {
-      return { kind: 'mobile', id: session.customer_id }
-    }
-  }
-  return null
+  // Google is used ONLY when explicitly selected or no mobile session exists.
+  const accessToken = String(request.headers.get('authorization') || '')
+    .match(/^Bearer\s+([^\s]+)$/i)?.[1] || ''
+  if (!accessToken) return null
+  const { data, error } = await admin.auth.getUser(accessToken)
+  if (error || !data?.user?.id) return null
+  return { kind: 'google', id: data.user.id, email: String(data.user.email || '') }
 }
 
 export async function GET(request) {
@@ -62,6 +55,8 @@ export async function GET(request) {
     const restaurantCode = safeCode(url.searchParams.get('restaurantCode'), 80)
     const selectedOrderCode = url.searchParams.get('orderCode')
       ? safeCode(url.searchParams.get('orderCode'), 100) : ''
+    const requestedAccountType = String(url.searchParams.get('accountType') || '').toLowerCase()
+    if (!['', 'mobile', 'google'].includes(requestedAccountType)) return fail(400, 'Invalid account type.')
     const details = url.searchParams.get('details') === '1'
     // Google accounts can see orders across ALL delivery stores.
     // Order detail requests remain limited to their specific store.
@@ -79,7 +74,7 @@ export async function GET(request) {
     if (restaurantError) throw restaurantError
     if (!restaurant?.id) return fail(404, 'Delivery store not found.')
 
-    const identity = await authenticatedIdentity(admin, request, restaurant.id)
+    const identity = await authenticatedIdentity(admin, request, restaurant.id, requestedAccountType)
     if (!identity) return fail(401, 'Sign in to your delivery account to see your orders.')
 
     // A mobile/PIN login is store-scoped. Never expand it across other stores.
@@ -150,7 +145,7 @@ export async function GET(request) {
         created_at: row.created_at,
         driver_assigned: Boolean(row.driver_id),
       })),
-    }, { headers: { 'Cache-Control': 'private, no-store' } })
+    }, { headers: { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie, Authorization' } })
 
     // Reuse the EXISTING order-detail RPC and its live driver status fields.
     // Only request detail for orders we already proved this account owns.
@@ -171,7 +166,7 @@ export async function GET(request) {
       success: true,
       accountType: identity.kind,
       orders: result.filter(Boolean),
-    }, { headers: { 'Cache-Control': 'private, no-store' } })
+    }, { headers: { 'Cache-Control': 'private, no-store', 'Vary': 'Cookie, Authorization' } })
   } catch (error) {
     console.error('[DELIVERY MY ORDERS]', error)
     return fail(500, 'Unable to load account orders right now.')
