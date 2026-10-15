@@ -2386,7 +2386,7 @@ export default function DeliveryStoreExperience({
               <div><h1>{settings.store_name || restaurant.name || 'Delivery Store'}</h1>
                 <p><span className="dm-small-dot"/> {settings.is_open ? `Estimated ${settings.estimated_delivery_minutes || 45} min delivery` : 'Store closed'}</p>
               </div>
-              <button type="button" className="dm-store-account" onClick={openCustomerAccount} aria-label="Customer profile">♧</button>
+              <button type="button" className="dm-store-account" onClick={() => router.push('/delivery?view=account&choose=1', { scroll: false })} aria-label="Customer profile">♧</button>
             </div>
             {settings.description ? <p className="dm-store-description">{settings.description}</p> : null}
             {(settings.address || settings.city) && <p className="dm-store-address">⌖ {[settings.address,settings.city,settings.state].filter(Boolean).join(', ')}</p>}
@@ -3528,8 +3528,8 @@ export default function DeliveryStoreExperience({
         <button type="button" onClick={() => typeof onBackToStores === 'function' ? onBackToStores() : router.push('/delivery?choose=1')}><DDMarketHomeIcon/><span>Home</span></button>
         <button type="button" onClick={() => { document.querySelector('.dm-store-searchline input')?.focus(); window.scrollTo({top:0,behavior:'smooth'}) }}><DDMarketSearchIcon/><span>Explore</span></button>
         <button type="button" className="dm-tab-main" onClick={() => {setMessage('');setCheckoutOpen(true)}} aria-label="Open cart"><span className="dm-tab-main-bubble"><DDMarketBagIcon/>{cartCount>0 && <i>{cartCount}</i>}</span><span>Cart</span></button>
-        <button type="button" onClick={openCustomerOrders}><DDMarketClockIcon/><span>Orders</span></button>
-        <button type="button" onClick={openCustomerAccount}><DDMarketUserIcon/><span>Profile</span></button>
+        <button type="button" onClick={() => router.push('/delivery?view=orders&choose=1', { scroll: false })}><DDMarketClockIcon/><span>Orders</span></button>
+        <button type="button" onClick={() => router.push('/delivery?view=account&choose=1', { scroll: false })}><DDMarketUserIcon/><span>Profile</span></button>
       </nav>
       {accountOpen && isCustomerSignedIn ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 backdrop-blur-[2px] sm:items-center sm:p-4">

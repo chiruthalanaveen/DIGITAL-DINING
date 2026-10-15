@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DeliverySavedAddressPicker from '@/app/components/DeliverySavedAddressPicker'
 import DeliveryStoreExperience from '@/app/components/DeliveryStoreExperience'
+import DeliveryAccountCenter from '@/app/components/DeliveryAccountCenter'
 import '@/app/components/delivery-green-market.css'
 
 // Customer's selected delivery destination. It is not proof of GPS accuracy;
@@ -180,7 +181,9 @@ function storePicture(store) {
 function DeliveryCustomerHomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const forceChoose = searchParams?.get('choose') === '1'
+  const requestedHomeView = ['orders', 'account'].includes(searchParams?.get('view')) && !searchParams?.get('store')
+    ? searchParams.get('view') : ''
+  const forceChoose = searchParams?.get('choose') === '1' || Boolean(requestedHomeView)
   const requestedStoreCode = String(searchParams?.get('store') || '').trim()
   const inlineStoreCode = VALID_STORE_CODE.test(requestedStoreCode) ? requestedStoreCode : ''
   const requestedStoreView = ['orders', 'account'].includes(searchParams?.get('view')) ? searchParams.get('view') : ''
@@ -214,29 +217,30 @@ function DeliveryCustomerHomeContent() {
   }, [])
   useEffect(() => {
     let active = true
-    setAccountLabel('Guest')
     const loadLabel = async () => {
-      // Same precedence as the store and My Orders APIs: a verified mobile
-      // session for the last store overrides a stale Google browser session.
-      if (VALID_STORE_CODE.test(lastStoreCode)) {
-        try {
-          const response = await fetch(`/api/delivery/customer/session?restaurantCode=${encodeURIComponent(lastStoreCode)}`, { credentials: 'same-origin', cache: 'no-store' })
-          const payload = await response.json().catch(() => ({}))
-          if (!active) return
-          if (response.ok && payload?.success === true && payload?.accountType === 'mobile' && payload.customer?.name) {
-            setAccountLabel(String(payload.customer.name))
-            return
-          }
-        } catch { /* Optional session lookup; do not guess an identity. */ }
-      }
-      const { data, error } = await supabase.auth.getUser().catch(() => ({ data: null, error: true }))
-      if (!active || error) return
-      const user = data?.user
-      if (user) setAccountLabel(String(user.user_metadata?.full_name || user.email?.split('@')[0] || 'Customer'))
+      setAccountLabel('Guest')
+      try {
+        // Verify the same identity as the account overview: Mobile/PIN cookie
+        // is preferred even if a different Google session exists in the browser.
+        const { data } = await supabase.auth.getSession()
+        const token = data?.session?.access_token || ''
+        const response = await fetch('/api/delivery/customer/overview?summaryOnly=1', {
+          credentials: 'same-origin', cache: 'no-store',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (active && response.ok && payload.success === true && payload.account?.name) {
+          setAccountLabel(String(payload.account.name))
+        }
+      } catch { /* Profile label is optional; never guess an account identity. */ }
     }
     void loadLabel()
-    return () => { active = false }
-  }, [lastStoreCode])
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      // Schedule outside Supabase auth callback to avoid an auth-lock deadlock.
+      Promise.resolve().then(() => { if (active) void loadLabel() })
+    })
+    return () => { active = false; subscription?.unsubscribe() }
+  }, [requestedHomeView])
   const rankedStores = useMemo(() => stores, [stores])
   const visibleStores = useMemo(() => rankedStores.filter((item, index) => storeName(item.store, index).toLowerCase().includes(storeSearch.trim().toLowerCase())), [rankedStores, storeSearch])
   const activeCategory = DD_CATEGORIES.find((row) => row.id === categoryChoice)
@@ -250,13 +254,19 @@ function DeliveryCustomerHomeContent() {
   }, [router, stores.length])
 
   const openLastStoreView = useCallback((view = '') => {
-    if (!VALID_STORE_CODE.test(lastStoreCode)) {
-      router.push('/delivery/login?next=%2Fdelivery')
+    if (view === 'orders' || view === 'account') {
+      // Orders/Profile are global Delivery app tabs, not a store sub-page.
+      // The backend verifies the active identity (Mobile/PIN before Google).
+      hasVisitedStoreRef.current = true
+      router.push(`/delivery?view=${view}&choose=1`, { scroll: false })
       return
     }
-    hasVisitedStoreRef.current = true
-    const suffix = view ? `&view=${encodeURIComponent(view)}` : ''
-    router.push(`/delivery?store=${encodeURIComponent(lastStoreCode)}${suffix}`, { scroll: false })
+    if (VALID_STORE_CODE.test(lastStoreCode)) {
+      hasVisitedStoreRef.current = true
+      router.push(`/delivery?store=${encodeURIComponent(lastStoreCode)}`, { scroll: false })
+      return
+    }
+    document.getElementById('dm-nearby-stores')?.scrollIntoView({ behavior: 'smooth' })
   }, [lastStoreCode, router])
 
 
@@ -472,6 +482,15 @@ function DeliveryCustomerHomeContent() {
       (point) => { setLocating(false); setPin(point.latitude, point.longitude) },
       (gpsError) => { setLocating(false); setMapError(gpsError?.message || 'Unable to use GPS.') }
     )
+  }
+
+  // Orders and Profile are application-level screens. Do not mount a store
+  // to show these tabs, even when no store has ever been visited.
+  if (requestedHomeView) {
+    return <DeliveryAccountCenter
+      view={requestedHomeView}
+      onGoHome={backToMarketplace}
+    />
   }
 
   // The store renders INSIDE the /delivery route without iframe or redirect.

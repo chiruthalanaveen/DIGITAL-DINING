@@ -152,3 +152,48 @@
 .dm-home-delivery-caption { display: block; font-size: 12px; color: #d9ffe4; font-weight: 600; }
 .dm-nearby { padding-top: 8px; }
 .dm-nearby .dm-section-title { margin-bottom: 14px; }
+
+/* /delivery Home -> account-level Orders and Profile views; no store redirect. */
+.dm-account-shell { min-height:100dvh; background:#f8faf8; padding-bottom:100px; color:#18261e; }
+.dm-account-header { background:#04aa37; color:#fff; padding:max(19px,env(safe-area-inset-top)) 18px 24px; }
+.dm-account-header-row { max-width:760px; margin:auto; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.dm-account-header h1 { font-size:23px; font-weight:850; letter-spacing:-.6px; }
+.dm-account-header > p { max-width:760px; margin:7px auto 0; font-size:12px; color:#e3ffeb; }
+.dm-account-back { display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.18); color:#fff; border:1px solid rgba(255,255,255,.2); border-radius:13px; width:38px; height:38px; flex:none; cursor:pointer; }
+.dm-account-back:disabled { opacity:.5; }
+.dm-account-main { max-width:760px; margin:0 auto; padding:18px 14px 32px; }
+.dm-account-state { border:1px solid #e5eee8; background:#fff; border-radius:18px; padding:27px 17px; color:#526458; font-size:13px; text-align:center; line-height:1.55; }
+.dm-account-state strong { display:block; font-size:15px; color:#23382b; margin-bottom:5px; }
+.dm-account-state p { margin:5px 0 0; }
+.dm-account-error { color:#b42318; background:#fff7f6; }
+.dm-account-identity { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #e5eee8; border-radius:19px; padding:15px; box-shadow:0 5px 22px rgba(0,0,0,.03); }
+.dm-account-avatar { display:grid; place-items:center; height:49px; width:49px; border-radius:16px; background:#dcfce7; color:#058d33; font-size:23px; font-weight:800; flex:none; }
+.dm-account-name { min-width:0; display:grid; gap:4px; }
+.dm-account-name strong { color:#15251a; font-size:16px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+.dm-account-name span { color:#74857a; font-size:11px; overflow-wrap:anywhere; }
+.dm-account-switch { display:block; margin:10px auto 0; background:none; border:none; font-size:11px; font-weight:700; color:#028a32; text-decoration:underline; cursor:pointer; }
+.dm-account-section-title { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:25px 3px 12px; }
+.dm-account-section-title h2 { font-size:17px; font-weight:850; }
+.dm-account-section-title span { font-size:11px; color:#718075; }
+.dm-account-order { border:1px solid #e4e9e5; background:#fff; border-radius:18px; padding:15px; margin:10px 0; }
+.dm-account-order-top { display:flex; align-items:start; justify-content:space-between; gap:8px; }
+.dm-account-order-top strong { font-size:14px; }
+.dm-account-order-top span { font-size:9px; font-weight:800; color:#087d36; border-radius:99px; background:#e4faec; padding:6px 9px; text-transform:uppercase; text-align:center; }
+.dm-account-order-code { color:#849087; font-size:10px; margin:5px 0 12px; overflow-wrap:anywhere; }
+.dm-account-order-bottom { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:10px; border-top:1px solid #f0f2f0; font-size:12px; }
+.dm-account-order-bottom > span { color:#738277; }
+.dm-account-order-bottom > strong { color:#19281f; font-size:14px; }
+.dm-account-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:13px; justify-content:center; }
+.dm-account-actions button { border:1px solid #b8ebc8; background:#e8faed; border-radius:11px; padding:10px 13px; color:#078932; font-weight:750; font-size:11px; cursor:pointer; }
+.dm-account-order .dm-account-actions { justify-content:flex-start; }
+.dm-account-detail { margin-top:12px; padding:14px; border-radius:13px; background:#f6faf7; font-size:12px; color:#526257; display:grid; gap:8px; }
+.dm-account-detail p { margin:0; }
+.dm-account-detail-item { padding-top:7px; border-top:1px solid #e3ebe6; }
+.dm-account-card { border:1px solid #e3eae4; border-radius:18px; background:#fff; overflow:hidden; }
+.dm-account-card > div { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:14px 16px; border-bottom:1px solid #eff1ef; font-size:12px; }
+.dm-account-card > div:last-child { border:0; }
+.dm-account-card span { color:#738177; }
+.dm-account-card strong { max-width:66%; text-align:right; overflow-wrap:anywhere; }
+.dm-account-address { border:1px solid #e6eee8; border-radius:17px; padding:13px; background:#fff; }
+.dm-account-signout { margin-top:20px; border:1px solid #fecaca; background:#fff1f1; border-radius:13px; color:#ba2222; padding:14px; font-size:13px; width:100%; font-weight:800; cursor:pointer; }
+@media(min-width:760px) { .dm-account-main { padding-top:28px; } }
