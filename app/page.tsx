@@ -10,7 +10,7 @@ const CONTACT_EMAIL = 'digitaldining077@gmail.com'
 
 // Replace this with your actual support number.
 
-const SUPPORT_PHONE = '+91XXXXXXXXXX'
+const SUPPORT_PHONE = ''
 
 const SUPPORT_PHONE_LINK = SUPPORT_PHONE.replace(/[^\d+]/g, '')
 
@@ -52,13 +52,13 @@ const modules = [
 
     number: '02',
 
-    name: 'Delivery',
+    name: 'DD MART Delivery',
 
     eyebrow: 'Direct local delivery',
 
     description:
 
-      'Run your own Delivery storefront with inventory, packing, riders, payments, tracking, support and returns.',
+      'Sell through DD MART with a connected delivery storefront, inventory, packing, riders, payments, tracking, support and returns.',
 
     features: [
 
@@ -72,7 +72,7 @@ const modules = [
 
       'Minimum order delivery fee',
 
-      'Handling & packing charges',
+      'Transparent platform fees and packing charges',
 
       'Demand-based surge pricing',
 
@@ -92,234 +92,16 @@ const modules = [
 
   },
 
-  {
-
-    number: '03',
-
-    name: 'Resort',
-
-    eyebrow: 'Hospitality operations',
-
-    description:
-
-      'Manage room inventory and bookings beside Restaurant and Delivery from the same business platform.',
-
-    features: [
-
-      'Resort workspace',
-
-      'Room types & rooms',
-
-      'Booking management',
-
-      'Guest workflows',
-
-      'Owner / Manager visibility',
-
-      'Combined Restaurant + Resort operation',
-
-      'Separate payment handling where configured',
-
-    ],
-
-  },
 
 ]
 
 const featureItems = [
-
-  {
-
-    title: 'Restaurant Code Login',
-
-    text:
-
-      'Enter a 5-digit Restaurant Code and display only the portals included in the active subscription.',
-
-  },
-
-  {
-
-    title: 'Installable APP',
-
-    text:
-
-      'Digital Dine-In installs as a PWA and opens the dedicated mobile application area under /app.',
-
-  },
-
-  {
-
-    title: 'QR-first Ordering',
-
-    text:
-
-      'Guests scan the QR, browse the live menu, select Dine-In or Parcel and order from their phone.',
-
-  },
-
-  {
-
-    title: 'Role-based Portals',
-
-    text:
-
-      'Owner, Manager, Waiter, Kitchen, Packer and Delivery Boy access stays separated by role and plan.',
-
-  },
-
-  {
-
-    title: 'Inventory & Opening Stock',
-
-    text:
-
-      'Track barcode, opening stock, available stock, reserved stock, low-stock threshold and restocking.',
-
-  },
-
-  {
-
-    title: 'Barcode Packing',
-
-    text:
-
-      'Packer verifies packaged products before the order can be marked packed.',
-
-  },
-
-  {
-
-    title: 'Stock Protection',
-
-    text:
-
-      'Server-side stock reservation, consumption and release helps reduce overselling.',
-
-  },
-
-  {
-
-    title: 'Delivery Pricing Controls',
-
-    text:
-
-      'Minimum-order fee, handling charge, packing charge, CGST/SGST and demand-based surge pricing.',
-
-  },
-
-  {
-
-    title: 'Live Delivery Operations',
-
-    text:
-
-      'Automatic rider assignment, tracking, delivery proof and driver contact information.',
-
-  },
-
-  {
-
-    title: 'Customer Live Support',
-
-    text:
-
-      'Customers can contact the Manager through Live Support for order-related issues.',
-
-  },
-
-  {
-
-    title: 'Return Pickup Workflow',
-
-    text:
-
-      'Manager-approved returns create Delivery Boy pickup tasks before store verification and restocking.',
-
-  },
-
-  {
-
-    title: 'Billing & COD Reconciliation',
-
-    text:
-
-      'Owner and Manager can generate Delivery bills and reconcile rider COD cash handovers.',
-
-  },
-
-]
-
-const plans: Plan[] = [
-
-  {
-
-    code: 'restaurant_pro',
-
-    name: 'Restaurant',
-
-    price: '₹2,499',
-
-    sixMonths: '₹13,495',
-
-    annual: '₹23,990',
-
-    description:
-
-      'Complete Restaurant ordering and staff operations.',
-
-    features: [
-
-      'QR menu & table ordering',
-
-      'Dine-In & Parcel',
-
-      'Owner / Manager / Waiter / KDS',
-
-      'Restaurant Razorpay',
-
-      'GST billing & digital invoices',
-
-      'Offers, menu controls & reports',
-
-    ],
-
-  },
-
-  {
-
-    code: 'restaurant_resort_pro',
-
-    name: 'Restaurant + Resort',
-
-    price: '₹3,999',
-
-    sixMonths: '₹21,595',
-
-    annual: '₹38,390',
-
-    description:
-
-      'Restaurant and Resort operations together.',
-
-    features: [
-
-      'Everything in Restaurant',
-
-      'Resort workspace',
-
-      'Room types & rooms',
-
-      'Booking operations',
-
-      'Guest workflows',
-
-      'Combined visibility',
-
-    ],
-
-  },
-
+  { title: 'Effortless QR Ordering', text: 'A smooth digital menu and ordering experience for dine-in and takeaway guests.' },
+  { title: 'One Connected Workspace', text: 'Bring your owners, managers, kitchen and service teams together.' },
+  { title: 'Smart Inventory', text: 'Keep stock, product availability and packing workflows organized.' },
+  { title: 'Delivery, Simplified', text: 'Manage local orders, dispatch and delivery tracking with DD MART.' },
+  { title: 'Payments & Billing', text: 'Support secure checkout, billing records and COD reconciliation.' },
+  { title: 'Built for Your Business', text: 'Access the right tools for each team through dedicated business portals.' },
 ]
 
 type ContainerProps = {
@@ -332,17 +114,6 @@ type SectionHeadingProps = {
   title: string
   text?: string
   centered?: boolean
-}
-
-type Plan = {
-  code: string
-  name: string
-  price: string
-  sixMonths: string
-  annual: string
-  description: string
-  features: string[]
-  featured?: boolean
 }
 
 function Container({ children, className = '' }: ContainerProps) {
@@ -404,166 +175,6 @@ function SectionHeading({ eyebrow, title, text, centered = false }: SectionHeadi
       ) : null}
 
     </div>
-
-  )
-
-}
-
-function PlanCard({ plan }: { plan: Plan }) {
-
-  return (
-
-    <article
-
-      className={`relative flex h-full flex-col rounded-[28px] border bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg ${
-
-        plan.featured
-
-          ? 'border-orange-500 ring-1 ring-orange-100'
-
-          : 'border-neutral-200'
-
-      }`}
-
-    >
-
-      {plan.featured ? (
-
-        <span className="absolute -top-3 left-5 rounded-full bg-neutral-950 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white">
-
-          Popular
-
-        </span>
-
-      ) : null}
-
-      <div className="pt-1">
-
-        <h3 className="text-lg font-black tracking-tight text-neutral-950">
-
-          {plan.name}
-
-        </h3>
-
-        <p className="mt-2 min-h-12 text-[11px] leading-5 text-neutral-500">
-
-          {plan.description}
-
-        </p>
-
-      </div>
-
-      <div className="mt-5 border-y border-neutral-100 py-5">
-
-        <div className="flex items-end gap-1">
-
-          <span className="text-3xl font-black tracking-[-0.04em] text-neutral-950">
-
-            {plan.price}
-
-          </span>
-
-          <span className="pb-1 text-[9px] font-bold text-neutral-400">
-
-            / month
-
-          </span>
-
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-2">
-
-          <div className="rounded-xl bg-neutral-50 p-3">
-
-            <p className="text-[10px] font-black text-neutral-800">
-
-              {plan.sixMonths}
-
-            </p>
-
-            <p className="mt-1 text-[8px] font-bold text-neutral-400">
-
-              6 months
-
-            </p>
-
-          </div>
-
-          <div className="rounded-xl bg-neutral-50 p-3">
-
-            <p className="text-[10px] font-black text-neutral-800">
-
-              {plan.annual}
-
-            </p>
-
-            <p className="mt-1 text-[8px] font-bold text-neutral-400">
-
-              12 months
-
-            </p>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      <div className="mt-5 flex-1 space-y-2.5">
-
-        {plan.features.map((feature) => (
-
-          <div
-
-            key={feature}
-
-            className="flex items-start gap-2.5"
-
-          >
-
-            <span className="mt-[2px] flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[9px] font-black text-orange-600">
-
-              ✓
-
-            </span>
-
-            <span className="text-[10px] leading-5 text-neutral-600">
-
-              {feature}
-
-            </span>
-
-          </div>
-
-        ))}
-
-      </div>
-
-      <Link
-
-        href={`/register?plan=${encodeURIComponent(
-
-          plan.code
-
-        )}&offer=one-month-free`}
-
-        className={`mt-6 inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-[10px] font-black transition ${
-
-          plan.featured
-
-            ? 'bg-orange-500 text-neutral-950 hover:bg-orange-400'
-
-            : 'bg-neutral-950 text-white hover:bg-neutral-800'
-
-        }`}
-
-      >
-
-        Start 1 Month Free
-
-      </Link>
-
-    </article>
 
   )
 
@@ -683,40 +294,6 @@ export default function LandingPage() {
 
       `}</style>
 
-      {/* Offer */}
-
-      <div className="border-b border-orange-200 bg-orange-50">
-
-        <Container className="flex min-h-10 flex-col items-center justify-center gap-1 py-2 text-center sm:flex-row sm:gap-3">
-
-          <span className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-700">
-
-            New Customer Offer
-
-          </span>
-
-          <span className="text-[10px] font-bold text-neutral-700">
-
-            Get your first month free.
-
-          </span>
-
-          <Link
-
-            href="/register?offer=one-month-free"
-
-            className="text-[10px] font-black text-neutral-950 underline decoration-orange-400 underline-offset-4"
-
-          >
-
-            Claim offer
-
-          </Link>
-
-        </Container>
-
-      </div>
-
       {/* Header */}
 
       <header className="sticky top-0 z-50 border-b border-neutral-200/80 bg-[#f7f7f5]/95 backdrop-blur-xl">
@@ -747,7 +324,7 @@ export default function LandingPage() {
 
               <p className="hidden text-[8px] font-bold uppercase tracking-[0.14em] text-neutral-400 sm:block">
 
-                Restaurant · Delivery · Resort
+                Restaurant · DD MART
 
               </p>
 
@@ -875,7 +452,7 @@ export default function LandingPage() {
 
                 <br />
 
-                Delivery & Resort
+                DD MART Delivery
 
                 <br />
 
@@ -893,7 +470,7 @@ export default function LandingPage() {
 
                 inventory, direct Delivery, dispatch, payments, billing,
 
-                support and Resort workflows in one clean system.
+                support and connected business workflows in one clean system.
 
               </p>
 
@@ -901,13 +478,13 @@ export default function LandingPage() {
 
                 <Link
 
-                  href="/register?offer=one-month-free"
+                  href="/register"
 
                   className="inline-flex min-h-12 items-center justify-center rounded-xl bg-orange-500 px-6 text-xs font-black text-neutral-950 transition hover:bg-orange-400"
 
                 >
 
-                  Start 1 Month Free
+                  Get Started
 
                 </Link>
 
@@ -945,7 +522,8 @@ export default function LandingPage() {
 
                   'Role portals',
 
-                  'Installable PWA',
+                  'Digital Dine Partner',
+                  'DD MART customer app',
 
                 ].map((item) => (
 
@@ -989,7 +567,7 @@ export default function LandingPage() {
 
                 <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[8px] font-black text-emerald-700">
 
-                  LIVE
+                  OVERVIEW
 
                 </span>
 
@@ -1001,11 +579,10 @@ export default function LandingPage() {
 
                   ['Restaurant', 'QR menu · Billing · Staff'],
 
-                  ['Delivery', 'Inventory · Dispatch · Tracking'],
+                  ['DD MART', 'Stores · Dispatch · Tracking'],
 
-                  ['Resort', 'Rooms · Bookings · Guests'],
 
-                  ['APP', 'Restaurant Code · Role access'],
+                  ['Partner Portal', 'Restaurant Code · Role access'],
 
                 ].map(([title, description]) => (
 
@@ -1067,13 +644,13 @@ export default function LandingPage() {
 
               eyebrow="Platform"
 
-              title="Three modules. One business account."
+              title="Two connected solutions. One platform."
 
               text="Use only the modules your business needs while keeping operations connected."
 
             />
 
-            <div className="mt-8 grid gap-4 lg:grid-cols-3">
+            <div className="mt-8 grid gap-4 lg:grid-cols-2">
 
               {modules.map((module) => (
 
@@ -1169,7 +746,7 @@ export default function LandingPage() {
 
               eyebrow="Current Platform"
 
-              title="Built for daily operations."
+              title="Everything works better together."
 
               text="A practical operational system for ordering, inventory, dispatch, staff access, customer support and billing."
 
@@ -1239,21 +816,19 @@ export default function LandingPage() {
 
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
 
-                New Customer Offer
+                Digital Dine Business Platform
 
               </p>
 
               <h2 className="mt-2 text-3xl font-black tracking-tight">
 
-                Start with 1 month free.
+                Manage your business from one platform.
 
               </h2>
 
               <p className="mt-3 max-w-2xl text-sm leading-7 text-neutral-400">
 
-                New Digital Dine-In customers can use the launch offer to start
-
-                their first month free before continuing with a paid plan.
+                Bring restaurant operations, customer ordering, delivery and staff workflows together with Digital Dine.
 
               </p>
 
@@ -1261,13 +836,13 @@ export default function LandingPage() {
 
             <Link
 
-              href="/register?offer=one-month-free"
+              href="/register"
 
               className="inline-flex min-h-12 items-center justify-center rounded-xl bg-orange-500 px-6 text-xs font-black text-neutral-950 transition hover:bg-orange-400"
 
             >
 
-              Claim Free Month
+              Start Registration
 
             </Link>
 
@@ -1275,90 +850,43 @@ export default function LandingPage() {
 
         </section>
 
-        {/* Pricing */}
-
-        <section
-
-          id="pricing"
-
-          className="scroll-mt-20 border-b border-neutral-200 bg-white"
-
-        >
-
+        {/* Flexible plans and onboarding — no public per-order rates */}
+        <section id="pricing" className="scroll-mt-20 border-b border-neutral-200 bg-white">
           <Container className="py-14 sm:py-20">
-
             <SectionHeading
-
-              eyebrow="Subscription Plans"
-
-              title="Fixed plans or build your own."
-
-              text="Choose a fixed Restaurant plan, Restaurant + Resort plan, or build a custom plan from the exact features you need."
-
+              eyebrow="Solutions"
+              title="Designed around your business."
+              text="A refined, connected experience for restaurants and local commerce."
               centered
-
             />
-
-            <div className="mx-auto mt-10 grid max-w-4xl gap-4 md:grid-cols-2">
-
-              {plans.map((plan) => (
-
-                <PlanCard
-
-                  key={plan.code}
-
-                  plan={plan}
-
-                />
-
+            <div className="mx-auto mt-10 grid max-w-5xl gap-5 md:grid-cols-2">
+              {[
+                { name: 'Restaurant QR Ordering', detail: 'QR menus, dine-in and parcel ordering, restaurant dashboards, kitchen and staff workflows.' },
+                { name: 'DD MART Delivery', detail: 'Local food and grocery storefronts with inventory, packing, dispatch, payments and tracking.' },
+              ].map((item) => (
+                <article key={item.name} className="flex flex-col rounded-[28px] border border-neutral-200 bg-[#fafaf8] p-7 shadow-sm">
+                  <h3 className="text-xl font-black text-neutral-950">{item.name}</h3>
+                  <p className="mt-4 flex-1 text-sm leading-7 text-neutral-600">{item.detail}</p>
+                  <Link href="/register" className="mt-7 inline-flex min-h-12 items-center justify-center rounded-xl bg-neutral-950 px-6 text-xs font-black text-white transition hover:bg-neutral-800">Get Started →</Link>
+                </article>
               ))}
-
             </div>
-
-<div className="mx-auto mt-4 max-w-4xl">
-
-              <article className="rounded-[28px] border border-orange-200 bg-orange-50/60 p-6 shadow-sm sm:p-7">
-
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-
-                  <div className="max-w-2xl">
-
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-600">Flexible Plan</p>
-
-                    <h3 className="mt-2 text-xl font-black tracking-tight text-neutral-950">Custom Build Plan</h3>
-
-                    <p className="mt-2 text-[11px] leading-6 text-neutral-600">
-
-                      Choose exactly the Restaurant, Delivery and Resort features your business needs.
-
-                      Submit your requirements and our managers will contact you.
-
-                    </p>
-
-                  </div>
-
-                  <Link href="/custom-plan" className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl bg-orange-500 px-6 text-xs font-black text-neutral-950 transition hover:bg-orange-400">
-
-                    Build My Plan →
-
-                  </Link>
-
-                </div>
-
-              </article>
-
+            <div className="mx-auto mt-5 flex max-w-5xl flex-col items-start justify-between gap-4 rounded-[24px] border border-neutral-200 p-6 sm:flex-row sm:items-center">
+              <div><h3 className="text-lg font-black">Need a custom setup?</h3><p className="mt-1 text-xs text-neutral-600">Tell us which business features you need and our team will help you get started.</p></div>
+              <Link href="/custom-plan" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-orange-500 px-5 text-xs font-black text-neutral-950">Build My Plan →</Link>
             </div>
-
-            <p className="mx-auto mt-6 max-w-3xl text-center text-[9px] leading-5 text-neutral-400">
-
-              Free-month eligibility and subscription activation should be
-
-              validated in the registration and subscription flow.
-
-            </p>
-
           </Container>
+        </section>
 
+        {/* Two application experiences */}
+        <section id="apps" className="border-b border-neutral-200 bg-neutral-950 text-white">
+          <Container className="py-14 sm:py-20">
+            <div className="max-w-2xl"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">Connected applications</p><h2 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Two apps. One connected platform.</h2><p className="mt-4 text-sm leading-7 text-neutral-400">Separate experiences for business teams and customers, connected to the same Digital Dine operations platform. Android releases are in preparation.</p></div>
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              <article className="rounded-[26px] border border-white/15 bg-white/5 p-6"><span className="text-xs font-black text-orange-400">DIGITAL DINE PARTNER</span><h3 className="mt-3 text-xl font-black">Your business, organized.</h3><p className="mt-3 text-sm leading-7 text-neutral-300">Restaurant owners, managers, kitchen teams, waiters, packers and riders access the portals allowed for their business.</p><Link href="/app" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-white px-5 text-xs font-black text-neutral-950">Open Partner Portal →</Link></article>
+              <article className="rounded-[26px] border border-white/15 bg-white/5 p-6"><span className="text-xs font-black text-orange-400">DD MART</span><h3 className="mt-3 text-xl font-black">Local shopping, made easy.</h3><p className="mt-3 text-sm leading-7 text-neutral-300">Customers browse available stores, order food or groceries, choose supported payment methods and track their deliveries.</p><Link href="/delivery" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-orange-500 px-5 text-xs font-black text-neutral-950">Explore DD MART →</Link></article>
+            </div>
+          </Container>
         </section>
 
         {/* APP */}
@@ -1373,13 +901,13 @@ export default function LandingPage() {
 
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">
 
-                  Digital Dine-In APP
+                  Digital Dine Partner
 
                 </p>
 
                 <h2 className="mt-3 max-w-2xl text-3xl font-black tracking-[-0.04em]">
 
-                  One app. Only the portals your plan includes.
+                  A dedicated Partner portal for your team.
 
                 </h2>
 
@@ -1477,7 +1005,7 @@ export default function LandingPage() {
 
               title="Need help getting started?"
 
-              text="Contact Digital Dine-In for registration, subscription, setup and platform support."
+              text="Contact Digital Dine-In for registration, onboarding, setup and platform support."
 
             />
 
@@ -1527,13 +1055,13 @@ export default function LandingPage() {
 
                 <p className="mt-3 text-sm font-black text-neutral-950">
 
-                  {SUPPORT_PHONE}
+                  {SUPPORT_PHONE || 'Contact us by email'}
 
                 </p>
 
                 <p className="mt-3 text-[10px] font-bold text-orange-600">
 
-                  Call support →
+                  Contact support →
 
                 </p>
 
@@ -1607,7 +1135,7 @@ export default function LandingPage() {
 
               <p className="mt-0.5 text-[8px] font-bold text-neutral-400">
 
-                Restaurant · Delivery · Resort
+                Restaurant · DD MART
 
               </p>
 

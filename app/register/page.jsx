@@ -50,6 +50,7 @@ export default function RestaurantRegistration() {
 
   // Biometric ON/OFF
   const [biometricEnabled, setBiometricEnabled] = useState(true)
+  const [registrationComplete, setRegistrationComplete] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
@@ -350,7 +351,7 @@ export default function RestaurantRegistration() {
         alert(
           'Your restaurant account was created successfully. Please login normally to continue.'
         )
-        router.push('/login')
+        setRegistrationComplete(true)
         return
       }
 
@@ -359,7 +360,7 @@ export default function RestaurantRegistration() {
           localStorage.setItem('digitaldining_biometric_enabled', 'false')
         } catch {}
 
-        router.push(`/subscribe/${data.restaurantId}`)
+        setRegistrationComplete(true)
         return
       }
 
@@ -393,7 +394,7 @@ export default function RestaurantRegistration() {
         )
       }
 
-      router.push(`/subscribe/${data.restaurantId}`)
+      setRegistrationComplete(true)
       return
     } catch (err) {
       console.error('REGISTRATION ERROR:', err)
@@ -413,6 +414,23 @@ export default function RestaurantRegistration() {
     appleLoading ||
     biometricLoading
 
+  if (registrationComplete) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 text-2xl">✓</div>
+          <h1 className="text-2xl font-bold text-slate-900">Registration submitted</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">Your partner account has been created. Digital Dine will review your registration. After approval, you will be able to activate your prepaid wallet with an initial recharge of ₹5,000.</p>
+          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left">
+            <p className="text-xs font-semibold text-slate-700">Wallet activation</p>
+            <p className="mt-1 text-xs text-slate-600">No subscription payment is required. Wallet recharge will be available after administrator approval and secure payment setup. Do not send money until the verified recharge page is enabled.</p>
+          </div>
+          <button type="button" onClick={() => router.push('/login')} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800">Continue to login</button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans">
       <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
@@ -420,13 +438,13 @@ export default function RestaurantRegistration() {
         {/* Header */}
         <div className="text-center space-y-1.5">
           <span className="inline-block text-[11px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-            Step 1 of 2
+            Partner registration
           </span>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
             Create Partner Account
           </h1>
           <p className="text-xs text-slate-500">
-            Set up your restaurant credentials and management profile.
+            Create your business account. Wallet activation follows admin approval.
           </p>
         </div>
 

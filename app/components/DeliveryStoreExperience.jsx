@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 import DeliverySavedAddressPicker from '@/app/components/DeliverySavedAddressPicker'
 import DeliveryCustomerSupportChat from '@/app/components/DeliveryCustomerSupportChat'
+import DeliverySeasonalAds from '@/app/components/DeliverySeasonalAds'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 import '@/app/components/delivery-green-market.css'
 
@@ -1062,15 +1063,7 @@ export default function DeliveryStoreExperience({
       setMessage(
         stock.outOfStock
           ? `${item.name} is currently out of stock.`
-          : `Only ${stock.available} unit${
-              stock.available === 1
-                ? ''
-                : 's'
-            } of ${item.name} ${
-              stock.available === 1
-                ? 'is'
-                : 'are'
-            } available right now.`
+          : `The requested quantity of ${item.name} is not available right now.`
       )
     }
     setCart((current) => {
@@ -1860,16 +1853,22 @@ export default function DeliveryStoreExperience({
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
         throw new Error('Store coverage could not be verified.')
       }
-      const [wallet, plan] = await Promise.all([
+      // Saved addresses must pass the active custom map boundary too.
+      const [wallet, plan, serviceArea] = await Promise.all([
         supabase.rpc('delivery_wallet_eligible_restaurant_ids', { p_restaurant_ids: [id] }),
         supabase.rpc('delivery_plan_eligible_restaurant_ids', { p_restaurant_ids: [id] }),
+        supabase.rpc('delivery_polygon_eligible_restaurant_ids', {
+          p_restaurant_ids: [id], p_latitude: lat, p_longitude: lng,
+        }),
       ])
-      if (wallet.error || plan.error) throw new Error('Could not verify this store’s eligibility. Please retry.')
+      if (wallet.error || plan.error || serviceArea.error) {
+        throw new Error('Could not verify store eligibility and delivery boundary. Please retry.')
+      }
       const allowed = (rows) => (Array.isArray(rows) ? rows : []).some((row) =>
         String(typeof row === 'string' ? row : row?.restaurant_id ?? row?.restaurantId ?? '').toLowerCase() === id.toLowerCase()
       )
-      if (!allowed(wallet.data) || !allowed(plan.data)) {
-        throw new Error('This store cannot take orders for that saved address right now.')
+      if (!allowed(wallet.data) || !allowed(plan.data) || !allowed(serviceArea.data)) {
+        throw new Error('This address is outside the selected delivery region, or this store is currently ineligible for delivery.')
       }
       if (validationId !== addressValidationRef.current || accountAtSelection !== activeIdentityRef.current) return false
       setCheckout((current) => ({
@@ -2023,15 +2022,7 @@ export default function DeliveryStoreExperience({
       setMessage(
         stock.outOfStock
           ? `${stockConflict.name} is now out of stock. Your cart has been updated.`
-          : `Only ${stock.available} unit${
-              stock.available === 1
-                ? ''
-                : 's'
-            } of ${stockConflict.name} ${
-              stock.available === 1
-                ? 'is'
-                : 'are'
-            } available now. Your cart has been updated.`
+          : `The requested quantity of ${stockConflict.name} is unavailable. Your cart has been updated.`
       )
       await loadStore(true)
       return
@@ -2398,6 +2389,22 @@ export default function DeliveryStoreExperience({
           </div>
         </section>
 
+        {/* Store-specific seasonal campaigns: admin scheduled; prices remain server-controlled. */}
+        <DeliverySeasonalAds
+          restaurantCode={restaurantCode}
+          onBrowse={() => {
+            setSearch('')
+            setCategory('All')
+            document.getElementById('dm-products')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }}
+          onCategory={(campaignCategory) => {
+            setSearch('')
+            const match = categories.find(value => value.toLowerCase() === String(campaignCategory || '').toLowerCase())
+            setCategory(match || 'All')
+            document.getElementById('dm-products')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }}
+        />
+
         {offers.length > 0 && (
           <section className="dm-offers mt-7">
             <div className="mb-3 flex items-end justify-between">
@@ -2494,7 +2501,8 @@ export default function DeliveryStoreExperience({
                 {item.description && <p className="dm-product-description">{item.description}</p>}
                 {reviewCount > 0 && <p className="dm-product-rating">★ {averageRating.toFixed(1)} <span>({reviewCount} verified {reviewCount===1?'review':'reviews'})</span></p>}
                 {recentReview?.review && <p className="dm-product-description">“{recentReview.review}” — {recentReview.customer_name || 'Verified customer'} · {Number(recentReview.rating || 0)} ★</p>}
-                {stock.tracked && <p className={stock.outOfStock ? 'dm-stock-out' : stock.lowStock ? 'dm-stock-low' : 'dm-stock-good'}>{stock.outOfStock ? 'Out of stock' : stock.lowStock ? `Only ${stock.available} left` : `${stock.available} in stock`}</p>}
+                {/* Display sold-out status only; keep actual stock limits private. */}
+                {stock.tracked && stock.outOfStock && <p className="dm-stock-out">Out of stock</p>}
                 <div className="dm-product-buy">
                   <div className="dm-price"><strong>{money(item.price)}</strong>{hasDiscount && <del>{money(item.base_price)}</del>}</div>
                   {quantity <= 0 ? <button type="button" className="dm-add-button" aria-label={`Add ${item.name}`} disabled={!settings.is_open || stock.outOfStock} onClick={()=>updateQuantity(item.id,1)}>{stock.outOfStock?'×':'+'}</button> : <div className="dm-counter"><button type="button" aria-label={`Remove one ${item.name}`} onClick={()=>updateQuantity(item.id,quantity-1)}>−</button><strong>{quantity}</strong><button type="button" aria-label={`Add one ${item.name}`} disabled={stock.tracked && quantity>=stock.maxCartQuantity} onClick={()=>updateQuantity(item.id,quantity+1)}>+</button></div>}
@@ -3248,19 +3256,10 @@ export default function DeliveryStoreExperience({
                           }
                         </p>
 
-                        {stock.tracked && (
-                          <p
-                            className={`mt-1 text-[9px] font-black ${
-                              stock.outOfStock
-                                ? 'text-red-600'
-                                : stock.lowStock
-                                  ? 'text-amber-700'
-                                  : 'text-emerald-700'
-                            }`}
-                          >
-                            {stock.outOfStock
-                              ? 'Out of stock'
-                              : `${stock.available} available`}
+                        {/* Keep stock quantities hidden in cart too. */}
+                        {stock.tracked && stock.outOfStock && (
+                          <p className="mt-1 text-[9px] font-black text-red-600">
+                            Out of stock
                           </p>
                         )}
                       </div>

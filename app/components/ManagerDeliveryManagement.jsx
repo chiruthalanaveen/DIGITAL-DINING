@@ -39,6 +39,7 @@ import { supabase } from '@/lib/supabase'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { scanBarcodeWithCamera } from '@/lib/barcodeScanner'
 import DeliveryManagerSupportChat from '@/app/components/DeliveryManagerSupportChat'
+import DeliveryServiceAreaEditor from '@/app/components/DeliveryServiceAreaEditor'
 
 
 
@@ -5306,6 +5307,7 @@ export default function ManagerDeliveryManagement({
 
 
 
+    ['service_area', 'Delivery Area'],
     ['website', 'Ordering Website'],
 
 
@@ -8863,6 +8865,29 @@ export default function ManagerDeliveryManagement({
 
 
 
+
+      {tab === 'service_area' && (
+        <div className="space-y-4">
+          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+            <h3 className="text-lg font-black text-white">Custom Delivery Area</h3>
+            <p className="mt-2 text-xs leading-5 text-neutral-400">
+              Click on the map to select streets and neighbourhoods served by the store.
+              The saved polygon narrows the Owner's existing radius; it does not expand delivery coverage.
+              Changes affect new orders only.
+            </p>
+          </section>
+          <DeliveryServiceAreaEditor
+            key={`${String(restaurantId || '')}:${sessionMode ? 'session' : 'legacy'}:${String(userId || '')}`}
+            role="manager"
+            restaurantId={restaurantId}
+            restaurantCode={restaurantCode}
+            sessionMode={sessionMode}
+            sessionToken={sessionToken}
+            userId={userId}
+            password={password}
+          />
+        </div>
+      )}
 
       {tab === 'website' && (
 

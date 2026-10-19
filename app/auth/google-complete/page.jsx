@@ -383,7 +383,7 @@ export default function GoogleCompletePage() {
 
           setMessage(
 
-            'Registration completed. Redirecting to subscription...'
+            'Registration completed. Opening your registration status...'
 
           )
 
@@ -391,7 +391,7 @@ export default function GoogleCompletePage() {
 
           router.replace(
 
-            `/subscribe/${data.restaurantId}`
+            `/registration-pending?restaurantId=${encodeURIComponent(data.restaurantId)}`
 
           )
 
@@ -429,7 +429,7 @@ export default function GoogleCompletePage() {
 
           router.replace(
 
-            `/subscribe/${data.restaurantId}`
+            `/registration-pending?restaurantId=${encodeURIComponent(data.restaurantId)}`
 
           )
 
@@ -467,7 +467,7 @@ export default function GoogleCompletePage() {
 
           router.replace(
 
-            `/subscribe/${data.restaurantId}`
+            `/registration-pending?restaurantId=${encodeURIComponent(data.restaurantId)}`
 
           )
 
@@ -651,7 +651,7 @@ export default function GoogleCompletePage() {
 
             router.replace(
 
-              `/subscribe/${data.restaurantId}`
+              `/registration-pending?restaurantId=${encodeURIComponent(data.restaurantId)}`
 
             )
 
@@ -675,7 +675,7 @@ export default function GoogleCompletePage() {
 
             router.replace(
 
-              `/subscribe/${data.restaurantId}`
+              `/registration-pending?restaurantId=${encodeURIComponent(data.restaurantId)}`
 
             )
 
@@ -697,7 +697,7 @@ export default function GoogleCompletePage() {
 
           router.replace(
 
-            `/subscribe/${data.restaurantId}`
+            `/registration-pending?restaurantId=${encodeURIComponent(data.restaurantId)}`
 
           )
 
@@ -723,7 +723,7 @@ export default function GoogleCompletePage() {
 
           router.replace(
 
-            `/subscribe/${data.restaurantId}`
+            `/registration-pending?restaurantId=${encodeURIComponent(data.restaurantId)}`
 
           )
 

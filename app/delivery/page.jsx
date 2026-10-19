@@ -96,15 +96,23 @@ function idsFromRpc(value) {
     .filter((id) => UUID_RE.test(id)))
 }
 
-async function eligibleRestaurantIds(stores) {
+async function eligibleRestaurantIds(stores, location) {
   const ids = [...new Set(stores.map(restaurantId).filter((id) => UUID_RE.test(id)))].slice(0, 100)
   if (!ids.length) throw new Error('Nearby store records are incomplete. Please try again later.')
 
   // BOTH must pass. The plan helper excludes Restaurant-only and Resort-only plans.
-  const [wallet, plan] = await Promise.all([
+  // A drawn polygon is an additional restriction, alongside existing radius,
+  // wallet, plan, and approval checks. Fail closed if boundary verification fails.
+  const [wallet, plan, serviceArea] = await Promise.all([
     supabase.rpc('delivery_wallet_eligible_restaurant_ids', { p_restaurant_ids: ids }),
     supabase.rpc('delivery_plan_eligible_restaurant_ids', { p_restaurant_ids: ids }),
+    supabase.rpc('delivery_polygon_eligible_restaurant_ids', {
+      p_restaurant_ids: ids,
+      p_latitude: location.latitude,
+      p_longitude: location.longitude,
+    }),
   ])
+  if (serviceArea.error) throw new Error('Unable to verify delivery boundaries. Please retry.')
   if (wallet.error) throw new Error('Unable to verify the approval and wallet status of nearby stores.')
   if (plan.error) {
     console.error('[DELIVERY] Plan visibility verification failed:', plan.error)
@@ -112,7 +120,8 @@ async function eligibleRestaurantIds(stores) {
   }
   const walletIds = idsFromRpc(wallet.data)
   const planIds = idsFromRpc(plan.data)
-  return new Set(ids.filter((id) => walletIds.has(id) && planIds.has(id)))
+  const polygonIds = idsFromRpc(serviceArea.data)
+  return new Set(ids.filter((id) => walletIds.has(id) && planIds.has(id) && polygonIds.has(id)))
 }
 
 function getGpsError(error) {
@@ -312,7 +321,7 @@ function DeliveryCustomerHomeContent() {
         return
       }
       setMessage('Checking Delivery plans, approval and wallet availability…')
-      const eligibleIds = await eligibleRestaurantIds(nearbyStores)
+      const eligibleIds = await eligibleRestaurantIds(nearbyStores, location)
       if (requestSequenceRef.current !== sequence) return
 
       const eligible = normalizeEligibleStores(nearbyStores, eligibleIds)

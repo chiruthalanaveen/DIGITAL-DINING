@@ -4,13 +4,9 @@ import type {
 } from 'next'
 
 import type {
+  CSSProperties,
   ReactNode,
 } from 'react'
-
-import {
-  Geist,
-  Geist_Mono,
-} from 'next/font/google'
 
 import Script from 'next/script'
 
@@ -18,27 +14,15 @@ import PWARegister from '@/app/components/PWARegister'
 
 import './globals.css'
 
-
-const geistSans = Geist({
-  variable:
-    '--font-geist-sans',
-
-  subsets: [
-    'latin',
-  ],
-})
-
-
-const geistMono =
-  Geist_Mono({
-    variable:
-      '--font-geist-mono',
-
-    subsets: [
-      'latin',
-    ],
-  })
-
+// Use system fonts instead of next/font/google to avoid network requests
+// to fonts.googleapis.com during development or production builds.
+// Keep the original CSS variable names for compatibility with globals.css.
+const systemFontVariables = {
+  '--font-geist-sans':
+    'Arial, Helvetica, sans-serif',
+  '--font-geist-mono':
+    'Consolas, "Courier New", monospace',
+} as CSSProperties
 
 export const metadata: Metadata = {
   metadataBase:
@@ -251,7 +235,6 @@ export const metadata: Metadata = {
     'origin-when-cross-origin',
 }
 
-
 export const viewport: Viewport = {
   width:
     'device-width',
@@ -268,7 +251,6 @@ export const viewport: Viewport = {
   themeColor:
     '#f97316',
 }
-
 
 const themeInit = `
 (function () {
@@ -299,7 +281,6 @@ const themeInit = `
 })();
 `
 
-
 export default function RootLayout({
   children,
 }: {
@@ -310,12 +291,8 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`
-        ${geistSans.variable}
-        ${geistMono.variable}
-        h-full
-        antialiased
-      `}
+      className="h-full antialiased"
+      style={systemFontVariables}
     >
       <head>
         <Script

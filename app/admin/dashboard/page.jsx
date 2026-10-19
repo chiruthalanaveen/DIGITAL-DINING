@@ -12,6 +12,7 @@ import {
 } from 'next/navigation'
 
 import AdminWalletControls from '@/app/components/AdminWalletControls'
+import AdminRestaurantFeeEditor from '@/app/components/AdminRestaurantFeeEditor'
 import AdminDeliverySignupSettings from '@/app/components/AdminDeliverySignupSettings'
 
 const NAV = [
@@ -32,6 +33,80 @@ const NAV = [
   ['system', 'System'],
   ['audit', 'Audit Log'],
 ]
+
+// UI navigation groups and icons: presentation only. Existing module keys remain untouched.
+const NAV_GROUPS = [
+  { title: 'Workspace', items: ['overview', 'registrations', 'wallet-controls', 'tenants'] },
+  { title: 'Commerce', items: ['operations', 'delivery-orders', 'payments', 'inventory'] },
+  { title: 'Growth & Onboarding', items: ['custom-plans', 'delivery-signup', 'people'] },
+  { title: 'Customer Experience', items: ['live-support', 'support', 'reviews'] },
+  { title: 'Administration', items: ['system', 'audit'] },
+]
+
+const NAV_ICONS = {
+  overview: 'dashboard', 'custom-plans': 'sparkles', registrations: 'user-check',
+  'wallet-controls': 'wallet', 'delivery-signup': 'truck', tenants: 'building',
+  operations: 'activity', 'delivery-orders': 'package', people: 'users',
+  inventory: 'layers', 'live-support': 'messages', support: 'life-ring',
+  reviews: 'star', payments: 'credit', system: 'settings', audit: 'shield',
+}
+
+const NAV_DESCRIPTIONS = {
+  overview: 'All business activity at a glance',
+  'custom-plans': 'Review incoming business enquiries',
+  registrations: 'Approve new business registrations',
+  'wallet-controls': 'Platform wallet and recharge management',
+  'delivery-signup': 'DD MART onboarding and settings',
+  tenants: 'Manage restaurants, access and platform fees',
+  operations: 'Cross-platform operations and activity',
+  'delivery-orders': 'Delivery order history and reports',
+  people: 'Owners, staff and delivery teams',
+  inventory: 'Stock and availability monitoring',
+  'live-support': 'Active customer support conversations',
+  support: 'Help Centre ticket management',
+  reviews: 'Customer feedback and moderation',
+  payments: 'Payment configurations and controls',
+  system: 'Platform settings and diagnostics',
+  audit: 'Administrative change history',
+}
+
+function AdminUIIcon({ name = 'dashboard', size = 18, className = '' }) {
+  const common = { strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }
+  const shapes = {
+    dashboard: <><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></>,
+    sparkles: <><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/><path d="m19 17 .6 1.4L21 19l-1.4.6L19 21l-.6-1.4L17 19l1.4-.6L19 17Z"/></>,
+    'user-check': <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></>,
+    wallet: <><rect x="3" y="6" width="18" height="15" rx="2"/><path d="M3 10V5a2 2 0 0 1 2-2h13"/><path d="M16 14h5v4h-5a2 2 0 0 1 0-4Z"/></>,
+    truck: <><path d="M3 6h12v12H3z"/><path d="M15 10h4l3 4v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></>,
+    building: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 21v-5h6v5M8 7h1m6 0h1M8 11h1m6 0h1"/></>,
+    activity: <><path d="M3 12h4l3-7 4 14 3-7h4"/></>,
+    package: <><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="M3 7v10l9 5 9-5V7M12 12v10"/></>,
+    users: <><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6m1 4a5 5 0 0 1 3 5"/></>,
+    layers: <><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></>,
+    messages: <><path d="M20 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-3.7-.8L3 21l1.8-4.8A8.5 8.5 0 1 1 20 11.5Z"/><path d="M8 11h8m-8 4h5"/></>,
+    'life-ring': <><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="m5.6 5.6 3.6 3.6m5.6 5.6 3.6 3.6m0-12.8-3.6 3.6m-5.6 5.6-3.6 3.6"/></>,
+    star: <><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></>,
+    credit: <><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4.9a7 7 0 0 0-1.7-1L14.5 3h-4l-.3 2.9a7 7 0 0 0-1.7 1L6.1 6 4 9.5 6 11a8 8 0 0 0 0 2l-2 1.5L6.1 18l2.4-.9a7 7 0 0 0 1.7 1l.3 2.9h4l.3-2.9a7 7 0 0 0 1.7-1l2.4.9 2-3.5L18.9 13a7 7 0 0 0 .1-1Z"/></>,
+    shield: <><path d="m12 2 8 4v6c0 5-3.4 8-8 10-4.6-2-8-5-8-10V6l8-4Z"/><path d="m9 12 2 2 4-4"/></>,
+    menu: <><path d="M4 7h16M4 12h16M4 17h16"/></>,
+    chevron: <><path d="m9 18 6-6-6-6"/></>,
+    search: <><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></>,
+    refresh: <><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 12-3l2.5 1M4 17l2.5 1A7 7 0 0 0 18.5 15"/></>,
+    logout: <><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M14 16l4-4-4-4M9 12h9"/></>,
+    close: <><path d="M5 5 19 19M19 5 5 19"/></>,
+    arrow: <><path d="M4 12h15m-6-6 6 6-6 6"/></>,
+    globe: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></>,
+    command: <><path d="M9 7V5a3 3 0 1 0-3 3h2v8H6a3 3 0 1 0 3 3v-2h6v2a3 3 0 1 0 3-3h-2V8h2a3 3 0 1 0-3-3v2H9Z"/></>,
+    chart: <><path d="M4 20V12M10 20V4M16 20v-9M22 20v-6"/></>,
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" {...common}
+      className={className} aria-hidden="true" focusable="false">
+      {shapes[name] || shapes.dashboard}
+    </svg>
+  )
+}
 
 const PLAN_OPTIONS = [
   [
@@ -248,28 +323,43 @@ function label(
     )
 }
 
-function Metric({
-  label:
-    metricLabel,
-  value,
-  hint = '',
-}) {
-  return (
-    <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
-      <p className="text-[9px] font-black uppercase tracking-[0.15em] text-neutral-500">
-        {metricLabel}
-      </p>
+function Metric({ label: metricLabel, value, hint = '' }) {
+  const normalized = String(metricLabel || '').toLowerCase()
+  const icon = /wallet|revenue|amount|payment|fee|value|price/.test(normalized)
+    ? 'credit'
+    : /delivery|orders|shipment/.test(normalized)
+      ? 'package'
+      : /tenant|restaurant|resort|store/.test(normalized)
+        ? 'building'
+        : /user|staff|driver|packer|people/.test(normalized)
+          ? 'users'
+          : /support|help/.test(normalized)
+            ? 'messages'
+            : /rating|review/.test(normalized)
+              ? 'star'
+              : /stock|inventory/.test(normalized)
+                ? 'layers'
+                : 'chart'
 
-      <p className="mt-2 text-2xl font-black text-white">
+  return (
+    <article className="dd-metric relative min-w-0 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[10px] font-bold leading-4 tracking-wide text-neutral-400">
+          {metricLabel}
+        </p>
+        <span className="dd-metric-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/[0.035] text-red-300">
+          <AdminUIIcon name={icon} size={18} />
+        </span>
+      </div>
+      <p className="mt-4 break-words text-[clamp(1.4rem,2.2vw,1.9rem)] font-black tracking-tight text-white">
         {value}
       </p>
-
-      {hint && (
-        <p className="mt-1 text-[10px] text-neutral-500">
-          {hint}
-        </p>
+      {hint ? (
+        <p className="mt-2 text-[10px] leading-4 text-neutral-500">{hint}</p>
+      ) : (
+        <span aria-hidden="true" className="mt-2 block h-1 w-8 rounded-full bg-gradient-to-r from-red-500/80 to-orange-400/30" />
       )}
-    </div>
+    </article>
   )
 }
 
@@ -1198,6 +1288,58 @@ export default function AdminControlCenter() {
     setSection,
   ] =
     useState('overview')
+
+  const [navigationOpen, setNavigationOpen] = useState(false)
+  const [navigationCompact, setNavigationCompact] = useState(false)
+  const [navigationQuery, setNavigationQuery] = useState('')
+  const [commandOpen, setCommandOpen] = useState(false)
+  const [commandQuery, setCommandQuery] = useState('')
+
+  // Only the interface changes here; selecting a section never mutates tenant data.
+  const switchSection = (key) => {
+    if (!NAV.some(([navKey]) => navKey === key)) return
+    setSection(key)
+    setNavigationOpen(false)
+    setCommandOpen(false)
+    setCommandQuery('')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    const keyHandler = (event) => {
+      const modifier = event.metaKey || event.ctrlKey
+      if (modifier && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setCommandOpen((current) => !current)
+        return
+      }
+      if (event.key === 'Escape') {
+        setCommandOpen(false)
+        setNavigationOpen(false)
+      }
+    }
+    document.addEventListener('keydown', keyHandler)
+    return () => document.removeEventListener('keydown', keyHandler)
+  }, [])
+
+  const filteredNavGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    links: group.items
+      .map((key) => {
+        const match = NAV.find(([navKey]) => navKey === key)
+        return match ? { key, text: match[1] } : null
+      })
+      .filter(Boolean)
+      .filter(({ key, text }) =>
+        `${text} ${NAV_DESCRIPTIONS[key] || ''}`.toLowerCase().includes(navigationQuery.trim().toLowerCase())
+      ),
+  })).filter((group) => group.links.length > 0)
+
+  const commandMatches = NAV.filter(([key, text]) =>
+    `${text} ${NAV_DESCRIPTIONS[key] || ''}`.toLowerCase().includes(commandQuery.trim().toLowerCase())
+  )
+
+  const activeLabel = NAV.find(([key]) => key === section)?.[1] || 'Overview'
 
   const [
     data,
@@ -2148,95 +2290,166 @@ export default function AdminControlCenter() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-[#080808] text-neutral-100">
-      <header className="sticky top-0 z-40 border-b border-neutral-800 bg-neutral-950/95 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-600 font-black text-white">
-            D
-          </div>
+    <main className="dd-admin-ui min-h-[100dvh] bg-[#090b10] text-neutral-100">
+      <style>{`
+        .dd-admin-ui { background: radial-gradient(ellipse 900px 500px at 80% -250px, rgba(239,68,68,.075), transparent), #090b10; }
+        .dd-admin-ui .bg-neutral-900 { background-color: #12161f; }
+        .dd-admin-ui .bg-neutral-950 { background-color: #0a0d13; }
+        .dd-admin-ui .border-neutral-800 { border-color: #252a35; }
+        .dd-admin-ui .border-neutral-700 { border-color: #353a46; }
+        .dd-admin-ui .dd-metric { background: linear-gradient(140deg,#171c26 0%,#10141b 100%); transition: border-color .18s ease,transform .18s ease,box-shadow .18s ease; }
+        .dd-admin-ui .dd-metric:hover { border-color: rgba(248,113,113,.35); transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,.15); }
+        .dd-admin-ui .dd-metric-icon { background: rgba(239,68,68,.08); }
+        .dd-admin-ui .dd-sidebar-scroll::-webkit-scrollbar { width: 5px; }
+        .dd-admin-ui .dd-sidebar-scroll::-webkit-scrollbar-thumb { background: #363d48; border-radius: 10px; }
+        .dd-admin-ui input:focus-visible, .dd-admin-ui select:focus-visible, .dd-admin-ui textarea:focus-visible,
+        .dd-admin-ui button:focus-visible { outline: 2px solid rgba(251,146,60,.85); outline-offset: 2px; }
+        .dd-admin-ui .dd-nav-button { transition: background .16s ease, color .16s ease, transform .16s ease; }
+        .dd-admin-ui .dd-nav-button:hover { transform: translateX(2px); }
+        .dd-admin-ui .dd-hero { background: radial-gradient(circle at 88% 0%,rgba(251,146,60,.14),transparent 36%),linear-gradient(115deg,#22202b 0%,#191d29 47%,#111924 100%); }
+        @media (prefers-reduced-motion: reduce) { .dd-admin-ui .dd-metric, .dd-admin-ui .dd-nav-button { transition: none; } .dd-admin-ui .dd-metric:hover,.dd-admin-ui .dd-nav-button:hover { transform: none; } }
+      `}</style>
 
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-black text-white">
-              Digital Dine-In
-            </p>
-
-            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-red-400">
-              ERP Admin Control Center
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              loadData(
-                true
-              )
-            }
-            disabled={
-              refreshing
-            }
-            className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-[10px] font-black text-neutral-300 disabled:opacity-50"
-          >
-            {refreshing
-              ? 'Refreshing...'
-              : 'Refresh'}
+      <header className="sticky top-0 z-40 border-b border-neutral-800 bg-[#10131a]/95 shadow-[0_8px_30px_rgba(0,0,0,.15)] backdrop-blur-xl">
+        <div className="flex h-[76px] w-full items-center gap-3 px-4 lg:px-6">
+          <button type="button" aria-label="Open navigation" onClick={() => setNavigationOpen(true)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-800 text-neutral-300 lg:hidden">
+            <AdminUIIcon name="menu" size={20}/>
           </button>
 
-          <button
-            type="button"
-            onClick={
-              logout
-            }
-            className="rounded-xl bg-red-600 px-3 py-2 text-[10px] font-black text-white"
-          >
-            Logout
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-red-500 via-red-600 to-orange-600 shadow-[0_7px_22px_rgba(220,38,38,.2)]">
+            <span className="text-xl font-black tracking-tighter text-white">D<span className="text-orange-200">.</span></span>
+          </div>
+          <div className="hidden min-w-0 sm:block">
+            <p className="truncate text-[13px] font-black tracking-tight text-white">DIGITAL DINE</p>
+            <p className="text-[9px] font-bold uppercase tracking-[0.19em] text-neutral-500">Admin Workspace</p>
+          </div>
+
+          <div className="mx-2 hidden h-7 w-px bg-neutral-800 md:block" />
+          <div className="hidden min-w-0 items-center gap-2 text-xs md:flex">
+            <span className="text-neutral-500">Workspace</span>
+            <AdminUIIcon name="chevron" size={13} className="text-neutral-600" />
+            <span className="truncate font-bold text-neutral-200">{activeLabel}</span>
+          </div>
+
+          <div className="flex-1" />
+          <button type="button" onClick={() => { setCommandQuery(''); setCommandOpen(true) }}
+            aria-label="Quick navigation and search" title="Search pages (Ctrl + K)"
+            className="flex h-10 items-center gap-2 rounded-xl border border-neutral-800 bg-[#191e28] px-3 text-neutral-400 transition hover:border-neutral-600 hover:text-white sm:min-w-[174px]">
+            <AdminUIIcon name="search" size={16}/>
+            <span className="hidden text-[11px] font-semibold sm:inline">Search workspace</span>
+            <kbd className="ml-auto hidden rounded border border-neutral-700 px-1.5 py-0.5 text-[9px] text-neutral-500 lg:inline">⌘ K</kbd>
+          </button>
+          <button type="button" onClick={() => loadData(true)} disabled={refreshing} title="Refresh dashboard"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-[#191e28] text-neutral-300 transition hover:text-white disabled:opacity-50">
+            <AdminUIIcon name="refresh" size={18} className={refreshing ? 'animate-spin' : ''}/>
+          </button>
+          <div className="hidden items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2.5 lg:flex" title="Authenticated admin session">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            <span className="text-[10px] font-bold text-emerald-300">ADMIN</span>
+          </div>
+          <button type="button" onClick={logout} title="Sign out of Admin ERP"
+            className="flex h-10 items-center gap-2 rounded-xl border border-neutral-800 px-3 text-neutral-300 transition hover:border-red-500/40 hover:text-red-300">
+            <AdminUIIcon name="logout" size={17}/>
+            <span className="hidden text-[11px] font-bold xl:inline">Sign out</span>
           </button>
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-[1600px] lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="border-b border-neutral-800 bg-neutral-950 p-3 lg:sticky lg:top-[65px] lg:h-[calc(100dvh-65px)] lg:border-b-0 lg:border-r">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:grid-cols-1">
-            {NAV.map(
-              ([
-                key,
-                navLabel,
-              ]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() =>
-                    setSection(
-                      key
-                    )
-                  }
-                  className={`rounded-xl px-3 py-2.5 text-left text-[10px] font-black transition ${
-                    section ===
-                    key
-                      ? 'bg-red-600 text-white'
-                      : 'bg-neutral-900 text-neutral-400 hover:text-white'
-                  }`}
-                >
-                  {navLabel}
-                </button>
-              )
-            )}
+      {navigationOpen && (
+        <button type="button" aria-label="Close navigation" onClick={() => setNavigationOpen(false)}
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" />
+      )}
+
+      <div className={`grid w-full min-w-0 ${navigationCompact ? 'lg:grid-cols-[84px_minmax(0,1fr)]' : 'lg:grid-cols-[256px_minmax(0,1fr)]'}`}>
+        <aside className={`fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-neutral-800 bg-[#11151e] shadow-2xl transition-transform duration-200 lg:sticky lg:top-[76px] lg:z-20 lg:h-[calc(100dvh-76px)] lg:translate-x-0 lg:shadow-none ${navigationCompact ? 'lg:w-[84px]' : 'lg:w-[256px]'} ${navigationOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          <div className={`flex shrink-0 items-center gap-2 border-b border-neutral-800 p-4 ${navigationCompact ? 'lg:justify-center lg:px-2' : ''}`}>
+            <div className={`min-w-0 flex-1 ${navigationCompact ? 'lg:hidden' : ''}`}>
+              <p className="text-[10px] font-black uppercase tracking-[0.19em] text-neutral-500">Main menu</p>
+              <p className="mt-1 text-sm font-bold text-white">Control Center</p>
+            </div>
+            <button type="button" onClick={() => setNavigationCompact((v) => !v)}
+              title={navigationCompact ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={navigationCompact ? 'Expand sidebar' : 'Collapse sidebar'}
+              className="hidden h-9 w-9 items-center justify-center rounded-lg border border-neutral-800 text-neutral-400 hover:text-white lg:flex">
+              <AdminUIIcon name="menu" size={18}/>
+            </button>
+            <button type="button" onClick={() => setNavigationOpen(false)} aria-label="Close sidebar"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-800 text-neutral-300 lg:hidden">
+              <AdminUIIcon name="close" size={18}/>
+            </button>
           </div>
 
-          <div className="mt-4 hidden rounded-2xl border border-neutral-800 bg-neutral-900 p-3 lg:block">
-            <p className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
-              Signed in as
-            </p>
+          <div className={`p-3 ${navigationCompact ? 'lg:hidden' : ''}`}>
+            <label className="relative block">
+              <AdminUIIcon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"/>
+              <input type="search" value={navigationQuery} onChange={(event) => setNavigationQuery(event.target.value)}
+                placeholder="Filter sections" aria-label="Filter menu sections"
+                className="w-full rounded-xl border border-neutral-800 bg-[#0a0d13] py-2.5 pl-9 pr-3 text-[11px] text-white placeholder:text-neutral-600 focus:border-red-500 focus:outline-none"/>
+            </label>
+          </div>
 
-            <p className="mt-2 break-all text-[10px] font-bold text-neutral-300">
-              {data?.admin
-                ?.email ||
-                'Admin'}
-            </p>
+          <nav aria-label="Admin sections" className="dd-sidebar-scroll min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 pb-5">
+            {filteredNavGroups.map((group) => (
+              <div key={group.title}>
+                <p className={`mb-2 px-3 text-[9px] font-black uppercase tracking-[0.17em] text-neutral-600 ${navigationCompact ? 'lg:hidden' : ''}`}>
+                  {group.title}
+                </p>
+                <div className="space-y-1">
+                  {group.links.map(({ key, text }) => (
+                    <button key={key} type="button" onClick={() => switchSection(key)} title={`${text} — ${NAV_DESCRIPTIONS[key] || ''}`}
+                      aria-current={section === key ? 'page' : undefined}
+                      className={`dd-nav-button group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${navigationCompact ? 'lg:justify-center lg:px-0' : ''} ${section === key
+                        ? 'bg-gradient-to-r from-red-600/25 to-orange-500/[0.06] font-black text-red-100 ring-1 ring-inset ring-red-500/25'
+                        : 'font-semibold text-neutral-400 hover:bg-white/[0.045] hover:text-neutral-100'}`}>
+                      <span className={`shrink-0 ${section === key ? 'text-red-400' : 'text-neutral-500 group-hover:text-neutral-200'}`}>
+                        <AdminUIIcon name={NAV_ICONS[key]} size={18}/>
+                      </span>
+                      <span className={`min-w-0 flex-1 truncate text-[11px] ${navigationCompact ? 'lg:hidden' : ''}`}>{text}</span>
+                      {key === 'custom-plans' && Number(data?.summary?.newCustomPlanRequests || 0) > 0 && (
+                        <span className={`rounded-full bg-red-500/15 px-2 py-0.5 text-[9px] font-black text-red-300 ${navigationCompact ? 'lg:hidden' : ''}`}>
+                          {data.summary.newCustomPlanRequests}
+                        </span>
+                      )}
+                      {section === key && <span className={`h-1.5 w-1.5 shrink-0 rounded-full bg-red-400 ${navigationCompact ? 'lg:hidden' : ''}`} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {filteredNavGroups.length === 0 && (
+              <p className="px-3 py-5 text-center text-xs text-neutral-500">No sections match this search.</p>
+            )}
+          </nav>
+
+          <div className={`shrink-0 border-t border-neutral-800 p-3 ${navigationCompact ? 'lg:px-2' : ''}`}>
+            <div className={`flex items-center gap-3 rounded-xl border border-neutral-800 bg-[#191e29] p-3 ${navigationCompact ? 'lg:justify-center lg:p-2' : ''}`}>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-500/30 to-orange-400/20 text-xs font-black text-red-200">A</span>
+              <div className={`min-w-0 ${navigationCompact ? 'lg:hidden' : ''}`}>
+                <p className="truncate text-[11px] font-bold text-white">Super Admin</p>
+                <p className="truncate text-[10px] text-neutral-500" title={data?.admin?.email || ''}>{data?.admin?.email || 'Administrator'}</p>
+              </div>
+            </div>
           </div>
         </aside>
 
-        <section className="min-w-0 p-4 sm:p-5 lg:p-6">
+        <section className="min-w-0 px-4 pb-12 pt-5 sm:px-6 lg:px-8 lg:pt-7">
+          {section !== 'overview' && (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/[0.07] text-red-300">
+                  <AdminUIIcon name={NAV_ICONS[section]} size={22}/>
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[.16em] text-neutral-500">Digital Dine ERP / {activeLabel}</p>
+                  <p className="mt-1 text-[11px] text-neutral-400">{NAV_DESCRIPTIONS[section]}</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => switchSection('overview')}
+                className="inline-flex items-center gap-2 rounded-xl border border-neutral-800 px-3 py-2.5 text-[11px] font-semibold text-neutral-300 hover:bg-white/5">
+                <AdminUIIcon name="dashboard" size={15}/> Overview
+              </button>
+            </div>
+          )}
           {error && (
             <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-300">
               {error}
@@ -2274,18 +2487,52 @@ export default function AdminControlCenter() {
           {section ===
             'overview' && (
             <div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-400">
-                  Third Eye
-                </p>
+              <div className="dd-hero relative overflow-hidden rounded-[28px] border border-white/[0.07] px-5 py-6 sm:px-7 sm:py-8 lg:px-9">
+                <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                  <div className="max-w-2xl">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-orange-400/15 bg-orange-400/[0.06] px-3 py-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400"/>
+                      <span className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-200">Digital Dine · Platform Command</span>
+                    </div>
+                    <h1 className="mt-4 text-[clamp(1.6rem,3vw,2.5rem)] font-black leading-tight tracking-tight text-white">
+                      Welcome to your control center<span className="text-orange-400">.</span>
+                    </h1>
+                    <p className="mt-3 max-w-xl text-xs leading-6 text-neutral-400 sm:text-sm">
+                      Monitor restaurant operations, approve partners, manage prepaid wallets and control every store from one secure workspace.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap md:max-w-[315px]">
+                    <button type="button" onClick={() => switchSection('registrations')}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-[11px] font-black text-white transition hover:bg-red-500">
+                      <AdminUIIcon name="user-check" size={16}/> Approvals
+                    </button>
+                    <button type="button" onClick={() => switchSection('wallet-controls')}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-[11px] font-black text-white transition hover:bg-white/10">
+                      <AdminUIIcon name="wallet" size={16}/> Wallets
+                    </button>
+                    <button type="button" onClick={() => switchSection('tenants')}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-[11px] font-black text-white transition hover:bg-white/10">
+                      <AdminUIIcon name="building" size={16}/> Restaurants
+                    </button>
+                    <button type="button" onClick={() => switchSection('delivery-orders')}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-[11px] font-black text-white transition hover:bg-white/10">
+                      <AdminUIIcon name="package" size={16}/> DD MART Orders
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-                <h1 className="mt-1 text-2xl font-black text-white sm:text-3xl">
-                  Platform Overview
-                </h1>
-
-                <p className="mt-2 max-w-3xl text-xs leading-6 text-neutral-500">
-                  One-screen operational view across Restaurant, Delivery, Resort, subscriptions, users, Help Centre, reviews and the installed application.
-                </p>
+              <div className="mt-7 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-400">Platform pulse</p>
+                  <h2 className="mt-1 text-xl font-black tracking-tight text-white">At-a-glance metrics</h2>
+                  <p className="mt-1 text-[11px] text-neutral-500">Live operational totals from your existing Admin Control Center API.</p>
+                </div>
+                <button type="button" onClick={() => loadData(true)} disabled={refreshing}
+                  className="inline-flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2.5 text-[11px] font-bold text-neutral-300 disabled:opacity-50">
+                  <AdminUIIcon name="refresh" size={15} className={refreshing ? 'animate-spin' : ''}/>
+                  {refreshing ? 'Refreshing...' : 'Refresh metrics'}
+                </button>
               </div>
 
               <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
@@ -2307,7 +2554,7 @@ export default function AdminControlCenter() {
                 />
 
                 <Metric
-                  label="Active Subs"
+                  label="Legacy Active Status"
                   value={
                     summary.activeSubscriptions ||
                     0
@@ -2315,7 +2562,7 @@ export default function AdminControlCenter() {
                 />
 
                 <Metric
-                  label="Expiring ≤7d"
+                  label="Legacy Expiring ≤7d"
                   value={
                     summary.expiringSoon ||
                     0
@@ -2463,7 +2710,7 @@ export default function AdminControlCenter() {
 
                   <div className="mt-4 grid grid-cols-2 gap-2 text-[10px] font-bold">
                     {[
-                      '5-plan subscriptions',
+                      'Restaurant owner onboarding',
                       'Plan-aware /app portals',
                       'Restaurant QR ordering',
                       'Delivery COD + Razorpay',
@@ -4274,6 +4521,39 @@ export default function AdminControlCenter() {
         </section>
       </div>
 
+      {commandOpen && (
+        <div className="fixed inset-0 z-[90] flex items-start justify-center bg-black/75 px-4 pb-10 pt-[9vh] backdrop-blur-sm"
+          role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCommandOpen(false) }}>
+          <div role="dialog" aria-modal="true" aria-label="Search Admin ERP pages" className="w-full max-w-xl overflow-hidden rounded-[24px] border border-neutral-700 bg-[#151a24] shadow-[0_28px_90px_rgba(0,0,0,.6)]">
+            <div className="flex items-center gap-3 border-b border-neutral-800 px-5 py-4">
+              <AdminUIIcon name="search" size={20} className="text-red-400"/>
+              <input autoFocus type="search" value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter' && commandMatches.length) switchSection(commandMatches[0][0]) }}
+                aria-label="Search sections" placeholder="Search pages, modules and tools..."
+                className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-neutral-500"/>
+              <button type="button" onClick={() => setCommandOpen(false)} className="rounded-lg border border-neutral-700 px-2 py-1 text-[10px] text-neutral-400">ESC</button>
+            </div>
+            <div className="dd-sidebar-scroll max-h-[60vh] overflow-y-auto p-2">
+              {commandMatches.length ? commandMatches.map(([key, text]) => (
+                <button key={key} type="button" onClick={() => switchSection(key)}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-white/[0.055]">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04] text-red-300"><AdminUIIcon name={NAV_ICONS[key]} size={19}/></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-bold text-white">{text}</span>
+                    <span className="mt-1 block truncate text-[10px] text-neutral-500">{NAV_DESCRIPTIONS[key]}</span>
+                  </span>
+                  <AdminUIIcon name="arrow" size={16} className="text-neutral-600"/>
+                </button>
+              )) : <p className="p-8 text-center text-xs text-neutral-500">No matching modules found.</p>}
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t border-neutral-800 px-5 py-3 text-[10px] text-neutral-500">
+              <span>Search across {NAV.length} workspace sections</span>
+              <span>Enter to open · Esc to close</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {tenantEditor && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4">
           <div className="max-h-[94dvh] w-full max-w-lg overflow-y-auto rounded-t-[30px] border border-neutral-800 bg-neutral-950 p-5 shadow-2xl sm:rounded-[30px]">
@@ -4463,6 +4743,9 @@ export default function AdminControlCenter() {
                   className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-xs text-white outline-none"
                 />
               </label>
+
+              {/* Independent admin-only fee save. Does not change access or wallet balances. */}
+              <AdminRestaurantFeeEditor restaurantId={tenantEditor.id} />
 
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-[10px] leading-5 text-amber-200">
                 Changing the plan updates Restaurant / Delivery / Resort module flags together. Setting status to suspended, expired or inactive removes access from the current plan-aware application resolver.

@@ -10,6 +10,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import PaymentGatewayConfigCard from '@/app/components/PaymentGatewayConfigCard'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
+import DeliveryServiceAreaEditor from '@/app/components/DeliveryServiceAreaEditor'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { scanBarcodeWithCamera } from '@/lib/barcodeScanner'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
@@ -4745,6 +4746,7 @@ export default function DeliveryManagement({
       `Packers (${packers.length})`,
     ],
     ['settings', 'Settings'],
+    ['service_area', 'Delivery Area'],
     ['billing', 'Billing'],
     ['payments', 'Payments'],
     ['website', 'Ordering Website'],
@@ -7969,6 +7971,25 @@ export default function DeliveryManagement({
               : 'Save Billing Settings'}
           </button>
         </form>
+      )}
+
+      {tab === 'service_area' && (
+        <div className="space-y-4">
+          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+            <h3 className="text-lg font-black text-white">Custom Delivery Area</h3>
+            <p className="mt-2 text-xs leading-5 text-neutral-400">
+              Draw a smaller service region to keep deliveries manageable.
+              Customers must still meet your configured delivery radius and existing ordering checks.
+              Save your Store Location and Radius in Settings first, if needed.
+            </p>
+          </section>
+          <DeliveryServiceAreaEditor
+            key={String(restaurantId || '')}
+            role="owner"
+            restaurantId={restaurantId}
+            restaurantCode={restaurant?.restaurant_code || ''}
+          />
+        </div>
       )}
 
       {tab === 'payments' && (
