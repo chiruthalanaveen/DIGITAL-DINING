@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import OwnerDeletionRequestClient from '@/app/components/OwnerDeletionRequestClient'
 
 export const metadata = {
   title: 'Delete My Account | Digital Dine-In',
@@ -37,6 +38,7 @@ export default function DeleteAccountPage() {
             <li>Once eligible, access will be revoked and removable personal records will be deleted or anonymized across relevant systems according to the approved process.</li>
             <li>We will explain any records that must be retained under law and when remaining backup copies are expected to expire.</li>
           </ol>
+          <OwnerDeletionRequestClient />
           {PRIVACY_EMAIL ? (
             <a
               href={`mailto:${PRIVACY_EMAIL}?subject=${subject}&body=${body}`}
@@ -50,7 +52,7 @@ export default function DeleteAccountPage() {
             </p>
           )}
           <p className="mt-4 text-xs leading-5 text-slate-500">
-            This is a request and verification path, <strong>not an automated deletion service</strong>. No account is deleted by opening this page or sending an email.
+            This is a request and verification path, <strong>not an automated deletion service</strong>. No account is deleted by opening this page, submitting the verified request, or sending an email.
           </p>
         </section>
       </div>

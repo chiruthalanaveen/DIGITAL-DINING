@@ -105,18 +105,26 @@ export default function GoogleCompletePage() {
           setIsWebsiteLogin(true)
           setMessage('Verifying your website owner account...')
 
-          const { data: restaurant, error: restaurantError } = await supabase
-            .from('restaurants')
-            .select('id, name, subscription_status')
-            .eq('id', user.id)
-            .maybeSingle()
+          // Verify the Supabase session on the server. Do not expose
+          // confidential restaurant columns or rely on a public SELECT policy.
+          const accessToken = sessionData?.session?.access_token
+          if (!accessToken) {
+            throw new Error('Your Google session expired. Please sign in again.')
+          }
 
-          if (restaurantError) {
+          const ownerResponse = await fetch('/api/auth/owner-restaurant', {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${accessToken}` },
+            cache: 'no-store',
+          })
+          const ownerResult = await ownerResponse.json().catch(() => ({}))
+          if (!ownerResponse.ok && ownerResponse.status !== 404) {
             throw new Error(
-              restaurantError.message ||
-                'Unable to verify your restaurant account.'
+              ownerResult.message || 'Unable to verify your restaurant account.'
             )
           }
+
+          const restaurant = ownerResponse.ok ? ownerResult.restaurant : null
 
           if (!restaurant?.id) {
             await supabase.auth.signOut()
@@ -268,6 +276,7 @@ export default function GoogleCompletePage() {
             headers: {
 
               'Content-Type': 'application/json',
+              Authorization: `Bearer ${sessionData.session.access_token}`,
 
             },
 

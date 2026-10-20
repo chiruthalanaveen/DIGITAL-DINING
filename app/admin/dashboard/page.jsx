@@ -14,11 +14,13 @@ import {
 import AdminWalletControls from '@/app/components/AdminWalletControls'
 import AdminRestaurantFeeEditor from '@/app/components/AdminRestaurantFeeEditor'
 import AdminDeliverySignupSettings from '@/app/components/AdminDeliverySignupSettings'
+import AdminPrivacyDeletionReviews from '@/app/components/AdminPrivacyDeletionReviews'
 
 const NAV = [
   ['overview', 'Overview'],
   ['custom-plans', 'Custom Plans'],
   ['registrations', 'Registrations'],
+  ['privacy-deletions', 'Account Deletions'],
   ['wallet-controls', 'Wallet Controls'],
   ['delivery-signup', 'Delivery Signup'],
   ['tenants', 'Tenants & Access'],
@@ -40,11 +42,11 @@ const NAV_GROUPS = [
   { title: 'Commerce', items: ['operations', 'delivery-orders', 'payments', 'inventory'] },
   { title: 'Growth & Onboarding', items: ['custom-plans', 'delivery-signup', 'people'] },
   { title: 'Customer Experience', items: ['live-support', 'support', 'reviews'] },
-  { title: 'Administration', items: ['system', 'audit'] },
+  { title: 'Administration', items: ['privacy-deletions', 'system', 'audit'] },
 ]
 
 const NAV_ICONS = {
-  overview: 'dashboard', 'custom-plans': 'sparkles', registrations: 'user-check',
+  overview: 'dashboard', 'custom-plans': 'sparkles', registrations: 'user-check', 'privacy-deletions': 'shield',
   'wallet-controls': 'wallet', 'delivery-signup': 'truck', tenants: 'building',
   operations: 'activity', 'delivery-orders': 'package', people: 'users',
   inventory: 'layers', 'live-support': 'messages', support: 'life-ring',
@@ -55,6 +57,7 @@ const NAV_DESCRIPTIONS = {
   overview: 'All business activity at a glance',
   'custom-plans': 'Review incoming business enquiries',
   registrations: 'Approve new business registrations',
+  'privacy-deletions': 'Review account deletion requests and audit decisions',
   'wallet-controls': 'Platform wallet and recharge management',
   'delivery-signup': 'DD MART onboarding and settings',
   tenants: 'Manage restaurants, access and platform fees',
@@ -3239,6 +3242,10 @@ export default function AdminControlCenter() {
 
           {section === 'registrations' && (
             <AdminRegistrationApprovals />
+          )}
+
+          {section === 'privacy-deletions' && (
+            <AdminPrivacyDeletionReviews />
           )}
 
           {section === 'wallet-controls' && (
