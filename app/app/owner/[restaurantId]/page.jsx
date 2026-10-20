@@ -1,13 +1,16 @@
 'use client'
+import PortalShell from '@/app/components/PortalShell'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
-import DeliveryManagement from '@/app/components/DeliveryManagement'
+import OwnerDeliveryManagement from '@/app/components/OwnerDeliveryManagement'
+import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
-import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
+import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+
 
 function AppIcon({ name, className = 'h-5 w-5', strokeWidth = 1.8 }) {
   const common = {
@@ -49,6 +52,11 @@ function AppIcon({ name, className = 'h-5 w-5', strokeWidth = 1.8 }) {
     close: <path d="M6 6l12 12M18 6 6 18" />,
     check: <path d="m5 12 4 4L19 6" />,
     store: <><path d="M4 10v10h16V10" /><path d="M3 10l2-6h14l2 6" /><path d="M8 20v-6h8v6" /></>,
+    wallet: <><rect x="2.5" y="6" width="19" height="14.5" rx="3" /><path d="M3 10.5h18M16.5 15.5h2" /><path d="M6 6V4h12" /></>,
+    truck: <><path d="M3 6h12v12H3zM15 10h3l3 3v5h-6z" /><circle cx="7.5" cy="18.5" r="1.5" /><circle cx="18" cy="18.5" r="1.5" /></>,
+    arrow: <><path d="M4 12h16m-7-7 7 7-7 7" /></>,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></>,
+    help: <><circle cx="12" cy="12" r="9" /><path d="M9.7 9a2.4 2.4 0 1 1 4 2c-1 .8-1.7 1.3-1.7 2.8M12 17h.01" /></>,
   }
 
   return (
@@ -61,7 +69,7 @@ function AppIcon({ name, className = 'h-5 w-5', strokeWidth = 1.8 }) {
 const MOBILE_EXPERIENCE_KEY = 'digital-dine-mobile-experience-v1'
 
 const DEFAULT_MOBILE_EXPERIENCE = {
-  darkMode: true,
+  darkMode: false,
   theme: 'orange',
   textSize: 'normal',
   uiStyle: 'soft',
@@ -375,7 +383,7 @@ function RestaurantChatWidget({ restaurantId }) {
     '👨‍🍳 Kitchen / Orders',
     '👨‍💼 Waiter',
     '📦 Delivery',
-    '💰 Subscription',
+    '💳 Wallet / Platform Fees',
     '🐛 Technical Problem',
     '⚙️ Other',
   ]
@@ -808,7 +816,7 @@ function RestaurantChatWidget({ restaurantId }) {
   const isClosed = status === 'closed'
 
   return (
-    <div className="dd-owner-support-offset fixed bottom-6 right-6 z-50 font-sans">
+    <div className="fixed bottom-6 right-6 z-50 font-sans">
       {!isOpen ? (
         <button
           onClick={handleOpen}
@@ -1376,56 +1384,6 @@ function DashboardEntryLoader({
             animation-duration: 4s !important;
           }
         }
-
-        /* Dedicated Owner mobile-app shell.
-           All owner feature sections stay the same; only the shell/navigation is mobile-first. */
-        .dd-owner-mobile-app {
-          width: 100%;
-          min-height: 100dvh;
-          overflow-x: hidden;
-        }
-
-        .dd-owner-mobile-app .dd-dashboard-main {
-          max-width: 480px !important;
-          margin-left: auto !important;
-          margin-right: auto !important;
-          padding-left: 0.75rem !important;
-          padding-right: 0.75rem !important;
-          padding-bottom: calc(6.5rem + env(safe-area-inset-bottom)) !important;
-        }
-
-        .dd-owner-mobile-app .dd-dashboard-sidebar {
-          display: none !important;
-        }
-
-        .dd-owner-mobile-app .dd-owner-mobile-bottom-nav {
-          display: grid !important;
-          max-width: 480px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        @media (min-width: 1024px) {
-          .dd-owner-mobile-app .dd-dashboard-header > div,
-          .dd-owner-mobile-app .dd-dashboard-main {
-            max-width: 480px !important;
-          }
-
-          .dd-owner-mobile-app .dd-dashboard-header > div {
-            margin-left: auto;
-            margin-right: auto;
-          }
-
-          .dd-owner-mobile-app .dd-dashboard-main {
-            padding-left: 0.75rem !important;
-            padding-right: 0.75rem !important;
-          }
-
-          .dd-owner-mobile-app .dd-dashboard-sidebar {
-            display: none !important;
-          }
-        }
-
       `}</style>
 
       <div className="w-full max-w-md text-center">
@@ -1587,6 +1545,65 @@ function DashboardEntryLoader({
   )
 }
 
+// STEP 18B: Owner-only order transport (non-UI helpers).
+// Existing Supabase Auth session is reused; credentials never enter URLs.
+async function ownerOrdersAccessToken() {
+  const { data, error } = await supabase.auth.getSession()
+  if (error || !data?.session?.access_token) {
+    throw new Error('Your owner session has expired. Please sign in again.')
+  }
+  return data.session.access_token
+}
+
+async function fetchOwnerOrdersSecure(restaurantId) {
+  // The Owner Dashboard already has an authenticated Supabase session.
+  // Call the owner-restricted SECURITY DEFINER RPC directly; this avoids a
+  // Next.js API or service-role misconfiguration making reports look empty.
+  // The RPC MUST validate auth.uid() and ownership server-side.
+  const result = []
+  const pageSize = 900
+  let offset = 0
+  for (let page = 0; page < 112; page += 1) {
+    const { data, error } = await supabase.rpc('owner_get_restaurant_orders_secure', {
+      p_restaurant_id: restaurantId,
+      p_limit: pageSize,
+      p_offset: offset,
+    })
+    if (error) {
+      console.error('[OWNER REPORTS RPC]', error.code, error.message)
+      throw new Error(
+        `Secure restaurant order query failed: ${error.message || error.code || 'Unknown database error'}`
+      )
+    }
+    if (!data || data.success !== true || !Array.isArray(data.orders)) {
+      throw new Error('Secure restaurant order RPC returned an invalid response.')
+    }
+    const rows = data.orders
+    result.push(...rows)
+    if (!data.hasMore) return result
+    if (rows.length === 0) throw new Error('Restaurant order pagination returned no rows.')
+    offset += rows.length
+  }
+  throw new Error('More than 100,000 orders found. Use a date-scoped report export.')
+}
+
+async function updateOwnerOrderStatusSecure(restaurantId, orderId, newStatus) {
+  const accessToken = await ownerOrdersAccessToken()
+  const response = await fetch('/api/owner/restaurant-orders', {
+    method: 'PATCH',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ restaurantId, orderId, newStatus }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || payload?.success !== true || !payload?.order) {
+    throw new Error(payload?.message || 'Unable to update order status.')
+  }
+  return payload.order
+}
 
 function OwnerTableQrSheet({
   restaurant,
@@ -2194,19 +2211,88 @@ function OwnerTableQrSheet({
   )
 }
 
+function MobileOwnerOrderHistory({ restaurantId, formatCurrency }) {
+  const [date, setDate] = useState('')
+  const [searched, setSearched] = useState(false)
+  const [rows, setRows] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [limit, setLimit] = useState(20)
+
+  const lookup = async (event) => {
+    event.preventDefault()
+    if (!restaurantId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || busy) return
+    const [year, month, day] = date.split('-').map(Number)
+    const start = new Date(year, month - 1, day)
+    if (start.getFullYear() !== year || start.getMonth() !== month - 1 || start.getDate() !== day) {
+      setError('Invalid calendar date.')
+      return
+    }
+    const end = new Date(start)
+    end.setDate(end.getDate() + 1)
+    setBusy(true)
+    setError('')
+    setSearched(false)
+    setRows([])
+    setLimit(20)
+    try {
+      const PAGE_SIZE = 1000
+      const found = []
+      for (let offset = 0; ; offset += PAGE_SIZE) {
+        const { data, error: queryError } = await supabase.from('orders')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .gte('created_at', start.toISOString())
+          .lt('created_at', end.toISOString())
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1)
+        if (queryError) throw queryError
+        const batch = Array.isArray(data) ? data : []
+        found.push(...batch)
+        if (batch.length < PAGE_SIZE) break
+      }
+      setRows(found)
+      setSearched(true)
+    } catch (caught) {
+      setError(caught?.message || 'Unable to load older orders.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <section className="dd-mobile-history mt-6 rounded-3xl border border-neutral-200 bg-white p-4">
+      <div className="flex items-center gap-2"><AppIcon name="clock" className="h-5 w-5 text-orange-500" /><h3 className="text-sm font-extrabold text-neutral-900">Search order history</h3></div>
+      <p className="mt-1 text-[11px] leading-5 text-neutral-500">Look up orders from any earlier date. Results are loaded directly with your restaurant's access policies.</p>
+      <form onSubmit={lookup} className="mt-3 flex items-end gap-2">
+        <label className="min-w-0 flex-1 text-[11px] font-semibold text-neutral-500">Order date
+          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900" />
+        </label>
+        <button disabled={!date || busy} type="submit" className="min-h-11 rounded-xl bg-neutral-900 px-4 text-xs font-bold text-white disabled:opacity-50">{busy ? 'Searching…' : 'Search'}</button>
+      </form>
+      {error && <p role="alert" className="mt-3 text-xs text-red-600">{error}</p>}
+      {searched && <div className="mt-4"><p className="text-xs font-bold text-neutral-700">{rows.length} order{rows.length === 1 ? '' : 's'} found</p><div className="mt-3 space-y-2">
+        {rows.slice(0,limit).map((order) => <div key={order.id} className="flex items-center justify-between gap-3 rounded-xl bg-neutral-50 p-3 text-xs"><div className="min-w-0"><p className="font-bold text-neutral-900">Order #{String(order.order_number || order.id || '').slice(-7).toUpperCase()}</p><p className="mt-1 capitalize text-neutral-500">{String(order.status || 'unknown').replaceAll('_',' ')}</p></div><p className="shrink-0 font-bold text-neutral-900">{formatCurrency(order.total_amount)}</p></div>)}
+        {!rows.length && <p className="text-xs text-neutral-500">No orders for this date.</p>}
+      </div>{rows.length > limit && <button type="button" onClick={() => setLimit((n) => n + 20)} className="mt-3 min-h-11 w-full rounded-xl border border-neutral-200 text-xs font-bold text-neutral-800">Load more</button>}</div>}
+    </section>
+  )
+}
+
 export default function RestaurantDashboard() {
   useMobileViewportLock()
   const params = useParams()
   const restaurantId = String(params.id || params.restaurantId || '').trim()
   const router = useRouter()
+  // The native owner application uses its own login entry point.
+  // Do not fall through to the general website login on session expiry.
   const ownerAppLoginUrl = restaurantId
-    ? `/app/owner?restaurantId=${encodeURIComponent(
-        String(restaurantId)
-      )}`
+    ? `/app/owner?restaurantId=${encodeURIComponent(restaurantId)}`
     : '/app'
-
   const [restaurant, setRestaurant] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
+  // Accounts remain locked until the Super Admin approves registration.
+  const [approvalStatus, setApprovalStatus] = useState('checking')
+  const [approvalRestaurantName, setApprovalRestaurantName] = useState('')
   const [entryLoaderDone, setEntryLoaderDone] = useState(false)
   const entryLoaderStartedAtRef = useRef(Date.now())
 
@@ -2219,6 +2305,11 @@ export default function RestaurantDashboard() {
   const [menuItems, setMenuItems] = useState([])
   const [dailyOffers, setDailyOffers] = useState([])
   const [orders, setOrders] = useState([])
+  // Reports must not display a silent ₹0 when secured order loading fails.
+  const [ordersLoadError, setOrdersLoadError] = useState('')
+  const [ordersHaveLoaded, setOrdersHaveLoaded] = useState(false)
+  const [ordersLastSynced, setOrdersLastSynced] = useState(null)
+  const [ordersRefreshTick, setOrdersRefreshTick] = useState(0)
   const [restaurantTables, setRestaurantTables] = useState([])
   const [activeTab, setActiveTab] = useState('owner-home')
   const [dashboardMode, setDashboardMode] = useState('restaurant')
@@ -2227,17 +2318,7 @@ export default function RestaurantDashboard() {
   const [mobileOwnerMenuOpen, setMobileOwnerMenuOpen] = useState(false)
   const [experienceOpen, setExperienceOpen] = useState(false)
   const [tableQrOpen, setTableQrOpen] = useState(false)
-
-  // Lifetime order date search.
-  // This is intentionally separate from the normal live `orders` state:
-  // searching an old date queries Supabase directly so owners can retrieve
-  // historical orders even when the regular dashboard list is very large.
-  const [orderHistoryDate, setOrderHistoryDate] = useState('')
-  const [orderHistoryOrders, setOrderHistoryOrders] = useState([])
-  const [orderHistoryLoading, setOrderHistoryLoading] = useState(false)
-  const [orderHistorySearched, setOrderHistorySearched] = useState(false)
-  const [orderHistoryError, setOrderHistoryError] = useState('')
-  const [orderHistoryVisibleCount, setOrderHistoryVisibleCount] = useState(20)
+  const [mobileOrderFilter, setMobileOrderFilter] = useState('active')
 
   // Add Dish Form States
   const [name, setName] = useState('')
@@ -2271,6 +2352,7 @@ export default function RestaurantDashboard() {
   const [staffPassword, setStaffPassword] = useState('')
   const [staffRole, setStaffRole] = useState('waiter')
   const [addingStaff, setAddingStaff] = useState(false)
+  const [resettingStaffId, setResettingStaffId] = useState(null)
 
   // Tax & Packing Charge Configuration States
   const [sgstRate, setSgstRate] = useState(2.5)
@@ -2299,7 +2381,8 @@ export default function RestaurantDashboard() {
   const [syncingSwiggy, setSyncingSwiggy] = useState(false)
 
   // Reports Timeframe State
-  const [reportTimeframe, setReportTimeframe] = useState('daily')
+  // Default to this month so earlier orders are visible even when today has none.
+  const [reportTimeframe, setReportTimeframe] = useState('monthly')
 
   // Billing & Bill Settings States
   const [selectedBillOrder, setSelectedBillOrder] = useState(null)
@@ -2366,11 +2449,12 @@ export default function RestaurantDashboard() {
   ]
 
   // Subscription-wise module control.
-  // Final plans:
+  // Final customer-facing subscriptions:
   // Restaurant, Delivery, Restaurant + Resort,
   // Restaurant + Delivery, Restaurant + Resort + Delivery.
   //
-  // Legacy Standard values were migrated to the full Restaurant plan.
+  // Standard plans were migrated in Phase 1. Legacy values remain only
+  // as a safe fallback for accounts that have not refreshed yet.
   const legacyPlan = String(restaurant?.plan || 'Pro')
   const legacyPlanCode =
     legacyPlan === 'Pro+'
@@ -2450,9 +2534,9 @@ export default function RestaurantDashboard() {
   const currentPlanDisplay = planFeatures.name
   const currentPlanMonthlyPrice = planFeatures.monthlyPrice
 
-  // Every enabled Restaurant module gets the complete Restaurant feature set.
+  // Every subscribed module receives its complete feature set.
   const hasAdvancedAnalytics = Boolean(planFeatures.restaurant)
-  const hasManagerManagement = Boolean(planFeatures.restaurant || planFeatures.delivery)
+  const hasManagerManagement = Boolean(planFeatures.restaurant)
   const hasAdvancedMenuControls = Boolean(planFeatures.restaurant)
   const hasRealtimeOrderAlarm = Boolean(planFeatures.restaurant)
 
@@ -2461,7 +2545,7 @@ export default function RestaurantDashboard() {
   const deliveryModuleEnabled = Boolean(planFeatures.delivery)
   const hasAdvancedResortFeatures = Boolean(planFeatures.resort)
 
-  // No plan-based menu item limit in the final five-plan structure.
+  // No plan-based menu item limit in the new five-plan structure.
   const maxMenuAllowed = Infinity
 
   const enabledModuleCount =
@@ -2469,17 +2553,8 @@ export default function RestaurantDashboard() {
     Number(resortModuleEnabled) +
     Number(deliveryModuleEnabled)
 
-  // Delivery-only plans still use the existing staff_users security model
-  // for the Manager account. Keep the Owner's staff form locked to Manager
-  // while this plan is active.
-  useEffect(() => {
-    if (currentPlanCode === 'delivery') {
-      setStaffRole('manager')
-    }
-  }, [currentPlanCode])
-
-  // Keep the selected workspace inside the modules included in the plan.
-  // Delivery-only subscriptions open directly in Delivery.
+  // Delivery-only accounts must open directly into Delivery.
+  // Combined subscriptions keep the user's current module when it is valid.
   useEffect(() => {
     if (!restaurant) return
 
@@ -2511,7 +2586,7 @@ export default function RestaurantDashboard() {
     deliveryModuleEnabled,
   ])
 
-  // Native notification taps can deep-link directly into a module.
+  // Native push/deep-link support.
   useEffect(() => {
     const requestedModule = String(
       typeof window !== 'undefined'
@@ -2573,29 +2648,33 @@ restaurantModuleEnabled,
         setProfileEmail(user.email || '')
       }
 
+      // Verify the URL tenant's owner relationship on the server-backed
+      // restaurant row. New registrations have restaurants.owner_id = user.id,
+      // while some legacy installations use restaurants.id = user.id.
+      // Never assume the URL is proof of ownership.
       const { data: ownedRestaurant, error: ownershipError } = await supabase
         .from('restaurants')
-        .select('id, owner_id')
+        .select('id, owner_id, name, approval_status')
         .eq('id', restaurantId)
-        .eq('owner_id', user.id)
         .maybeSingle()
 
-     if (ownershipError || !ownedRestaurant) {
-  console.error('Dashboard ownership verification failed:', {
-    restaurantId,
-    userId: user?.id,
-    ownershipError,
-    ownedRestaurant,
-  })
+      const isOwner = ownedRestaurant && (
+        String(ownedRestaurant.owner_id || '') === String(user.id) ||
+        String(ownedRestaurant.id) === String(user.id)
+      )
 
-  if (!cancelled) {
-    router.replace(ownerAppLoginUrl)
-  }
+      if (ownershipError || !isOwner) {
+        console.error('Owner dashboard access denied:', ownershipError?.message || 'Owner ID does not match tenant')
+        if (!cancelled) router.replace(ownerAppLoginUrl)
+        return
+      }
 
-  return
-}
-
-      if (!cancelled) setAuthChecked(true)
+      if (!cancelled) {
+        const status = String(ownedRestaurant.approval_status || 'pending').toLowerCase()
+        setApprovalRestaurantName(String(ownedRestaurant.name || ''))
+        setApprovalStatus(status)
+        setAuthChecked(true)
+      }
     }
 
     verifyDashboardAccess()
@@ -2618,13 +2697,13 @@ restaurantModuleEnabled,
     alarmSettingsDirtyRef.current = false
   }, [restaurantId])
 
-  // Keep the opening experience visible for a minimum of 4 seconds.
+  // Keep a brief transition, without making mobile owners wait four seconds.
   // Authentication and dashboard loading continue normally in the background.
   useEffect(() => {
     if (!authChecked || !restaurant || entryLoaderDone) return undefined
 
     const elapsed = Date.now() - entryLoaderStartedAtRef.current
-    const remaining = Math.max(0, 4000 - elapsed)
+    const remaining = Math.max(0, 850 - elapsed)
 
     const timer = window.setTimeout(() => {
       setEntryLoaderDone(true)
@@ -2635,7 +2714,7 @@ restaurantModuleEnabled,
 
   useEffect(() => {
     async function fetchDashboard() {
-      if (!authChecked || !restaurantId) return
+      if (!authChecked || approvalStatus !== 'approved' || !restaurantId) return
 
       const {
         data: { user },
@@ -2647,16 +2726,31 @@ restaurantModuleEnabled,
         return
       }
 
+      // Registration may use restaurants.id = auth.users.id, even if the
+      // optional owner_id is absent or differs. The first owner guard already
+      // verified restaurantId === user.id. Do not require BOTH identities.
       const { data: ownedRestaurant, error: ownershipError } = await supabase
         .from('restaurants')
-        .select('id, owner_id')
+        .select('id, owner_id, approval_status')
         .eq('id', restaurantId)
-        .eq('owner_id', user.id)
         .maybeSingle()
 
-      if (ownershipError || !ownedRestaurant) {
+      if (
+        ownershipError ||
+        !ownedRestaurant ||
+        (String(ownedRestaurant.id) !== String(user.id) &&
+         String(ownedRestaurant.owner_id || '') !== String(user.id))
+      ) {
         console.error('Dashboard ownership check failed:', ownershipError)
         router.replace(ownerAppLoginUrl)
+        return
+      }
+
+      // Revalidate approval before every dashboard refresh. This also locks
+      // the owner view promptly if an administrator withdraws approval.
+      if (String(ownedRestaurant.approval_status || 'pending').toLowerCase() !== 'approved') {
+        setApprovalStatus(String(ownedRestaurant.approval_status || 'pending').toLowerCase())
+        setRestaurant(null)
         return
       }
 
@@ -2709,33 +2803,24 @@ restaurantModuleEnabled,
           if (sessionError) throw sessionError
 
           const accessToken = sessionData?.session?.access_token
-
           if (!accessToken) {
-            throw new Error(
-              'Your owner session has expired. Please sign in again.'
-            )
+            throw new Error('Your owner session has expired. Please sign in again.')
           }
 
           const gatewayResponse = await fetch(
-            `/api/payment-gateways/config?restaurantId=${encodeURIComponent(
-              restaurantId
-            )}&module=restaurant`,
+            `/api/payment-gateways/config?restaurantId=${encodeURIComponent(restaurantId)}&module=restaurant`,
             {
               method: 'GET',
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-              },
-              cache: 'no-store',
+              headers: { Authorization: `Bearer ${accessToken}` },
+              cache: 'no-store'
             }
           )
 
-          const gatewayData =
-            await gatewayResponse.json().catch(() => ({}))
+          const gatewayData = await gatewayResponse.json().catch(() => ({}))
 
           if (!gatewayResponse.ok || !gatewayData?.success) {
             throw new Error(
-              gatewayData?.message ||
-                'Unable to load restaurant payment settings.'
+              gatewayData?.message || 'Unable to load restaurant payment settings.'
             )
           }
 
@@ -2748,14 +2833,9 @@ restaurantModuleEnabled,
           setEnableCounterPayment(
             gatewayData.offlinePaymentEnabled ?? true
           )
-
           setIsGatewayEditable(!(keyId && hasSecret))
         } catch (gatewayError) {
-          console.error(
-            'Restaurant payment gateway load error:',
-            gatewayError
-          )
-
+          console.error('Restaurant payment gateway load error:', gatewayError)
           setRazorpayKeyId('')
           setRazorpaySecret('')
           setRazorpayHasSecret(false)
@@ -2775,30 +2855,33 @@ restaurantModuleEnabled,
 
       if (menuData) setMenuItems(menuData)
 
-      const { data: staffData, error: staffError } = await supabase.rpc(
-        'owner_list_restaurant_staff',
-        { p_restaurant_id: restaurantId }
-      )
+     const { data: staffResult, error: staffError } =
+  await supabase.rpc('owner_list_restaurant_staff', {
+    p_restaurant_id: restaurantId
+  })
 
-      if (staffError) {
-        console.error('Staff loading error:', staffError)
-      } else {
-        const safeStaffList = Array.isArray(staffData)
-          ? staffData
-          : Array.isArray(staffData?.staff)
-            ? staffData.staff
-            : Array.isArray(staffData?.staff_list)
-              ? staffData.staff_list
-              : []
+if (staffError) {
+  console.error(
+    'Secure staff list loading error:',
+    staffError
+  )
+} else if (staffResult?.success === false) {
+  console.error(
+    'Secure staff list rejected:',
+    staffResult?.message
+  )
+} else {
+  setStaffList(
+    Array.isArray(staffResult?.staff)
+      ? staffResult.staff.filter(
+          (staff) => staff?.is_active !== false
+        )
+      : []
+  )
+}
 
-        setStaffList(safeStaffList.filter((staff) => staff?.is_active !== false))
-      }
-
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false })
+      // Order history has its own short, authenticated polling effect below.
+      // Do not block it behind gateway, staff-list or menu-data requests.
 
       const { data: tableData, error: tableError } = await supabase
         .from('tables')
@@ -2812,24 +2895,7 @@ restaurantModuleEnabled,
         setRestaurantTables(Array.isArray(tableData) ? tableData : [])
       }
 
-      if (orderData) {
-        if (
-          hasRealtimeOrderAlarm &&
-          orderData.length > prevOrdersLengthRef.current &&
-          prevOrdersLengthRef.current > 0
-        ) {
-          if (audioRef.current) {
-            audioRef.current
-              .play()
-              .catch((e) =>
-                console.log('Audio play blocked:', e)
-              )
-          }
-        }
-
-        prevOrdersLengthRef.current = orderData.length
-        setOrders(orderData)
-      }
+      // Order updates are not coupled to this metadata refresh.
     }
 
     fetchDashboard()
@@ -2839,12 +2905,62 @@ restaurantModuleEnabled,
     return () => clearInterval(interval)
   }, [
     authChecked,
+    approvalStatus,
     restaurantId,
     router,
     currentPlanCode,
     hasInitializedKeys,
     savingPayment
   ])
+
+  // Independent, authenticated order loader for Owner analytics, billing,
+  // table occupancy and alarm. The Manager uses a similar secured RPC flow.
+  useEffect(() => {
+    if (!authChecked || approvalStatus !== 'approved' || !restaurantId) return undefined
+
+    let cancelled = false
+    let busy = false
+    setOrdersHaveLoaded(false)
+    setOrdersLoadError('')
+
+    const refreshOrders = async () => {
+      if (busy || cancelled) return
+      busy = true
+      try {
+        const orderData = await fetchOwnerOrdersSecure(restaurantId)
+        if (cancelled) return
+        if (
+          hasRealtimeOrderAlarm &&
+          orderData.length > prevOrdersLengthRef.current &&
+          prevOrdersLengthRef.current > 0
+        ) {
+          audioRef.current?.play()?.catch((error) => {
+            console.info('Order alarm could not autoplay:', error)
+          })
+        }
+        prevOrdersLengthRef.current = orderData.length
+        setOrders(orderData)
+        setOrdersHaveLoaded(true)
+        setOrdersLoadError('')
+        setOrdersLastSynced(new Date())
+      } catch (error) {
+        if (!cancelled) {
+          console.error('[OWNER ORDER REPORTS LOAD ERROR]', error)
+          setOrdersLoadError(error?.message || 'Unable to fetch secure order history.')
+          // Keep the previous successful orders rather than presenting errors as ₹0.
+        }
+      } finally {
+        busy = false
+      }
+    }
+
+    refreshOrders()
+    const interval = window.setInterval(refreshOrders, 5000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [authChecked, approvalStatus, restaurantId, hasRealtimeOrderAlarm, ordersRefreshTick])
 
   const configuredTableNumbers = [...new Set(
     restaurantTables
@@ -2866,18 +2982,32 @@ restaurantModuleEnabled,
   const availableTableCount = Math.max(0, configuredTableNumbers.length - occupiedTableCount)
 
   const updateOrderStatus = async (orderId, newStatus) => {
-    setOrders(
-      orders.map((o) =>
-        o.id === orderId
-          ? { ...o, status: newStatus }
-          : o
-      )
-    )
+    // Preserve the existing instant UI response, but roll it back if the
+    // owner-only server rejects the change (including cross-tenant orders).
+    const previousOrder = orders.find((order) => String(order.id) === String(orderId))
+    if (!previousOrder) return
+    setOrders((current) => current.map((order) =>
+      String(order.id) === String(orderId)
+        ? { ...order, status: newStatus }
+        : order
+    ))
 
-    await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', orderId)
+    try {
+      const updatedOrder = await updateOwnerOrderStatusSecure(
+        restaurantId, orderId, newStatus
+      )
+      setOrders((current) => current.map((order) =>
+        String(order.id) === String(orderId) ? updatedOrder : order
+      ))
+    } catch (error) {
+      console.error('[OWNER SECURE ORDERS STATUS]', error)
+      setOrders((current) => current.map((order) =>
+        String(order.id) === String(orderId)
+          ? previousOrder
+          : order
+      ))
+      appNotice(error?.message || 'Unable to update order status. Please try again.')
+    }
   }
 
   const toggleItemAvailability = async (
@@ -3357,90 +3487,166 @@ restaurantModuleEnabled,
     setLoading(false)
   }
 
-  const handleCreateStaff = async (
-    e,
-    forcedRole = ''
-  ) => {
-    e.preventDefault()
+ const handleCreateStaff = async (e) => {
+  e.preventDefault()
 
-    const requestedRole = String(
-      forcedRole || ''
+  const cleanName = staffName.trim()
+  const cleanUserId = staffUserId
+    .trim()
+    .toLowerCase()
+  const cleanPassword = staffPassword.trim()
+
+  if (
+    !cleanName ||
+    !cleanUserId ||
+    !cleanPassword
+  ) {
+    appNotice(
+      'Please fill out all staff credentials.'
     )
-      .trim()
-      .toLowerCase()
+    return
+  }
 
-    // The dedicated Delivery Manager form always creates role=manager.
-    // The normal Restaurant staff form keeps its existing role selection.
-    const roleToCreate =
-      requestedRole ||
-      (
-        currentPlanCode === 'delivery'
-          ? 'manager'
-          : staffRole
-      )
+  if (cleanPassword.length < 4) {
+    appNotice(
+      'Password must contain at least 4 characters.'
+    )
+    return
+  }
 
-    if (
-      !staffName.trim() ||
-      !staffUserId.trim() ||
-      !staffPassword.trim()
-    ) {
-      appNotice(
-        'Please fill out all staff credentials.'
+  setAddingStaff(true)
+
+  try {
+    const { data, error } = await supabase.rpc(
+      'owner_create_restaurant_staff',
+      {
+        p_restaurant_id: restaurantId,
+        p_name: cleanName,
+        p_user_id: cleanUserId,
+        p_password: cleanPassword,
+        p_role: staffRole
+      }
+    )
+
+    if (error) {
+      throw error
+    }
+
+    if (data?.success === false) {
+      throw new Error(
+        data?.message ||
+          'Unable to create staff account.'
       )
+    }
+
+    const createdStaff = data?.staff
+
+    if (!createdStaff?.id) {
+      throw new Error(
+        'Staff account was created but no staff record was returned.'
+      )
+    }
+
+    // Add only the SAFE staff object returned by the RPC.
+    // password, pin and password_hash never enter staffList.
+    setStaffList((prev) => [
+      createdStaff,
+      ...prev.filter(
+        (staff) => staff.id !== createdStaff.id
+      )
+    ])
+
+    // Password is available only from the value the owner
+    // just entered. It is not retrieved from the database.
+    appNotice(
+      `${
+        staffRole === 'waiter'
+          ? 'Waiter'
+          : staffRole === 'kitchen'
+            ? 'Kitchen'
+            : 'Restaurant Manager'
+      } account created successfully! 🎉\n\nUser ID: ${
+        createdStaff.user_id
+      }\nPassword: ${cleanPassword}\n\nSave this password now. It will not be shown again.`
+    )
+
+    setStaffName('')
+    setStaffUserId('')
+    setStaffPassword('')
+    setStaffRole('waiter')
+  } catch (err) {
+    console.error(
+      'Secure staff creation error:',
+      err
+    )
+
+    appNotice(
+      'Error creating staff account: ' +
+        (
+          err?.message ||
+          'Please try again.'
+        )
+    )
+  } finally {
+    setAddingStaff(false)
+  }
+}
+
+  const handleResetStaffPassword = async (staffId, name) => {
+    if (!staffId || resettingStaffId) return
+
+    const newPassword = await appPrompt(
+      `Enter a new password for "${name || 'this staff member'}".\n\nMinimum 4 characters. The password will only be shown during this reset.`,
+      ''
+    )
+
+    if (newPassword === null) return
+
+    const cleanPassword = String(newPassword).trim()
+
+    if (cleanPassword.length < 4) {
+      appNotice('Password must contain at least 4 characters.')
       return
     }
 
-    setAddingStaff(true)
+    const confirmed = await appConfirm(
+      `Reset the password for "${name || 'this staff member'}"?\n\nTheir existing staff sessions will be revoked and they must sign in again with the new password.`
+    )
+
+    if (!confirmed) return
+
+    setResettingStaffId(staffId)
 
     try {
       const { data, error } = await supabase.rpc(
-        'owner_create_restaurant_staff',
+        'owner_reset_staff_password',
         {
           p_restaurant_id: restaurantId,
-          p_name: staffName.trim(),
-          p_user_id: staffUserId.trim().toLowerCase(),
-          p_password: staffPassword.trim(),
-          p_role: roleToCreate
+          p_staff_id: staffId,
+          p_new_password: cleanPassword
         }
       )
 
       if (error) throw error
+
       if (data?.success === false) {
-        throw new Error(data?.message || 'Unable to create staff account.')
+        throw new Error(
+          data?.message || 'Unable to reset staff password.'
+        )
       }
 
       appNotice(
-        `${roleToCreate === 'waiter' ? 'Waiter' : roleToCreate === 'kitchen' ? 'Kitchen' : 'Delivery Manager'} account created successfully! 🎉`
+        `${name || 'Staff'} password reset successfully.\n\nNew password: ${cleanPassword}\n\nSave this password now. It will not be shown again.`
       )
-
-      setStaffName('')
-      setStaffUserId('')
-      setStaffPassword('')
-
-      const { data: refreshedStaff, error: refreshError } = await supabase.rpc(
-        'owner_list_restaurant_staff',
-        { p_restaurant_id: restaurantId }
-      )
-
-      if (refreshError) {
-        console.error('Staff refresh error:', refreshError)
-      } else {
-        const safeStaffList = Array.isArray(refreshedStaff)
-          ? refreshedStaff
-          : Array.isArray(refreshedStaff?.staff)
-            ? refreshedStaff.staff
-            : Array.isArray(refreshedStaff?.staff_list)
-              ? refreshedStaff.staff_list
-              : []
-        setStaffList(safeStaffList.filter((staff) => staff?.is_active !== false))
-      }
-    } catch (err) {
+    } catch (error) {
+      console.error('Secure staff password reset error:', error)
       appNotice(
-        'Error creating staff account: ' +
-          err.message
+        `Error resetting staff password: ${
+          error?.message || 'Please try again.'
+        }`
       )
     } finally {
-      setAddingStaff(false)
+      setResettingStaffId(null)
     }
   }
 
@@ -3448,13 +3654,16 @@ restaurantModuleEnabled,
     staffId,
     name
   ) => {
-    if (
-      !await appConfirm(
-        `Are you sure you want to remove staff member "${name}"?`
-      )
-    ) {
+    if (!staffId) {
+      appNotice('Invalid staff account.')
       return
     }
+
+    const confirmed = await appConfirm(
+      `Revoke access for "${name || 'this staff member'}"?\n\nThey will no longer be able to log in and any active staff sessions will be revoked.`
+    )
+
+    if (!confirmed) return
 
     try {
       const { data, error } = await supabase.rpc(
@@ -3465,18 +3674,38 @@ restaurantModuleEnabled,
         }
       )
 
-      if (error) throw error
-      if (data?.success === false) {
-        throw new Error(data?.message || 'Unable to revoke staff account.')
+      if (error) {
+        throw error
       }
 
-      setStaffList((prev) => prev.filter((s) => s.id !== staffId))
+      if (data?.success === false) {
+        throw new Error(
+          data?.message ||
+            'Unable to revoke staff account.'
+        )
+      }
 
-      appNotice(data?.message || 'Staff account revoked.')
-    } catch (err) {
+      setStaffList((prev) =>
+        prev.filter(
+          (staff) => staff.id !== staffId
+        )
+      )
+
       appNotice(
-        'Failed to delete staff: ' +
-          err.message
+        `${name || 'Staff'} access revoked successfully.`
+      )
+    } catch (err) {
+      console.error(
+        'Secure staff revoke error:',
+        err
+      )
+
+      appNotice(
+        'Error revoking staff account: ' +
+          (
+            err?.message ||
+            'Please try again.'
+          )
       )
     }
   }
@@ -3739,85 +3968,75 @@ restaurantModuleEnabled,
     }
   }
 
-  const handleSavePaymentSettings =
-    async (e) => {
-      e.preventDefault()
+  const handleSavePaymentSettings = async (e) => {
+    e.preventDefault()
 
-      setSavingPayment(true)
+    setSavingPayment(true)
 
-      try {
-        const { data: sessionData, error: sessionError } =
-          await supabase.auth.getSession()
+    try {
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession()
 
-        if (sessionError) throw sessionError
+      if (sessionError) throw sessionError
 
-        const accessToken = sessionData?.session?.access_token
-
-        if (!accessToken) {
-          throw new Error(
-            'Your owner session has expired. Please sign in again.'
-          )
-        }
-
-        const response = await fetch(
-          '/api/payment-gateways/config',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              restaurantId,
-              module: 'restaurant',
-              keyId: razorpayKeyId.trim(),
-              keySecret: razorpaySecret.trim(),
-              enabled: Boolean(
-                razorpayKeyId.trim() &&
-                  (razorpaySecret.trim() || razorpayHasSecret)
-              ),
-              offlinePaymentEnabled: enableCounterPayment,
-            }),
-          }
-        )
-
-        const data =
-          await response.json().catch(() => ({}))
-
-        if (!response.ok || !data?.success) {
-          throw new Error(
-            data?.message ||
-              'Failed to update payment settings.'
-          )
-        }
-
-        setRazorpayKeyId(String(data.keyId || ''))
-        setRazorpaySecret('')
-        setRazorpayHasSecret(Boolean(data.hasSecret))
-        setEnableCounterPayment(
-          data.offlinePaymentEnabled ?? enableCounterPayment
-        )
-
-        setRestaurant((prev) => ({
-          ...prev,
-          razorpay_key_id: String(data.keyId || ''),
-          razorpay_secret: '',
-          enable_counter_payment:
-            data.offlinePaymentEnabled ?? enableCounterPayment,
-        }))
-
-        setIsGatewayEditable(false)
-
-        appNotice('Payment settings saved successfully! ✅')
-      } catch (error) {
-        appNotice(
-          'Failed to update payment settings: ' +
-            (error?.message || 'Please try again.')
-        )
-      } finally {
-        setSavingPayment(false)
+      const accessToken = sessionData?.session?.access_token
+      if (!accessToken) {
+        throw new Error('Your owner session has expired. Please sign in again.')
       }
+
+      const response = await fetch('/api/payment-gateways/config', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          restaurantId,
+          module: 'restaurant',
+          keyId: razorpayKeyId.trim(),
+          keySecret: razorpaySecret.trim(),
+          enabled: Boolean(
+            razorpayKeyId.trim() &&
+            (razorpaySecret.trim() || razorpayHasSecret)
+          ),
+          offlinePaymentEnabled: enableCounterPayment
+        })
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || 'Failed to update payment settings.'
+        )
+      }
+
+      setRazorpayKeyId(String(data.keyId || ''))
+      setRazorpaySecret('')
+      setRazorpayHasSecret(Boolean(data.hasSecret))
+      setEnableCounterPayment(
+        data.offlinePaymentEnabled ?? enableCounterPayment
+      )
+
+      setRestaurant((prev) => ({
+        ...prev,
+        razorpay_key_id: String(data.keyId || ''),
+        razorpay_secret: '',
+        enable_counter_payment:
+          data.offlinePaymentEnabled ?? enableCounterPayment
+      }))
+
+      setIsGatewayEditable(false)
+      appNotice('Payment settings saved successfully! ✅')
+    } catch (error) {
+      appNotice(
+        'Failed to update payment settings: ' +
+          (error?.message || 'Please try again.')
+      )
+    } finally {
+      setSavingPayment(false)
     }
+  }
 
   const resetOfferForm = () => {
     setOfferTitle('')
@@ -3988,6 +4207,14 @@ restaurantModuleEnabled,
     return createdAt >= reportRange.start && createdAt <= reportRange.end
   })
 
+  const allTimeValidOrders = orders.filter(
+    (order) => String(order?.status || '').toLowerCase() !== 'cancelled'
+  )
+  const allTimeRevenue = allTimeValidOrders.reduce(
+    (total, order) => total + Number(order?.total_amount || 0),
+    0
+  )
+
   const reportOrderCount = reportOrders.length
 
   const reportRevenue = reportOrders.reduce(
@@ -4100,6 +4327,10 @@ restaurantModuleEnabled,
   const salesGraphData = buildSalesGraphData(reportTimeframe, orders)
 
   const handleGenerateAnalyticsReport = () => {
+    if (ordersLoadError || !ordersHaveLoaded) {
+      appNotice('Orders are not synced yet. Please check the report loading message and try again.')
+      return
+    }
     if (reportOrders.length === 0) {
       appNotice('There are no orders in the selected period to generate a report.')
       return
@@ -4309,17 +4540,17 @@ restaurantModuleEnabled,
   }
 
   const handleTabSwitch = (tabId) => {
-    const advancedTabs = ['settlements', 'staff', 'swiggy-sync', 'alarm-settings']
-
-    if (advancedTabs.includes(tabId) && !planFeatures.advanced) {
+    if (tabId === 'resort' && !resortModuleEnabled) {
       appNotice(
-        `🔒 ${currentPlanDisplay} includes Basic Analytics, but this advanced dashboard feature requires Restaurant Pro or Restaurant + Resort Pro.`
+        '🔒 Resort Management is not included in your active subscription.'
       )
       return
     }
 
-    if (tabId === 'resort' && !resortModuleEnabled) {
-      appNotice('🔒 Resort Management is available only on Restaurant + Resort plans.')
+    if (tabId === 'delivery' && !deliveryModuleEnabled) {
+      appNotice(
+        '🔒 Delivery Management is not included in your active subscription.'
+      )
       return
     }
 
@@ -4409,30 +4640,14 @@ restaurantModuleEnabled,
   }
 
   const handleLogout = async () => {
-    const returnCode = String(
-      restaurant?.restaurant_code || ''
-    )
-      .replace(/\D/g, '')
-      .slice(0, 5)
-
     try {
       localStorage.removeItem(
         'digital_dining_restaurant_id'
       )
 
-      try {
-        sessionStorage.removeItem(
-          'digitaldining_owner_login_context'
-        )
-      } catch {}
-
       await supabase.auth.signOut()
     } finally {
-      router.replace(
-        returnCode
-          ? `/app?code=${encodeURIComponent(returnCode)}`
-          : '/app'
-      )
+      router.replace(ownerAppLoginUrl)
     }
   }
 
@@ -4469,195 +4684,6 @@ restaurantModuleEnabled,
       .toUpperCase()
 
     return `BILL-${compactId.padStart(8, '0')}`
-  }
-
-  const formatOrderHistoryDate = (dateValue) => {
-    if (!dateValue) return ''
-
-    const [year, month, day] = String(dateValue)
-      .split('-')
-      .map(Number)
-
-    if (!year || !month || !day) {
-      return String(dateValue)
-    }
-
-    const date = new Date(
-      year,
-      month - 1,
-      day
-    )
-
-    if (Number.isNaN(date.getTime())) {
-      return String(dateValue)
-    }
-
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    })
-  }
-
-  const getOrderHistoryDayBounds = (dateValue) => {
-    const [year, month, day] = String(dateValue)
-      .split('-')
-      .map(Number)
-
-    if (!year || !month || !day) {
-      throw new Error(
-        'Please select a valid date.'
-      )
-    }
-
-    const start = new Date(
-      year,
-      month - 1,
-      day,
-      0,
-      0,
-      0,
-      0
-    )
-
-    if (
-      Number.isNaN(start.getTime()) ||
-      start.getFullYear() !== year ||
-      start.getMonth() !== month - 1 ||
-      start.getDate() !== day
-    ) {
-      throw new Error(
-        'Please select a valid date.'
-      )
-    }
-
-    const end = new Date(
-      year,
-      month - 1,
-      day + 1,
-      0,
-      0,
-      0,
-      0
-    )
-
-    return { start, end }
-  }
-
-  const handleLifetimeOrderSearch = async () => {
-    if (orderHistoryLoading) return
-
-    if (!restaurantId) {
-      setOrderHistoryError(
-        'Restaurant ID is missing. Please sign in again.'
-      )
-      return
-    }
-
-    if (!orderHistoryDate) {
-      setOrderHistoryError(
-        'Please select a date to search.'
-      )
-      setOrderHistorySearched(false)
-      return
-    }
-
-    setOrderHistoryLoading(true)
-    setOrderHistoryError('')
-    setOrderHistorySearched(false)
-    setOrderHistoryOrders([])
-    setOrderHistoryVisibleCount(20)
-
-    try {
-      const { start, end } =
-        getOrderHistoryDayBounds(
-          orderHistoryDate
-        )
-
-      /*
-       * Fetch the selected day's orders directly from Supabase in pages.
-       * This avoids depending on the dashboard's normal in-memory order
-       * list and also avoids losing results if Supabase's per-request row
-       * limit is reached.
-       */
-      const PAGE_SIZE = 1000
-      let from = 0
-      const foundOrders = []
-
-      while (true) {
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*')
-          .eq(
-            'restaurant_id',
-            restaurantId
-          )
-          .gte(
-            'created_at',
-            start.toISOString()
-          )
-          .lt(
-            'created_at',
-            end.toISOString()
-          )
-          .order(
-            'created_at',
-            { ascending: true }
-          )
-          .order(
-            'id',
-            { ascending: true }
-          )
-          .range(
-            from,
-            from + PAGE_SIZE - 1
-          )
-
-        if (error) throw error
-
-        const pageRows =
-          Array.isArray(data)
-            ? data
-            : []
-
-        foundOrders.push(...pageRows)
-
-        if (
-          pageRows.length <
-          PAGE_SIZE
-        ) {
-          break
-        }
-
-        from += PAGE_SIZE
-      }
-
-      setOrderHistoryOrders(
-        foundOrders
-      )
-      setOrderHistorySearched(true)
-    } catch (error) {
-      console.error(
-        '[OWNER ORDER HISTORY] Search error:',
-        error
-      )
-
-      setOrderHistoryError(
-        error?.message ||
-          'Unable to search historical orders.'
-      )
-      setOrderHistorySearched(true)
-    } finally {
-      setOrderHistoryLoading(false)
-    }
-  }
-
-  const clearLifetimeOrderSearch = () => {
-    setOrderHistoryDate('')
-    setOrderHistoryOrders([])
-    setOrderHistoryError('')
-    setOrderHistorySearched(false)
-    setOrderHistoryVisibleCount(20)
   }
 
   const getOrderItemQuantity = (item) =>
@@ -4850,75 +4876,65 @@ restaurantModuleEnabled,
         )[0] === todayString
     )
 
-  const orderHistoryRevenue =
-    orderHistoryOrders.reduce(
-      (sum, order) =>
-        String(
-          order?.status || ''
-        ).toLowerCase() ===
-        'cancelled'
-          ? sum
-          : sum +
-            Number(
-              order?.total_amount || 0
-            ),
-      0
-    )
-
-  const orderHistoryCancelledCount =
-    orderHistoryOrders.filter(
-      (order) =>
-        String(
-          order?.status || ''
-        ).toLowerCase() ===
-        'cancelled'
-    ).length
-
-  const orderHistoryCompletedCount =
-    orderHistoryOrders.filter(
-      (order) =>
-        [
-          'completed',
-          'delivered',
-          'served',
-        ].includes(
-          String(
-            order?.status || ''
-          ).toLowerCase()
-        )
-    ).length
-
-  const visibleOrderHistory =
-    orderHistoryOrders.slice(
-      0,
-      orderHistoryVisibleCount
-    )
-
   const automaticHighlyReorderedIds =
     getAutomaticHighlyReorderedIds(
       menuItems
     )
 
-  const activeOfferCount = dailyOffers.filter(
-    (offer) => offer.is_active
-  ).length
-
-  const availableMenuCount = menuItems.filter(
-    (item) => item.is_available !== false
-  ).length
-
-  const ownerGreetingHour = new Date().getHours()
-
-  const ownerGreeting =
-    ownerGreetingHour < 12
-      ? 'Good morning'
-      : ownerGreetingHour < 17
-        ? 'Good afternoon'
-        : 'Good evening'
-
-  const ownerDisplayName =
-    String(profileName || '').trim().split(' ')[0] ||
-    'Owner'
+  if (authChecked && approvalStatus !== 'approved') {
+    const rejected = approvalStatus === 'rejected'
+    return (
+      <main className="min-h-screen bg-neutral-950 px-4 py-12 text-neutral-100 flex items-center justify-center">
+        <section className="w-full max-w-xl rounded-3xl border border-neutral-800 bg-neutral-900 p-6 sm:p-9 text-center shadow-2xl">
+          <div className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl text-3xl ${rejected ? 'bg-red-500/10' : 'bg-amber-500/10'}`}>
+            {rejected ? '!' : '⏳'}
+          </div>
+          <p className={`text-xs font-black uppercase tracking-widest ${rejected ? 'text-red-400' : 'text-amber-400'}`}>
+            {rejected ? 'Registration requires attention' : 'Awaiting Super Admin approval'}
+          </p>
+          <h1 className="mt-3 text-2xl font-black text-white">
+            {rejected ? 'Your registration was not approved' : 'Registration received successfully'}
+          </h1>
+          {approvalRestaurantName && (
+            <p className="mt-2 text-sm font-semibold text-neutral-300">{approvalRestaurantName}</p>
+          )}
+          <p className="mt-4 text-sm leading-6 text-neutral-400">
+            {rejected
+              ? 'Please contact the Digital Dine-In Super Admin for a review. You cannot access your Owner Portal until your business is approved.'
+              : 'Please contact the Digital Dine-In Super Admin to request account activation. Your Owner Portal will open only after the Super Admin approves your business.'}
+          </p>
+          <div className="mt-6 rounded-2xl border border-neutral-700 bg-neutral-950 px-4 py-4 text-left">
+            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Account status</p>
+            <p className={`mt-1 font-bold ${rejected ? 'text-red-400' : 'text-amber-400'}`}>
+              {rejected ? 'Rejected — contact admin' : 'Pending approval'}
+            </p>
+          </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-xl bg-orange-500 px-5 py-3 text-sm font-black text-white hover:bg-orange-600"
+            >
+              Check Approval Again
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await supabase.auth.signOut()
+                router.replace(ownerAppLoginUrl)
+              }}
+              className="rounded-xl border border-neutral-700 bg-neutral-800 px-5 py-3 text-sm font-bold text-white hover:bg-neutral-700"
+            >
+              Sign Out
+            </button>
+          </div>
+          <p className="mt-5 text-xs text-neutral-500">
+            Your account will open after Super Admin approves the registration.
+          </p>
+        </section>
+      </main>
+    )
+  }
 
   if (!authChecked || !restaurant || !entryLoaderDone) {
     return (
@@ -4934,7 +4950,7 @@ restaurantModuleEnabled,
   }
 
   return (
-    <div className="dd-mobile-themeable dd-light-dashboard dd-owner-dashboard dd-owner-mobile-app dd-blinkit-owner dd-human-owner min-h-[100dvh] bg-[#f5f6f8] text-neutral-900 font-sans">
+    <div className="dd-mobile-themeable dd-light-dashboard dd-owner-dashboard min-h-screen bg-[#f5f6f8] text-neutral-900 font-sans pb-16">
       <style jsx global>{`
         @media print {
           body * {
@@ -5249,382 +5265,142 @@ restaurantModuleEnabled,
           display: none;
         }
 
-        /* ======================================================
-           BLINKIT-INSPIRED OWNER MOBILE APP
-           Fast, dense, colorful and action-first.
-           Existing backend/features remain untouched.
-           ====================================================== */
-
-        .dd-blinkit-owner {
-          --dd-green: #0c831f;
-          --dd-green-dark: #086b19;
-          --dd-green-soft: #eaf8ed;
-          --dd-yellow: #f8cb46;
-          --dd-yellow-soft: #fff7d6;
-          --dd-red: #e53935;
-          --dd-blue: #2563eb;
-          --dd-bg: #f6f7f2;
-          --dd-card: #ffffff;
-          --dd-card-2: #fafbf8;
-          --dd-text: #171717;
-          --dd-muted: #6f736d;
-          --dd-line: #e8e9e4;
-          background: var(--dd-bg) !important;
-          color: var(--dd-text) !important;
-          width: 100%;
-          min-height: 100dvh;
-          overflow-x: hidden;
-          padding-bottom: calc(6.4rem + env(safe-area-inset-bottom)) !important;
-        }
-
-        :root[data-theme='dark'] .dd-blinkit-owner {
-          --dd-bg: #0d0f0d;
-          --dd-card: #151815;
-          --dd-card-2: #1b1f1b;
-          --dd-text: #f6f7f2;
-          --dd-muted: #9da39a;
-          --dd-line: #2a2f29;
-          --dd-green-soft: rgba(12, 131, 31, .16);
-          --dd-yellow-soft: rgba(248, 203, 70, .12);
-        }
-
-        .dd-blinkit-owner .dd-dashboard-header {
-          background: transparent !important;
-          border: 0 !important;
-          box-shadow: none !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-shell {
-          width: 100%;
-          max-width: 480px;
-          margin: 0 auto;
-        }
-
-        .dd-blinkit-owner .dd-dashboard-main {
-          width: 100%;
-          max-width: 480px !important;
-          margin: 0 auto !important;
-          padding: 0 12px calc(6.6rem + env(safe-area-inset-bottom)) !important;
-        }
-
-        .dd-blinkit-owner .dd-dashboard-sidebar {
-          display: none !important;
-        }
-
-        .dd-blinkit-owner .dd-dashboard-intro {
-          display: none !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-top {
-          background:
-            radial-gradient(circle at 88% 8%, rgba(248,203,70,.72), transparent 25%),
-            linear-gradient(145deg, #0c831f 0%, #0a741c 58%, #075f16 100%);
-          color: white;
-          border-radius: 0 0 28px 28px;
-          padding:
-            max(14px, env(safe-area-inset-top))
-            14px
-            18px;
-          box-shadow: 0 12px 32px rgba(12,131,31,.18);
-        }
-
-        .dd-blinkit-owner .dd-bk-icon-btn {
-          width: 42px;
-          height: 42px;
-          border-radius: 14px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border: 1px solid rgba(255,255,255,.18);
-          background: rgba(255,255,255,.12);
-          color: white;
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-        }
-
-        .dd-blinkit-owner .dd-bk-store-toggle {
-          min-height: 58px;
-          border-radius: 18px;
-          background: rgba(255,255,255,.96);
-          color: #172118;
-          border: 1px solid rgba(255,255,255,.68);
-          box-shadow: 0 10px 24px rgba(0,0,0,.11);
-        }
-
-        .dd-blinkit-owner .dd-bk-scroll {
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
-          scrollbar-width: none;
-        }
-
-        .dd-blinkit-owner .dd-bk-scroll::-webkit-scrollbar {
-          display: none;
-        }
-
-        .dd-blinkit-owner .dd-bk-scroll > * {
-          flex: 0 0 auto;
-        }
-
-        .dd-blinkit-owner .dd-bk-mode-switch {
-          margin-top: 12px;
-          border: 1px solid var(--dd-line) !important;
-          background: var(--dd-card) !important;
-          border-radius: 18px !important;
-          padding: 5px !important;
-          box-shadow: 0 3px 14px rgba(0,0,0,.04);
-        }
-
-        .dd-blinkit-owner .dd-bk-mode-switch button {
-          border-radius: 14px !important;
-          min-height: 42px;
-          text-transform: none !important;
-          letter-spacing: 0 !important;
-          font-size: 11px !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-section-title {
-          color: var(--dd-text);
-          font-size: 16px;
-          line-height: 1.2;
-          font-weight: 900;
-          letter-spacing: -0.02em;
-        }
-
-        .dd-blinkit-owner .dd-bk-section-sub {
-          color: var(--dd-muted);
-          font-size: 10px;
-          line-height: 1.55;
-          font-weight: 600;
-        }
-
-        .dd-blinkit-owner .dd-bk-card {
-          border: 1px solid var(--dd-line) !important;
-          background: var(--dd-card) !important;
-          color: var(--dd-text) !important;
-          border-radius: 22px !important;
-          box-shadow: 0 5px 18px rgba(26,32,24,.045);
-        }
-
-        .dd-blinkit-owner .dd-bk-stat {
-          min-height: 112px;
-          overflow: hidden;
-          position: relative;
-        }
-
-        .dd-blinkit-owner .dd-bk-stat::after {
-          content: '';
-          position: absolute;
-          width: 72px;
-          height: 72px;
-          right: -22px;
-          bottom: -22px;
-          border-radius: 999px;
-          background: currentColor;
-          opacity: .065;
-        }
-
-        .dd-blinkit-owner .dd-bk-action {
-          min-width: 106px;
-          min-height: 104px;
-          border-radius: 20px;
-          border: 1px solid var(--dd-line);
-          background: var(--dd-card);
-          padding: 12px;
-          text-align: left;
-          box-shadow: 0 4px 14px rgba(0,0,0,.035);
-        }
-
-        .dd-blinkit-owner .dd-bk-action-icon {
-          width: 42px;
-          height: 42px;
-          border-radius: 14px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 20px;
-          margin-bottom: 10px;
-        }
-
-        .dd-blinkit-owner .dd-bk-live-row {
-          border-top: 1px solid var(--dd-line);
-          padding: 12px 0;
-        }
-
-        .dd-blinkit-owner .dd-bk-live-row:first-child {
-          border-top: 0;
-          padding-top: 0;
-        }
-
-        .dd-blinkit-owner .dd-bk-live-row:last-child {
-          padding-bottom: 0;
-        }
-
-        .dd-blinkit-owner .dd-bk-plan {
-          background:
-            radial-gradient(circle at 88% 18%, rgba(248,203,70,.34), transparent 30%),
-            linear-gradient(145deg, #141b14, #20281f) !important;
-          border-color: rgba(248,203,70,.22) !important;
-          color: white !important;
-        }
-
-        .dd-blinkit-owner .dd-owner-mobile-bottom-nav {
-          display: grid !important;
-          position: fixed;
-          z-index: 90;
-          left: 50% !important;
-          right: auto !important;
-          bottom: 0;
-          transform: translateX(-50%);
-          width: min(100%, 480px);
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 4px;
-          padding:
-            8px
-            10px
-            max(8px, env(safe-area-inset-bottom));
-          background: rgba(255,255,255,.96) !important;
-          border-top: 1px solid #e5e7eb !important;
-          box-shadow: 0 -10px 30px rgba(20,30,18,.10);
-          backdrop-filter: blur(18px);
-          -webkit-backdrop-filter: blur(18px);
-        }
-
-        :root[data-theme='dark'] .dd-blinkit-owner .dd-owner-mobile-bottom-nav {
-          background: rgba(19,22,19,.96) !important;
-          border-top-color: #2a2f29 !important;
-        }
-
-        .dd-blinkit-owner .dd-owner-mobile-bottom-nav button {
-          min-height: 54px;
-          border-radius: 16px !important;
-          transition: transform 90ms ease, background-color 90ms ease !important;
-        }
-
-        .dd-blinkit-owner .dd-owner-mobile-bottom-nav button:active {
-          transform: scale(.96);
-        }
-
-        .dd-blinkit-owner .dd-bk-nav-active {
-          background: var(--dd-green-soft) !important;
-          color: var(--dd-green) !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-more-sheet {
-          width: min(100%, 480px);
-          margin: 0 auto;
-          background: var(--dd-card) !important;
-          color: var(--dd-text) !important;
-          border-color: var(--dd-line) !important;
-          border-radius: 30px 30px 0 0 !important;
-        }
-
-        .dd-blinkit-owner .dd-bk-sheet-action {
-          min-height: 96px;
-          border-radius: 18px;
-          border: 1px solid var(--dd-line);
-          background: var(--dd-card-2);
-          padding: 14px;
-          text-align: left;
-        }
-
-        .dd-blinkit-owner .dd-bk-content-card,
-        .dd-blinkit-owner [class*='bg-neutral-900'][class*='rounded-3xl'] {
-          border-color: var(--dd-line) !important;
-          background: var(--dd-card) !important;
-          color: var(--dd-text) !important;
-          box-shadow: 0 5px 18px rgba(26,32,24,.04);
-        }
-
-        .dd-blinkit-owner [class~='text-white'] {
-          color: var(--dd-text) !important;
-        }
-
-        .dd-blinkit-owner [class~='text-neutral-300'],
-        .dd-blinkit-owner [class~='text-neutral-400'],
-        .dd-blinkit-owner [class~='text-neutral-500'] {
-          color: var(--dd-muted) !important;
-        }
-
-        .dd-blinkit-owner [class*='bg-neutral-950'] {
-          background: var(--dd-card-2) !important;
-        }
-
-        .dd-blinkit-owner [class*='border-neutral-800'],
-        .dd-blinkit-owner [class*='border-neutral-700'] {
-          border-color: var(--dd-line) !important;
-        }
-
-        .dd-blinkit-owner input,
-        .dd-blinkit-owner select,
-        .dd-blinkit-owner textarea {
-          min-height: 46px;
-          border-color: var(--dd-line) !important;
-          background: var(--dd-card-2) !important;
-          color: var(--dd-text) !important;
-          font-size: 16px !important;
-        }
-
-        .dd-blinkit-owner input::placeholder,
-        .dd-blinkit-owner textarea::placeholder {
-          color: #9ca39a !important;
-        }
-
-        .dd-blinkit-owner button,
-        .dd-blinkit-owner a,
-        .dd-blinkit-owner label {
-          -webkit-tap-highlight-color: transparent;
-          touch-action: manipulation;
-        }
-
-        .dd-blinkit-owner .dd-owner-support-offset {
-          bottom: calc(5.8rem + env(safe-area-inset-bottom)) !important;
-          right: 12px !important;
-        }
-
-        .dd-blinkit-owner .dd-owner-support-offset > button {
-          border-radius: 18px !important;
-          padding: 12px 14px !important;
-          background: var(--dd-green) !important;
-        }
-
-        @media (max-width: 640px) {
-          .dd-blinkit-owner [class*='md:grid-cols-'],
-          .dd-blinkit-owner [class*='lg:grid-cols-'],
-          .dd-blinkit-owner form[class*='grid-cols-'] {
-            grid-template-columns: minmax(0, 1fr) !important;
+        @media (max-width: 1023px) {
+          .dd-owner-dashboard {
+            padding-bottom: calc(6.5rem + env(safe-area-inset-bottom)) !important;
           }
 
-          .dd-blinkit-owner .dd-keep-two {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          .dd-owner-dashboard .dd-dashboard-header {
+            padding:
+              max(0.7rem, env(safe-area-inset-top))
+              0.85rem
+              0.75rem !important;
           }
 
-          .dd-blinkit-owner [class*='p-8'] {
-            padding: 16px !important;
+          .dd-owner-dashboard .dd-dashboard-header > div {
+            gap: 0.75rem !important;
           }
 
-          .dd-blinkit-owner [class*='p-6'] {
-            padding: 15px !important;
+          .dd-owner-dashboard .dd-dashboard-main {
+            margin-top: 1rem !important;
+            padding-left: 0.75rem !important;
+            padding-right: 0.75rem !important;
           }
 
-          .dd-blinkit-owner [class*='p-5'] {
-            padding: 14px !important;
+          .dd-owner-dashboard .dd-dashboard-sidebar {
+            display: none !important;
           }
 
-          .dd-blinkit-owner table {
-            min-width: 720px;
+          .dd-owner-dashboard .dd-dashboard-intro h2 {
+            font-size: 1.45rem !important;
+            line-height: 1.2 !important;
           }
 
-          .dd-blinkit-owner .overflow-x-auto {
-            -webkit-overflow-scrolling: touch;
+          .dd-owner-dashboard .rounded-3xl {
+            border-radius: 1.25rem !important;
+          }
+
+          .dd-owner-dashboard table {
+            min-width: 680px;
+          }
+
+          .dd-owner-dashboard .dd-owner-mobile-bottom-nav {
+            display: grid;
           }
         }
+      `}</style>
 
-        @media (min-width: 641px) {
-          .dd-blinkit-owner {
-            max-width: 480px;
-            margin: 0 auto;
-            box-shadow: 0 0 0 1px rgba(0,0,0,.04), 0 28px 80px rgba(0,0,0,.14);
-          }
+
+      {/* Native mobile design layer. Business logic and desktop operations are untouched. */}
+      <style jsx global>{`
+        @media (max-width:1023px) {
+          body { overflow-x: hidden; }
+          .dd-owner-dashboard { --dd-brand:#f97316; background:#f7f8fa !important; color:#171717 !important; padding-bottom:calc(91px + env(safe-area-inset-bottom)) !important; min-height:100dvh; }
+          .dd-owner-dashboard .dd-owner-desktop-header, .dd-owner-dashboard .dd-owner-desktop-intro, .dd-owner-dashboard .dd-owner-desktop-metrics, .dd-owner-dashboard .dd-owner-module-switch, .dd-owner-dashboard .dd-dashboard-sidebar { display:none !important; }
+          .dd-owner-dashboard .dd-dashboard-main { padding:16px 14px 25px !important; margin:0 auto !important; width:100%; max-width:600px; display:flex; flex-direction:column; gap:20px; }
+          .dd-owner-dashboard .dd-owner-wallet-zone { display:none !important; }
+          .dd-owner-dashboard .dd-owner-wallet-zone.dd-wallet-visible { display:block !important; }
+          .dd-owner-dashboard .dd-mobile-home, .dd-owner-dashboard .dd-mobile-orders, .dd-owner-dashboard .dd-mobile-wallet-heading { display:block; }
+          .dd-owner-dashboard .dd-mobile-home .space-y-5 > * { min-width:0 }
+          .dd-owner-dashboard .dd-mobile-home, .dd-owner-dashboard .dd-mobile-orders { font-family:system-ui,-apple-system,'Segoe UI',sans-serif; }
+          .dd-owner-dashboard .dd-owner-mobile-bottom-nav { display:flex !important; }
+          .dd-owner-dashboard .dd-dashboard-main .rounded-3xl { border-radius:20px; }
+          .dd-owner-dashboard .dd-dashboard-main input, .dd-owner-dashboard .dd-dashboard-main select, .dd-owner-dashboard .dd-dashboard-main textarea { font-size:16px; max-width:100%; }
+          .dd-owner-dashboard .dd-dashboard-main .overflow-x-auto { overscroll-behavior-x:contain; }
+          .dd-owner-dashboard .dd-dashboard-main table { max-width:none; }
+          .dd-owner-dashboard .dd-dashboard-main button { touch-action:manipulation; }
+          .dd-owner-dashboard .dd-dashboard-main .contents { min-width:0; }
+          .dd-owner-dashboard .dd-dashboard-main .dd-mobile-orders { min-width:0; }
+          .dd-owner-dashboard .dd-mobile-home .dd-mobile-order-card { color:#171717; }
+          .dd-owner-dashboard .dd-mobile-feature-card, .dd-owner-dashboard .dd-mobile-order-card, .dd-owner-dashboard .dd-mobile-empty { border:1px solid #eaecf0; background:#fff; border-radius:19px; }
+          .dd-owner-dashboard .dd-mobile-feature-card { display:flex; min-height:137px; flex-direction:column; align-items:flex-start; padding:16px; text-align:left; box-shadow:0 3px 12px rgba(17,24,39,.025); }
+          .dd-owner-dashboard .dd-mobile-order-card { padding:15px; box-shadow:0 3px 12px rgba(17,24,39,.025); }
+          .dd-owner-dashboard .dd-mobile-empty { min-height:110px; padding:22px 15px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:12px; color:#64748b; }
+          .dd-owner-dashboard .dd-mobile-order-status { display:inline-flex; padding:6px 9px; white-space:nowrap; border-radius:10px; background:#fff2e8; color:#c0561a; font-size:10px; font-weight:800; text-transform:capitalize; }
+          .dd-owner-dashboard .dd-mobile-status-action { display:flex; width:100%; margin-top:13px; justify-content:center; align-items:center; gap:10px; border-radius:12px; min-height:43px; background:#fff2e8; color:#bb531e; font-size:12px; font-weight:800; }
+          .dd-owner-dashboard .dd-mobile-quick-action { display:flex; min-width:0; min-height:91px; flex-direction:column; align-items:center; justify-content:center; text-align:center; border:1px solid #eceef1; border-radius:18px; background:#fff; color:#252525; box-shadow:0 2px 9px rgba(0,0,0,.025); }
+          .dd-owner-dashboard .dd-mobile-action-icon, .dd-owner-dashboard .dd-mobile-feature-symbol { display:flex; width:42px; height:42px; align-items:center; justify-content:center; border-radius:14px; }
+          .dd-owner-dashboard .dd-mobile-feature-symbol { height:43px; width:43px; }
+          .dd-owner-dashboard .dd-tile-orange { background:#fff0e6; color:#ec6b27; }
+          .dd-owner-dashboard .dd-tile-blue { background:#eaf2ff; color:#3678d9; }
+          .dd-owner-dashboard .dd-tile-green { background:#e7f8ec; color:#22975a; }
+          .dd-owner-dashboard .dd-tile-purple { background:#f0eaff; color:#8357c3; }
+          .dd-owner-dashboard .dd-mobile-section-heading { display:flex; align-items:end; justify-content:space-between; gap:12px; }
+          .dd-owner-dashboard .dd-mobile-section-heading h2, .dd-owner-dashboard .dd-mobile-section-heading h3 { color:#202124; font-size:16px; font-weight:850; letter-spacing:-.025em; }
+          .dd-owner-dashboard .dd-mobile-section-heading p { margin-top:2px; color:#7b8290; font-size:11px; }
+          .dd-owner-dashboard .dd-mobile-inline-link { min-height:40px; padding:0 5px; font-size:12px; color:#e76b25; font-weight:800; white-space:nowrap; }
+          .dd-owner-dashboard .dd-mobile-filterbar { display:flex; background:#eceff3; border-radius:15px; padding:4px; }
+          .dd-owner-dashboard .dd-mobile-filterbar button { flex:1; min-height:38px; border-radius:11px; font-weight:750; font-size:12px; color:#69717c; }
+          .dd-owner-dashboard .dd-mobile-filterbar button.dd-active { background:#fff; color:#202124; box-shadow:0 1px 5px rgba(0,0,0,.06); }
+          .dd-owner-dashboard .dd-mobile-refresh { display:flex; align-items:center; min-height:44px; gap:5px; color:#d96525; font-size:11px; font-weight:800; }
+          .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(130deg,#fa823b 0%,#ee5e3a 55%,#d7494a 100%); border-radius:23px; padding:21px 18px 17px; box-shadow:0 9px 25px rgba(229,95,53,.16); }
+          .dd-owner-dashboard .dd-mobile-hero-symbol { width:52px; height:52px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.15); border-radius:18px; color:#fff; }
+          .dd-owner-dashboard .dd-mobile-history { box-shadow:0 3px 12px rgba(17,24,39,.025); }
+          .dd-owner-dashboard .dd-owner-mobile-bottom-nav { position:fixed !important; left:0; right:0; bottom:0; z-index:85; width:100%; height:calc(67px + env(safe-area-inset-bottom)); padding:6px 5px calc(6px + env(safe-area-inset-bottom)); background:rgba(255,255,255,.97) !important; border-top:1px solid #ebedf0; box-shadow:0 -8px 22px rgba(12,24,42,.06); backdrop-filter:blur(18px); align-items:stretch; justify-content:space-around; gap:1px; }
+          .dd-owner-dashboard .dd-mobile-nav-link { position:relative; display:flex; flex:1; min-width:0; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#88909b; border-radius:14px; font-size:10px; font-weight:700; }
+          .dd-owner-dashboard .dd-mobile-nav-link.dd-is-current { color:#ed6c2f; }
+          .dd-owner-dashboard .dd-mobile-nav-link.dd-is-current:before { content:''; position:absolute; top:-6px; left:calc(50% - 13px); width:26px; height:3px; border-radius:0 0 4px 4px; background:#ee7138; }
+          .dd-owner-dashboard .dd-mobile-nav-dot { position:absolute; right:-4px; top:-4px; width:8px; height:8px; background:#ff5d50; border:1px solid white; border-radius:50%; }
+          .dd-owner-dashboard .dd-mobile-app-header { position:sticky; z-index:50; top:0; background:rgba(255,255,255,.97); border-bottom:1px solid #e9ecf0; padding:max(10px,env(safe-area-inset-top)) 15px 11px; backdrop-filter:blur(18px); }
+          .dd-owner-dashboard .dd-mobile-brand-icon { display:flex; height:46px; width:46px; flex:none; align-items:center; justify-content:center; border-radius:16px; background:linear-gradient(140deg,#ff8b42,#f45c37); color:white; }
+          .dd-owner-dashboard .dd-mobile-header-action { display:flex; height:42px; width:42px; flex:none; align-items:center; justify-content:center; border:1px solid #eceef1; border-radius:14px; background:#f8f9fb; color:#3f4650; }
+          .dd-owner-dashboard .dd-mobile-store-pill { display:inline-flex; min-height:39px; align-items:center; gap:8px; border-radius:12px; padding:0 11px; font-size:11px; font-weight:800; }
+          .dd-owner-dashboard .dd-mobile-store-pill.dd-open { color:#198b52; background:#e9f9ef; }
+          .dd-owner-dashboard .dd-mobile-store-pill.dd-closed { color:#c63e3e; background:#fff0f0; }
+          .dd-owner-dashboard .dd-mobile-store-pill:disabled { opacity:.55; }
+          .dd-owner-dashboard .dd-mobile-sheet-scrim { position:fixed; inset:0; z-index:100; display:flex; align-items:end; background:rgba(11,16,23,.55); backdrop-filter:blur(5px); }
+          .dd-owner-dashboard .dd-mobile-sheet { width:100%; max-width:600px; max-height:86dvh; overflow:auto; margin:0 auto; padding:15px 16px calc(23px + env(safe-area-inset-bottom)); border-radius:27px 27px 0 0; background:#fff; box-shadow:0 -10px 40px rgba(0,0,0,.2); }
+          .dd-owner-dashboard .dd-mobile-sheet-tool { min-width:0; min-height:84px; display:flex; flex-direction:column; gap:8px; align-items:center; justify-content:center; padding:12px 3px; border:1px solid #e9ebef; border-radius:16px; color:#e97531; background:#fcfcfd; }
+          .dd-owner-dashboard .dd-mobile-sheet-tool span { font-size:10px; font-weight:750; color:#303741; }
+          .dd-owner-dashboard .dd-mobile-wallet-heading { margin-bottom:-7px; }
+          .dd-owner-dashboard .dd-owner-wallet-zone * { max-width:100%; }
+          .dd-owner-dashboard .dd-owner-wallet-zone { overflow-wrap:anywhere; }
+          .dd-owner-dashboard .dd-dashboard-main .dd-mobile-home > * + * { margin-top:18px; }
+          .dd-owner-dashboard .dd-dashboard-main .dd-mobile-orders > * + * { margin-top:14px; }
+        }
+
+        /* Saved app appearance is device-local; it never changes tenant settings. */
+        @media (max-width:1023px) {
+          html[data-dd-app-theme='emerald'] .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(135deg,#159a67,#0a745d); }
+          html[data-dd-app-theme='ocean'] .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(135deg,#3688e8,#2650a2); }
+          html[data-dd-app-theme='violet'] .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(135deg,#8560df,#6c3eb1); }
+          html[data-dd-app-theme='rose'] .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(135deg,#f05c88,#bc3b5d); }
+          html[data-dd-text-size='large'] .dd-owner-dashboard .dd-mobile-home p, html[data-dd-text-size='large'] .dd-owner-dashboard .dd-mobile-orders p { font-size:13px; }
+          html[data-dd-text-size='small'] .dd-owner-dashboard .dd-mobile-home p, html[data-dd-text-size='small'] .dd-owner-dashboard .dd-mobile-orders p { font-size:11px; }
+          html[data-dd-ui-style='rounded'] .dd-owner-dashboard .dd-mobile-quick-action, html[data-dd-ui-style='rounded'] .dd-owner-dashboard .dd-mobile-order-card, html[data-dd-ui-style='rounded'] .dd-owner-dashboard .dd-mobile-feature-card { border-radius:24px; }
+          html[data-dd-ui-style='crisp'] .dd-owner-dashboard .dd-mobile-quick-action, html[data-dd-ui-style='crisp'] .dd-owner-dashboard .dd-mobile-order-card, html[data-dd-ui-style='crisp'] .dd-owner-dashboard .dd-mobile-feature-card { border-radius:9px; }
+          html[data-dd-dark-mode='true'] .dd-owner-dashboard { background:#101115 !important; color:#f5f5f5 !important; }
+          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-app-header, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-owner-mobile-bottom-nav { background:rgba(24,25,30,.98) !important; border-color:#30313a !important; }
+          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-app-header h1, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-section-heading h2, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-section-heading h3, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-order-card, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-order-card .text-neutral-900, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-feature-card, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-wallet-heading h2 { color:#f5f5f5 !important; }
+          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-empty, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-quick-action, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-order-card, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-feature-card, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-history { background:#1c1e24 !important; border-color:#30313a !important; color:#f4f4f4 !important; }
+          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-sheet { background:#1c1e24 !important; }
+          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-sheet h2 { color:#fff !important; }
+          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-sheet-tool, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-header-action { background:#292b31 !important; border-color:#343640 !important; }
+          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-sheet-tool span { color:#e8e8ed !important; }
+        }
+
+        @media (prefers-reduced-motion:reduce) {
+          .dd-owner-dashboard *, .dd-owner-dashboard *:before, .dd-owner-dashboard *:after { scroll-behavior:auto !important; transition:none !important; }
         }
       `}</style>
 
@@ -5634,199 +5410,139 @@ restaurantModuleEnabled,
         preload="auto"
       />
 
-      <style jsx global>{`
-        .dd-human-owner .font-black { font-weight: 700 !important; }
-        .dd-human-owner { --dd-brand: #f97316; --dd-brand-strong: #ea580c; }
-        .dd-human-owner.dd-blinkit-owner {
-          --dd-green: var(--dd-brand);
-          --dd-green-dark: var(--dd-brand-strong);
-          --dd-green-soft: #fff7ed;
-          --dd-yellow: #f59e0b;
-          --dd-yellow-soft: #fffbeb;
-          --dd-bg: #f7f7f6;
-          --dd-card: #ffffff;
-          --dd-card-2: #fafaf9;
-          --dd-text: #18181b;
-          --dd-muted: #71717a;
-          --dd-line: #e7e5e4;
-        }
-        :root[data-theme='dark'] .dd-human-owner.dd-blinkit-owner {
-          --dd-bg: #0f0f10;
-          --dd-card: #171718;
-          --dd-card-2: #1d1d1f;
-          --dd-text: #f5f5f5;
-          --dd-muted: #a1a1aa;
-          --dd-line: #2a2a2d;
-          --dd-green-soft: rgba(249,115,22,.12);
-          --dd-yellow-soft: rgba(245,158,11,.12);
-        }
-        .dd-human-owner .dd-bk-top {
-          background: var(--dd-card) !important;
-          color: var(--dd-text) !important;
-          border-radius: 0 !important;
-          border-bottom: 1px solid var(--dd-line) !important;
-          box-shadow: none !important;
-          padding-bottom: 14px !important;
-        }
-        .dd-human-owner .dd-bk-top [class*='text-white'] { color: var(--dd-text) !important; }
-        .dd-human-owner .dd-bk-top [class*='bg-white/'] { background: var(--dd-card-2) !important; border: 1px solid var(--dd-line) !important; }
-        .dd-human-owner .dd-bk-icon-btn {
-          width: 40px !important; height: 40px !important; border-radius: 12px !important;
-          background: var(--dd-card-2) !important; color: var(--dd-text) !important; border-color: var(--dd-line) !important;
-          backdrop-filter: none !important;
-        }
-        .dd-human-owner .dd-bk-store-toggle {
-          min-height: 56px !important; border-radius: 14px !important; background: var(--dd-card-2) !important;
-          color: var(--dd-text) !important; border: 1px solid var(--dd-line) !important; box-shadow: none !important;
-        }
-        .dd-human-owner .dd-bk-card, .dd-human-owner .dd-bk-action, .dd-human-owner .dd-bk-sheet-action {
-          border-radius: 14px !important; box-shadow: none !important; border-color: var(--dd-line) !important;
-        }
-        .dd-human-owner .dd-bk-action { min-width: 118px !important; }
-        .dd-human-owner .dd-bk-action-icon { border-radius: 10px !important; }
-        .dd-human-owner .dd-bk-stat [class*='rounded-2xl'] { border-radius: 10px !important; }
-        .dd-human-owner [class*='shadow-xl'], .dd-human-owner [class*='shadow-2xl'] { box-shadow: 0 8px 24px rgba(0,0,0,.12) !important; }
-        .dd-human-owner .dd-owner-mobile-bottom-nav {
-          background: rgba(255,255,255,.97) !important; border-color: #e7e5e4 !important; box-shadow: 0 -4px 16px rgba(0,0,0,.05) !important;
-        }
-        :root[data-theme='dark'] .dd-human-owner .dd-owner-mobile-bottom-nav {
-          background: rgba(17,17,18,.97) !important; border-color: #2a2a2d !important; box-shadow: 0 -4px 18px rgba(0,0,0,.2) !important;
-        }
-        .dd-human-owner .dd-owner-mobile-bottom-nav button { border-radius: 10px !important; }
-        .dd-human-owner .dd-bk-nav-active { color: var(--dd-brand) !important; background: transparent !important; }
-        .dd-human-owner .dd-bk-more-sheet { border-radius: 20px 20px 0 0 !important; box-shadow: 0 -10px 36px rgba(0,0,0,.2) !important; }
-        .dd-human-owner [class*='bg-gradient-to-br'] { background-image: none !important; }
-        .dd-human-owner button, .dd-human-owner input, .dd-human-owner select, .dd-human-owner textarea { -webkit-tap-highlight-color: transparent; }
-      `}</style>
+      {/* App header — large tap targets, minimal chrome, real owner status actions. */}
+      <header className="dd-mobile-app-header lg:hidden">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => {setDashboardMode(restaurantModuleEnabled ? 'restaurant' : 'delivery');setActiveTab('owner-home');window.scrollTo({top:0,behavior:'smooth'})}} className="dd-mobile-brand-icon" aria-label="Owner home">
+            {restaurant.logo_url ? <img src={restaurant.logo_url} alt="" className="h-full w-full rounded-xl object-cover" /> : <AppIcon name="store" className="h-6 w-6" />}
+          </button>
+          <div className="min-w-0 flex-1"><p className="text-[10px] font-semibold tracking-wide text-neutral-500">DIGITAL DINE · OWNER</p><h1 className="truncate text-[16px] font-extrabold tracking-tight text-neutral-900">{restaurant.name}</h1></div>
+          <button type="button" onClick={() => setProfileOpen(true)} aria-label="Open profile" className="dd-mobile-header-action"><AppIcon name="user" className="h-5 w-5" /></button>
+          <button type="button" onClick={() => setMobileOwnerMenuOpen(true)} aria-label="More options" className="dd-mobile-header-action"><AppIcon name="more" className="h-5 w-5" /></button>
+        </div>
+        {restaurantModuleEnabled && <div className="mt-3 flex items-center justify-between gap-3">
+          <button type="button" role="switch" aria-checked={isStoreOpen} disabled={savingStoreStatus} onClick={handleOwnerStoreToggle} className={`dd-mobile-store-pill ${isStoreOpen ? 'dd-open' : 'dd-closed'}`}>
+            <span className="h-2 w-2 rounded-full bg-current" />{savingStoreStatus ? 'Updating store…' : isStoreOpen ? 'Restaurant open' : 'Restaurant closed'}<AppIcon name="chevron" className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={() => openOwnerMobileTab('mobile-orders')} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-orange-50 px-3 text-[11px] font-extrabold text-orange-700"><AppIcon name="orders" className="h-4 w-4" />{ordersHaveLoaded ? activeOrders.length : '—'} live</button>
+        </div>}
+      </header>
 
-      {/* OWNER MOBILE HEADER */}
-      <header className="dd-dashboard-header">
-        <div className="dd-bk-top dd-bk-shell">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/70">
-                Owner workspace
-              </p>
+      {/* Existing responsive website header remains on large screens. */}
+      <header className="dd-dashboard-header dd-owner-desktop-header bg-white border-b border-neutral-200 sticky top-0 z-30 px-6 py-4 shadow-sm">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
 
-              <h1 className="mt-1 truncate text-[20px] font-black tracking-tight text-white">
-                {ownerGreeting}, {ownerDisplayName}
-              </h1>
+          <div className="flex items-center space-x-3">
+            <div className="w-12 h-12 rounded-2xl bg-white border border-neutral-700 overflow-hidden flex items-center justify-center font-black text-orange-500 text-xl shadow-lg shadow-orange-500/20">
+              {restaurant.logo_url ? (
+                <img
+                  src={restaurant.logo_url}
+                  alt={`${restaurant.name} logo`}
+                  className="w-full h-full object-contain p-1 opacity-100"
+                />
+              ) : (
+                restaurant.name.charAt(0).toUpperCase()
+              )}
+            </div>
 
-              <div className="mt-1 flex min-w-0 items-center gap-2">
-                <span className="truncate text-[11px] font-bold text-white/85">
+            <div>
+              <div className="flex items-center space-x-2">
+                <h1 className="text-lg font-black text-white">
                   {restaurant.name}
-                </span>
+                </h1>
 
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isStoreOpen}
+                  aria-label={
+                    isStoreOpen
+                      ? 'Close restaurant'
+                      : 'Open restaurant'
+                  }
+                  disabled={savingStoreStatus}
+                  onClick={handleOwnerStoreToggle}
+                  className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider transition disabled:cursor-wait disabled:opacity-60 ${
+                    isStoreOpen
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+                      : 'border-red-500/30 bg-red-500/10 text-red-500'
+                  }`}
+                >
+                  <span
+                    className={`relative h-5 w-9 rounded-full transition ${
+                      isStoreOpen
+                        ? 'bg-emerald-500'
+                        : 'bg-red-500'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                        isStoreOpen
+                          ? 'translate-x-[18px]'
+                          : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+
+                  <span>
+                    {savingStoreStatus
+                      ? 'Saving...'
+                      : isStoreOpen
+                        ? 'Restaurant Open'
+                        : 'Restaurant Closed'}
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                <p className="text-[11px] text-neutral-400 font-mono">
+                  Unique URL ID: {restaurant.id}
+                </p>
                 {restaurant.restaurant_code && (
-                  <span className="shrink-0 rounded-full bg-white/15 px-2 py-1 text-[8px] font-black tracking-wider text-white">
-                    {restaurant.restaurant_code}
+                  <span className="text-[11px] font-black font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-300 px-2.5 py-1 rounded-lg">
+                    Restaurant Code: {restaurant.restaurant_code}
                   </span>
                 )}
               </div>
             </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              <ThemeToggle />
-
-              <button
-                type="button"
-                onClick={() => setProfileOpen(true)}
-                className="dd-bk-icon-btn"
-                aria-label="Owner profile"
-              >
-                <AppIcon name="user" className="h-5 w-5" />
-              </button>
-            </div>
           </div>
 
-          <div className="dd-bk-store-toggle mt-4 flex items-center justify-between gap-3 px-4 py-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    isStoreOpen
-                      ? 'bg-orange-500'
-                      : 'bg-red-500'
-                  }`}
-                />
-
-                <p className="text-[12px] font-black">
-                  {isStoreOpen
-                    ? 'Restaurant is live'
-                    : 'Restaurant is closed'}
-                </p>
-              </div>
-
-              <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                {isStoreOpen
-                  ? 'Customers can place new orders now.'
-                  : 'New customer orders are currently paused.'}
-              </p>
-            </div>
+          <div className="flex items-center space-x-3">
+            <ThemeToggle />
 
             <button
+              onClick={() => setProfileOpen(true)}
+              className="border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 font-bold px-4 py-2.5 rounded-xl text-xs transition flex items-center space-x-2 shadow-sm"
               type="button"
-              role="switch"
-              aria-checked={isStoreOpen}
-              disabled={savingStoreStatus}
-              onClick={handleOwnerStoreToggle}
-              className={`relative h-8 w-14 shrink-0 rounded-full transition disabled:opacity-60 ${
-                isStoreOpen
-                  ? 'bg-orange-500'
-                  : 'bg-neutral-300'
-              }`}
             >
-              <span
-                className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow-md transition-transform ${
-                  isStoreOpen
-                    ? 'translate-x-7'
-                    : 'translate-x-1'
-                }`}
-              />
+              <span>👤 Profile</span>
             </button>
-          </div>
 
-          <div className="dd-bk-scroll mt-4 flex gap-2">
             <button
-              type="button"
               onClick={() =>
-                setTableQrOpen(true)
+                router.push(
+                  `/dashboard/${restaurant.id}/qr`
+                )
               }
-              className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
+              className="bg-neutral-900 hover:bg-black border border-neutral-900 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition flex items-center space-x-2 shadow-sm"
             >
-              <span className="inline-flex items-center gap-1.5"><AppIcon name="qr" className="h-4 w-4" />Table QR</span>
+              <span>📷 Table QR Codes</span>
             </button>
 
             <button
-              type="button"
-              onClick={() => openOwnerMobileTab('billing')}
-              className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
-            >
-              <span className="inline-flex items-center gap-1.5"><AppIcon name="billing" className="h-4 w-4" />Billing</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('settlements')}
-              className="rounded-2xl bg-white/14 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
-            >
-              <span className="inline-flex items-center gap-1.5"><AppIcon name="chart" className="h-4 w-4" />Reports</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handleLogout}
-              className="rounded-2xl bg-red-500/18 px-3 py-2.5 text-[9px] font-black text-white backdrop-blur"
+              className="bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow"
             >
-              Log out
+              Log Out ⎋
             </button>
           </div>
         </div>
+
       </header>
 
       {profileOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
+          <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-400">
@@ -5897,9 +5613,7 @@ restaurantModuleEnabled,
                 <p className="mt-2 text-[10px] font-mono text-neutral-500 break-all">
                   Restaurant ID: {restaurant?.id || restaurantId}
                 </p>
-                <p className="mt-1 text-[10px] font-black text-orange-400">
-                  Plan: {currentPlanDisplay}
-                </p>
+
               </div>
 
               <div className="flex gap-2 pt-1">
@@ -5919,6 +5633,31 @@ restaurantModuleEnabled,
                 </button>
               </div>
             </form>
+
+            {/* Account privacy actions: these begin a verified request, not instant deletion. */}
+            <div className="mt-5 border-t border-neutral-700 pt-4">
+              <p className="text-xs font-bold text-neutral-200">Privacy & account</p>
+              <p className="mt-1 text-xs leading-5 text-neutral-400">
+                You can review how your information is used or request deletion of your owner account.
+                Account deletion requires identity verification and review of outstanding orders and legally required records.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => { setProfileOpen(false); router.push('/privacy-policy') }}
+                  className="min-h-11 flex-1 rounded-xl border border-neutral-700 px-4 py-2.5 text-xs font-semibold text-neutral-200 transition hover:bg-neutral-800"
+                >
+                  Privacy Policy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setProfileOpen(false); router.push('/delete-account') }}
+                  className="min-h-11 flex-1 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/20"
+                >
+                  Delete My Account
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -5927,16 +5666,207 @@ restaurantModuleEnabled,
 
       <main className="dd-dashboard-main max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-6">
 
-        <div className="dd-dashboard-intro">
-          <h2>{restaurant.name}</h2>
+        <div className="dd-dashboard-intro dd-owner-desktop-intro">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
+            Owner Dashboard
+          </p>
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-neutral-900 sm:text-3xl">
+                {restaurant.name}
+              </h2>
+              <p className="mt-1 text-xs text-neutral-500">
+                Manage your business operations, delivery wallet and team from one place.
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* Owner workspace switch. Mobile visual language remains unchanged. */}
-        <div className="dd-bk-mode-switch rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
+
+        {/* MOBILE OWNER HOME — app-first operations, backed by the existing loaded orders. */}
+        {dashboardMode === 'restaurant' && restaurantModuleEnabled && activeTab === 'owner-home' && (
+          <section className="dd-mobile-home lg:hidden space-y-5" aria-label="Owner home">
+            <div className="dd-mobile-hero">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold text-white/75">Your restaurant today</p>
+                  <h2 className="mt-1 truncate text-[22px] font-extrabold tracking-tight text-white">
+                    {restaurant.name}
+                  </h2>
+                  <p className="mt-1 text-xs text-white/80">
+                    {ordersLoadError ? 'Orders need attention' : ordersHaveLoaded ? 'Your live business snapshot' : 'Loading order activity…'}
+                  </p>
+                </div>
+                <div className="dd-mobile-hero-symbol" aria-hidden="true"><AppIcon name="chart" className="h-7 w-7" /></div>
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5">
+                  <p className="text-[11px] text-white/85">Sales today</p>
+                  <p className="mt-1 text-[22px] font-extrabold tracking-tight text-white">
+                    {ordersHaveLoaded ? formatCurrency(todaysOrders.filter((o) => String(o.status || '').toLowerCase() !== 'cancelled').reduce((sum, o) => sum + Number(o.total_amount || 0), 0)) : '—'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5">
+                  <p className="text-[11px] text-white/85">Orders today</p>
+                  <p className="mt-1 text-[22px] font-extrabold text-white">{ordersHaveLoaded ? todaysOrders.length : '—'}</p>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between text-[11px] text-white/85">
+                <span>{activeOrders.length} active kitchen orders</span>
+                <button type="button" onClick={() => openOwnerMobileTab('mobile-orders')} className="inline-flex min-h-9 items-center gap-1 font-bold text-white">
+                  View orders <AppIcon name="arrow" className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {ordersLoadError && (
+              <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                Order figures may be incomplete: {ordersLoadError}
+              </div>
+            )}
+
+            <div className="dd-mobile-section-heading">
+              <div><h3>Quick actions</h3><p>Your most-used owner tools</p></div>
+            </div>
+            <div className="grid grid-cols-4 gap-2.5">
+              {[
+                ['mobile-orders', 'orders', 'Orders', 'dd-tile-orange'],
+                ['menu', 'menu', 'Menu', 'dd-tile-blue'],
+                ['tables', 'tables', 'Tables', 'dd-tile-green'],
+                ['billing', 'billing', 'Billing', 'dd-tile-purple'],
+              ].map(([id, icon, title, color]) => (
+                <button type="button" key={id} onClick={() => openOwnerMobileTab(id)} className="dd-mobile-quick-action">
+                  <span className={`dd-mobile-action-icon ${color}`}><AppIcon name={icon} className="h-5 w-5" /></span>
+                  <span className="mt-2 text-[11px] font-semibold">{title}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="dd-mobile-section-heading">
+              <div><h3>Live orders</h3><p>Orders requiring attention</p></div>
+              <button type="button" className="dd-mobile-inline-link" onClick={() => openOwnerMobileTab('mobile-orders')}>See all</button>
+            </div>
+            <div className="space-y-3">
+              {!ordersHaveLoaded ? (
+                <div className="dd-mobile-empty">Loading latest orders…</div>
+              ) : activeOrders.length === 0 ? (
+                <div className="dd-mobile-empty"><AppIcon name="check" className="mx-auto mb-2 h-6 w-6 text-emerald-500" />All caught up. New orders will appear here.</div>
+              ) : activeOrders.slice(0, 3).map((order) => (
+                <button type="button" key={order.id} onClick={() => openOwnerMobileTab('mobile-orders')} className="dd-mobile-order-card w-full text-left">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-neutral-900">Order #{String(order.order_number || order.id || '').slice(-6).toUpperCase()}</span>
+                    <span className="dd-mobile-order-status">{String(order.status || 'pending').replaceAll('_',' ')}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
+                    <span>Table {order.table_number || '—'} · {Array.isArray(order.items) ? order.items.length : 0} items</span>
+                    <span className="font-extrabold text-neutral-900">{formatCurrency(order.total_amount)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="dd-mobile-section-heading"><div><h3>Manage your business</h3><p>Operations in one place</p></div></div>
+            <div className="grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => { setTableQrOpen(true); setMobileOwnerMenuOpen(false) }} className="dd-mobile-feature-card">
+                <span className="dd-mobile-feature-symbol dd-tile-green"><AppIcon name="qr" /></span>
+                <span className="mt-3 text-[13px] font-extrabold">Table QR codes</span>
+                <span className="mt-1 text-[11px] text-neutral-500">Register & share menus</span>
+              </button>
+              <button type="button" onClick={() => openOwnerMobileTab('mobile-wallet')} className="dd-mobile-feature-card">
+                <span className="dd-mobile-feature-symbol dd-tile-orange"><AppIcon name="wallet" /></span>
+                <span className="mt-3 text-[13px] font-extrabold">Platform wallet</span>
+                <span className="mt-1 text-[11px] text-neutral-500">Balance & recharge</span>
+              </button>
+              {deliveryModuleEnabled && (
+                <button type="button" onClick={() => { setDashboardMode('delivery'); setMobileOwnerMenuOpen(false); window.scrollTo({top:0,behavior:'smooth'}) }} className="dd-mobile-feature-card">
+                  <span className="dd-mobile-feature-symbol dd-tile-blue"><AppIcon name="truck" /></span>
+                  <span className="mt-3 text-[13px] font-extrabold">DD MART</span>
+                  <span className="mt-1 text-[11px] text-neutral-500">Delivery operations</span>
+                </button>
+              )}
+              <button type="button" onClick={() => openOwnerMobileTab('settlements')} className="dd-mobile-feature-card">
+                <span className="dd-mobile-feature-symbol dd-tile-purple"><AppIcon name="chart" /></span>
+                <span className="mt-3 text-[13px] font-extrabold">Reports</span>
+                <span className="mt-1 text-[11px] text-neutral-500">Sales & performance</span>
+              </button>
+            </div>
+          </section>
+        )}
+
+        {dashboardMode === 'restaurant' && restaurantModuleEnabled && activeTab === 'mobile-orders' && (
+          <section className="dd-mobile-orders lg:hidden space-y-4" aria-label="Restaurant order management">
+            <div className="dd-mobile-section-heading">
+              <div><h2>Restaurant orders</h2><p>Latest live updates from your restaurant</p></div>
+              <button type="button" className="dd-mobile-refresh" onClick={() => setOrdersRefreshTick((tick) => tick + 1)}><AppIcon name="refresh" className="h-4 w-4" /> Refresh</button>
+            </div>
+            <div className="dd-mobile-filterbar">
+              {[
+                ['active', 'Active'], ['today', 'Today'], ['all', 'Recent'],
+              ].map(([value, title]) => (
+                <button key={value} type="button" aria-pressed={mobileOrderFilter === value} onClick={() => setMobileOrderFilter(value)} className={mobileOrderFilter === value ? 'dd-active' : ''}>{title}</button>
+              ))}
+            </div>
+            {ordersLoadError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">{ordersLoadError}</p>}
+            {!ordersHaveLoaded && !ordersLoadError && <div className="dd-mobile-empty">Loading secure order data…</div>}
+            {ordersHaveLoaded && (() => {
+              const filtered = [...orders].filter((order) => mobileOrderFilter === 'active'
+                ? ['pending','preparing','ready'].includes(String(order.status || '').toLowerCase())
+                : mobileOrderFilter === 'today'
+                  ? String(order.created_at || '').slice(0,10) === todayString
+                  : true)
+                .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 80)
+              if (!filtered.length) return <div className="dd-mobile-empty">No {mobileOrderFilter} orders found.</div>
+              return <div className="space-y-3">{filtered.map((order) => {
+                const currentStatus = String(order.status || '').toLowerCase()
+                const nextStatus = currentStatus === 'pending' ? 'preparing' : currentStatus === 'preparing' ? 'ready' : currentStatus === 'ready' ? 'completed' : null
+                return (
+                  <article key={order.id} className="dd-mobile-order-card">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0"><p className="font-extrabold">Order #{String(order.order_number || order.id || '').slice(-8).toUpperCase()}</p><p className="mt-1 text-[11px] text-neutral-500">{order.created_at ? new Date(order.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Time not available'}</p></div>
+                      <span className="dd-mobile-order-status">{String(order.status || 'unknown').replaceAll('_',' ')}</span>
+                    </div>
+                    <div className="mt-3 flex items-end justify-between gap-3 border-t border-neutral-100 pt-3">
+                      <div className="text-xs text-neutral-600"><span className="font-semibold">Table {order.table_number || '—'}</span><p className="mt-1">{Array.isArray(order.items) ? `${order.items.length} line items` : 'Restaurant order'}</p></div>
+                      <span className="text-lg font-extrabold">{formatCurrency(order.total_amount)}</span>
+                    </div>
+                    {nextStatus && (
+                      <button type="button" className="dd-mobile-status-action" onClick={() => updateOrderStatus(order.id, nextStatus)}>
+                        Mark as {nextStatus === 'completed' ? 'completed' : nextStatus} <AppIcon name="arrow" className="h-4 w-4" />
+                      </button>
+                    )}
+                  </article>
+                )
+              })}</div>
+            })()}
+            <MobileOwnerOrderHistory restaurantId={restaurantId} formatCurrency={formatCurrency} />
+          </section>
+        )}
+
+        {deliveryModuleEnabled && (
+          <NativeDeliveryPush
+            restaurantId={restaurantId}
+            role="owner"
+            enabled={deliveryModuleEnabled}
+          />
+        )}
+
+        {/* Wallet is available to every approved restaurant/business owner. */}
+        {activeTab === 'mobile-wallet' && (
+          <div className="dd-mobile-wallet-heading lg:hidden">
+            <p className="text-[11px] font-extrabold uppercase tracking-widest text-orange-600">Digital Dine Wallet</p>
+            <h2 className="mt-1 text-2xl font-extrabold text-neutral-900">Platform wallet</h2>
+            <p className="mt-1 text-xs leading-5 text-neutral-500">View your account balance, fees, recharge and history securely.</p>
+          </div>
+        )}
+        <div className={`dd-owner-wallet-zone ${activeTab === 'mobile-wallet' ? 'dd-wallet-visible' : ''}`}>
+          <OwnerDeliveryWallet restaurantId={restaurantId} />
+        </div>
+
+        {/* Owner workspace switch. Module visibility follows plan_code exactly. */}
+        <div className="dd-owner-module-switch rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
           <div
             className={`grid gap-2 ${
               enabledModuleCount >= 3
-                ? 'grid-cols-3'
+                ? 'grid-cols-1 sm:grid-cols-3'
                 : enabledModuleCount === 2
                   ? 'grid-cols-2'
                   : 'grid-cols-1'
@@ -5946,13 +5876,13 @@ restaurantModuleEnabled,
               <button
                 type="button"
                 onClick={() => setDashboardMode('restaurant')}
-                className={`rounded-2xl px-2 py-3 text-[10px] font-black transition ${
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
                   dashboardMode === 'restaurant'
-                    ? 'bg-[#0c831f] text-white'
-                    : 'bg-transparent text-neutral-500'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
                 }`}
               >
-                🍽️ Restaurant
+                🍽️ Restaurant Dashboard
               </button>
             )}
 
@@ -5960,13 +5890,13 @@ restaurantModuleEnabled,
               <button
                 type="button"
                 onClick={() => setDashboardMode('resort')}
-                className={`rounded-2xl px-2 py-3 text-[10px] font-black transition ${
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
                   dashboardMode === 'resort'
-                    ? 'bg-[#2563eb] text-white'
-                    : 'bg-transparent text-neutral-500'
+                    ? 'bg-sky-600 text-white'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
                 }`}
               >
-                🏨 Resort
+                🏨 Resort Dashboard
               </button>
             )}
 
@@ -5974,13 +5904,13 @@ restaurantModuleEnabled,
               <button
                 type="button"
                 onClick={() => setDashboardMode('delivery')}
-                className={`rounded-2xl px-2 py-3 text-[10px] font-black transition ${
+                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
                   dashboardMode === 'delivery'
                     ? 'bg-emerald-600 text-white'
-                    : 'bg-transparent text-neutral-500'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
                 }`}
               >
-                🚚 Delivery
+                🚚 Delivery Dashboard
               </button>
             )}
           </div>
@@ -5995,768 +5925,66 @@ restaurantModuleEnabled,
         )}
 
         {dashboardMode === 'delivery' && deliveryModuleEnabled && (
-          <div className="space-y-4">
-            <NativeDeliveryPush
-              restaurantId={restaurantId}
-              role="owner"
-              enabled={deliveryModuleEnabled}
-            />
-
-            <DeliveryManagement
-              restaurant={restaurant}
-              planCode={currentPlanCode}
-            />
-
-            {deliveryModuleEnabled && (
-              <section className="rounded-[24px] border border-sky-500/20 bg-neutral-900 p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-400">
-                      Delivery Manager Access
-                    </p>
-
-                    <h3 className="mt-1 text-base font-black text-white">
-                      Manager Login
-                    </h3>
-
-                    <p className="mt-1 text-[10px] leading-5 text-neutral-500">
-                      Create the Manager credentials used from the Digital Dine app after this restaurant code is entered.
-                    </p>
-                  </div>
-
-                  <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[8px] font-black uppercase text-sky-300">
-                    Owner only
-                  </span>
-                </div>
-
-                <form
-                  onSubmit={(event) =>
-                    handleCreateStaff(
-                      event,
-                      'manager'
-                    )
-                  }
-                  className="mt-4 grid grid-cols-1 gap-3"
-                >
-                  <input
-                    type="text"
-                    value={staffName}
-                    onChange={(event) =>
-                      setStaffName(event.target.value)
-                    }
-                    placeholder="Manager name"
-                    required
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
-                  />
-
-                  <input
-                    type="text"
-                    value={staffUserId}
-                    onChange={(event) =>
-                      setStaffUserId(event.target.value)
-                    }
-                    placeholder="Manager User ID"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    autoComplete="username"
-                    required
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
-                  />
-
-                  <input
-                    type="password"
-                    value={staffPassword}
-                    onChange={(event) =>
-                      setStaffPassword(event.target.value)
-                    }
-                    placeholder="Manager password / PIN"
-                    autoComplete="new-password"
-                    required
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={addingStaff}
-                    className="rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
-                  >
-                    {addingStaff
-                      ? 'Creating Manager...'
-                      : 'Create Manager Login'}
-                  </button>
-                </form>
-
-                <div className="mt-4 space-y-2">
-                  {staffList
-                    .filter(
-                      (staff) =>
-                        String(staff?.role || '').toLowerCase() === 'manager'
-                    )
-                    .map((staff) => (
-                      <div
-                        key={staff.id}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-black text-white">
-                            {staff.name || staff.user_id}
-                          </p>
-                          <p className="mt-1 truncate text-[9px] text-neutral-500">
-                            User ID: {staff.user_id}
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteStaff(
-                              staff.id,
-                              staff.name || staff.user_id
-                            )
-                          }
-                          className="shrink-0 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[9px] font-black text-red-300"
-                        >
-                          Revoke
-                        </button>
-                      </div>
-                    ))}
-
-                  {!staffList.some(
-                    (staff) =>
-                      String(staff?.role || '').toLowerCase() === 'manager'
-                  ) && (
-                    <p className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-[10px] leading-5 text-neutral-500">
-                      No Manager login exists yet. Create one above, then the Manager can enter this restaurant code in the app and sign in.
-                    </p>
-                  )}
-                </div>
-              </section>
-            )}
-          </div>
-        )}
+  <OwnerDeliveryManagement
+    restaurant={restaurant}
+    planCode={currentPlanCode}
+  />
+)}
 
         {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
           <div className="contents">
-        {/* OWNER MOBILE HOME */}
-        {activeTab === 'owner-home' && (
-          <div className="space-y-5">
-            <section className="pt-1">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <h2 className="dd-bk-section-title">
-                    Today at a glance
-                  </h2>
-                  <p className="dd-bk-section-sub mt-1">
-                    Live restaurant performance and operations.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => openOwnerMobileTab('settlements')}
-                  className="text-[10px] font-semibold text-orange-600"
-                >
-                  Full reports →
-                </button>
-              </div>
-
-              <div className="dd-keep-two mt-3 grid grid-cols-2 gap-3">
-                <div className="dd-bk-card dd-bk-stat p-4 text-orange-600">
-                  <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-sm font-semibold text-orange-600">
-                      ₹
-                    </div>
-                    <span className="rounded-full bg-orange-50 px-2 py-1 text-[8px] font-semibold text-orange-600">
-                      TODAY
-                    </span>
-                  </div>
-
-                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                    Revenue
-                  </p>
-
-                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
-                    ₹{totalRevenue}
-                  </p>
-                </div>
-
-                <div className="dd-bk-card dd-bk-stat p-4 text-[#2563eb]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                      <AppIcon name="orders" className="h-5 w-5" />
-                    </div>
-                    <span className="rounded-full bg-blue-50 px-2 py-1 text-[7px] font-black text-blue-600">
-                      LIVE
-                    </span>
-                  </div>
-
-                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                    Orders
-                  </p>
-
-                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
-                    {todaysOrders.length}
-                  </p>
-                </div>
-
-                <div className="dd-bk-card dd-bk-stat p-4 text-[#f59e0b]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                      <AppIcon name="kitchen" className="h-5 w-5" />
-                    </div>
-                    <span className="rounded-full bg-amber-50 px-2 py-1 text-[7px] font-black text-amber-600">
-                      KDS
-                    </span>
-                  </div>
-
-                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                    Kitchen Queue
-                  </p>
-
-                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
-                    {activeOrders.length}
-                  </p>
-                </div>
-
-                <div className="dd-bk-card dd-bk-stat p-4 text-[#8b5cf6]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                      <AppIcon name="tables" className="h-5 w-5" />
-                    </div>
-                    <span className="rounded-full bg-violet-50 px-2 py-1 text-[7px] font-black text-violet-600">
-                      TABLES
-                    </span>
-                  </div>
-
-                  <p className="mt-4 text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                    Available
-                  </p>
-
-                  <p className="mt-1 text-[22px] font-black tracking-tight text-neutral-900">
-                    {availableTableCount}/{configuredTableNumbers.length}
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <h2 className="dd-bk-section-title">
-                    Quick actions
-                  </h2>
-                  <p className="dd-bk-section-sub mt-1">
-                    Jump straight into daily operations.
-                  </p>
-                </div>
-              </div>
-
-              <div className="dd-bk-scroll mt-3 flex gap-3 pb-1">
-                {[
-                  ['menu', 'menu', 'Menu', `${availableMenuCount} live`, '#fff7ed'],
-                  ['tables', 'tables', 'Tables', `${occupiedTableCount} occupied`, '#fffbeb'],
-                  ['billing', 'billing', 'Billing', 'Create bills', '#eff6ff'],
-                  ['offers', 'tag', 'Offers', `${activeOfferCount} active`, '#fff1f2'],
-                  ['staff-access', 'qr', 'Staff QR', 'Quick login', '#f5f3ff'],
-                  ['taxes', 'card', 'Taxes', 'GST & packing', '#f5f5f4'],
-                ].map(([tabId, icon, title, sub, background]) => (
-                  <button
-                    key={tabId}
-                    type="button"
-                    onClick={() => openOwnerMobileTab(tabId)}
-                    className="dd-bk-action"
-                  >
-                    <span
-                      className="dd-bk-action-icon"
-                      style={{ background }}
-                    >
-                      <AppIcon name={icon} className="h-5 w-5" />
-                    </span>
-
-                    <span className="block text-[11px] font-black text-neutral-900">
-                      {title}
-                    </span>
-
-                    <span className="mt-1 block text-[8px] font-bold text-neutral-500">
-                      {sub}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            {/* LIFETIME ORDER DATE SEARCH */}
-            <section className="dd-bk-card overflow-hidden">
-              <div className="border-b border-neutral-200 bg-neutral-50 p-4 text-neutral-900 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-700">
-                        <AppIcon name="search" className="h-5 w-5" />
-                      </span>
-
-                      <div>
-                        <p className="text-[8px] font-black uppercase tracking-[0.18em] text-orange-600">
-                          Lifetime Order Search
-                        </p>
-
-                        <h2 className="mt-0.5 text-[16px] font-black tracking-tight">
-                          Find orders from any date
-                        </h2>
-                      </div>
-                    </div>
-
-                    <p className="mt-3 max-w-sm text-[9px] font-semibold leading-5 text-neutral-500">
-                      Search the restaurant's full order history by date. For example, select 11/12/2000 to retrieve orders saved on that day.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950">
-                  <label className="block text-[8px] font-black uppercase tracking-wider text-neutral-500">
-                    Order Date
-                  </label>
-
-                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                    <input
-                      type="date"
-                      value={orderHistoryDate}
-                      onChange={(event) => {
-                        setOrderHistoryDate(
-                          event.target.value
-                        )
-                        setOrderHistoryError('')
-                      }}
-                      className="min-h-12 flex-1 rounded-xl border border-neutral-300 bg-white px-4 text-base font-semibold text-neutral-900 outline-none focus:border-orange-500 dark:border-neutral-700"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={handleLifetimeOrderSearch}
-                      disabled={
-                        orderHistoryLoading ||
-                        !orderHistoryDate
-                      }
-                      className="min-h-12 rounded-xl bg-orange-500 px-5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {orderHistoryLoading
-                        ? 'Searching...'
-                        : 'Search Orders'}
-                    </button>
-                  </div>
-
-                  {orderHistoryDate && (
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                      <p className="text-[8px] font-bold text-neutral-500">
-                        Selected: {formatOrderHistoryDate(orderHistoryDate)}
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={clearLifetimeOrderSearch}
-                        disabled={orderHistoryLoading}
-                        className="text-[8px] font-black text-orange-600 disabled:opacity-50"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-4">
-                {orderHistoryError && (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-[9px] font-bold leading-5 text-red-600">
-                    {orderHistoryError}
-                  </div>
-                )}
-
-                {!orderHistorySearched &&
-                  !orderHistoryLoading &&
-                  !orderHistoryError && (
-                    <div className="py-4 text-center">
-                      <div className="text-3xl">📅</div>
-
-                      <p className="mt-2 text-[11px] font-black text-neutral-900">
-                        Search your complete order history
-                      </p>
-
-                      <p className="mx-auto mt-1 max-w-[290px] text-[8px] font-semibold leading-4 text-neutral-500">
-                        This search reads that specific day directly from Supabase, so it is not limited to only today's or recently loaded orders.
-                      </p>
-                    </div>
-                  )}
-
-                {orderHistoryLoading && (
-                  <div className="flex items-center justify-center gap-3 py-8">
-                    <div className="h-7 w-7 animate-spin rounded-full border-4 border-neutral-200 border-t-[#0c831f]" />
-
-                    <div>
-                      <p className="text-[10px] font-black text-neutral-900">
-                        Searching lifetime history
-                      </p>
-
-                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
-                        Looking for every order on {formatOrderHistoryDate(orderHistoryDate)}...
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {orderHistorySearched &&
-                  !orderHistoryLoading &&
-                  !orderHistoryError && (
-                    <>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-[#0c831f]">
-                            Search Result
-                          </p>
-
-                          <h3 className="mt-1 text-[15px] font-black text-neutral-900">
-                            {formatOrderHistoryDate(orderHistoryDate)}
-                          </h3>
-                        </div>
-
-                        <span className="rounded-full bg-[#eaf8ed] px-3 py-1.5 text-[8px] font-black text-[#0c831f]">
-                          {orderHistoryOrders.length} ORDER{orderHistoryOrders.length === 1 ? '' : 'S'}
-                        </span>
-                      </div>
-
-                      <div className="dd-keep-two mt-4 grid grid-cols-2 gap-2">
-                        <div className="rounded-2xl bg-[#eaf8ed] p-3">
-                          <p className="text-[7px] font-black uppercase tracking-wider text-[#0c831f]/70">
-                            Revenue
-                          </p>
-
-                          <p className="mt-1 text-[16px] font-black text-[#0c831f]">
-                            {formatCurrency(orderHistoryRevenue)}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-blue-50 p-3">
-                          <p className="text-[7px] font-black uppercase tracking-wider text-blue-500">
-                            Completed
-                          </p>
-
-                          <p className="mt-1 text-[16px] font-black text-blue-700">
-                            {orderHistoryCompletedCount}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-amber-50 p-3">
-                          <p className="text-[7px] font-black uppercase tracking-wider text-amber-600">
-                            Total Orders
-                          </p>
-
-                          <p className="mt-1 text-[16px] font-black text-amber-700">
-                            {orderHistoryOrders.length}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-red-50 p-3">
-                          <p className="text-[7px] font-black uppercase tracking-wider text-red-500">
-                            Cancelled
-                          </p>
-
-                          <p className="mt-1 text-[16px] font-black text-red-600">
-                            {orderHistoryCancelledCount}
-                          </p>
-                        </div>
-                      </div>
-
-                      {orderHistoryOrders.length === 0 ? (
-                        <div className="py-8 text-center">
-                          <div className="text-4xl">🧾</div>
-
-                          <p className="mt-3 text-[11px] font-black text-neutral-900">
-                            No orders found
-                          </p>
-
-                          <p className="mt-1 text-[8px] font-semibold text-neutral-500">
-                            There are no saved orders for {formatOrderHistoryDate(orderHistoryDate)}.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="mt-4 space-y-2">
-                          {visibleOrderHistory.map((order, index) => {
-                            const status = String(
-                              order?.status || 'pending'
-                            ).toLowerCase()
-
-                            const statusClass =
-                              status === 'cancelled'
-                                ? 'bg-red-50 text-red-600'
-                                : ['completed', 'delivered', 'served'].includes(status)
-                                  ? 'bg-[#eaf8ed] text-[#0c831f]'
-                                  : status === 'ready'
-                                    ? 'bg-blue-50 text-blue-600'
-                                    : 'bg-amber-50 text-amber-700'
-
-                            return (
-                              <div
-                                key={
-                                  order?.id ||
-                                  `${order?.created_at || 'order'}-${index}`
-                                }
-                                className="rounded-[18px] border border-neutral-200 bg-neutral-50 p-3"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="rounded-lg bg-white px-2 py-1 text-[8px] font-black text-neutral-700 shadow-sm">
-                                        {getBillNumber(order)}
-                                      </span>
-
-                                      <span
-                                        className={`rounded-full px-2 py-1 text-[7px] font-black uppercase ${statusClass}`}
-                                      >
-                                        {status}
-                                      </span>
-                                    </div>
-
-                                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] font-semibold text-neutral-500">
-                                      <span>
-                                        🕒 {formatBillTime(order.created_at)}
-                                      </span>
-
-                                      <span>
-                                        🪑 Table {order.table_number || '—'}
-                                      </span>
-
-                                      <span>
-                                        💳 {order.payment_mode || 'Online'}
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="shrink-0 text-right">
-                                    <p className="text-[7px] font-black uppercase tracking-wider text-neutral-400">
-                                      Total
-                                    </p>
-
-                                    <p className="mt-1 text-[14px] font-black text-[#0c831f]">
-                                      {formatCurrency(order.total_amount)}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="mt-3 flex items-center justify-between gap-2 border-t border-neutral-200 pt-2.5">
-                                  <p className="truncate text-[7px] font-semibold text-neutral-400">
-                                    Order ID: {String(order?.id || '—')}
-                                  </p>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handlePrintBill(order)}
-                                    className="shrink-0 rounded-xl bg-white px-3 py-2 text-[8px] font-black text-neutral-700 shadow-sm"
-                                  >
-                                    View Bill
-                                  </button>
-                                </div>
-                              </div>
-                            )
-                          })}
-
-                          {orderHistoryVisibleCount <
-                            orderHistoryOrders.length && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setOrderHistoryVisibleCount(
-                                  (current) =>
-                                    current + 20
-                                )
-                              }
-                              className="w-full rounded-2xl border border-neutral-200 bg-white py-3 text-[9px] font-black text-[#0c831f]"
-                            >
-                              Show 20 More Orders
-                            </button>
-                          )}
-
-                          {orderHistoryOrders.length > 20 && (
-                            <p className="pt-1 text-center text-[7px] font-semibold text-neutral-400">
-                              Showing {Math.min(orderHistoryVisibleCount, orderHistoryOrders.length)} of {orderHistoryOrders.length} orders
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-              </div>
-            </section>
-
-            <section className="dd-bk-card p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="dd-bk-section-title">
-                    Live operations
-                  </h2>
-                  <p className="dd-bk-section-sub mt-1">
-                    Everything important right now.
-                  </p>
-                </div>
-
-                <span
-                  className={`rounded-full px-2.5 py-1.5 text-[8px] font-black ${
-                    isStoreOpen
-                      ? 'bg-[#eaf8ed] text-[#0c831f]'
-                      : 'bg-red-50 text-red-600'
-                  }`}
-                >
-                  {isStoreOpen ? '● OPEN' : '● CLOSED'}
-                </span>
-              </div>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => openOwnerMobileTab('tables')}
-                  className="dd-bk-live-row flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#eaf8ed] text-lg">
-                      🪑
-                    </span>
-                    <div>
-                      <p className="text-[11px] font-black text-neutral-900">
-                        Table availability
-                      </p>
-                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
-                        {availableTableCount} available · {occupiedTableCount} occupied
-                      </p>
-                    </div>
-                  </div>
-                  <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => openOwnerMobileTab('menu')}
-                  className="dd-bk-live-row flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff7d6] text-lg">
-                      🍽️
-                    </span>
-                    <div>
-                      <p className="text-[11px] font-black text-neutral-900">
-                        Menu availability
-                      </p>
-                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
-                        {availableMenuCount} of {menuItems.length} items available
-                      </p>
-                    </div>
-                  </div>
-                  <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => openOwnerMobileTab('offers')}
-                  className="dd-bk-live-row flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff0ec] text-lg">
-                      🔥
-                    </span>
-                    <div>
-                      <p className="text-[11px] font-black text-neutral-900">
-                        Offers of the day
-                      </p>
-                      <p className="mt-0.5 text-[8px] font-semibold text-neutral-500">
-                        {activeOfferCount} active customer offer{activeOfferCount === 1 ? '' : 's'}
-                      </p>
-                    </div>
-                  </div>
-                  <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                </button>
-              </div>
-            </section>
-
-            <section className="dd-bk-card dd-bk-plan overflow-hidden p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[8px] font-black uppercase tracking-[0.18em] text-orange-600">
-                    Membership
-                  </p>
-
-                  <h3 className="mt-1 text-lg font-black text-white">
-                    {currentPlanDisplay}
-                  </h3>
-
-                  <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                    ₹{currentPlanMonthlyPrice.toLocaleString('en-IN')} / month
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-[#f8cb46] px-3 py-2 text-center text-[#171717]">
-                  <p className="text-[7px] font-black uppercase">
-                    Restaurant Code
-                  </p>
-                  <p className="mt-0.5 font-mono text-sm font-black tracking-[0.18em]">
-                    {restaurant.restaurant_code || '-----'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="dd-bk-scroll mt-4 flex gap-2">
-                {Object.values(PLAN_FEATURES)
-                  .filter((plan) => plan.code !== currentPlanCode)
-                  .map((plan) => (
-                    <button
-                      key={plan.code}
-                      type="button"
-                      onClick={() => handleUpgradePlan(plan.code)}
-                      className="rounded-xl border border-white/10 bg-white/8 px-3 py-2 text-left"
-                    >
-                      <span className="block text-[9px] font-black text-white">
-                        {plan.name}
-                      </span>
-                      <span className="mt-0.5 block text-[8px] font-bold text-white/55">
-                        ₹{plan.monthlyPrice.toLocaleString('en-IN')}/mo
-                      </span>
-                    </button>
-                  ))}
-              </div>
-            </section>
-
-            {resortModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('resort')}
-                className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-xl">
-                    🏨
-                  </span>
-                  <div>
-                    <p className="text-[12px] font-black text-neutral-900">
-                      Resort Management
-                    </p>
-                    <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                      Rooms, guests and resort operations
-                    </p>
-                  </div>
-                </div>
-
-                <span className="text-lg text-neutral-400">›</span>
-              </button>
-            )}
+        {/* Metrics Grid — full website stays on desktop; mobile has a separate overview. */}
+        <div className="dd-owner-desktop-metrics grid grid-cols-1 md:grid-cols-4 gap-4">
+
+          <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+              Total Revenue
+            </p>
+
+            <p className="text-2xl font-black text-white mt-1">
+              ₹{totalRevenue}
+            </p>
           </div>
-        )}
+
+          <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+              Orders Today
+            </p>
+
+            <p className="text-2xl font-black text-emerald-400 mt-1">
+              {todaysOrders.length}
+            </p>
+          </div>
+
+          <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+              Live Kitchen Queue
+            </p>
+
+            <p className="text-2xl font-black text-orange-400 mt-1">
+              {activeOrders.length}
+            </p>
+          </div>
+
+          <div className="bg-neutral-900 border border-orange-500/20 p-5 rounded-3xl shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-orange-400">
+              Restaurant Code
+            </p>
+            <p className="text-3xl font-black font-mono tracking-[0.2em] text-white mt-1">
+              {restaurant.restaurant_code || '-----'}
+            </p>
+            <p className="text-[10px] text-neutral-500 mt-1">
+              Use this code with the assigned staff username and password.
+            </p>
+          </div>
+        </div>
 
         {/* Tab Navigation */}
         <nav className="dd-dashboard-sidebar flex space-x-2 border-b border-neutral-200 pb-3 overflow-x-auto">
           {[
             {
-              id: 'owner-home',
-              label: '⌂ Home'
-            },
-            {
               id: 'settlements',
-              label: '↗ Reports'
+              label: '⌂ Dashboard & Reports'
             },
             {
               id: 'menu',
@@ -6845,7 +6073,10 @@ restaurantModuleEnabled,
                   <h2 className="text-lg font-black text-white">Restaurant Tables</h2>
                   <p className="text-xs text-neutral-500 mt-1">Only table QR codes registered from your Table QR page are counted.</p>
                 </div>
-                <button type="button" onClick={() => setTableQrOpen(true)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black">📷 Manage Table QR Codes</button>
+                <button type="button" onClick={() => {
+                  if (window.matchMedia('(max-width: 1023px)').matches) setTableQrOpen(true)
+                  else router.push(`/dashboard/${restaurantId}/qr`)
+                }} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black">📷 Manage Table QR Codes</button>
               </div>
               {configuredTableNumbers.length === 0 ? (
                 <div className="text-center py-10 text-sm text-neutral-500">No table QR codes have been registered yet.</div>
@@ -7997,12 +7228,13 @@ restaurantModuleEnabled,
 
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 block mb-1 uppercase">
-                  Password / PIN
+                  Password
                 </label>
 
                 <input
-                  type="text"
-                  placeholder="Secret123"
+                  type="password"
+                  placeholder="Enter secure password"
+                  autoComplete="new-password"
                   value={
                     staffPassword
                   }
@@ -8053,7 +7285,7 @@ restaurantModuleEnabled,
                       Login User ID
                     </th>
                     <th className="p-3 font-bold">
-                      Password / PIN
+                      Password
                     </th>
                     <th className="p-3 font-bold">
                       Role Portal
@@ -8130,6 +7362,22 @@ restaurantModuleEnabled,
                                 : staff.role === 'kitchen'
                                   ? 'Open Kitchen Portal ↗'
                                   : 'Open Manager Portal ↗'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleResetStaffPassword(
+                                  staff.id,
+                                  staff.name
+                                )
+                              }
+                              disabled={resettingStaffId === staff.id}
+                              className="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-200 hover:text-white border border-neutral-700 px-3 py-1 rounded-lg font-bold transition"
+                            >
+                              {resettingStaffId === staff.id
+                                ? 'Resetting...'
+                                : 'Reset Password 🔑'}
                             </button>
 
                             <button
@@ -8803,11 +8051,11 @@ restaurantModuleEnabled,
               </span>
 
               <h2 className="text-xl font-black text-white">
-                Manage Your Payment Gateways
+                Restaurant / QR Menu Payments
               </h2>
 
               <p className="text-xs text-neutral-400">
-                Configure your individual Razorpay credentials securely.
+                Configure the Razorpay credentials used for restaurant QR-menu orders. Resort room bookings have a separate Razorpay setup inside Resort Management.
               </p>
             </div>
 
@@ -9076,6 +8324,32 @@ restaurantModuleEnabled,
               </div>
             </div>
 
+            {ordersLoadError ? (
+              <div role="alert" className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-200">
+                <p className="font-black">Order reporting could not sync</p>
+                <p className="mt-1">{ordersLoadError}</p>
+                <p className="mt-1 text-red-300/80">Sales exist in Supabase but are not reaching this dashboard. Check the Supabase RPC permission / ownership error above; no values have been silently overwritten.</p>
+                <button type="button" onClick={() => setOrdersRefreshTick((tick) => tick + 1)} className="mt-3 rounded-xl bg-red-500/20 px-4 py-2 font-black text-red-100 hover:bg-red-500/30">Retry Order Sync</button>
+              </div>
+            ) : !ordersHaveLoaded ? (
+              <div role="status" className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs text-neutral-300">Loading authenticated restaurant order history…</div>
+            ) : (
+              <div role="status" className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-xs text-emerald-200">
+                Order history connected · {orders.length} total order{orders.length === 1 ? '' : 's'} loaded (including cancelled). {ordersLastSynced ? `Updated ${ordersLastSynced.toLocaleTimeString('en-IN')}. ` : ''}Report cards below show the selected date range.
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">All-Time Restaurant Orders</p>
+                <p className="mt-2 text-2xl font-black text-white">{ordersHaveLoaded ? allTimeValidOrders.length : '—'}</p>
+              </div>
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">All-Time Restaurant Sales</p>
+                <p className="mt-2 text-2xl font-black text-emerald-400">{ordersHaveLoaded ? formatCurrency(allTimeRevenue) : '—'}</p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
               {REPORT_TIMEFRAMES.map(({ label, value: frame }) => {
                 const range = getReportRange(frame)
@@ -9220,7 +8494,7 @@ restaurantModuleEnabled,
                 </span>
                 <h2 className="text-2xl font-black text-white mt-3">Restaurant Overview</h2>
                 <p className="text-xs text-neutral-400 mt-2">
-                  Basic analytics are included with {currentPlanDisplay}.
+                  A quick overview of your restaurant activity.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
                   <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5">
@@ -9238,18 +8512,11 @@ restaurantModuleEnabled,
                 </div>
               </div>
 
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6">
                 <h3 className="text-lg font-black text-white">Advanced Analytics & Reports</h3>
-                <p className="text-xs text-neutral-300 mt-2">
-                  CSV reports, period reports, average order value, peak-hour analysis and advanced reporting are available with Restaurant Pro or Restaurant + Resort Pro.
+                <p className="text-xs text-neutral-400 mt-2">
+                  Advanced reporting is currently unavailable for this business configuration. Contact Super Admin for access.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => handleUpgradePlan(planFeatures.resort ? 'restaurant_resort_pro' : 'restaurant_pro')}
-                  className="mt-4 bg-orange-500 hover:bg-orange-600 text-white px-5 py-3 rounded-xl text-xs font-black transition"
-                >
-                  Upgrade for Advanced Analytics 🚀
-                </button>
               </div>
             </div>
           )
@@ -9407,310 +8674,64 @@ restaurantModuleEnabled,
       )}
 
 
-      {/* OWNER MOBILE APP NAVIGATION */}
-      {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
-        <>
-          <nav className="dd-owner-mobile-bottom-nav">
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('owner-home')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
-                activeTab === 'owner-home'
-                  ? 'dd-bk-nav-active'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <AppIcon name="home" className="h-5 w-5" />
-              <span className="mt-1">Home</span>
+      {/* NATIVE-STYLE OWNER NAVIGATION: accessible on all authorized modules. */}
+      <nav className="dd-owner-mobile-bottom-nav" aria-label="Mobile owner navigation">
+        {[
+          ['home', 'home', 'Home', restaurantModuleEnabled ? 'owner-home' : 'delivery'],
+          ['orders', 'orders', 'Orders', restaurantModuleEnabled ? 'mobile-orders' : 'delivery'],
+          ...(restaurantModuleEnabled ? [['menu', 'menu', 'Menu', 'menu']] : [['delivery', 'truck', 'DD MART', 'delivery']]),
+          ['wallet', 'wallet', 'Wallet', 'mobile-wallet'],
+        ].map(([key, icon, title, destination]) => {
+          const selected = (destination === 'delivery' ? dashboardMode === 'delivery' : destination === 'mobile-wallet' ? activeTab === destination : dashboardMode === 'restaurant' && activeTab === destination)
+          return (
+            <button key={key} type="button" aria-label={title} aria-current={selected ? 'page' : undefined} onClick={() => {
+              setMobileOwnerMenuOpen(false)
+              if (destination === 'delivery') setDashboardMode('delivery')
+              else { setDashboardMode('restaurant'); setActiveTab(destination) }
+              window.scrollTo({top:0,behavior:'smooth'})
+            }} className={`dd-mobile-nav-link ${selected ? 'dd-is-current' : ''}`}>
+              <span className="relative"><AppIcon name={icon} className="h-[21px] w-[21px]" />
+                {key === 'orders' && dashboardMode !== 'delivery' && activeOrders.length > 0 && <span className="dd-mobile-nav-dot" />}
+              </span><span>{title}</span>
             </button>
+          )
+        })}
+        <button type="button" aria-label="More owner tools" aria-expanded={mobileOwnerMenuOpen} onClick={() => setMobileOwnerMenuOpen(true)} className="dd-mobile-nav-link"><AppIcon name="more" className="h-[21px] w-[21px]" /><span>More</span></button>
+      </nav>
 
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('menu')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
-                activeTab === 'menu'
-                  ? 'dd-bk-nav-active'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <AppIcon name="menu" className="h-5 w-5" />
-              <span className="mt-1">Menu</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('tables')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
-                activeTab === 'tables'
-                  ? 'dd-bk-nav-active'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <AppIcon name="tables" className="h-5 w-5" />
-              <span className="mt-1">Tables</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('billing')}
-              className={`flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium ${
-                activeTab === 'billing'
-                  ? 'dd-bk-nav-active'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <AppIcon name="billing" className="h-5 w-5" />
-              <span className="mt-1">Billing</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMobileOwnerMenuOpen(true)}
-              className="flex min-w-0 flex-col items-center justify-center px-1 py-1.5 text-[10px] font-medium text-neutral-500"
-            >
-              <AppIcon name="more" className="h-5 w-5" />
-              <span className="mt-1">More</span>
-            </button>
-          </nav>
-
-          {mobileOwnerMenuOpen && (
-            <div
-              className="fixed inset-0 z-[95] flex items-end bg-black/55 backdrop-blur-sm"
-              onClick={() => setMobileOwnerMenuOpen(false)}
-            >
-              <div
-                className="dd-bk-more-sheet max-h-[84dvh] overflow-y-auto border p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200" />
-
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#0c831f]">
-                      Owner menu
-                    </p>
-
-                    <h3 className="mt-1 text-[20px] font-black tracking-tight text-neutral-900">
-                      More
-                    </h3>
-
-                    <p className="mt-1 text-[9px] font-semibold text-neutral-500">
-                      Reports, staff, payments, modules and app settings.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setMobileOwnerMenuOpen(false)}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900"
-                  >
-                    <AppIcon name="close" className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="mt-5">
-                  <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
-                    Operations
-                  </p>
-
-                  <div className="dd-keep-two grid grid-cols-2 gap-2">
-                    {[
-                      ['settlements', 'chart', 'Reports', 'Sales & analytics'],
-                      ['staff-access', 'qr', 'Staff Login QR', 'Manager / waiter / kitchen'],
-                      ['taxes', 'card', 'Taxes', 'GST & packing'],
-                      ['billing', 'billing', 'Billing', 'Bills & signatures'],
-                    ].map(([tabId, icon, label, sub]) => (
-                      <button
-                        key={tabId}
-                        type="button"
-                        onClick={() => openOwnerMobileTab(tabId)}
-                        className="dd-bk-sheet-action"
-                      >
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"><AppIcon name={icon} className="h-5 w-5" /></div>
-                        <div className="mt-2 text-[10px] font-black text-neutral-900">
-                          {label}
-                        </div>
-                        <div className="mt-1 text-[8px] font-semibold text-neutral-500">
-                          {sub}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-5">
-                  <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
-                    Growth & team
-                  </p>
-
-                  <div className="dd-keep-two grid grid-cols-2 gap-2">
-                    {[
-                      ['offers', 'tag', 'Offers', `${activeOfferCount} active`],
-                      ['gateway', 'card', 'Payments', 'Gateway settings'],
-                      ...(planFeatures.advanced
-                        ? [
-                            ['staff', 'users', 'Managers', `${staffList.length} accounts`],
-                            ['swiggy-sync', 'sync', 'Menu Sync', 'Import menu data'],
-                          ]
-                        : []),
-                    ].map(([tabId, icon, label, sub]) => (
-                      <button
-                        key={tabId}
-                        type="button"
-                        onClick={() => openOwnerMobileTab(tabId)}
-                        className="dd-bk-sheet-action"
-                      >
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"><AppIcon name={icon} className="h-5 w-5" /></div>
-                        <div className="mt-2 text-[10px] font-black text-neutral-900">
-                          {label}
-                        </div>
-                        <div className="mt-1 text-[8px] font-semibold text-neutral-500">
-                          {sub}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-5">
-                  <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
-                    Personalization
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileOwnerMenuOpen(false)
-                      setExperienceOpen(true)
-                    }}
-                    className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-                        <AppIcon name="settings" className="h-5 w-5" />
-                      </span>
-                      <div>
-                        <p className="text-[11px] font-black text-neutral-900">
-                          App Settings
-                        </p>
-                        <p className="mt-1 text-[8px] font-semibold text-neutral-500">
-                          Appearance, text and notifications
-                        </p>
-                      </div>
-                    </div>
-                    <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                  </button>
-                </div>
-
-                {planFeatures.advanced && (
-                  <div className="mt-5">
-                    <p className="mb-2 text-[8px] font-black uppercase tracking-[0.16em] text-neutral-400">
-                      Experience
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={() => openOwnerMobileTab('alarm-settings')}
-                      className="dd-bk-card flex w-full items-center justify-between gap-3 p-4 text-left"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-                          <AppIcon name="bell" className="h-5 w-5" />
-                        </span>
-
-                        <div>
-                          <p className="text-[11px] font-black text-neutral-900">
-                            Alarm Settings
-                          </p>
-                          <p className="mt-1 text-[8px] font-semibold text-neutral-500">
-                            Kitchen & waiter sounds
-                          </p>
-                        </div>
-                      </div>
-
-                      <AppIcon name="chevron" className="h-4 w-4 text-neutral-400" />
-                    </button>
-                  </div>
-                )}
-
-                {resortModuleEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardMode('resort')
-                      setMobileOwnerMenuOpen(false)
-                    }}
-                    className="mt-5 flex w-full items-center justify-between rounded-[22px] bg-blue-600 p-4 text-left text-white shadow-lg shadow-blue-600/20"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
-                        <AppIcon name="hotel" className="h-5 w-5" />
-                      </span>
-
-                      <div>
-                        <p className="text-[11px] font-black">
-                          Resort Management
-                        </p>
-                        <p className="mt-1 text-[8px] font-semibold text-white/70">
-                          Open resort operations
-                        </p>
-                      </div>
-                    </div>
-
-                    <AppIcon name="chevron" className="h-4 w-4" />
-                  </button>
-                )}
-
-                {deliveryModuleEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardMode('delivery')
-                      setMobileOwnerMenuOpen(false)
-                    }}
-                    className="mt-3 flex w-full items-center justify-between rounded-[22px] bg-emerald-600 p-4 text-left text-white shadow-lg shadow-emerald-600/20"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-base">
-                        🚚
-                      </span>
-
-                      <div>
-                        <p className="text-[11px] font-black">
-                          Delivery Management
-                        </p>
-                        <p className="mt-1 text-[8px] font-semibold text-white/70">
-                          Orders, menu, drivers, offers & alerts
-                        </p>
-                      </div>
-                    </div>
-
-                    <AppIcon name="chevron" className="h-4 w-4" />
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="mt-5 w-full rounded-2xl border border-red-500/20 bg-red-500/10 py-3 text-[10px] font-black text-red-500"
-                >
-                  Log out of Owner App
-                </button>
-              </div>
+      {mobileOwnerMenuOpen && (
+        <div className="dd-mobile-sheet-scrim lg:hidden" onClick={() => setMobileOwnerMenuOpen(false)}>
+          <div className="dd-mobile-sheet" role="dialog" aria-modal="true" aria-label="All owner tools" onClick={(event) => event.stopPropagation()}>
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200" />
+            <div className="flex items-center justify-between gap-3">
+              <div><p className="text-[11px] font-bold uppercase tracking-widest text-orange-600">Digital Dine</p><h2 className="mt-1 text-xl font-extrabold text-neutral-900">Manage your business</h2><p className="mt-1 text-xs text-neutral-500">Everything you need, one tap away.</p></div>
+              <button type="button" aria-label="Close menu" onClick={() => setMobileOwnerMenuOpen(false)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-100"><AppIcon name="close" /></button>
             </div>
-          )}
-        </>
+            <div className="mt-5 grid grid-cols-3 gap-2.5">
+              {[
+                ...(restaurantModuleEnabled ? [
+                  ['settlements','chart','Reports'], ['tables','tables','Tables'], ['billing','billing','Billing'],
+                  ['offers','tag','Offers'],['staff','users','Managers'],['staff-access','qr','Staff QR'],
+                  ['taxes','settings','Taxes'],['swiggy-sync','sync','Menu Sync'],['gateway','card','Payments'],['alarm-settings','bell','Alarms'],
+                ] : []),
+              ].filter(([id]) => !['staff','swiggy-sync','alarm-settings'].includes(id) || planFeatures.advanced).map(([id,icon,title]) => (
+                <button type="button" key={id} onClick={() => openOwnerMobileTab(id)} className="dd-mobile-sheet-tool"><AppIcon name={icon} className="h-[21px] w-[21px]" /><span>{title}</span></button>
+              ))}
+              {restaurantModuleEnabled && <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setTableQrOpen(true);setMobileOwnerMenuOpen(false)}}><AppIcon name="qr" className="h-[21px] w-[21px]" /><span>Table QR</span></button>}
+              {deliveryModuleEnabled && <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setDashboardMode('delivery');setMobileOwnerMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'})}}><AppIcon name="truck" className="h-[21px] w-[21px]" /><span>DD MART</span></button>}
+              {resortModuleEnabled && <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setDashboardMode('resort');setMobileOwnerMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'})}}><AppIcon name="hotel" className="h-[21px] w-[21px]" /><span>Resort</span></button>}
+              <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setExperienceOpen(true);setMobileOwnerMenuOpen(false)}}><AppIcon name="palette" className="h-[21px] w-[21px]" /><span>Appearance</span></button>
+              <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setProfileOpen(true);setMobileOwnerMenuOpen(false)}}><AppIcon name="user" className="h-[21px] w-[21px]" /><span>My profile</span></button>
+              <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setMobileOwnerMenuOpen(false);router.push('/delete-account')}}><AppIcon name="user" className="h-[21px] w-[21px]" /><span>Delete account</span></button>
+              <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setMobileOwnerMenuOpen(false);handleLogout()}}><AppIcon name="logout" className="h-[21px] w-[21px]" /><span>Sign out</span></button>
+            </div>
+          </div>
+        </div>
       )}
 
-      <MobileExperienceSettings open={experienceOpen} onClose={() => setExperienceOpen(false)} portal="Owner" />
-
-      {tableQrOpen && (
-        <OwnerTableQrSheet
-          restaurant={restaurant}
-          restaurantId={restaurantId}
-          onClose={() => setTableQrOpen(false)}
-        />
-      )}
+      {/* Preserved native-app appearance preferences and table QR manager. */}
+      <MobileExperienceSettings open={experienceOpen} onClose={() => setExperienceOpen(false)} portal="Owner App" />
+      {tableQrOpen && <OwnerTableQrSheet restaurant={restaurant} restaurantId={restaurantId} onClose={() => setTableQrOpen(false)} />}
 
       {/* Embedded Real-Time Restaurant Chat Widget */}
       <RestaurantChatWidget

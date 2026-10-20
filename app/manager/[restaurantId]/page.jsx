@@ -1,5 +1,5 @@
 'use client'
-
+import PortalShell from '@/app/components/PortalShell'
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import { supabase } from '@/lib/supabase'

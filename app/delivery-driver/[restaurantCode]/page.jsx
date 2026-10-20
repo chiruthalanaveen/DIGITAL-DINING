@@ -1,4616 +1,1224 @@
 'use client'
 
-
-
-import {
-
-
-
-  use,
-
-
-
-  useEffect,
-
-
-
-  useMemo,
-
-
-
-  useRef,
-
-
-
-  useState,
-
-
-
-} from 'react'
-
-
-
+import { use, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-
-
-
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
-
 import DeliveryReturnPickupTasks from '@/app/components/DeliveryReturnPickupTasks'
-
-
-
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 import { usePersistentPortalAlarm } from '@/lib/usePersistentPortalAlarm'
-
-
-
 import { appConfirm } from '@/lib/appDialog'
 
-
-
 function money(value) {
-
-
-
-  return `₹${Number(value || 0).toLocaleString('en-IN', {
-
-
-
-    maximumFractionDigits: 2,
-
-
-
-  })}`
-
-
-
+  return `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 }
-
-
 
 function labelStatus(value) {
-
-
-
   return String(value || '')
-
-
-
     .replaceAll('_', ' ')
-
-
-
-    .replace(/\b\w/g, (char) =>
-
-
-
-      char.toUpperCase()
-
-
-
-    )
-
-
-
+    .replace(/\b\w/g, (char) => char.toUpperCase())
 }
-
-
 
 function formatDate(value) {
-
-
-
   if (!value) return '—'
-
-
-
   const date = new Date(value)
-
-
-
-  if (Number.isNaN(date.getTime())) {
-
-
-
-    return '—'
-
-
-
-  }
-
-
-
+  if (Number.isNaN(date.getTime())) return '—'
   return date.toLocaleString('en-IN', {
-
-
-
     day: '2-digit',
-
-
-
     month: 'short',
-
-
-
     hour: '2-digit',
-
-
-
     minute: '2-digit',
-
-
-
   })
-
-
-
 }
-
-
 
 function distanceMeters(lat1, lng1, lat2, lng2) {
-
-
-
   const firstLat = Number(lat1)
-
   const firstLng = Number(lng1)
-
   const secondLat = Number(lat2)
-
   const secondLng = Number(lng2)
 
-
-
   if (![firstLat, firstLng, secondLat, secondLng].every(Number.isFinite)) {
-
     return Number.POSITIVE_INFINITY
-
   }
-
-
 
   const toRadians = (value) => (value * Math.PI) / 180
-
   const earthRadiusMeters = 6371008.8
-
   const dLat = toRadians(secondLat - firstLat)
-
   const dLng = toRadians(secondLng - firstLng)
 
-
-
   const a =
-
     Math.sin(dLat / 2) ** 2 +
-
-    Math.cos(toRadians(firstLat)) *
-
-      Math.cos(toRadians(secondLat)) *
-
-      Math.sin(dLng / 2) ** 2
-
-
+    Math.cos(toRadians(firstLat)) * Math.cos(toRadians(secondLat)) * Math.sin(dLng / 2) ** 2
 
   return 2 * earthRadiusMeters * Math.asin(Math.sqrt(a))
-
-
-
 }
-
-
 
 const DELIVERY_FAILURE_REASONS = [
-
-
-
   ['customer_unavailable', 'Customer unavailable'],
-
-
-
   ['customer_rejected', 'Customer rejected order'],
-
-
-
   ['unable_to_contact', 'Unable to contact customer'],
-
-
-
   ['wrong_address', 'Wrong / incomplete address'],
-
-
-
   ['payment_issue', 'COD / payment issue'],
-
-
-
   ['other', 'Other'],
-
-
-
 ]
 
-
-
-function DeliveryResultPanel({
-
-
-
-  order,
-
-
-
-  sessionToken,
-
-
-
-  disabled = false,
-
-
-
-  onCompleted,
-
-
-
-}) {
-
-
-
-  const [result, setResult] = useState('delivered')
-
-
-
-  const [failureReason, setFailureReason] = useState('')
-
-
-
-  const [note, setNote] = useState('')
-
-
-
-  const [files, setFiles] = useState([])
-
-
-
-  const [previews, setPreviews] = useState([])
-
-
-
-  const [submitting, setSubmitting] = useState(false)
-
-
-
-  const [localError, setLocalError] = useState('')
-
-
-
-  useEffect(() => {
-
-
-
-    const nextPreviews = files.map((file) => ({
-
-
-
-      name: file.name,
-
-
-
-      url: URL.createObjectURL(file),
-
-
-
-    }))
-
-
-
-    setPreviews(nextPreviews)
-
-
-
-    return () => {
-
-
-
-      nextPreviews.forEach((preview) => {
-
-
-
-        URL.revokeObjectURL(preview.url)
-
-
-
-      })
-
-
-
-    }
-
-
-
-  }, [files])
-
-
-
-  const handleFiles = (event) => {
-
-
-
-    const selected = Array.from(event.target.files || [])
-
-
-
-    if (selected.length > 5) {
-
-
-
-      setLocalError('You can upload up to 5 photos per delivery attempt.')
-
-
-
-      event.target.value = ''
-
-
-
-      return
-
-
-
-    }
-
-
-
-    const allowedTypes = new Set([
-
-
-
-      'image/jpeg',
-
-
-
-      'image/png',
-
-
-
-      'image/webp',
-
-
-
-    ])
-
-
-
-    const invalid = selected.find(
-
-
-
-      (file) => !allowedTypes.has(file.type) || file.size > 5 * 1024 * 1024
-
-
-
-    )
-
-
-
-    if (invalid) {
-
-
-
-      setLocalError(
-
-
-
-        'Each photo must be JPG, PNG or WEBP and no larger than 5 MB.'
-
-
-
-      )
-
-
-
-      event.target.value = ''
-
-
-
-      return
-
-
-
-    }
-
-
-
-    setLocalError('')
-
-
-
-    setFiles(selected)
-
-
-
+// Simple inline icons so the portal does not depend on emoji rendering.
+function Icon({ name, className = 'h-5 w-5' }) {
+  const paths = {
+    home: <><path d="m3 10 9-7 9 7v10H3z" /><path d="M9 20v-7h6v7" /></>,
+    route: <><circle cx="6" cy="19" r="2" /><circle cx="18" cy="5" r="2" /><path d="M8 19h8a4 4 0 0 0 0-8H8a4 4 0 0 1 0-8h8" /></>,
+    bell: <><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10 21h4" /></>,
+    box: <><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v10l9 4 9-4V7" /><path d="M12 11v10" /></>,
+    users: <><circle cx="9" cy="8" r="3.5" /><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6" /><path d="M16 4a3.5 3.5 0 0 1 0 7M22 20c0-2.6-1.6-4.6-4-5.5" /></>,
+    truck: <><path d="M3 7h11v9H3z" /><path d="M14 10h4l3 3v3h-7" /><circle cx="7" cy="17.5" r="1.5" /><circle cx="17" cy="17.5" r="1.5" /></>,
+    cash: <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></>,
+    menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
+    refresh: <><path d="M3 12a9 9 0 0 1 15-6l2 2" /><path d="M20 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6l-2-2" /><path d="M4 21v-5h5" /></>,
+    phone: <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />,
+    chat: <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />,
+    pin: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></>,
+    help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7" /><path d="M12 17h.01" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    check: <path d="m5 12 5 5 9-10" />,
+    close: <path d="M6 6l12 12M18 6 6 18" />,
+    logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
+    up: <path d="m6 15 6-6 6 6" />,
   }
-
-
-
-  const submitResult = async () => {
-
-
-
-    if (!sessionToken || submitting || disabled) return
-
-
-
-    if (result === 'not_delivered' && !failureReason) {
-
-
-
-      setLocalError('Choose a reason for Not Delivered.')
-
-
-
-      return
-
-
-
-    }
-
-
-
-    const confirmation = await appConfirm(
-
-
-
-      result === 'delivered'
-
-
-
-        ? `Confirm ${order.order_code} was delivered?`
-
-
-
-        : `Submit a Not Delivered attempt for ${order.order_code}?`,
-
-
-
-      {
-
-
-
-        title:
-
-
-
-          result === 'delivered'
-
-
-
-            ? 'Confirm Delivery'
-
-
-
-            : 'Submit Delivery Attempt',
-
-
-
-        confirmText:
-
-
-
-          result === 'delivered'
-
-
-
-            ? 'Confirm Delivered'
-
-
-
-            : 'Submit Attempt',
-
-
-
-      }
-
-
-
-    )
-
-
-
-    if (!confirmation) return
-
-
-
-    setSubmitting(true)
-
-
-
-    setLocalError('')
-
-
-
-    try {
-
-
-
-      const formData = new FormData()
-
-
-
-      formData.append('sessionToken', sessionToken)
-
-
-
-      formData.append('orderId', String(order.id))
-
-
-
-      formData.append('result', result)
-
-
-
-      formData.append('failureReason', result === 'not_delivered' ? failureReason : '')
-
-
-
-      formData.append('note', note.trim())
-
-
-
-      files.forEach((file) => {
-
-
-
-        formData.append('files', file)
-
-
-
-      })
-
-
-
-      const response = await fetch('/api/delivery/driver-proof', {
-
-
-
-        method: 'POST',
-
-
-
-        body: formData,
-
-
-
-        cache: 'no-store',
-
-
-
-      })
-
-
-
-      const data = await response.json().catch(() => ({}))
-
-
-
-      if (!response.ok || !data?.success) {
-
-
-
-        throw new Error(
-
-
-
-          data?.message || 'Unable to submit the delivery result.'
-
-
-
-        )
-
-
-
-      }
-
-
-
-      setFiles([])
-
-
-
-      setNote('')
-
-
-
-      setFailureReason('')
-
-
-
-      setResult('delivered')
-
-
-
-      onCompleted?.(
-
-
-
-        result === 'delivered'
-
-
-
-          ? 'Delivery completed and proof sent to the Delivery Dashboard.'
-
-
-
-          : 'Not Delivered attempt sent to the Delivery Dashboard.'
-
-
-
-      )
-
-
-
-    } catch (submitError) {
-
-
-
-      console.error('Delivery proof submit error:', submitError)
-
-
-
-      setLocalError(
-
-
-
-        submitError?.message || 'Unable to submit the delivery result.'
-
-
-
-      )
-
-
-
-    } finally {
-
-
-
-      setSubmitting(false)
-
-
-
-    }
-
-
-
-  }
-
-
-
   return (
-
-
-
-    <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-
-
-
-      <div className="flex items-start justify-between gap-3">
-
-
-
-        <div>
-
-
-
-          <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
-
-
-
-            Delivery Result
-
-
-
-          </p>
-
-
-
-          <p className="mt-1 text-xs leading-5 text-neutral-400">
-
-
-
-            Confirm delivery or report an unsuccessful attempt. Uploaded item / proof photos are sent to the owner Delivery Dashboard.
-
-
-
-          </p>
-
-
-
-        </div>
-
-
-
-        <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-[9px] font-black text-sky-300">
-
-
-
-          Up to 5 photos
-
-
-
-        </span>
-
-
-
-      </div>
-
-
-
-      <div className="mt-4 grid grid-cols-2 gap-2">
-
-
-
-        <button
-
-
-
-          type="button"
-
-
-
-          onClick={() => {
-
-
-
-            setResult('delivered')
-
-
-
-            setFailureReason('')
-
-
-
-            setLocalError('')
-
-
-
-          }}
-
-
-
-          className={`rounded-xl border px-3 py-3 text-xs font-black transition ${
-
-
-
-            result === 'delivered'
-
-
-
-              ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
-
-
-
-              : 'border-neutral-800 bg-neutral-900 text-neutral-400'
-
-
-
-          }`}
-
-
-
-        >
-
-
-
-          ✓ Delivered
-
-
-
-        </button>
-
-
-
-        <button
-
-
-
-          type="button"
-
-
-
-          onClick={() => {
-
-
-
-            setResult('not_delivered')
-
-
-
-            setLocalError('')
-
-
-
-          }}
-
-
-
-          className={`rounded-xl border px-3 py-3 text-xs font-black transition ${
-
-
-
-            result === 'not_delivered'
-
-
-
-              ? 'border-red-500 bg-red-500/10 text-red-300'
-
-
-
-              : 'border-neutral-800 bg-neutral-900 text-neutral-400'
-
-
-
-          }`}
-
-
-
-        >
-
-
-
-          ✕ Not Delivered
-
-
-
-        </button>
-
-
-
-      </div>
-
-
-
-      {result === 'not_delivered' && (
-
-
-
-        <label className="mt-4 block">
-
-
-
-          <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
-
-
-
-            Reason
-
-
-
-          </span>
-
-
-
-          <select
-
-
-
-            value={failureReason}
-
-
-
-            onChange={(event) => setFailureReason(event.target.value)}
-
-
-
-            className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-xs font-bold text-white outline-none focus:border-red-500"
-
-
-
-          >
-
-
-
-            <option value="">Select reason</option>
-
-
-
-            {DELIVERY_FAILURE_REASONS.map(([value, label]) => (
-
-
-
-              <option key={value} value={value}>
-
-
-
-                {label}
-
-
-
-              </option>
-
-
-
-            ))}
-
-
-
-          </select>
-
-
-
-        </label>
-
-
-
-      )}
-
-
-
-      <label className="mt-4 block">
-
-
-
-        <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
-
-
-
-          Upload Items / Delivery Proof
-
-
-
-        </span>
-
-
-
-        <input
-
-
-
-          type="file"
-
-
-
-          accept="image/jpeg,image/png,image/webp"
-
-
-
-          multiple
-
-
-
-          onChange={handleFiles}
-
-
-
-          className="block w-full rounded-xl border border-dashed border-neutral-700 bg-neutral-900 px-3 py-3 text-xs text-neutral-300 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-600 file:px-3 file:py-2 file:text-[10px] file:font-black file:text-white"
-
-
-
-        />
-
-
-
-        <p className="mt-1.5 text-[9px] leading-4 text-neutral-600">
-
-
-
-          Optional. Maximum 5 photos, 5 MB each. JPG, PNG or WEBP.
-
-
-
-        </p>
-
-
-
-      </label>
-
-
-
-      {previews.length > 0 && (
-
-
-
-        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-
-
-
-          {previews.map((preview) => (
-
-
-
-            <div
-
-
-
-              key={`${preview.name}-${preview.url}`}
-
-
-
-              className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900"
-
-
-
-            >
-
-
-
-              <img
-
-
-
-                src={preview.url}
-
-
-
-                alt={preview.name}
-
-
-
-                className="aspect-square w-full object-cover"
-
-
-
-              />
-
-
-
-            </div>
-
-
-
-          ))}
-
-
-
-        </div>
-
-
-
-      )}
-
-
-
-      <label className="mt-4 block">
-
-
-
-        <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-neutral-500">
-
-
-
-          Driver Note
-
-
-
-        </span>
-
-
-
-        <textarea
-
-
-
-          value={note}
-
-
-
-          onChange={(event) => setNote(event.target.value.slice(0, 500))}
-
-
-
-          rows={3}
-
-
-
-          placeholder={
-
-
-
-            result === 'delivered'
-
-
-
-              ? 'Optional delivery note...'
-
-
-
-              : 'Add useful details about the failed attempt...'
-
-
-
-          }
-
-
-
-          className="w-full resize-none rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-xs text-white outline-none focus:border-emerald-500"
-
-
-
-        />
-
-
-
-        <p className="mt-1 text-right text-[9px] text-neutral-600">
-
-
-
-          {note.length}/500
-
-
-
-        </p>
-
-
-
-      </label>
-
-
-
-      {localError && (
-
-
-
-        <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-[10px] font-bold leading-4 text-red-300">
-
-
-
-          {localError}
-
-
-
-        </div>
-
-
-
-      )}
-
-
-
-      <button
-
-
-
-        type="button"
-
-
-
-        onClick={submitResult}
-
-
-
-        disabled={submitting || disabled}
-
-
-
-        className={`mt-4 w-full rounded-xl px-5 py-4 text-sm font-black text-white disabled:opacity-50 ${
-
-
-
-          result === 'delivered'
-
-
-
-            ? 'bg-emerald-600'
-
-
-
-            : 'bg-red-600'
-
-
-
-        }`}
-
-
-
-      >
-
-
-
-        {submitting
-
-
-
-          ? 'Uploading & Submitting...'
-
-
-
-          : result === 'delivered'
-
-
-
-            ? 'Confirm Delivered'
-
-
-
-            : 'Submit Not Delivered'}
-
-
-
-      </button>
-
-
-
-    </div>
-
-
-
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[name] || paths.home}
+    </svg>
   )
-
-
-
 }
 
-
-
-export default function DeliveryDriverPortal({
-
-
-
-  params,
-
-
-
-}) {
-
-
-
-  const unwrappedParams = use(params)
-
-
-
-  useMobileViewportLock()
-
-
-
-  const restaurantCode = String(
-
-
-
-    unwrappedParams?.restaurantCode ||
-
-
-
-      unwrappedParams?.restaurantcode ||
-
-
-
-      ''
-
-
-
-  ).trim()
-
-
-
-  const storageKey =
-
-
-
-    `digitaldining_delivery_driver_session_${restaurantCode}`
-
-
-
-  const [sessionToken, setSessionToken] =
-
-
-
-    useState('')
-
-
-
-  const [userId, setUserId] =
-
-
-
-    useState('')
-
-
-
-  const [password, setPassword] =
-
-
-
-    useState('')
-
-
-
-  const [portalData, setPortalData] =
-
-
-
-    useState(null)
-
-
-
-  const [loading, setLoading] =
-
-
-
-    useState(true)
-
-
-
-  const [loggingIn, setLoggingIn] =
-
-
-
-    useState(false)
-
-
-
-  const [updatingOrderId, setUpdatingOrderId] =
-
-
-
-    useState('')
-
-
-
-  const [error, setError] =
-
-
-
-    useState('')
-
-
-
-  const [message, setMessage] =
-
-
-
-    useState('')
-
-
-
-  const [codData, setCodData] = useState(null)
-
-  const [codLoading, setCodLoading] = useState(false)
-
-  const [codSubmitting, setCodSubmitting] = useState(false)
-
-  const [codAmount, setCodAmount] = useState('')
-
-  const [codNote, setCodNote] = useState('')
-
-  const [codError, setCodError] = useState('')
-
-
-
-  const [gpsStatus, setGpsStatus] = useState('idle')
-
-  const [gpsMessage, setGpsMessage] = useState('')
-
-  const [gpsLastSentAt, setGpsLastSentAt] = useState('')
-
-  const [gpsAccuracy, setGpsAccuracy] = useState(null)
-
-  const [gpsRestartNonce, setGpsRestartNonce] = useState(0)
-
-  /*
-   * Driver workspace UI only.
-   * These states do not change delivery/order backend behaviour.
-   */
-  const [driverView, setDriverView] = useState('tracking')
-  const [driverSearch, setDriverSearch] = useState('')
-
-
-
-  const gpsWatchRef = useRef(null)
-
-  const gpsSendingRef = useRef(false)
-
-  const gpsLastSentRef = useRef(0)
-
-  const gpsLastCoordsRef = useRef(null)
-
-
+function DeliveryResultPanel({ order, sessionToken, disabled = false, onCompleted }) {
+  const [result, setResult] = useState('delivered')
+  const [failureReason, setFailureReason] = useState('')
+  const [note, setNote] = useState('')
+  const [files, setFiles] = useState([])
+  const [previews, setPreviews] = useState([])
+  const [submitting, setSubmitting] = useState(false)
+  const [localError, setLocalError] = useState('')
 
   useEffect(() => {
-
-
-
-    try {
-
-
-
-      const saved =
-
-
-
-        localStorage.getItem(storageKey)
-
-
-
-      if (saved) {
-
-
-
-        setSessionToken(saved)
-
-
-
-      }
-
-
-
-    } catch {
-
-
-
-      // Ignore unavailable local storage.
-
-
-
+    const nextPreviews = files.map((file) => ({
+      name: file.name,
+      url: URL.createObjectURL(file),
+    }))
+    setPreviews(nextPreviews)
+    return () => {
+      nextPreviews.forEach((preview) => URL.revokeObjectURL(preview.url))
     }
+  }, [files])
 
-
-
-    setLoading(false)
-
-
-
-  }, [storageKey])
-
-
-
-  const loadPortal = async (
-
-
-
-    tokenOverride = ''
-
-
-
-  ) => {
-
-
-
-    const token =
-
-
-
-      String(
-
-
-
-        tokenOverride ||
-
-
-
-          sessionToken ||
-
-
-
-          ''
-
-
-
-      ).trim()
-
-
-
-    if (!token) {
-
-
-
-      setPortalData(null)
-
-
-
+  const handleFiles = (event) => {
+    const selected = Array.from(event.target.files || [])
+    if (selected.length > 5) {
+      setLocalError('You can upload up to 5 photos per delivery attempt.')
+      event.target.value = ''
       return
-
-
-
     }
-
-
-
-    try {
-
-
-
-      const {
-
-
-
-        data,
-
-
-
-        error: rpcError,
-
-
-
-      } = await supabase.rpc(
-
-
-
-        'get_delivery_driver_portal_data',
-
-
-
-        {
-
-
-
-          p_session_token: token,
-
-
-
-        }
-
-
-
-      )
-
-
-
-      if (rpcError) {
-
-
-
-        throw rpcError
-
-
-
-      }
-
-
-
-      if (!data?.success) {
-
-
-
-        throw new Error(
-
-
-
-          data?.message ||
-
-
-
-            'Driver session is invalid.'
-
-
-
-        )
-
-
-
-      }
-
-
-
-      setPortalData(data)
-
-
-
-      setError('')
-
-
-
-    } catch (loadError) {
-
-
-
-      console.error(
-
-
-
-        'Driver portal load error:',
-
-
-
-        loadError
-
-
-
-      )
-
-
-
-      setPortalData(null)
-
-
-
-      setSessionToken('')
-
-
-
-      try {
-
-
-
-        localStorage.removeItem(
-
-
-
-          storageKey
-
-
-
-        )
-
-
-
-      } catch {
-
-
-
-        // Ignore unavailable local storage.
-
-
-
-      }
-
-
-
-      setError(
-
-
-
-        loadError?.message ||
-
-
-
-          'Your Driver Portal session expired. Please sign in again.'
-
-
-
-      )
-
-
-
-    }
-
-
-
-  }
-
-
-
-  const loadCodSummary = async (tokenOverride = '', quiet = false) => {
-
-    const token = String(tokenOverride || sessionToken || '').trim()
-
-
-
-    if (!token) {
-
-      setCodData(null)
-
-      return
-
-    }
-
-
-
-    if (!quiet) setCodLoading(true)
-
-    setCodError('')
-
-
-
-    try {
-
-      const { data, error: rpcError } = await supabase.rpc(
-
-        'delivery_driver_get_cod_summary',
-
-        { p_session_token: token }
-
-      )
-
-
-
-      if (rpcError) throw rpcError
-
-      if (!data?.success) {
-
-        throw new Error(data?.message || 'Unable to load COD cash summary.')
-
-      }
-
-
-
-      setCodData(data)
-
-    } catch (codLoadError) {
-
-      console.error('Driver COD summary error:', codLoadError)
-
-      setCodError(
-
-        codLoadError?.message || 'Unable to load COD cash summary.'
-
-      )
-
-    } finally {
-
-      setCodLoading(false)
-
-    }
-
-  }
-
-
-
-  const submitCodSettlement = async (event) => {
-
-    event.preventDefault()
-
-
-
-    if (!sessionToken || codSubmitting) return
-
-
-
-    const amount = Number(codAmount)
-
-    const summary = codData?.summary || {}
-
-    const available = Math.max(
-
-      Number(summary.cash_due || 0) - Number(summary.pending_handover || 0),
-
-      0
-
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
+    const invalid = selected.find(
+      (file) => !allowedTypes.has(file.type) || file.size > 5 * 1024 * 1024
     )
-
-
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-
-      setCodError('Enter a valid cash handover amount greater than 0.')
-
+    if (invalid) {
+      setLocalError('Each photo must be JPG, PNG or WEBP and no larger than 5 MB.')
+      event.target.value = ''
       return
-
     }
-
-
-
-    if (amount > available + 0.001) {
-
-      setCodError(
-
-        `You can submit up to ${money(available)} based on your current COD cash due.`
-
-      )
-
-      return
-
-    }
-
-
-
-    setCodSubmitting(true)
-
-    setCodError('')
-
-    setMessage('')
-
-
-
-    try {
-
-      const { data, error: rpcError } = await supabase.rpc(
-
-        'delivery_driver_submit_cod_settlement',
-
-        {
-
-          p_session_token: sessionToken,
-
-          p_amount: amount,
-
-          p_note: String(codNote || '').trim(),
-
-        }
-
-      )
-
-
-
-      if (rpcError) throw rpcError
-
-      if (!data?.success) {
-
-        throw new Error(data?.message || 'Unable to submit COD cash handover.')
-
-      }
-
-
-
-      setCodAmount('')
-
-      setCodNote('')
-
-      setMessage(
-
-        data?.message ||
-
-          'COD cash handover submitted for Manager/Owner confirmation.'
-
-      )
-
-
-
-      await loadCodSummary('', true)
-
-    } catch (submitError) {
-
-      console.error('Driver COD settlement submit error:', submitError)
-
-      setCodError(
-
-        submitError?.message || 'Unable to submit COD cash handover.'
-
-      )
-
-    } finally {
-
-      setCodSubmitting(false)
-
-    }
-
+    setLocalError('')
+    setFiles(selected)
   }
 
-
-
-  useEffect(() => {
-
-
-
-    if (!sessionToken) {
-
-
-
+  const submitResult = async () => {
+    if (!sessionToken || submitting || disabled) return
+    if (result === 'not_delivered' && !failureReason) {
+      setLocalError('Choose a reason for Not Delivered.')
       return
-
-
-
     }
 
-
-
-    loadPortal()
-
-    loadCodSummary()
-
-
-
-    const codInterval = window.setInterval(() => {
-
-      loadCodSummary('', true)
-
-    }, 15000)
-
-
-
-    return () => window.clearInterval(codInterval)
-
-
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
-
-
-  }, [sessionToken])
-
-
-
-  useLiveDeliveryRefresh(
-
-
-
-    () => loadPortal(),
-
-
-
-    Boolean(sessionToken),
-
-
-
-    1000
-
-
-
-  )
-
-
-
-  const handleLogin = async (
-
-
-
-    event
-
-
-
-  ) => {
-
-
-
-    event.preventDefault()
-
-
-
-    if (loggingIn) return
-
-
-
-    const cleanUserId =
-
-
-
-      userId.trim().toLowerCase()
-
-
-
-    if (
-
-
-
-      cleanUserId.length < 3 ||
-
-
-
-      password.length < 6
-
-
-
-    ) {
-
-
-
-      setError(
-
-
-
-        'Enter your Driver User ID and password.'
-
-
-
-      )
-
-
-
-      return
-
-
-
-    }
-
-
-
-    setLoggingIn(true)
-
-
-
-    setError('')
-
-
-
-    setMessage('')
-
-
-
-    try {
-
-
-
-      const {
-
-
-
-        data,
-
-
-
-        error: rpcError,
-
-
-
-      } = await supabase.rpc(
-
-
-
-        'delivery_driver_login',
-
-
-
-        {
-
-
-
-          p_restaurant_code:
-
-
-
-            restaurantCode,
-
-
-
-          p_user_id: cleanUserId,
-
-
-
-          p_password: password,
-
-
-
-        }
-
-
-
-      )
-
-
-
-      if (rpcError) {
-
-
-
-        throw rpcError
-
-
-
+    const confirmation = await appConfirm(
+      result === 'delivered'
+        ? `Confirm ${order.order_code} was delivered?`
+        : `Submit a Not Delivered attempt for ${order.order_code}?`,
+      {
+        title: result === 'delivered' ? 'Confirm Delivery' : 'Submit Delivery Attempt',
+        confirmText: result === 'delivered' ? 'Confirm Delivered' : 'Submit Attempt',
       }
-
-
-
-      if (
-
-
-
-        !data?.success ||
-
-
-
-        !data?.session_token
-
-
-
-      ) {
-
-
-
-        throw new Error(
-
-
-
-          data?.message ||
-
-
-
-            'Driver login failed.'
-
-
-
-        )
-
-
-
-      }
-
-
-
-      const token =
-
-
-
-        String(
-
-
-
-          data.session_token
-
-
-
-        )
-
-
-
-      try {
-
-
-
-        localStorage.setItem(
-
-
-
-          storageKey,
-
-
-
-          token
-
-
-
-        )
-
-
-
-      } catch {
-
-
-
-        // Continue even if storage is unavailable.
-
-
-
-      }
-
-
-
-      setSessionToken(token)
-
-
-
-      setPassword('')
-
-
-
-      setMessage(
-
-
-
-        `Welcome ${data?.driver?.name || 'Driver'}.`
-
-
-
-      )
-
-
-
-      await Promise.all([
-
-        loadPortal(token),
-
-        loadCodSummary(token, true),
-
-      ])
-
-
-
-    } catch (loginError) {
-
-
-
-      console.error(
-
-
-
-        'Delivery driver login error:',
-
-
-
-        loginError
-
-
-
-      )
-
-
-
-      setError(
-
-
-
-        loginError?.message ||
-
-
-
-          'Driver login failed.'
-
-
-
-      )
-
-
-
-    } finally {
-
-
-
-      setLoggingIn(false)
-
-
-
-    }
-
-
-
-  }
-
-
-
-  const logout = async () => {
-
-
-
-    const token =
-
-
-
-      sessionToken
-
-
-
-    try {
-
-
-
-      if (token) {
-
-
-
-        await supabase.rpc(
-
-
-
-          'delivery_driver_logout',
-
-
-
-          {
-
-
-
-            p_session_token:
-
-
-
-              token,
-
-
-
-          }
-
-
-
-        )
-
-
-
-      }
-
-
-
-    } catch (logoutError) {
-
-
-
-      console.error(
-
-
-
-        'Driver logout error:',
-
-
-
-        logoutError
-
-
-
-      )
-
-
-
-    } finally {
-
-
-
-      try {
-
-
-
-        localStorage.removeItem(
-
-
-
-          storageKey
-
-
-
-        )
-
-
-
-      } catch {
-
-
-
-        // Ignore.
-
-
-
-      }
-
-
-
-      setSessionToken('')
-
-
-
-      setPortalData(null)
-
-      setCodData(null)
-
-      setCodAmount('')
-
-      setCodNote('')
-
-      setCodError('')
-
-
-
-      setUserId('')
-
-
-
-      setPassword('')
-
-
-
-      setMessage('')
-
-
-
-      setError('')
-
-
-
-    }
-
-
-
-  }
-
-
-
-  const updateStatus = async (
-
-
-
-    order,
-
-
-
-    nextStatus
-
-
-
-  ) => {
-
-
-
-    if (
-
-
-
-      !sessionToken ||
-
-
-
-      updatingOrderId
-
-
-
-    ) {
-
-
-
-      return
-
-
-
-    }
-
-
-
-    const confirmation =
-
-
-
-      await appConfirm(
-
-
-
-        nextStatus ===
-
-
-
-          'out_for_delivery'
-
-
-
-          ? `Start delivery for ${order.order_code}?`
-
-
-
-          : `Mark ${order.order_code} as delivered?`,
-
-
-
-        {
-
-
-
-          title:
-
-
-
-            nextStatus === 'out_for_delivery'
-
-
-
-              ? 'Start Delivery'
-
-
-
-              : 'Confirm Delivered',
-
-
-
-          confirmText:
-
-
-
-            nextStatus === 'out_for_delivery'
-
-
-
-              ? 'Start Delivery'
-
-
-
-              : 'Mark Delivered',
-
-
-
-        }
-
-
-
-      )
-
-
-
+    )
     if (!confirmation) return
 
-
-
-    setUpdatingOrderId(
-
-
-
-      order.id
-
-
-
-    )
-
-
-
-    setError('')
-
-
-
-    setMessage('')
-
-
+    setSubmitting(true)
+    setLocalError('')
 
     try {
+      const formData = new FormData()
+      formData.append('sessionToken', sessionToken)
+      formData.append('orderId', String(order.id))
+      formData.append('result', result)
+      formData.append('failureReason', result === 'not_delivered' ? failureReason : '')
+      formData.append('note', note.trim())
+      files.forEach((file) => formData.append('files', file))
 
-
-
-      const {
-
-
-
-        data,
-
-
-
-        error: rpcError,
-
-
-
-      } = await supabase.rpc(
-
-
-
-        'delivery_driver_update_order_status',
-
-
-
-        {
-
-
-
-          p_session_token:
-
-
-
-            sessionToken,
-
-
-
-          p_order_id:
-
-
-
-            order.id,
-
-
-
-          p_new_status:
-
-
-
-            nextStatus,
-
-
-
-        }
-
-
-
-      )
-
-
-
-      if (rpcError) {
-
-
-
-        throw rpcError
-
-
-
+      const response = await fetch('/api/delivery/driver-proof', {
+        method: 'POST',
+        body: formData,
+        cache: 'no-store',
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.message || 'Unable to submit the delivery result.')
       }
 
-
-
-      if (!data?.success) {
-
-
-
-        throw new Error(
-
-
-
-          data?.message ||
-
-
-
-            'Unable to update order.'
-
-
-
-        )
-
-
-
-      }
-
-
-
-      setMessage(
-
-
-
-        nextStatus ===
-
-
-
-          'out_for_delivery'
-
-
-
-          ? 'Order marked Out for Delivery.'
-
-
-
-          : 'Order marked Delivered.'
-
-
-
+      setFiles([])
+      setNote('')
+      setFailureReason('')
+      setResult('delivered')
+      onCompleted?.(
+        result === 'delivered'
+          ? 'Delivery completed and proof sent to the Delivery Dashboard.'
+          : 'Not Delivered attempt sent to the Delivery Dashboard.'
       )
-
-
-
-      await loadPortal()
-
-
-
-    } catch (updateError) {
-
-
-
-      console.error(
-
-
-
-        'Driver order update error:',
-
-
-
-        updateError
-
-
-
-      )
-
-
-
-      setError(
-
-
-
-        updateError?.message ||
-
-
-
-          'Unable to update order.'
-
-
-
-      )
-
-
-
+    } catch (submitError) {
+      console.error('Delivery proof submit error:', submitError)
+      setLocalError(submitError?.message || 'Unable to submit the delivery result.')
     } finally {
-
-
-
-      setUpdatingOrderId('')
-
-
-
+      setSubmitting(false)
     }
-
-
-
   }
 
+  return (
+    <div className="mt-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+      <p className="text-sm font-bold text-slate-900">Delivery result</p>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        Confirm delivery or report a failed attempt. Photos are sent to the store dashboard.
+      </p>
 
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setResult('delivered')
+            setFailureReason('')
+            setLocalError('')
+          }}
+          className={`h-12 rounded-xl text-sm font-bold transition ${
+            result === 'delivered'
+              ? 'bg-emerald-600 text-white'
+              : 'bg-white text-slate-600 ring-1 ring-slate-200'
+          }`}
+        >
+          Delivered
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setResult('not_delivered')
+            setLocalError('')
+          }}
+          className={`h-12 rounded-xl text-sm font-bold transition ${
+            result === 'not_delivered'
+              ? 'bg-rose-600 text-white'
+              : 'bg-white text-slate-600 ring-1 ring-slate-200'
+          }`}
+        >
+          Not delivered
+        </button>
+      </div>
 
-  const orders =
+      {result === 'not_delivered' && (
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-xs font-bold text-slate-600">Reason</span>
+          <select
+            value={failureReason}
+            onChange={(event) => setFailureReason(event.target.value)}
+            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-base text-slate-900 outline-none focus:border-rose-500 sm:text-sm"
+          >
+            <option value="">Select reason</option>
+            {DELIVERY_FAILURE_REASONS.map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+      )}
 
+      <label className="mt-4 block">
+        <span className="mb-1.5 block text-xs font-bold text-slate-600">
+          Photos <span className="font-normal text-slate-400">(optional, up to 5)</span>
+        </span>
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          onChange={handleFiles}
+          className="block w-full rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-600 file:px-3 file:py-2 file:text-xs file:font-bold file:text-white"
+        />
+      </label>
 
+      {previews.length > 0 && (
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {previews.map((preview) => (
+            <div key={`${preview.name}-${preview.url}`} className="overflow-hidden rounded-xl ring-1 ring-slate-200">
+              <img src={preview.url} alt={preview.name} className="aspect-square w-full object-cover" />
+            </div>
+          ))}
+        </div>
+      )}
 
-    Array.isArray(
+      <label className="mt-4 block">
+        <span className="mb-1.5 block text-xs font-bold text-slate-600">Note</span>
+        <textarea
+          value={note}
+          onChange={(event) => setNote(event.target.value.slice(0, 500))}
+          rows={3}
+          placeholder={result === 'delivered' ? 'Optional note…' : 'Describe the failed attempt…'}
+          className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 outline-none focus:border-emerald-500 sm:text-sm"
+        />
+        <p className="mt-1 text-right text-[11px] text-slate-400">{note.length}/500</p>
+      </label>
 
+      {localError && (
+        <div role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700">
+          {localError}
+        </div>
+      )}
 
+      <button
+        type="button"
+        onClick={submitResult}
+        disabled={submitting || disabled}
+        className={`mt-4 h-13 w-full rounded-xl py-3.5 text-sm font-bold text-white disabled:opacity-50 ${
+          result === 'delivered' ? 'bg-emerald-600' : 'bg-rose-600'
+        }`}
+      >
+        {submitting
+          ? 'Uploading…'
+          : result === 'delivered'
+            ? 'Confirm delivered'
+            : 'Submit not delivered'}
+      </button>
+    </div>
+  )
+}
 
-      portalData?.orders
+export default function DeliveryDriverPortal({ params }) {
+  const unwrappedParams = use(params)
+  useMobileViewportLock()
 
+  const restaurantCode = String(
+    unwrappedParams?.restaurantCode || unwrappedParams?.restaurantcode || ''
+  ).trim()
 
+  const storageKey = `digitaldining_delivery_driver_session_${restaurantCode}`
 
+  const [sessionToken, setSessionToken] = useState('')
+  const [userId, setUserId] = useState('')
+  const [password, setPassword] = useState('')
+  const [portalData, setPortalData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loggingIn, setLoggingIn] = useState(false)
+  const [updatingOrderId, setUpdatingOrderId] = useState('')
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+
+  const [codData, setCodData] = useState(null)
+  const [codLoading, setCodLoading] = useState(false)
+  const [codSubmitting, setCodSubmitting] = useState(false)
+  const [codAmount, setCodAmount] = useState('')
+  const [codNote, setCodNote] = useState('')
+  const [codError, setCodError] = useState('')
+
+  const [gpsStatus, setGpsStatus] = useState('idle')
+  const [gpsMessage, setGpsMessage] = useState('')
+  const [gpsLastSentAt, setGpsLastSentAt] = useState('')
+  const [gpsAccuracy, setGpsAccuracy] = useState(null)
+  const [gpsRestartNonce, setGpsRestartNonce] = useState(0)
+
+  // Workspace UI only: which tab is open and what the search box filters.
+  const [driverView, setDriverView] = useState('tracking')
+  const [driverSearch, setDriverSearch] = useState('')
+  const [moreOpen, setMoreOpen] = useState(false)
+
+  const gpsWatchRef = useRef(null)
+  const gpsSendingRef = useRef(false)
+  const gpsLastSentRef = useRef(0)
+  const gpsLastCoordsRef = useRef(null)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) setSessionToken(saved)
+    } catch {
+      // Ignore unavailable local storage.
+    }
+    setLoading(false)
+  }, [storageKey])
+
+  const loadPortal = async (tokenOverride = '') => {
+    const token = String(tokenOverride || sessionToken || '').trim()
+    if (!token) {
+      setPortalData(null)
+      return
+    }
+    try {
+      const { data, error: rpcError } = await supabase.rpc('get_delivery_driver_portal_data', {
+        p_session_token: token,
+      })
+      if (rpcError) throw rpcError
+      if (!data?.success) throw new Error(data?.message || 'Driver session is invalid.')
+      setPortalData(data)
+      setError('')
+    } catch (loadError) {
+      console.error('Driver portal load error:', loadError)
+      setPortalData(null)
+      setSessionToken('')
+      try {
+        localStorage.removeItem(storageKey)
+      } catch {
+        // Ignore unavailable local storage.
+      }
+      setError(loadError?.message || 'Your Driver Portal session expired. Please sign in again.')
+    }
+  }
+
+  const loadCodSummary = async (tokenOverride = '', quiet = false) => {
+    const token = String(tokenOverride || sessionToken || '').trim()
+    if (!token) {
+      setCodData(null)
+      return
+    }
+    if (!quiet) setCodLoading(true)
+    setCodError('')
+    try {
+      const { data, error: rpcError } = await supabase.rpc('delivery_driver_get_cod_summary', {
+        p_session_token: token,
+      })
+      if (rpcError) throw rpcError
+      if (!data?.success) throw new Error(data?.message || 'Unable to load COD cash summary.')
+      setCodData(data)
+    } catch (codLoadError) {
+      console.error('Driver COD summary error:', codLoadError)
+      setCodError(codLoadError?.message || 'Unable to load COD cash summary.')
+    } finally {
+      setCodLoading(false)
+    }
+  }
+
+  const submitCodSettlement = async (event) => {
+    event.preventDefault()
+    if (!sessionToken || codSubmitting) return
+
+    const amount = Number(codAmount)
+    const summary = codData?.summary || {}
+    const available = Math.max(
+      Number(summary.cash_due || 0) - Number(summary.pending_handover || 0),
+      0
     )
 
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setCodError('Enter a valid cash handover amount greater than 0.')
+      return
+    }
+    if (amount > available + 0.001) {
+      setCodError(`You can submit up to ${money(available)} based on your current COD cash due.`)
+      return
+    }
 
+    setCodSubmitting(true)
+    setCodError('')
+    setMessage('')
 
-      ? portalData.orders
+    try {
+      const { data, error: rpcError } = await supabase.rpc('delivery_driver_submit_cod_settlement', {
+        p_session_token: sessionToken,
+        p_amount: amount,
+        p_note: String(codNote || '').trim(),
+      })
+      if (rpcError) throw rpcError
+      if (!data?.success) throw new Error(data?.message || 'Unable to submit COD cash handover.')
 
+      setCodAmount('')
+      setCodNote('')
+      setMessage(data?.message || 'COD cash handover submitted for Manager/Owner confirmation.')
+      await loadCodSummary('', true)
+    } catch (submitError) {
+      console.error('Driver COD settlement submit error:', submitError)
+      setCodError(submitError?.message || 'Unable to submit COD cash handover.')
+    } finally {
+      setCodSubmitting(false)
+    }
+  }
 
+  useEffect(() => {
+    if (!sessionToken) return
+    loadPortal()
+    loadCodSummary()
+    const codInterval = window.setInterval(() => {
+      loadCodSummary('', true)
+    }, 15000)
+    return () => window.clearInterval(codInterval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionToken])
 
-      : []
+  useLiveDeliveryRefresh(() => loadPortal(), Boolean(sessionToken), 1000)
 
+  const handleLogin = async (event) => {
+    event.preventDefault()
+    if (loggingIn) return
 
+    const cleanUserId = userId.trim().toLowerCase()
+    if (cleanUserId.length < 3 || password.length < 6) {
+      setError('Enter your Driver User ID and password.')
+      return
+    }
 
-  const activeOrders =
+    setLoggingIn(true)
+    setError('')
+    setMessage('')
 
+    try {
+      const { data, error: rpcError } = await supabase.rpc('delivery_driver_login', {
+        p_restaurant_code: restaurantCode,
+        p_user_id: cleanUserId,
+        p_password: password,
+      })
+      if (rpcError) throw rpcError
+      if (!data?.success || !data?.session_token) {
+        throw new Error(data?.message || 'Driver login failed.')
+      }
 
+      const token = String(data.session_token)
+      try {
+        localStorage.setItem(storageKey, token)
+      } catch {
+        // Continue even if storage is unavailable.
+      }
 
-    useMemo(
+      setSessionToken(token)
+      setPassword('')
+      setMessage(`Welcome ${data?.driver?.name || 'Driver'}.`)
 
+      await Promise.all([loadPortal(token), loadCodSummary(token, true)])
+    } catch (loginError) {
+      console.error('Delivery driver login error:', loginError)
+      setError(loginError?.message || 'Driver login failed.')
+    } finally {
+      setLoggingIn(false)
+    }
+  }
 
+  const logout = async () => {
+    const token = sessionToken
+    try {
+      if (token) {
+        await supabase.rpc('delivery_driver_logout', { p_session_token: token })
+      }
+    } catch (logoutError) {
+      console.error('Driver logout error:', logoutError)
+    } finally {
+      try {
+        localStorage.removeItem(storageKey)
+      } catch {
+        // Ignore.
+      }
+      setSessionToken('')
+      setPortalData(null)
+      setCodData(null)
+      setCodAmount('')
+      setCodNote('')
+      setCodError('')
+      setUserId('')
+      setPassword('')
+      setMessage('')
+      setError('')
+      setMoreOpen(false)
+    }
+  }
 
-      () =>
+  const updateStatus = async (order, nextStatus) => {
+    if (!sessionToken || updatingOrderId) return
 
-
-
-        orders.filter(
-
-
-
-          (order) =>
-
-
-
-            ![
-
-
-
-              'delivered',
-
-
-
-              'cancelled',
-
-
-
-            ].includes(
-
-
-
-              String(
-
-
-
-                order.order_status ||
-
-
-
-                  ''
-
-
-
-              )
-
-
-
-            )
-
-
-
-        ),
-
-
-
-      [orders]
-
-
-
+    const confirmation = await appConfirm(
+      nextStatus === 'out_for_delivery'
+        ? `Start delivery for ${order.order_code}?`
+        : `Mark ${order.order_code} as delivered?`,
+      {
+        title: nextStatus === 'out_for_delivery' ? 'Start Delivery' : 'Confirm Delivered',
+        confirmText: nextStatus === 'out_for_delivery' ? 'Start Delivery' : 'Mark Delivered',
+      }
     )
+    if (!confirmation) return
 
+    setUpdatingOrderId(order.id)
+    setError('')
+    setMessage('')
 
+    try {
+      const { data, error: rpcError } = await supabase.rpc('delivery_driver_update_order_status', {
+        p_session_token: sessionToken,
+        p_order_id: order.id,
+        p_new_status: nextStatus,
+      })
+      if (rpcError) throw rpcError
+      if (!data?.success) throw new Error(data?.message || 'Unable to update order.')
 
-  /*
-   * DELIVERY BOY ALARM:
-   * alarm continues while ANY assigned order is still packed.
-   */
-  const waitingToStartOrders =
-    useMemo(
-      () =>
-        orders.filter(
-          (order) =>
-            String(
-              order.order_status ||
-                ''
-            ).toLowerCase() ===
-            'packed'
-        ),
-      [orders]
-    )
+      setMessage(
+        nextStatus === 'out_for_delivery'
+          ? 'Order marked Out for Delivery.'
+          : 'Order marked Delivered.'
+      )
+      await loadPortal()
+    } catch (updateError) {
+      console.error('Driver order update error:', updateError)
+      setError(updateError?.message || 'Unable to update order.')
+    } finally {
+      setUpdatingOrderId('')
+    }
+  }
+
+  const orders = Array.isArray(portalData?.orders) ? portalData.orders : []
+
+  const activeOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) => !['delivered', 'cancelled'].includes(String(order.order_status || ''))
+      ),
+    [orders]
+  )
+
+  // DELIVERY BOY ALARM: continues while ANY assigned order is still packed.
+  const waitingToStartOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) => String(order.order_status || '').toLowerCase() === 'packed'
+      ),
+    [orders]
+  )
 
   const {
     enabled: driverAlarmEnabled,
     active: driverAlarmActive,
     enable: enableDriverAlarm,
     disable: disableDriverAlarm,
-  } =
-    usePersistentPortalAlarm({
-      active:
-        Boolean(
-          sessionToken &&
-          waitingToStartOrders.length > 0
-        ),
-      repeatMs: 1700,
-      notificationTitle:
-        'Start Delivery Required',
-      notificationBody:
-        waitingToStartOrders.length === 1
-          ? `${waitingToStartOrders[0]?.order_code || '1 order'} is ready. Press Start Delivery.`
-          : `${waitingToStartOrders.length} assigned orders are waiting for Start Delivery.`,
-    })
+  } = usePersistentPortalAlarm({
+    active: Boolean(sessionToken && waitingToStartOrders.length > 0),
+    repeatMs: 1700,
+    notificationTitle: 'Start Delivery Required',
+    notificationBody:
+      waitingToStartOrders.length === 1
+        ? `${waitingToStartOrders[0]?.order_code || '1 order'} is ready. Press Start Delivery.`
+        : `${waitingToStartOrders.length} assigned orders are waiting for Start Delivery.`,
+  })
 
-  const recentOrders =
+  const recentOrders = useMemo(
+    () =>
+      orders.filter((order) =>
+        ['delivered', 'cancelled'].includes(String(order.order_status || ''))
+      ),
+    [orders]
+  )
 
+  const normalizeMobile = (value) => String(value || '').replace(/\D/g, '')
 
+  const liveTrackingOrder = useMemo(
+    () =>
+      activeOrders.find((order) => String(order.order_status || '') === 'out_for_delivery') || null,
+    [activeOrders]
+  )
 
-    useMemo(
-
-
-
-      () =>
-
-
-
-        orders.filter((order) =>
-
-
-
-          [
-
-
-
-            'delivered',
-
-
-
-            'cancelled',
-
-
-
-          ].includes(
-
-
-
-            String(
-
-
-
-              order.order_status || ''
-
-
-
-            )
-
-
-
-          )
-
-
-
-        ),
-
-
-
-      [orders]
-
-
-
+  // Same customer mobile with several Out-for-Delivery orders: share GPS to all of them.
+  const liveTrackingOrders = useMemo(() => {
+    if (!liveTrackingOrder) return []
+    const primaryMobile = normalizeMobile(liveTrackingOrder.customer_mobile)
+    if (!primaryMobile) return [liveTrackingOrder]
+    return activeOrders.filter(
+      (order) =>
+        String(order.order_status || '') === 'out_for_delivery' &&
+        normalizeMobile(order.customer_mobile) === primaryMobile
     )
+  }, [activeOrders, liveTrackingOrder])
 
+  const liveTrackingOrderIds = useMemo(
+    () => [
+      ...new Set(liveTrackingOrders.map((order) => String(order?.id || '')).filter(Boolean)),
+    ],
+    [liveTrackingOrders]
+  )
 
-
-  const normalizeMobile =
-    (value) =>
-      String(
-        value || ''
-      ).replace(
-        /\D/g,
-        ''
-      )
-
-
-
-  const liveTrackingOrder =
-    useMemo(
-      () =>
-        activeOrders.find(
-          (order) =>
-            String(
-              order.order_status ||
-                ''
-            ) ===
-            'out_for_delivery'
-        ) || null,
-      [activeOrders]
-    )
-
-
-
-  /*
-   * If the same customer mobile has multiple different orders that are
-   * Out for Delivery with this Driver, share this Driver's GPS to ALL
-   * those order records.
-   *
-   * The Driver UI can still show one tracking card, but every matching
-   * customer order-tracking page receives the same live Driver location.
-   */
-  const liveTrackingOrders =
-    useMemo(() => {
-      if (!liveTrackingOrder) {
-        return []
-      }
-
-      const primaryMobile =
-        normalizeMobile(
-          liveTrackingOrder.customer_mobile
-        )
-
-      if (!primaryMobile) {
-        return [
-          liveTrackingOrder,
-        ]
-      }
-
-      return activeOrders.filter(
-        (order) =>
-          String(
-            order.order_status ||
-              ''
-          ) ===
-            'out_for_delivery' &&
-          normalizeMobile(
-            order.customer_mobile
-          ) ===
-            primaryMobile
-      )
-    }, [
-      activeOrders,
-      liveTrackingOrder,
-    ])
-
-
-
-  const liveTrackingOrderIds =
-    useMemo(
-      () =>
-        [
-          ...new Set(
-            liveTrackingOrders
-              .map(
-                (order) =>
-                  String(
-                    order?.id ||
-                      ''
-                  )
-              )
-              .filter(Boolean)
-          ),
-        ],
-      [liveTrackingOrders]
-    )
-
-
-
-  const liveTrackingOrderIdsKey =
-    liveTrackingOrderIds.join(
-      '|'
-    )
-
-
+  const liveTrackingOrderIdsKey = liveTrackingOrderIds.join('|')
 
   useEffect(() => {
-
-    if (
-      !sessionToken ||
-      liveTrackingOrderIds.length ===
-        0
-    ) {
-
+    if (!sessionToken || liveTrackingOrderIds.length === 0) {
       setGpsStatus('idle')
-
       setGpsMessage('')
-
       setGpsLastSentAt('')
-
       setGpsAccuracy(null)
-
       gpsLastSentRef.current = 0
-
       gpsLastCoordsRef.current = null
-
       return
-
     }
-
-
 
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-
       setGpsStatus('error')
-
-      setGpsMessage(
-
-        'Live GPS is not supported on this device/browser. Open the Driver Portal on a GPS-enabled phone.'
-
-      )
-
+      setGpsMessage('Live GPS is not supported on this device. Open the portal on a GPS-enabled phone.')
       return
-
     }
 
-
-
     const token = sessionToken
-
-    const orderIds =
-      [...liveTrackingOrderIds]
-
+    const orderIds = [...liveTrackingOrderIds]
     let disposed = false
 
-
-
     gpsLastSentRef.current = 0
-
     gpsLastCoordsRef.current = null
-
     setGpsStatus('requesting')
-
     setGpsMessage('Allow precise location access to share your live delivery position.')
 
-
-
     const sendPosition = async (position) => {
-
       if (disposed || !position?.coords) return
 
-
-
       const latitude = Number(position.coords.latitude)
-
       const longitude = Number(position.coords.longitude)
-
       const accuracy = Number(position.coords.accuracy)
-
       const heading = Number(position.coords.heading)
-
       const speed = Number(position.coords.speed)
-
-
 
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return
 
-
-
       const now = Date.now()
-
       const previous = gpsLastCoordsRef.current
-
       const elapsed = now - Number(gpsLastSentRef.current || 0)
-
       const moved = previous
-
         ? distanceMeters(previous.latitude, previous.longitude, latitude, longitude)
-
         : Number.POSITIVE_INFINITY
 
-
-
       if (elapsed < 4000) return
-
       if (elapsed < 20000 && moved < 5) return
-
       if (gpsSendingRef.current) return
-
-
 
       gpsSendingRef.current = true
 
-
-
       try {
-
-        const updateResults =
-          await Promise.all(
-            orderIds.map(
-              async (
-                orderId
-              ) => {
-                const {
-                  data,
-                  error:
-                    rpcError,
-                } =
-                  await supabase.rpc(
-                    'delivery_driver_update_live_location',
-                    {
-                      p_session_token:
-                        token,
-
-                      p_order_id:
-                        orderId,
-
-                      p_latitude:
-                        latitude,
-
-                      p_longitude:
-                        longitude,
-
-                      p_accuracy_m:
-                        Number.isFinite(
-                          accuracy
-                        )
-                          ? accuracy
-                          : null,
-
-                      p_heading:
-                        Number.isFinite(
-                          heading
-                        )
-                          ? heading
-                          : null,
-
-                      p_speed_mps:
-                        Number.isFinite(
-                          speed
-                        )
-                          ? speed
-                          : null,
-                    }
-                  )
-
-                if (rpcError) {
-                  throw rpcError
-                }
-
-                if (
-                  !data?.success
-                ) {
-                  throw new Error(
-                    data?.message ||
-                      `Unable to share live GPS location for order ${orderId}.`
-                  )
-                }
-
-                return data
+        const updateResults = await Promise.all(
+          orderIds.map(async (orderId) => {
+            const { data, error: rpcError } = await supabase.rpc(
+              'delivery_driver_update_live_location',
+              {
+                p_session_token: token,
+                p_order_id: orderId,
+                p_latitude: latitude,
+                p_longitude: longitude,
+                p_accuracy_m: Number.isFinite(accuracy) ? accuracy : null,
+                p_heading: Number.isFinite(heading) ? heading : null,
+                p_speed_mps: Number.isFinite(speed) ? speed : null,
               }
             )
-          )
-
-
-
-        const latestLocation =
-          updateResults.find(
-            (row) =>
-              row?.location
-          )?.location ||
-          null
-
-
-
-        gpsLastSentRef.current =
-          now
-
-        gpsLastCoordsRef.current =
-          {
-            latitude,
-            longitude,
-          }
-
-        setGpsStatus(
-          'live'
+            if (rpcError) throw rpcError
+            if (!data?.success) {
+              throw new Error(
+                data?.message || `Unable to share live GPS location for order ${orderId}.`
+              )
+            }
+            return data
+          })
         )
 
+        const latestLocation =
+          updateResults.find((row) => row?.location)?.location || null
+
+        gpsLastSentRef.current = now
+        gpsLastCoordsRef.current = { latitude, longitude }
+        setGpsStatus('live')
         setGpsMessage(
           orderIds.length > 1
             ? `Live location is being shared with ${orderIds.length} orders on the same customer mobile.`
             : 'Live location is being shared with this customer.'
         )
-
-        setGpsLastSentAt(
-          latestLocation
-            ?.captured_at ||
-            new Date().toISOString()
-        )
-
-        setGpsAccuracy(
-          Number.isFinite(
-            accuracy
-          )
-            ? accuracy
-            : null
-        )
-
+        setGpsLastSentAt(latestLocation?.captured_at || new Date().toISOString())
+        setGpsAccuracy(Number.isFinite(accuracy) ? accuracy : null)
       } catch (locationUpdateError) {
-
         console.error('Driver live GPS update error:', locationUpdateError)
-
         setGpsStatus('error')
-
-        setGpsMessage(
-
-          locationUpdateError?.message || 'Unable to share live GPS location.'
-
-        )
-
+        setGpsMessage(locationUpdateError?.message || 'Unable to share live GPS location.')
       } finally {
-
         gpsSendingRef.current = false
-
       }
-
     }
 
-
-
     const watchId = navigator.geolocation.watchPosition(
-
       sendPosition,
-
       (geoError) => {
-
         if (disposed) return
-
-
-
         console.error('Driver live GPS error:', geoError)
-
         setGpsStatus('error')
-
-
-
         if (geoError?.code === 1) {
-
           setGpsMessage(
-
-            'Location permission was denied. Allow precise location for this site in your phone/browser settings, then tap Retry GPS.'
-
+            'Location permission was denied. Allow precise location for this site in your phone settings, then tap Retry GPS.'
           )
-
         } else if (geoError?.code === 2) {
-
           setGpsMessage(
-
-            'Your phone cannot determine its current location. Turn on GPS/location services and try again.'
-
+            'Your phone cannot determine its location. Turn on GPS/location services and try again.'
           )
-
         } else {
-
-          setGpsMessage(
-
-            'Live GPS timed out. Keep location services on and tap Retry GPS.'
-
-          )
-
+          setGpsMessage('Live GPS timed out. Keep location services on and tap Retry GPS.')
         }
-
       },
-
-      {
-
-        enableHighAccuracy: true,
-
-        maximumAge: 3000,
-
-        timeout: 20000,
-
-      }
-
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 }
     )
-
-
 
     gpsWatchRef.current = watchId
 
-
-
     return () => {
-
       disposed = true
-
-
-
       try {
-
         navigator.geolocation.clearWatch(watchId)
-
       } catch {
-
         // Ignore browser cleanup races.
-
       }
-
-
-
-      if (gpsWatchRef.current === watchId) {
-
-        gpsWatchRef.current = null
-
-      }
-
-
-
+      if (gpsWatchRef.current === watchId) gpsWatchRef.current = null
       gpsSendingRef.current = false
 
-
-
-      orderIds.forEach(
-        (
-          orderId
-        ) => {
-          void supabase
-            .rpc(
-              'delivery_driver_stop_live_location',
-              {
-                p_session_token:
-                  token,
-
-                p_order_id:
-                  orderId,
-              }
-            )
-            .then(
-              ({
-                error:
-                  stopError,
-              }) => {
-                if (
-                  stopError
-                ) {
-                  console.warn(
-                    'Driver live GPS stop warning:',
-                    stopError
-                  )
-                }
-              }
-            )
-        }
-      )
-
+      orderIds.forEach((orderId) => {
+        void supabase
+          .rpc('delivery_driver_stop_live_location', {
+            p_session_token: token,
+            p_order_id: orderId,
+          })
+          .then(({ error: stopError }) => {
+            if (stopError) console.warn('Driver live GPS stop warning:', stopError)
+          })
+      })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionToken, liveTrackingOrderIdsKey, gpsRestartNonce])
 
-  }, [
-    sessionToken,
-    liveTrackingOrderIdsKey,
-    gpsRestartNonce,
-  ])
-
-
-
+  // ===== LOGIN SCREEN =====
   if (loading) {
-
-
-
     return (
-
-
-
-      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 px-3 py-6 text-white sm:px-4 sm:py-10">
-
-
-
-        <div className="mx-auto w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-center sm:p-8">
-
-
-
-          Loading Driver Portal...
-
-
-
+      <main className="flex min-h-[100dvh] items-center justify-center bg-slate-50 px-4 text-slate-500">
+        <div className="flex flex-col items-center gap-3">
+          <span className="h-9 w-9 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600" />
+          <p className="text-sm font-semibold">Loading driver portal…</p>
         </div>
-
-
-
       </main>
-
-
-
     )
-
-
-
   }
 
-
-
-  if (
-
-
-
-    !sessionToken ||
-
-
-
-    !portalData
-
-
-
-  ) {
-
-
-
+  if (!sessionToken || !portalData) {
     return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-slate-950 px-5 py-10 text-white">
+        <div className="w-full max-w-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
+            <Icon name="truck" className="h-8 w-8" />
+          </div>
+          <p className="mt-6 text-center text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-400">
+            Digital Dine · Driver
+          </p>
+          <h1 className="mt-2 text-center text-2xl font-black">Driver sign in</h1>
+          <p className="mt-2 text-center text-sm leading-6 text-slate-400">
+            Use the Driver User ID and password given by your restaurant.
+          </p>
 
+          <form onSubmit={handleLogin} className="mt-8 space-y-4">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-slate-400">Driver User ID</span>
+              <input
+                value={userId}
+                onChange={(event) => setUserId(event.target.value)}
+                autoComplete="username"
+                placeholder="driver01"
+                className="h-13 w-full rounded-xl border border-slate-800 bg-slate-900 px-4 text-base text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 sm:text-sm"
+              />
+            </label>
 
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-slate-400">Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                placeholder="••••••••"
+                className="h-13 w-full rounded-xl border border-slate-800 bg-slate-900 px-4 text-base text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 sm:text-sm"
+              />
+            </label>
 
-      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 px-3 py-6 text-neutral-100 sm:px-4 sm:py-10">
+            {error && (
+              <div role="alert" className="rounded-xl bg-rose-500/10 px-4 py-3 text-xs font-semibold leading-5 text-rose-300">
+                {error}
+              </div>
+            )}
 
-
-
-        <div className="mx-auto w-full max-w-md">
-
-
-
-          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl sm:p-6">
-
-
-
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl">
-
-
-
-              🚚
-
-
-
-            </div>
-
-
-
-            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
-
-
-
-              Digital Dining
-
-
-
-            </p>
-
-
-
-            <h1 className="mt-1 text-2xl font-black text-white">
-
-
-
-              Delivery Driver Login
-
-
-
-            </h1>
-
-
-
-            <p className="mt-2 text-sm leading-6 text-neutral-400">
-
-
-
-              Sign in using the Driver
-
-
-
-              User ID and password given
-
-
-
-              by the restaurant owner.
-
-
-
-            </p>
-
-
-
-            <form
-
-
-
-              onSubmit={handleLogin}
-
-
-
-              className="mt-6 space-y-4"
-
-
-
+            <button
+              type="submit"
+              disabled={loggingIn}
+              className="h-14 w-full rounded-xl bg-emerald-600 text-sm font-bold text-white disabled:opacity-50"
             >
-
-
-
-              <label className="block">
-
-
-
-                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
-
-
-
-                  Driver User ID
-
-
-
-                </span>
-
-
-
-                <input
-
-
-
-                  value={userId}
-
-
-
-                  onChange={(event) =>
-
-
-
-                    setUserId(
-
-
-
-                      event.target.value
-
-
-
-                    )
-
-
-
-                  }
-
-
-
-                  autoComplete="username"
-
-
-
-                  placeholder="driver01"
-
-
-
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-emerald-500"
-
-
-
-                />
-
-
-
-              </label>
-
-
-
-              <label className="block">
-
-
-
-                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
-
-
-
-                  Password
-
-
-
-                </span>
-
-
-
-                <input
-
-
-
-                  type="password"
-
-
-
-                  value={password}
-
-
-
-                  onChange={(event) =>
-
-
-
-                    setPassword(
-
-
-
-                      event.target.value
-
-
-
-                    )
-
-
-
-                  }
-
-
-
-                  autoComplete="current-password"
-
-
-
-                  placeholder="••••••••"
-
-
-
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-emerald-500"
-
-
-
-                />
-
-
-
-              </label>
-
-
-
-              {error && (
-
-
-
-                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold leading-5 text-red-300">
-
-
-
-                  {error}
-
-
-
-                </div>
-
-
-
-              )}
-
-
-
-              <button
-
-
-
-                type="submit"
-
-
-
-                disabled={loggingIn}
-
-
-
-                className="w-full rounded-xl bg-emerald-600 px-5 py-4 text-sm font-black text-white disabled:opacity-50"
-
-
-
-              >
-
-
-
-                {loggingIn
-
-
-
-                  ? 'Signing In...'
-
-
-
-                  : 'Open Driver Portal'}
-
-
-
-              </button>
-
-
-
-            </form>
-
-
-
-            <p className="mt-5 text-center text-[10px] leading-5 text-neutral-600">
-
-
-
-              Five failed login attempts
-
-
-
-              temporarily lock the Driver
-
-
-
-              Portal account for 15
-
-
-
-              minutes.
-
-
-
-            </p>
-
-
-
-          </section>
-
-
-
+              {loggingIn ? 'Signing in…' : 'Open driver portal'}
+            </button>
+          </form>
+
+          <p className="mt-6 text-center text-[11px] leading-5 text-slate-500">
+            Five failed attempts temporarily lock the account for 15 minutes.
+          </p>
         </div>
-
-
-
       </main>
-
-
-
     )
-
-
-
   }
 
+  // ===== DERIVED DATA =====
+  const driver = portalData.driver || {}
+  const restaurant = portalData.restaurant || {}
+  const codSummary = codData?.summary || {}
+  const codSettlements = Array.isArray(codData?.settlements) ? codData.settlements : []
+  const codCollections = Array.isArray(codData?.collections) ? codData.collections : []
+  const codCashDue = Number(codSummary.cash_due || 0)
+  const codPendingHandover = Number(codSummary.pending_handover || 0)
+  const codAvailableToSubmit = Math.max(codCashDue - codPendingHandover, 0)
+  const completedCount = recentOrders.filter((o) => String(o.order_status || '') === 'delivered').length
 
+  const searchTerm = driverSearch.trim().toLowerCase()
 
-  const driver =
-    portalData.driver || {}
+  const orderAddress = (order) =>
+    [order?.address_line1, order?.address_line2, order?.landmark, order?.city, order?.state, order?.pincode]
+      .filter(Boolean)
+      .join(', ')
 
-  const restaurant =
-    portalData.restaurant || {}
-
-  const codSummary =
-    codData?.summary || {}
-
-  const codSettlements =
-    Array.isArray(
-      codData?.settlements
-    )
-      ? codData.settlements
-      : []
-
-  const codCollections =
-    Array.isArray(
-      codData?.collections
-    )
-      ? codData.collections
-      : []
-
-  const codCashDue =
-    Number(
-      codSummary.cash_due ||
-        0
-    )
-
-  const codPendingHandover =
-    Number(
-      codSummary.pending_handover ||
-        0
-    )
-
-  const codAvailableToSubmit =
-    Math.max(
-      codCashDue -
-        codPendingHandover,
-      0
-    )
-
-  const completedCount =
-    recentOrders.filter(
-      (order) =>
-        String(
-          order.order_status ||
-            ''
-        ) === 'delivered'
-    ).length
-
-  const cancelledCount =
-    recentOrders.filter(
-      (order) =>
-        String(
-          order.order_status ||
-            ''
-        ) === 'cancelled'
-    ).length
-
-  const searchTerm =
-    driverSearch
-      .trim()
+  const matchesSearch = (order) => {
+    if (!searchTerm) return true
+    const haystack = [
+      order?.order_code,
+      order?.customer_name,
+      order?.customer_mobile,
+      order?.alternate_mobile,
+      orderAddress(order),
+    ]
+      .filter(Boolean)
+      .join(' ')
       .toLowerCase()
+    return haystack.includes(searchTerm)
+  }
 
-  const orderAddress =
-    (order) =>
-      [
-        order?.address_line1,
-        order?.address_line2,
-        order?.landmark,
-        order?.city,
-        order?.state,
-        order?.pincode,
-      ]
-        .filter(Boolean)
-        .join(', ')
+  const visibleActiveOrders = activeOrders.filter(matchesSearch)
+  const visibleRecentOrders = recentOrders.filter(matchesSearch)
 
-  const matchesSearch =
-    (order) => {
-      if (!searchTerm) {
-        return true
-      }
-
-      const haystack =
-        [
-          order?.order_code,
-          order?.customer_name,
-          order?.customer_mobile,
-          order?.alternate_mobile,
-          orderAddress(order),
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-
-      return haystack.includes(
-        searchTerm
-      )
-    }
-
-  const visibleActiveOrders =
-    activeOrders.filter(
-      matchesSearch
-    )
-
-  const visibleRecentOrders =
-    recentOrders.filter(
-      matchesSearch
-    )
-
-  const activeCustomers =
-    activeOrders
-      .filter(matchesSearch)
-      .map((order) => ({
-        orderId:
-          order.id,
-        orderCode:
-          order.order_code,
-        name:
-          order.customer_name ||
-          'Customer',
-        mobile:
-          order.customer_mobile ||
-          '',
-        alternateMobile:
-          order.alternate_mobile ||
-          '',
-        address:
-          orderAddress(order),
-        status:
-          order.order_status,
-      }))
+  const activeCustomers = activeOrders.filter(matchesSearch).map((order) => ({
+    orderId: order.id,
+    orderCode: order.order_code,
+    name: order.customer_name || 'Customer',
+    mobile: order.customer_mobile || '',
+    address: orderAddress(order),
+    status: order.order_status,
+  }))
 
   const restaurantPickupAddress =
-    [
-      restaurant.address,
-      restaurant.address_line1,
-      restaurant.address_line2,
-      restaurant.city,
-      restaurant.state,
-      restaurant.pincode,
-    ]
+    [restaurant.address, restaurant.address_line1, restaurant.address_line2, restaurant.city, restaurant.state, restaurant.pincode]
       .filter(Boolean)
       .join(', ') ||
     restaurant.name ||
     'Store pickup'
 
-  const viewMeta = {
-    dashboard: {
-      eyebrow:
-        'Overview',
-      title:
-        'Driver Dashboard',
-      description:
-        'Your shift, assigned deliveries and current cash position.',
-    },
-
-    tracking: {
-      eyebrow:
-        'Live Operations',
-      title:
-        'Tracking Delivery',
-      description:
-        'Follow every assigned delivery from packed to completed.',
-    },
-
-    inbox: {
-      eyebrow:
-        'Driver Inbox',
-      title:
-        'Alerts & Updates',
-      description:
-        'Important operational notices from your current delivery session.',
-    },
-
-    orders: {
-      eyebrow:
-        'Orders',
-      title:
-        'Delivery Orders',
-      description:
-        'Active assignments and recently completed delivery jobs.',
-    },
-
-    customers: {
-      eyebrow:
-        'Customers',
-      title:
-        'Customer Contacts',
-      description:
-        'Call, message or navigate to customers on your active route.',
-    },
-
-    assigned: {
-      eyebrow:
-        'Assignments',
-      title:
-        'Assigned Deliveries',
-      description:
-        'All orders currently assigned to you and waiting for delivery action.',
-    },
-
-    cod: {
-      eyebrow:
-        'Cash Management',
-      title:
-        'COD Reconciliation',
-      description:
-        'Review collected COD cash and submit physical handovers.',
-    },
-
-    returns: {
-      eyebrow:
-        'Return Logistics',
-      title:
-        'Return Pickups',
-      description:
-        'Handle return collection tasks assigned by the store.',
-    },
-
-    help: {
-      eyebrow:
-        'Support',
-      title:
-        'Help & Support',
-      description:
-        'Quick guidance for delivery, GPS, COD and order issues.',
-    },
-
-    settings: {
-      eyebrow:
-        'Driver',
-      title:
-        'Settings',
-      description:
-        'Alarm, account, vehicle and session controls.',
-    },
-  }
-
-  const currentView =
-    viewMeta[driverView] ||
-    viewMeta.tracking
-
-  const sidebarItems = [
-    {
-      key:
-        'dashboard',
-      icon:
-        '⌂',
-      label:
-        'Dashboard',
-    },
-    {
-      key:
-        'tracking',
-      icon:
-        '◎',
-      label:
-        'Tracking',
-      badge:
-        activeOrders.length ||
-        '',
-    },
-    {
-      key:
-        'inbox',
-      icon:
-        '✉',
-      label:
-        'Inbox',
-      badge:
-        waitingToStartOrders
-          .length ||
-        '',
-    },
-    {
-      key:
-        'orders',
-      icon:
-        '▣',
-      label:
-        'Orders',
-    },
-    {
-      key:
-        'customers',
-      icon:
-        '♙',
-      label:
-        'Customers',
-    },
-    {
-      key:
-        'assigned',
-      icon:
-        '🚚',
-      label:
-        'Assigned Deliveries',
-      badge:
-        activeOrders.length ||
-        '',
-    },
-    {
-      key:
-        'cod',
-      icon:
-        '₹',
-      label:
-        'COD Reconciliation',
-      badge:
-        codCashDue > 0
-          ? money(
-              codCashDue
-            )
-          : '',
-    },
-    {
-      key:
-        'returns',
-      icon:
-        '↩',
-      label:
-        'Return Pickups',
-    },
-    {
-      key:
-        'help',
-      icon:
-        '?',
-      label:
-        'Help & Support',
-    },
-    {
-      key:
-        'settings',
-      icon:
-        '⚙',
-      label:
-        'Settings',
-    },
+  const tabs = [
+    { key: 'tracking', label: 'Trips', icon: 'route', badge: activeOrders.length },
+    { key: 'assigned', label: 'Assigned', icon: 'box', badge: activeOrders.length },
+    { key: 'cod', label: 'Cash', icon: 'cash', badge: 0 },
+    { key: 'inbox', label: 'Alerts', icon: 'bell', badge: waitingToStartOrders.length },
   ]
 
-  const renderAlarmCard =
-    () => (
-      <div
-        className={`rounded-2xl border p-4 ${
-          driverAlarmActive
-            ? 'border-rose-200 bg-rose-50'
-            : driverAlarmEnabled
-              ? 'border-emerald-200 bg-emerald-50'
-              : 'border-neutral-200 bg-white'
-        }`}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p
-              className={`text-[10px] font-black uppercase tracking-[0.14em] ${
-                driverAlarmActive
-                  ? 'text-rose-600'
-                  : driverAlarmEnabled
-                    ? 'text-emerald-600'
-                    : 'text-neutral-500'
-              }`}
-            >
-              {driverAlarmActive
-                ? '🔔 Delivery alarm active'
-                : driverAlarmEnabled
-                  ? '✓ Delivery alarm ready'
-                  : 'Delivery alarm disabled'}
-            </p>
+  const moreItems = [
+    { key: 'dashboard', label: 'Dashboard', icon: 'home', hint: 'Shift summary and GPS status' },
+    { key: 'orders', label: 'Order history', icon: 'box', hint: 'Active and completed orders' },
+    { key: 'customers', label: 'Customers', icon: 'users', hint: 'Call or message on your route' },
+    { key: 'returns', label: 'Return pickups', icon: 'truck', hint: 'Collections assigned by the store' },
+    { key: 'help', label: 'Help', icon: 'help', hint: 'Guidance for delivery, GPS and COD' },
+    { key: 'settings', label: 'Settings', icon: 'settings', hint: 'Profile, alarm and sign out' },
+  ]
 
-            <p className="mt-1 text-xs leading-5 text-neutral-600">
-              {driverAlarmActive
-                ? `${waitingToStartOrders.length} assigned packed order${waitingToStartOrders.length === 1 ? '' : 's'} still need Start Delivery.`
-                : driverAlarmEnabled
-                  ? 'The alarm starts automatically when an assigned order is packed and ready.'
-                  : 'Enable the alarm so packed orders keep alerting until you start every delivery.'}
-            </p>
-          </div>
+  const viewTitles = {
+    dashboard: 'Dashboard',
+    tracking: 'Trips',
+    inbox: 'Alerts',
+    orders: 'Order history',
+    customers: 'Customers',
+    assigned: 'Assigned orders',
+    cod: 'Cash handover',
+    returns: 'Return pickups',
+    help: 'Help',
+    settings: 'Settings',
+  }
 
-          <button
-            type="button"
-            onClick={
-              driverAlarmEnabled
-                ? disableDriverAlarm
-                : enableDriverAlarm
-            }
-            className={`shrink-0 rounded-xl px-3 py-2 text-[10px] font-black ${
-              driverAlarmEnabled
-                ? 'bg-neutral-900 text-white'
-                : 'bg-emerald-600 text-white'
-            }`}
-          >
-            {driverAlarmEnabled
-              ? 'Alarm ON'
-              : 'Enable'}
-          </button>
+  const isMoreView = moreItems.some((item) => item.key === driverView)
+  const activeTabKey = isMoreView ? 'more' : driverView
+
+  // ===== REUSABLE BLOCKS =====
+  const renderAlarmCard = () => (
+    <div
+      className={`rounded-2xl p-4 ring-1 ${
+        driverAlarmActive
+          ? 'bg-rose-50 ring-rose-200'
+          : driverAlarmEnabled
+            ? 'bg-emerald-50 ring-emerald-200'
+            : 'bg-white ring-slate-200'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className={`text-sm font-bold ${driverAlarmActive ? 'text-rose-700' : driverAlarmEnabled ? 'text-emerald-700' : 'text-slate-900'}`}>
+            {driverAlarmActive
+              ? 'Alarm ringing'
+              : driverAlarmEnabled
+                ? 'Alarm ready'
+                : 'Delivery alarm is off'}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {driverAlarmActive
+              ? `${waitingToStartOrders.length} packed order${waitingToStartOrders.length === 1 ? '' : 's'} waiting for Start Delivery.`
+              : driverAlarmEnabled
+                ? 'You will be alerted when a packed order needs Start Delivery.'
+                : 'Turn it on so packed orders alert you until you start them.'}
+          </p>
         </div>
-      </div>
-    )
-
-  const renderGpsCard =
-    () =>
-      liveTrackingOrder ? (
-        <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-600">
-                Customer Live Tracking
-              </p>
-
-              <h3 className="mt-1 text-base font-black text-neutral-900">
-                GPS for{' '}
-                {liveTrackingOrder.order_code}
-              </h3>
-
-              <p className="mt-1 max-w-xl text-xs leading-5 text-neutral-500">
-                Your live position is shared only while this order is Out for Delivery.
-              </p>
-            </div>
-
-            <span
-              className={`w-fit rounded-full px-3 py-1.5 text-[9px] font-black uppercase ${
-                gpsStatus ===
-                'live'
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : gpsStatus ===
-                      'requesting'
-                    ? 'bg-amber-50 text-amber-700'
-                    : gpsStatus ===
-                        'error'
-                      ? 'bg-rose-50 text-rose-700'
-                      : 'bg-neutral-100 text-neutral-500'
-              }`}
-            >
-              {gpsStatus ===
-              'live'
-                ? '● Live GPS'
-                : gpsStatus ===
-                    'requesting'
-                  ? 'Finding GPS'
-                  : gpsStatus ===
-                      'error'
-                    ? 'GPS Attention'
-                    : 'GPS Idle'}
-            </span>
-          </div>
-
-          <div
-            className={`mt-4 rounded-xl border px-4 py-3 text-xs font-bold leading-5 ${
-              gpsStatus ===
-              'live'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : gpsStatus ===
-                    'error'
-                  ? 'border-rose-200 bg-rose-50 text-rose-700'
-                  : 'border-neutral-200 bg-neutral-50 text-neutral-500'
-            }`}
-          >
-            {gpsMessage ||
-              'Waiting for delivery to start.'}
-
-            {gpsStatus ===
-              'live' &&
-              liveTrackingOrders.length > 1 && (
-                <p className="mt-2 text-[10px] font-black text-emerald-800">
-                  The same live Driver location is being shared with all {liveTrackingOrders.length} orders for this customer mobile.
-                </p>
-              )}
-
-            {gpsStatus ===
-              'live' && (
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-semibold text-emerald-700/80">
-                {gpsAccuracy !==
-                  null && (
-                  <span>
-                    Accuracy ±
-                    {Math.round(
-                      Number(
-                        gpsAccuracy
-                      )
-                    )}{' '}
-                    m
-                  </span>
-                )}
-
-                {gpsLastSentAt && (
-                  <span>
-                    Last sent{' '}
-                    {new Date(
-                      gpsLastSentAt
-                    ).toLocaleTimeString(
-                      'en-IN',
-                      {
-                        hour:
-                          '2-digit',
-                        minute:
-                          '2-digit',
-                        second:
-                          '2-digit',
-                      }
-                    )}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {gpsStatus ===
-            'error' && (
-            <button
-              type="button"
-              onClick={() =>
-                setGpsRestartNonce(
-                  (value) =>
-                    value + 1
-                )
-              }
-              className="mt-3 rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white"
-            >
-              Retry GPS
-            </button>
-          )}
-        </section>
-      ) : null
-
-  const renderTrackingCard =
-    (order) => {
-      const address =
-        orderAddress(order)
-
-      const hasLiveLocation =
-        Number.isFinite(
-          Number(
-            order.latitude
-          )
-        ) &&
-        Number.isFinite(
-          Number(
-            order.longitude
-          )
-        )
-
-      const mapUrl =
-        hasLiveLocation
-          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-              `${order.latitude},${order.longitude}`
-            )}`
-          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-              address
-            )}`
-
-      const status =
-        String(
-          order.order_status ||
-            ''
-        )
-
-      const isPacked =
-        status ===
-        'packed'
-
-      const isTransit =
-        status ===
-        'out_for_delivery'
-
-      const codDue =
-        order.payment_method ===
-          'cod' &&
-        order.payment_status !==
-          'paid'
-
-      const progress =
-        isTransit
-          ? '72%'
-          : isPacked
-            ? '42%'
-            : '18%'
-
-      const statusClasses =
-        isTransit
-          ? 'bg-violet-100 text-violet-700'
-          : isPacked
-            ? 'bg-amber-100 text-amber-700'
-            : 'bg-sky-100 text-sky-700'
-
-      const mobile =
-        String(
-          order.customer_mobile ||
-            ''
-        )
-
-      const whatsapp =
-        mobile.replace(
-          /\D/g,
-          ''
-        )
-
-      return (
-        <article
-          key={order.id}
-          className={`rounded-2xl border bg-white p-4 shadow-sm transition sm:p-5 ${
-            isTransit
-              ? 'border-blue-300 ring-2 ring-blue-100'
-              : 'border-neutral-200'
+        <button
+          type="button"
+          onClick={driverAlarmEnabled ? disableDriverAlarm : enableDriverAlarm}
+          className={`h-10 shrink-0 rounded-xl px-4 text-xs font-bold ${
+            driverAlarmEnabled ? 'bg-slate-900 text-white' : 'bg-emerald-600 text-white'
           }`}
         >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-sm">
-                ▣
-              </div>
+          {driverAlarmEnabled ? 'Turn off' : 'Turn on'}
+        </button>
+      </div>
+    </div>
+  )
 
-              <div className="min-w-0">
-                <p className="truncate font-mono text-xs font-black text-neutral-900">
-                  #
-                  {order.order_code}
-                </p>
+  const renderGpsCard = () =>
+    liveTrackingOrder ? (
+      <section className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-slate-900">Live location</p>
+            <p className="mt-0.5 truncate text-xs text-slate-500">Shared for {liveTrackingOrder.order_code}</p>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ${
+              gpsStatus === 'live'
+                ? 'bg-emerald-50 text-emerald-700'
+                : gpsStatus === 'requesting'
+                  ? 'bg-amber-50 text-amber-700'
+                  : gpsStatus === 'error'
+                    ? 'bg-rose-50 text-rose-700'
+                    : 'bg-slate-100 text-slate-500'
+            }`}
+          >
+            {gpsStatus === 'live'
+              ? '● Live'
+              : gpsStatus === 'requesting'
+                ? 'Finding GPS…'
+                : gpsStatus === 'error'
+                  ? 'Needs attention'
+                  : 'Idle'}
+          </span>
+        </div>
 
-                <p className="mt-0.5 text-[9px] font-semibold text-neutral-400">
-                  Assigned{' '}
-                  {formatDate(
-                    order.created_at
-                  )}
-                </p>
-              </div>
-            </div>
+        <p
+          className={`mt-3 rounded-xl px-3 py-2.5 text-xs leading-5 ${
+            gpsStatus === 'error' ? 'bg-rose-50 text-rose-700' : 'bg-slate-50 text-slate-600'
+          }`}
+        >
+          {gpsMessage || 'Waiting for delivery to start.'}
+        </p>
 
-            <span
-              className={`rounded-lg px-2.5 py-1 text-[9px] font-black ${statusClasses}`}
-            >
-              {isTransit
-                ? 'Transit'
+        {gpsStatus === 'live' && (
+          <p className="mt-2 text-[11px] text-slate-400">
+            {gpsAccuracy !== null && `Accuracy ±${Math.round(Number(gpsAccuracy))} m`}
+            {gpsAccuracy !== null && gpsLastSentAt && ' · '}
+            {gpsLastSentAt &&
+              `Last sent ${new Date(gpsLastSentAt).toLocaleTimeString('en-IN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              })}`}
+          </p>
+        )}
+
+        {gpsStatus === 'error' && (
+          <button
+            type="button"
+            onClick={() => setGpsRestartNonce((value) => value + 1)}
+            className="mt-3 h-11 w-full rounded-xl bg-sky-600 text-sm font-bold text-white"
+          >
+            Retry GPS
+          </button>
+        )}
+      </section>
+    ) : null
+
+  const renderOrderCard = (order) => {
+    const address = orderAddress(order)
+    const hasLiveLocation =
+      Number.isFinite(Number(order.latitude)) && Number.isFinite(Number(order.longitude))
+    const mapUrl = hasLiveLocation
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${order.latitude},${order.longitude}`)}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+
+    const status = String(order.order_status || '')
+    const isPacked = status === 'packed'
+    const isTransit = status === 'out_for_delivery'
+    const codDue = order.payment_method === 'cod' && order.payment_status !== 'paid'
+    const mobile = String(order.customer_mobile || '')
+    const whatsapp = mobile.replace(/\D/g, '')
+
+    return (
+      <article
+        key={order.id}
+        className={`overflow-hidden rounded-2xl bg-white ring-1 ${
+          isTransit ? 'ring-2 ring-sky-400' : 'ring-slate-200'
+        }`}
+      >
+        {/* Header strip */}
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate font-mono text-xs font-bold text-slate-900">{order.order_code}</p>
+            <p className="mt-0.5 text-[11px] text-slate-400">{formatDate(order.created_at)}</p>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ${
+              isTransit
+                ? 'bg-sky-100 text-sky-700'
                 : isPacked
-                  ? 'Ready'
-                  : labelStatus(
-                      status
-                    )}
-            </span>
-          </div>
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {isTransit ? 'On the way' : isPacked ? 'Ready to start' : labelStatus(status)}
+          </span>
+        </div>
 
-          <div className="mt-5">
-            <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-emerald-500 bg-white" />
-
-              <div className="relative h-[3px] flex-1 overflow-hidden rounded-full bg-neutral-200">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-emerald-500"
-                  style={{
-                    width:
-                      progress,
-                  }}
-                />
+        <div className="space-y-4 p-4">
+          {/* Pickup and drop */}
+          <div className="space-y-3">
+            <div className="flex gap-3">
+              <div className="flex flex-col items-center pt-1">
+                <span className="h-2.5 w-2.5 rounded-full border-2 border-emerald-500 bg-white" />
+                <span className="my-1 w-px flex-1 bg-slate-200" />
               </div>
-
-              <span className="text-sm">
-                🚚
-              </span>
-
-              <div className="relative h-[3px] flex-1 overflow-hidden rounded-full bg-neutral-200">
-                <div
-                  className={`absolute inset-y-0 left-0 rounded-full ${
-                    isTransit
-                      ? 'bg-blue-500'
-                      : 'bg-neutral-300'
-                  }`}
-                  style={{
-                    width:
-                      isTransit
-                        ? '55%'
-                        : '5%',
-                  }}
-                />
+              <div className="min-w-0 pb-1">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Pickup</p>
+                <p className="text-xs leading-5 text-slate-700">{restaurantPickupAddress}</p>
               </div>
-
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-neutral-300 bg-white" />
             </div>
-
-            <div className="mt-2 grid grid-cols-2 gap-4 text-[9px] leading-4 text-neutral-500">
-              <p className="line-clamp-2">
-                {restaurantPickupAddress}
-              </p>
-
-              <p className="line-clamp-2 text-right">
-                {address ||
-                  'Customer address'}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-neutral-100 pt-4">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-black text-neutral-600">
-                {String(
-                  order.customer_name ||
-                    'C'
-                )
-                  .trim()
-                  .charAt(0)
-                  .toUpperCase()}
+            <div className="flex gap-3">
+              <div className="flex flex-col items-center pt-1">
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
               </div>
-
               <div className="min-w-0">
-                <p className="truncate text-xs font-black text-neutral-900">
-                  {order.customer_name ||
-                    'Customer'}
-                </p>
-
-                <p className="mt-0.5 truncate text-[9px] text-neutral-400">
-                  {mobile ||
-                    'No mobile'}
-                </p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Drop</p>
+                <p className="text-xs leading-5 text-slate-700">{address || 'Customer address'}</p>
               </div>
             </div>
+          </div>
 
+          {/* Customer row */}
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-700 ring-1 ring-slate-200">
+                {String(order.customer_name || 'C').trim().charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-slate-900">{order.customer_name || 'Customer'}</p>
+                <p className="truncate text-xs text-slate-500">{mobile || 'No mobile'}</p>
+              </div>
+            </div>
             <div className="flex shrink-0 gap-2">
               {mobile && (
                 <a
                   href={`tel:${mobile}`}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-sm transition hover:bg-neutral-100"
-                  title="Call customer"
+                  aria-label="Call customer"
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-emerald-700 ring-1 ring-slate-200"
                 >
-                  ☎
+                  <Icon name="phone" className="h-5 w-5" />
                 </a>
               )}
-
               {whatsapp && (
                 <a
                   href={`https://wa.me/${whatsapp}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-sm transition hover:bg-neutral-100"
-                  title="Message customer"
+                  aria-label="Message customer"
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-emerald-700 ring-1 ring-slate-200"
                 >
-                  ✉
+                  <Icon name="chat" className="h-5 w-5" />
                 </a>
               )}
             </div>
           </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <a
-              href={mapUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-[10px] font-black text-neutral-700 transition hover:bg-neutral-100"
-            >
-              ↗ Navigate
-            </a>
-
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center">
-              <p className="text-[8px] font-black uppercase text-neutral-400">
-                Total
-              </p>
-
-              <p className="mt-0.5 text-xs font-black text-neutral-900">
-                {money(
-                  order.total_amount
-                )}
-              </p>
+          {/* Amount + payment */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold text-slate-500">Order total</p>
+              <p className="mt-1 text-base font-black text-slate-900">{money(order.total_amount)}</p>
             </div>
-
-            <div
-              className={`rounded-xl border px-3 py-2.5 text-center ${
-                codDue
-                  ? 'border-amber-200 bg-amber-50'
-                  : 'border-emerald-200 bg-emerald-50'
-              }`}
-            >
-              <p
-                className={`text-[8px] font-black uppercase ${
-                  codDue
-                    ? 'text-amber-600'
-                    : 'text-emerald-600'
-                }`}
-              >
-                {codDue
-                  ? 'Collect COD'
-                  : 'Payment'}
+            <div className={`rounded-xl p-3 ${codDue ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+              <p className={`text-[11px] font-semibold ${codDue ? 'text-amber-700' : 'text-emerald-700'}`}>
+                {codDue ? 'Collect cash' : 'Payment'}
               </p>
-
-              <p
-                className={`mt-0.5 text-xs font-black ${
-                  codDue
-                    ? 'text-amber-700'
-                    : 'text-emerald-700'
-                }`}
-              >
-                {codDue
-                  ? money(
-                      order.total_amount
-                    )
-                  : labelStatus(
-                      order.payment_status ||
-                        'paid'
-                    )}
+              <p className={`mt-1 text-base font-black ${codDue ? 'text-amber-800' : 'text-emerald-800'}`}>
+                {codDue ? money(order.total_amount) : labelStatus(order.payment_status || 'paid')}
               </p>
             </div>
           </div>
 
           {order.customer_note && (
-            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-              <p className="text-[8px] font-black uppercase tracking-wider text-amber-600">
-                Customer Note
-              </p>
-
-              <p className="mt-1 text-[10px] leading-5 text-amber-800">
-                {order.customer_note}
-              </p>
+            <div className="rounded-xl bg-amber-50 px-3 py-3 ring-1 ring-amber-200">
+              <p className="text-[11px] font-bold text-amber-700">Customer note</p>
+              <p className="mt-1 text-xs leading-5 text-amber-900">{order.customer_note}</p>
             </div>
           )}
 
-          {Array.isArray(
-            order.items
-          ) &&
-            order.items.length >
-              0 && (
-              <details className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50">
-                <summary className="cursor-pointer px-3 py-2.5 text-[10px] font-black text-neutral-600">
-                  Order items (
-                  {order.items.length})
-                </summary>
+          {Array.isArray(order.items) && order.items.length > 0 && (
+            <details className="rounded-xl bg-slate-50 ring-1 ring-slate-200">
+              <summary className="cursor-pointer px-3 py-3 text-xs font-bold text-slate-700">
+                Items ({order.items.length})
+              </summary>
+              <div className="space-y-2 border-t border-slate-200 px-3 py-3">
+                {order.items.map((item, itemIndex) => (
+                  <div key={`${order.id}-${item.id || item.menu_item_id || itemIndex}`} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="min-w-0 truncate text-slate-600">{item.name || item.item_name || 'Item'}</span>
+                    <span className="shrink-0 font-bold text-slate-900">×{Number(item.quantity || item.qty || 1)}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
 
-                <div className="space-y-1 border-t border-neutral-200 px-3 py-3">
-                  {order.items.map(
-                    (
-                      item,
-                      itemIndex
-                    ) => (
-                      <div
-                        key={`${order.id}-${item.id || item.menu_item_id || itemIndex}`}
-                        className="flex items-center justify-between gap-3 text-[10px]"
-                      >
-                        <span className="min-w-0 truncate font-semibold text-neutral-600">
-                          {item.name ||
-                            item.item_name ||
-                            'Item'}
-                        </span>
-
-                        <span className="shrink-0 font-black text-neutral-900">
-                          ×
-                          {Number(
-                            item.quantity ||
-                              item.qty ||
-                              1
-                          )}
-                        </span>
-                      </div>
-                    )
-                  )}
-                </div>
-              </details>
-            )}
+          <a
+            href={mapUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-bold text-white"
+          >
+            <Icon name="pin" className="h-4 w-4" />
+            Open navigation
+          </a>
 
           {isPacked && (
             <button
               type="button"
-              disabled={
-                updatingOrderId ===
-                order.id
-              }
-              onClick={() =>
-                updateStatus(
-                  order,
-                  'out_for_delivery'
-                )
-              }
-              className="mt-4 w-full rounded-xl bg-blue-600 px-5 py-3.5 text-xs font-black text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+              disabled={updatingOrderId === order.id}
+              onClick={() => updateStatus(order, 'out_for_delivery')}
+              className="h-13 w-full rounded-xl bg-sky-600 py-3.5 text-sm font-bold text-white disabled:opacity-50"
             >
-              {updatingOrderId ===
-              order.id
-                ? 'Starting...'
-                : 'Start Delivery'}
+              {updatingOrderId === order.id ? 'Starting…' : 'Start delivery'}
             </button>
           )}
 
           {isTransit && (
             <DeliveryResultPanel
               order={order}
-              sessionToken={
-                sessionToken
-              }
-              disabled={
-                updatingOrderId ===
-                order.id
-              }
-              onCompleted={async (
-                text
-              ) => {
+              sessionToken={sessionToken}
+              disabled={updatingOrderId === order.id}
+              onCompleted={async (text) => {
                 setMessage(text)
                 setError('')
                 await loadPortal()
@@ -4618,1379 +1226,590 @@ export default function DeliveryDriverPortal({
             />
           )}
 
-          {![
-            'packed',
-            'out_for_delivery',
-          ].includes(status) && (
-            <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[10px] font-semibold text-neutral-500">
-              Waiting for the store to mark this order Packed.
-            </div>
-          )}
-        </article>
-      )
-    }
-
-  const renderCodWorkspace =
-    () => (
-      <div className="space-y-4">
-        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-600">
-                COD Cash Reconciliation
-              </p>
-
-              <h3 className="mt-1 text-lg font-black text-neutral-900">
-                Cash collected from customers
-              </h3>
-
-              <p className="mt-1 max-w-2xl text-xs leading-5 text-neutral-500">
-                Submit cash only after physically handing it to the Manager or Owner. Your balance reduces after approval.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                loadCodSummary(
-                  '',
-                  false
-                )
-              }
-              disabled={
-                codLoading
-              }
-              className="w-fit rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[10px] font-black text-neutral-600 disabled:opacity-50"
-            >
-              {codLoading
-                ? 'Refreshing...'
-                : '↻ Refresh COD'}
-            </button>
-          </div>
-
-          {codError && (
-            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs font-bold text-rose-700">
-              {codError}
-            </div>
-          )}
-
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-[9px] font-black uppercase text-amber-600">
-                Cash Due
-              </p>
-              <p className="mt-2 text-xl font-black text-amber-800">
-                {money(
-                  codCashDue
-                )}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
-              <p className="text-[9px] font-black uppercase text-sky-600">
-                Pending Handover
-              </p>
-              <p className="mt-2 text-xl font-black text-sky-800">
-                {money(
-                  codPendingHandover
-                )}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-              <p className="text-[9px] font-black uppercase text-emerald-600">
-                Can Submit
-              </p>
-              <p className="mt-2 text-xl font-black text-emerald-800">
-                {money(
-                  codAvailableToSubmit
-                )}
-              </p>
-            </div>
-          </div>
-
-          <form
-            onSubmit={
-              submitCodSettlement
-            }
-            className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-4"
-          >
-            <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                max={
-                  codAvailableToSubmit ||
-                  undefined
-                }
-                value={codAmount}
-                onChange={(
-                  event
-                ) =>
-                  setCodAmount(
-                    event.target.value
-                  )
-                }
-                placeholder="Amount ₹"
-                disabled={
-                  codSubmitting ||
-                  codAvailableToSubmit <=
-                    0
-                }
-                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-xs font-bold text-neutral-900 outline-none focus:border-amber-500 disabled:opacity-50"
-              />
-
-              <input
-                value={codNote}
-                onChange={(
-                  event
-                ) =>
-                  setCodNote(
-                    event.target.value
-                  )
-                }
-                maxLength={500}
-                placeholder="Optional handover note"
-                disabled={
-                  codSubmitting ||
-                  codAvailableToSubmit <=
-                    0
-                }
-                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-xs font-bold text-neutral-900 outline-none focus:border-amber-500 disabled:opacity-50"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={
-                codSubmitting ||
-                codAvailableToSubmit <=
-                  0 ||
-                !String(
-                  codAmount || ''
-                ).trim()
-              }
-              className="mt-3 w-full rounded-xl bg-amber-500 px-4 py-3 text-xs font-black text-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
-            >
-              {codSubmitting
-                ? 'Submitting Cash Handover...'
-                : '💵 Submit COD Cash Handover'}
-            </button>
-
-            {codAvailableToSubmit <=
-              0 && (
-              <p className="mt-2 text-[10px] leading-4 text-neutral-400">
-                No additional COD cash can be submitted right now.
-              </p>
-            )}
-          </form>
-        </section>
-
-        {codSettlements.length >
-          0 && (
-          <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400">
-              Handover History
+          {!['packed', 'out_for_delivery'].includes(status) && (
+            <p className="rounded-xl bg-slate-50 px-3 py-3 text-center text-xs font-semibold text-slate-500">
+              Waiting for the store to mark this order packed.
             </p>
-
-            <div className="mt-3 space-y-2">
-              {codSettlements
-                .slice(0, 12)
-                .map(
-                  (
-                    settlement
-                  ) => (
-                    <div
-                      key={
-                        settlement.id
-                      }
-                      className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-xs font-black text-neutral-900">
-                          {money(
-                            settlement.amount_submitted
-                          )}
-                        </p>
-
-                        <p className="mt-1 text-[9px] text-neutral-400">
-                          {formatDate(
-                            settlement.submitted_at
-                          )}
-                          {settlement.reviewed_by_name
-                            ? ` · ${settlement.reviewed_by_name}`
-                            : ''}
-                        </p>
-                      </div>
-
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${
-                          settlement.status ===
-                          'approved'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : settlement.status ===
-                                'rejected'
-                              ? 'bg-rose-100 text-rose-700'
-                              : 'bg-amber-100 text-amber-700'
-                        }`}
-                      >
-                        {labelStatus(
-                          settlement.status
-                        )}
-                      </span>
-                    </div>
-                  )
-                )}
-            </div>
-          </section>
-        )}
-
-        {codCollections.some(
-          (row) =>
-            Number(
-              row.outstanding_amount ||
-                0
-            ) > 0
-        ) && (
-          <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400">
-              Unsettled COD Orders
-            </p>
-
-            <div className="mt-3 space-y-2">
-              {codCollections
-                .filter(
-                  (row) =>
-                    Number(
-                      row.outstanding_amount ||
-                        0
-                    ) > 0
-                )
-                .slice(0, 12)
-                .map(
-                  (row) => (
-                    <div
-                      key={
-                        row.id
-                      }
-                      className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3"
-                    >
-                      <div>
-                        <p className="font-mono text-[10px] font-black text-neutral-900">
-                          {row.order_code ||
-                            'COD Order'}
-                        </p>
-
-                        <p className="mt-1 text-[9px] text-neutral-400">
-                          Collected{' '}
-                          {formatDate(
-                            row.collected_at
-                          )}
-                        </p>
-                      </div>
-
-                      <p className="text-xs font-black text-amber-700">
-                        {money(
-                          row.outstanding_amount
-                        )}
-                      </p>
-                    </div>
-                  )
-                )}
-            </div>
-          </section>
-        )}
-      </div>
+          )}
+        </div>
+      </article>
     )
+  }
 
-  return (
-    <main className="min-h-[100dvh] bg-[#f5f6f8] text-neutral-900">
-      <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1600px] lg:grid-cols-[280px_minmax(0,1fr)]">
-        {/* DESKTOP LEFT SIDEBAR */}
-        <aside className="sticky top-0 hidden h-[100dvh] flex-col border-r border-neutral-200 bg-white lg:flex">
-          <div className="border-b border-neutral-100 p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-pink-100 text-sm font-black text-pink-700">
-                {String(
-                  driver.name ||
-                    'D'
-                )
-                  .trim()
-                  .charAt(0)
-                  .toUpperCase()}
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-black text-neutral-900">
-                  {driver.name ||
-                    'Delivery Boy'}
-                </p>
-
-                <p className="mt-0.5 truncate text-[10px] text-neutral-400">
-                  {driver.mobile ||
-                    restaurant.name ||
-                    'Driver Portal'}
-                </p>
-              </div>
-
-              <span
-                className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                  driver.status ===
-                  'busy'
-                    ? 'bg-amber-400'
-                    : 'bg-emerald-500'
-                }`}
-                title={
-                  driver.status ||
-                  'available'
-                }
-              />
-            </div>
-
-            <div className="relative mt-5">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
-                ⌕
-              </span>
-
-              <input
-                value={driverSearch}
-                onChange={(
-                  event
-                ) =>
-                  setDriverSearch(
-                    event.target.value
-                  )
-                }
-                placeholder="Search order / customer"
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 py-2.5 pl-8 pr-3 text-[11px] font-semibold text-neutral-800 outline-none transition focus:border-blue-400 focus:bg-white"
-              />
-            </div>
+  const renderCodWorkspace = () => (
+    <div className="space-y-4">
+      <section className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl bg-amber-50 p-3">
+            <p className="text-[11px] font-semibold text-amber-700">Cash due</p>
+            <p className="mt-1 text-sm font-black text-amber-900">{money(codCashDue)}</p>
           </div>
+          <div className="rounded-xl bg-sky-50 p-3">
+            <p className="text-[11px] font-semibold text-sky-700">Pending</p>
+            <p className="mt-1 text-sm font-black text-sky-900">{money(codPendingHandover)}</p>
+          </div>
+          <div className="rounded-xl bg-emerald-50 p-3">
+            <p className="text-[11px] font-semibold text-emerald-700">Can submit</p>
+            <p className="mt-1 text-sm font-black text-emerald-900">{money(codAvailableToSubmit)}</p>
+          </div>
+        </div>
 
-          <nav className="flex-1 overflow-y-auto p-3">
-            <div className="space-y-1">
-              {sidebarItems.map(
-                (item) => {
-                  const active =
-                    driverView ===
-                    item.key
+        <button
+          type="button"
+          onClick={() => loadCodSummary('', false)}
+          disabled={codLoading}
+          className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-slate-100 text-xs font-bold text-slate-700 disabled:opacity-50"
+        >
+          <Icon name="refresh" className="h-4 w-4" />
+          {codLoading ? 'Refreshing…' : 'Refresh balance'}
+        </button>
 
-                  return (
-                    <button
-                      key={
-                        item.key
-                      }
-                      type="button"
-                      onClick={() =>
-                        setDriverView(
-                          item.key
-                        )
-                      }
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                        active
-                          ? 'border border-neutral-200 bg-neutral-50 shadow-sm'
-                          : 'border border-transparent text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900'
-                      }`}
-                    >
-                      <span
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sm ${
-                          active
-                            ? 'bg-white text-neutral-900'
-                            : 'text-neutral-400'
-                        }`}
-                      >
-                        {item.icon}
-                      </span>
+        {codError && (
+          <div role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-3 text-xs font-semibold text-rose-700">
+            {codError}
+          </div>
+        )}
+      </section>
 
-                      <span
-                        className={`min-w-0 flex-1 truncate text-[11px] font-bold ${
-                          active
-                            ? 'text-neutral-900'
-                            : ''
-                        }`}
-                      >
-                        {item.label}
-                      </span>
+      <form onSubmit={submitCodSettlement} className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+        <p className="text-sm font-bold text-slate-900">Hand over cash</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          Submit only after you physically hand the cash to the Manager or Owner. Your balance updates after approval.
+        </p>
 
-                      {item.badge !==
-                        '' &&
-                        item.badge !==
-                          undefined && (
-                          <span
-                            className={`max-w-[92px] truncate rounded-full px-2 py-0.5 text-[9px] font-black ${
-                              item.key ===
-                              'cod'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-neutral-100 text-neutral-600'
-                            }`}
-                          >
-                            {item.badge}
-                          </span>
-                        )}
-                    </button>
-                  )
-                }
-              )}
-            </div>
-          </nav>
+        <div className="mt-4 space-y-3">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-slate-600">Amount (₹)</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0.01"
+              step="0.01"
+              max={codAvailableToSubmit || undefined}
+              value={codAmount}
+              onChange={(event) => setCodAmount(event.target.value)}
+              placeholder="0.00"
+              disabled={codSubmitting || codAvailableToSubmit <= 0}
+              className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-base font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white disabled:opacity-50 sm:text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-slate-600">Note (optional)</span>
+            <input
+              value={codNote}
+              onChange={(event) => setCodNote(event.target.value)}
+              maxLength={500}
+              placeholder="Example: Evening handover"
+              disabled={codSubmitting || codAvailableToSubmit <= 0}
+              className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-base text-slate-900 outline-none focus:border-emerald-500 focus:bg-white disabled:opacity-50 sm:text-sm"
+            />
+          </label>
+        </div>
 
-          <div className="border-t border-neutral-100 p-4">
-            <button
-              type="button"
-              onClick={() =>
-                setDriverView(
-                  'cod'
-                )
-              }
-              className="w-full rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-wider text-amber-600">
-                    COD Cash Due
-                  </p>
+        <button
+          type="submit"
+          disabled={codSubmitting || codAvailableToSubmit <= 0 || !String(codAmount || '').trim()}
+          className="mt-4 h-13 w-full rounded-xl bg-emerald-600 py-3.5 text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400"
+        >
+          {codSubmitting ? 'Submitting…' : 'Submit cash handover'}
+        </button>
 
-                  <p className="mt-1 text-lg font-black text-amber-900">
-                    {money(
-                      codCashDue
-                    )}
+        {codAvailableToSubmit <= 0 && (
+          <p className="mt-2 text-center text-[11px] text-slate-400">No cash is available to submit right now.</p>
+        )}
+      </form>
+
+      {codSettlements.length > 0 && (
+        <section className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+          <p className="text-sm font-bold text-slate-900">Handover history</p>
+          <div className="mt-3 divide-y divide-slate-100">
+            {codSettlements.slice(0, 12).map((settlement) => (
+              <div key={settlement.id} className="flex items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-900">{money(settlement.amount_submitted)}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {formatDate(settlement.submitted_at)}
+                    {settlement.reviewed_by_name ? ` · ${settlement.reviewed_by_name}` : ''}
                   </p>
                 </div>
-
-                <span className="text-xl">
-                  ₹
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                    settlement.status === 'approved'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : settlement.status === 'rejected'
+                        ? 'bg-rose-100 text-rose-700'
+                        : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {labelStatus(settlement.status)}
                 </span>
               </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-              <div className="mt-3 flex items-center justify-between text-[9px] font-semibold text-amber-700">
-                <span>
-                  Pending{' '}
-                  {money(
-                    codPendingHandover
-                  )}
-                </span>
+      {codCollections.some((row) => Number(row.outstanding_amount || 0) > 0) && (
+        <section className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+          <p className="text-sm font-bold text-slate-900">Unsettled COD orders</p>
+          <div className="mt-3 divide-y divide-slate-100">
+            {codCollections
+              .filter((row) => Number(row.outstanding_amount || 0) > 0)
+              .slice(0, 12)
+              .map((row) => (
+                <div key={row.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs font-bold text-slate-900">{row.order_code || 'COD order'}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-400">Collected {formatDate(row.collected_at)}</p>
+                  </div>
+                  <p className="shrink-0 text-sm font-black text-amber-700">{money(row.outstanding_amount)}</p>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
 
-                <span>
-                  Manage →
-                </span>
+  // ===== MAIN APP =====
+  return (
+    <main className="flex min-h-[100dvh] flex-col bg-slate-50 text-slate-900">
+      {/* TOP BAR */}
+      <header className="sticky top-0 z-30 bg-white ring-1 ring-slate-200/70">
+        <div className="flex items-center gap-3 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white">
+            {String(driver.name || 'D').trim().charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-slate-900">{driver.name || 'Driver'}</p>
+            <p className="flex items-center gap-1.5 text-[11px] text-slate-500">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  driver.status === 'busy' ? 'bg-amber-400' : 'bg-emerald-500'
+                }`}
+              />
+              {labelStatus(driver.status || 'available')} · {restaurant.name || 'Store'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={driverAlarmEnabled ? disableDriverAlarm : enableDriverAlarm}
+            aria-label={driverAlarmEnabled ? 'Turn delivery alarm off' : 'Turn delivery alarm on'}
+            className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+              driverAlarmEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'
+            }`}
+          >
+            <Icon name="bell" className="h-5 w-5" />
+            {driverAlarmActive && (
+              <span className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-pulse rounded-full bg-rose-500 ring-2 ring-white" />
+            )}
+          </button>
+        </div>
+
+        {/* Cash strip */}
+        <button
+          type="button"
+          onClick={() => setDriverView('cod')}
+          className="flex w-full items-center justify-between border-t border-slate-100 bg-amber-50 px-4 py-2.5 text-left"
+        >
+          <span className="text-xs font-semibold text-amber-800">Cash to hand over</span>
+          <span className="text-sm font-black text-amber-900">{money(codCashDue)}</span>
+        </button>
+      </header>
+
+      {/* PAGE TITLE + SEARCH */}
+      <div className="px-4 pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-black tracking-tight text-slate-900">{viewTitles[driverView] || 'Trips'}</h1>
+          <button
+            type="button"
+            onClick={async () => {
+              await Promise.all([loadPortal(), loadCodSummary('', true)])
+            }}
+            aria-label="Refresh"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 ring-1 ring-slate-200"
+          >
+            <Icon name="refresh" className="h-4 w-4" />
+          </button>
+        </div>
+
+        {(driverView === 'tracking' || driverView === 'assigned' || driverView === 'orders' || driverView === 'customers') && (
+          <label className="mt-3 flex h-11 items-center gap-2.5 rounded-xl bg-white px-3.5 ring-1 ring-slate-200 focus-within:ring-2 focus-within:ring-emerald-500">
+            <Icon name="search" className="h-4 w-4 text-slate-400" />
+            <input
+              value={driverSearch}
+              onChange={(event) => setDriverSearch(event.target.value)}
+              placeholder="Search order, customer or mobile"
+              aria-label="Search orders"
+              className="min-w-0 flex-1 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-400 sm:text-sm"
+            />
+            {driverSearch && (
+              <button type="button" onClick={() => setDriverSearch('')} aria-label="Clear search" className="text-slate-400">
+                <Icon name="close" className="h-4 w-4" />
+              </button>
+            )}
+          </label>
+        )}
+
+        {message && (
+          <div className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+            {message}
+          </div>
+        )}
+        {error && (
+          <div role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* CONTENT */}
+      <section className="flex-1 space-y-4 px-4 pb-32 pt-4">
+        {/* TRIPS */}
+        {driverView === 'tracking' && (
+          <>
+            {renderGpsCard()}
+            {liveTrackingOrders.length > 1 && (
+              <div className="rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
+                <p className="text-sm font-bold text-rose-800">{liveTrackingOrders.length} orders for one customer</p>
+                <p className="mt-1 text-xs leading-5 text-rose-700">
+                  Complete every order below separately before leaving this customer.
+                </p>
               </div>
-            </button>
+            )}
+            {liveTrackingOrders.length > 0 ? (
+              liveTrackingOrders.map((order) => renderOrderCard(order))
+            ) : (
+              <EmptyState
+                icon="route"
+                title="No active trip"
+                text="When you start a delivery from Assigned orders, it appears here with live navigation."
+              />
+            )}
+          </>
+        )}
 
-            <button
-              type="button"
-              onClick={
-                driverAlarmEnabled
-                  ? disableDriverAlarm
-                  : enableDriverAlarm
-              }
-              className={`mt-3 w-full rounded-xl px-3 py-2.5 text-[10px] font-black ${
-                driverAlarmEnabled
-                  ? 'bg-emerald-600 text-white'
-                  : 'border border-neutral-200 bg-white text-neutral-600'
-              }`}
-            >
-              {driverAlarmEnabled
-                ? '🔔 Delivery Alarm ON'
-                : '🔕 Enable Delivery Alarm'}
-            </button>
+        {/* ASSIGNED */}
+        {driverView === 'assigned' && (
+          <>
+            {renderAlarmCard()}
+            {visibleActiveOrders.length > 0 ? (
+              visibleActiveOrders.map((order) => renderOrderCard(order))
+            ) : (
+              <EmptyState
+                icon="box"
+                title={searchTerm ? 'No matching orders' : 'No assigned orders'}
+                text={searchTerm ? 'Try another order code, name or mobile number.' : 'New assignments appear here automatically.'}
+              />
+            )}
+          </>
+        )}
 
+        {/* CASH */}
+        {driverView === 'cod' && renderCodWorkspace()}
+
+        {/* ALERTS */}
+        {driverView === 'inbox' && (
+          <>
+            {renderAlarmCard()}
+            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+              <p className="text-sm font-bold text-slate-900">Action required</p>
+              <div className="mt-3 space-y-2">
+                {waitingToStartOrders.map((order) => (
+                  <button
+                    key={order.id}
+                    type="button"
+                    onClick={() => setDriverView('assigned')}
+                    className="flex w-full items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3 text-left ring-1 ring-amber-200"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-amber-900">Start delivery</p>
+                      <p className="mt-0.5 truncate text-xs text-amber-700">
+                        {order.order_code} · {order.customer_name || 'Customer'}
+                      </p>
+                    </div>
+                    <Icon name="route" className="h-4 w-4 shrink-0 text-amber-700" />
+                  </button>
+                ))}
+                {waitingToStartOrders.length === 0 && (
+                  <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">
+                    You're all caught up.
+                  </p>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* MORE SCREENS */}
+        {driverView === 'dashboard' && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'Active', value: activeOrders.length, tone: 'bg-sky-50 text-sky-900' },
+                { label: 'Completed', value: completedCount, tone: 'bg-emerald-50 text-emerald-900' },
+                { label: 'Waiting', value: waitingToStartOrders.length, tone: 'bg-amber-50 text-amber-900' },
+                { label: 'Cash due', value: money(codCashDue), tone: 'bg-rose-50 text-rose-900' },
+              ].map((card) => (
+                <div key={card.label} className={`rounded-2xl p-4 ${card.tone}`}>
+                  <p className="text-[11px] font-semibold opacity-70">{card.label}</p>
+                  <p className="mt-1 text-xl font-black">{card.value}</p>
+                </div>
+              ))}
+            </div>
+            {renderAlarmCard()}
+            {renderGpsCard()}
+          </>
+        )}
+
+        {driverView === 'orders' && (
+          <>
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Active</p>
+            {visibleActiveOrders.length > 0 ? (
+              <div className="space-y-2">
+                {visibleActiveOrders.map((order) => (
+                  <button
+                    key={order.id}
+                    type="button"
+                    onClick={() => setDriverView('tracking')}
+                    className="flex w-full items-center justify-between gap-3 rounded-2xl bg-white p-4 text-left ring-1 ring-slate-200"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-xs font-bold text-slate-900">{order.order_code}</p>
+                      <p className="mt-1 truncate text-xs text-slate-500">
+                        {order.customer_name || 'Customer'} · {labelStatus(order.order_status)}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-sm font-black text-slate-900">{money(order.total_amount)}</p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-2xl bg-white p-6 text-center text-xs text-slate-500 ring-1 ring-slate-200">No active orders.</p>
+            )}
+
+            <p className="pt-2 text-xs font-bold uppercase tracking-wide text-slate-400">Completed</p>
+            {visibleRecentOrders.length > 0 ? (
+              <div className="space-y-2">
+                {visibleRecentOrders.map((order) => (
+                  <div key={order.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-xs font-bold text-slate-900">{order.order_code}</p>
+                      <p className="mt-1 text-xs text-slate-500">{formatDate(order.delivered_at || order.created_at)}</p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                        order.order_status === 'delivered' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                      }`}
+                    >
+                      {labelStatus(order.order_status)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-2xl bg-white p-6 text-center text-xs text-slate-500 ring-1 ring-slate-200">No completed orders yet.</p>
+            )}
+          </>
+        )}
+
+        {driverView === 'customers' && (
+          <>
+            {activeCustomers.length > 0 ? (
+              activeCustomers.map((customer) => {
+                const cleanMobile = String(customer.mobile || '').replace(/\D/g, '')
+                return (
+                  <article key={customer.orderId} className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700">
+                        {customer.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-slate-900">{customer.name}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          {customer.orderCode} · {labelStatus(customer.status)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-slate-600">{customer.address || 'No delivery address'}</p>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      {customer.mobile ? (
+                        <a href={`tel:${customer.mobile}`} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white">
+                          <Icon name="phone" className="h-4 w-4" /> Call
+                        </a>
+                      ) : (
+                        <span className="flex h-11 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-400">No phone</span>
+                      )}
+                      {cleanMobile ? (
+                        <a
+                          href={`https://wa.me/${cleanMobile}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-bold text-slate-800"
+                        >
+                          <Icon name="chat" className="h-4 w-4" /> Message
+                        </a>
+                      ) : (
+                        <span className="flex h-11 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-400">No message</span>
+                      )}
+                    </div>
+                  </article>
+                )
+              })
+            ) : (
+              <EmptyState icon="users" title="No active customers" text="Customer contacts appear when orders are assigned." />
+            )}
+          </>
+        )}
+
+        {driverView === 'returns' && (
+          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+            <DeliveryReturnPickupTasks sessionToken={sessionToken} />
+          </div>
+        )}
+
+        {driverView === 'help' && (
+          <div className="space-y-3">
+            {[
+              ['Start a delivery', 'Open Assigned orders and tap Start delivery when you leave the store.'],
+              ['Live location', 'Allow precise location while on the way. Tap Retry GPS if sharing stops.'],
+              ['Cash handover', 'Submit only cash you have physically handed to the Manager or Owner.'],
+              ['Failed delivery', 'Use Not delivered, choose the reason, and add photos or a note if useful.'],
+            ].map(([title, body]) => (
+              <div key={title} className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                <p className="text-sm font-bold text-slate-900">{title}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">{body}</p>
+              </div>
+            ))}
+            <div className="rounded-2xl bg-white p-4 text-xs text-slate-500 ring-1 ring-slate-200">
+              For store or payment issues, contact your Manager or Owner. Store code:{' '}
+              <span className="font-mono font-bold text-slate-800">{restaurantCode}</span>
+            </div>
+          </div>
+        )}
+
+        {driverView === 'settings' && (
+          <>
+            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+              <p className="text-sm font-bold text-slate-900">Profile</p>
+              <div className="mt-3 divide-y divide-slate-100 text-sm">
+                {[
+                  ['Name', driver.name || '—'],
+                  ['Mobile', driver.mobile || '—'],
+                  ['Status', labelStatus(driver.status || 'available')],
+                  ['Vehicle', [driver.vehicle_type, driver.vehicle_number].filter(Boolean).join(' · ') || '—'],
+                  ['Store', restaurant.name || '—'],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-center justify-between gap-4 py-3">
+                    <span className="text-slate-500">{label}</span>
+                    <span className="text-right font-semibold text-slate-900">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {renderAlarmCard()}
             <button
               type="button"
               onClick={logout}
-              className="mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-[10px] font-black text-neutral-500 transition hover:bg-neutral-50 hover:text-rose-600"
+              className="h-13 w-full rounded-2xl bg-rose-600 py-3.5 text-sm font-bold text-white"
             >
-              Sign Out
+              Sign out of driver portal
             </button>
-          </div>
-        </aside>
+          </>
+        )}
+      </section>
 
-        {/* MAIN WORKSPACE */}
-        <section className="min-w-0">
-          {/* MOBILE HEADER */}
-          <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur lg:hidden">
-            <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black text-neutral-900">
-                  {restaurant.name ||
-                    'Delivery'}
-                </p>
-
-                <p className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
-                  Driver Portal
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={
-                  driverAlarmEnabled
-                    ? disableDriverAlarm
-                    : enableDriverAlarm
-                }
-                className={`rounded-xl px-3 py-2 text-[9px] font-black ${
-                  driverAlarmEnabled
-                    ? 'bg-emerald-600 text-white'
-                    : 'border border-neutral-200 bg-neutral-50 text-neutral-600'
-                }`}
-              >
-                {driverAlarmEnabled
-                  ? '🔔 ON'
-                  : '🔕 Alarm'}
+      {/* MORE SHEET */}
+      {moreOpen && (
+        <div className="fixed inset-0 z-40 flex items-end bg-slate-950/50" onClick={() => setMoreOpen(false)}>
+          <div
+            role="dialog"
+            aria-label="More sections"
+            onClick={(event) => event.stopPropagation()}
+            className="w-full rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl"
+          >
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200" />
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-black text-slate-900">More</h2>
+              <button type="button" onClick={() => setMoreOpen(false)} aria-label="Close" className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100">
+                <Icon name="close" className="h-4 w-4" />
               </button>
             </div>
-
-            <div className="flex gap-1 overflow-x-auto border-t border-neutral-100 px-3 py-2">
-              {sidebarItems.map(
-                (item) => (
-                  <button
-                    key={
-                      item.key
-                    }
-                    type="button"
-                    onClick={() =>
-                      setDriverView(
-                        item.key
-                      )
-                    }
-                    className={`shrink-0 rounded-lg px-3 py-2 text-[9px] font-black ${
-                      driverView ===
-                      item.key
-                        ? 'bg-neutral-900 text-white'
-                        : 'bg-neutral-50 text-neutral-500'
-                    }`}
-                  >
-                    {item.icon}{' '}
-                    {item.key ===
-                    'cod'
-                      ? 'COD'
-                      : item.label}
-                  </button>
-                )
-              )}
-            </div>
-          </header>
-
-          <div className="px-3 py-4 sm:px-5 sm:py-5 lg:px-8 lg:py-7">
-            {/* PAGE HEADER */}
-            <div className="mx-auto max-w-6xl">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-neutral-400">
-                    {currentView.eyebrow}
-                  </p>
-
-                  <h1 className="mt-1 text-xl font-black tracking-tight text-neutral-900 sm:text-2xl">
-                    {currentView.title}
-                  </h1>
-
-                  <p className="mt-1 max-w-2xl text-xs leading-5 text-neutral-500">
-                    {currentView.description}
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await Promise.all([
-                        loadPortal(),
-                        loadCodSummary(
-                          '',
-                          true
-                        ),
-                      ])
-                    }}
-                    className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-[10px] font-black text-neutral-600 shadow-sm transition hover:bg-neutral-50"
-                  >
-                    ↻ Refresh
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDriverView(
-                        'settings'
-                      )
-                    }
-                    className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-[10px] font-black text-neutral-600 shadow-sm transition hover:bg-neutral-50"
-                  >
-                    ⋮
-                  </button>
-                </div>
-              </div>
-
-              {/* MOBILE SEARCH */}
-              <div className="relative mt-4 lg:hidden">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
-                  ⌕
-                </span>
-
-                <input
-                  value={
-                    driverSearch
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setDriverSearch(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Search order / customer"
-                  className="w-full rounded-xl border border-neutral-200 bg-white py-3 pl-8 pr-3 text-xs font-semibold text-neutral-800 outline-none"
-                />
-              </div>
-
-              {message && (
-                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700">
-                  {message}
-                </div>
-              )}
-
-              {error && (
-                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
-                  {error}
-                </div>
-              )}
-
-              {/* DASHBOARD */}
-              {driverView ===
-                'dashboard' && (
-                <div className="mt-5 space-y-4">
-                  {renderAlarmCard()}
-
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {[
-                      {
-                        label:
-                          'Active Deliveries',
-                        value:
-                          activeOrders.length,
-                        hint:
-                          `${waitingToStartOrders.length} waiting to start`,
-                      },
-                      {
-                        label:
-                          'Completed',
-                        value:
-                          completedCount,
-                        hint:
-                          'Recent completed jobs',
-                      },
-                      {
-                        label:
-                          'COD Cash Due',
-                        value:
-                          money(
-                            codCashDue
-                          ),
-                        hint:
-                          `${money(codPendingHandover)} pending approval`,
-                      },
-                      {
-                        label:
-                          'Driver Status',
-                        value:
-                          labelStatus(
-                            driver.status ||
-                              'available'
-                          ),
-                        hint:
-                          driver.vehicle_number ||
-                          driver.vehicle_type ||
-                          'Ready for assignments',
-                      },
-                    ].map(
-                      (card) => (
-                        <div
-                          key={
-                            card.label
-                          }
-                          className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                          <p className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
-                            {card.label}
-                          </p>
-
-                          <p className="mt-2 text-xl font-black text-neutral-900">
-                            {card.value}
-                          </p>
-
-                          <p className="mt-1 text-[9px] leading-4 text-neutral-400">
-                            {card.hint}
-                          </p>
-                        </div>
-                      )
-                    )}
-                  </div>
-
-                  {renderGpsCard()}
-
-                </div>
-              )}
-
-              {/* TRACKING */}
-              {driverView ===
-                'tracking' && (
-                <div className="mt-5 space-y-4">
-                  {liveTrackingOrders.length > 0 ? (
-                    <div className="space-y-4">
-                      <div
-                        className={`rounded-2xl border px-4 py-3 ${
-                          liveTrackingOrders.length > 1
-                            ? 'border-amber-200 bg-amber-50'
-                            : 'border-sky-200 bg-sky-50'
-                        }`}
-                      >
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p
-                              className={`text-[10px] font-black uppercase tracking-[0.14em] ${
-                                liveTrackingOrders.length > 1
-                                  ? 'text-amber-700'
-                                  : 'text-sky-700'
-                              }`}
-                            >
-                              {liveTrackingOrders.length > 1
-                                ? '⚠ Same Customer · Multiple Orders'
-                                : '● Live Location Sharing'}
-                            </p>
-
-                            <p
-                              className={`mt-1 text-xs leading-5 ${
-                                liveTrackingOrders.length > 1
-                                  ? 'text-amber-900'
-                                  : 'text-sky-800'
-                              }`}
-                            >
-                              {liveTrackingOrders.length > 1
-                                ? `${liveTrackingOrders.length} different orders are Out for Delivery for the same customer mobile number. Complete every order card below separately before leaving this customer.`
-                                : 'This order is currently Out for Delivery.'}
-                            </p>
-                          </div>
-
-                          {liveTrackingOrders.length > 1 && (
-                            <span className="w-fit shrink-0 rounded-full bg-amber-200 px-3 py-1.5 text-[10px] font-black text-amber-900">
-                              {liveTrackingOrders.length} ORDERS
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {liveTrackingOrders.length > 1 && (
-                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-rose-700">
-                            Delivery Reminder
-                          </p>
-
-                          <p className="mt-1 text-xs font-bold leading-5 text-rose-800">
-                            Do not complete only one order and leave. This customer has {liveTrackingOrders.length} separate orders. Submit Delivered / Not Delivered for every order shown below.
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="grid gap-4">
-                        {liveTrackingOrders.map(
-                          (trackedOrder) =>
-                            renderTrackingCard(
-                              trackedOrder
-                            )
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-neutral-300 bg-white py-16 text-center">
-                      <div className="text-3xl">
-                        ◎
-                      </div>
-
-                      <p className="mt-3 text-sm font-black text-neutral-800">
-                        No live-tracked delivery
-                      </p>
-
-                      <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-neutral-400">
-                        Start Delivery from Assigned Deliveries. When this portal begins sharing the Delivery Boy's GPS location for that order, it will appear here automatically.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* INBOX */}
-              {driverView ===
-                'inbox' && (
-                <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                  <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-neutral-400">
-                      Action Required
-                    </p>
-
-                    <div className="mt-4 space-y-2">
-                      {waitingToStartOrders
-                        .map(
-                          (order) => (
-                            <button
-                              key={
-                                order.id
-                              }
-                              type="button"
-                              onClick={() =>
-                                setDriverView(
-                                  'assigned'
-                                )
-                              }
-                              className="flex w-full items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left"
-                            >
-                              <div>
-                                <p className="text-xs font-black text-amber-900">
-                                  Start Delivery{' '}
-                                  {
-                                    order.order_code
-                                  }
-                                </p>
-
-                                <p className="mt-1 text-[9px] text-amber-700">
-                                  {order.customer_name ||
-                                    'Customer'}{' '}
-                                  · Packed & ready
-                                </p>
-                              </div>
-
-                              <span className="text-amber-700">
-                                →
-                              </span>
-                            </button>
-                          )
-                        )}
-
-                      {!waitingToStartOrders
-                        .length && (
-                        <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-8 text-center">
-                          <p className="text-xs font-black text-neutral-700">
-                            You're all caught up.
-                          </p>
-
-                          <p className="mt-1 text-[10px] text-neutral-400">
-                            No packed order is waiting for Start Delivery.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-neutral-400">
-                      Session Alerts
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      {renderAlarmCard()}
-
-                      <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
-                        <p className="text-[10px] font-black text-neutral-800">
-                          COD cash
-                        </p>
-
-                        <p className="mt-1 text-[10px] text-neutral-500">
-                          {money(
-                            codCashDue
-                          )}{' '}
-                          due ·{' '}
-                          {money(
-                            codPendingHandover
-                          )}{' '}
-                          pending handover
-                        </p>
-                      </div>
-
-                      {liveTrackingOrder && (
-                        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
-                          <p className="text-[10px] font-black text-sky-800">
-                            Live GPS active
-                          </p>
-
-                          <p className="mt-1 text-[10px] text-sky-600">
-                            {liveTrackingOrder.order_code}{' '}
-                            is currently Out for Delivery.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </section>
-                </div>
-              )}
-
-              {/* ORDERS */}
-              {driverView ===
-                'orders' && (
-                <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                  <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-blue-500">
-                          Active
-                        </p>
-
-                        <h3 className="mt-1 text-base font-black text-neutral-900">
-                          Assigned Orders
-                        </h3>
-                      </div>
-
-                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[9px] font-black text-blue-700">
-                        {
-                          visibleActiveOrders.length
-                        }
-                      </span>
-                    </div>
-
-                    <div className="mt-4 space-y-2">
-                      {visibleActiveOrders.map(
-                        (order) => (
-                          <button
-                            key={
-                              order.id
-                            }
-                            type="button"
-                            onClick={() =>
-                              setDriverView(
-                                'tracking'
-                              )
-                            }
-                            className="flex w-full items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left transition hover:bg-white"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate font-mono text-[10px] font-black text-neutral-900">
-                                {
-                                  order.order_code
-                                }
-                              </p>
-
-                              <p className="mt-1 truncate text-[9px] text-neutral-400">
-                                {order.customer_name ||
-                                  'Customer'}{' '}
-                                ·{' '}
-                                {labelStatus(
-                                  order.order_status
-                                )}
-                              </p>
-                            </div>
-
-                            <p className="text-xs font-black text-neutral-900">
-                              {money(
-                                order.total_amount
-                              )}
-                            </p>
-                          </button>
-                        )
-                      )}
-
-                      {!visibleActiveOrders
-                        .length && (
-                        <p className="rounded-xl border border-dashed border-neutral-200 py-10 text-center text-xs text-neutral-400">
-                          No active orders.
-                        </p>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-500">
-                          Recent
-                        </p>
-
-                        <h3 className="mt-1 text-base font-black text-neutral-900">
-                          Completed Orders
-                        </h3>
-                      </div>
-
-                      <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[9px] font-black text-neutral-600">
-                        {
-                          visibleRecentOrders.length
-                        }
-                      </span>
-                    </div>
-
-                    <div className="mt-4 space-y-2">
-                      {visibleRecentOrders.map(
-                        (order) => (
-                          <div
-                            key={
-                              order.id
-                            }
-                            className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate font-mono text-[10px] font-black text-neutral-900">
-                                {
-                                  order.order_code
-                                }
-                              </p>
-
-                              <p className="mt-1 text-[9px] text-neutral-400">
-                                {formatDate(
-                                  order.delivered_at ||
-                                    order.created_at
-                                )}
-                              </p>
-                            </div>
-
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-[9px] font-black ${
-                                order.order_status ===
-                                'delivered'
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : 'bg-rose-100 text-rose-700'
-                              }`}
-                            >
-                              {labelStatus(
-                                order.order_status
-                              )}
-                            </span>
-                          </div>
-                        )
-                      )}
-
-                      {!visibleRecentOrders
-                        .length && (
-                        <p className="rounded-xl border border-dashed border-neutral-200 py-10 text-center text-xs text-neutral-400">
-                          No recent orders.
-                        </p>
-                      )}
-                    </div>
-                  </section>
-                </div>
-              )}
-
-              {/* CUSTOMERS */}
-              {driverView ===
-                'customers' && (
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {activeCustomers.map(
-                    (customer) => {
-                      const cleanMobile =
-                        String(
-                          customer.mobile ||
-                            ''
-                        ).replace(
-                          /\D/g,
-                          ''
-                        )
-
-                      return (
-                        <article
-                          key={
-                            customer.orderId
-                          }
-                          className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-sm font-black text-neutral-600">
-                              {customer.name
-                                .charAt(
-                                  0
-                                )
-                                .toUpperCase()}
-                            </div>
-
-                            <div className="min-w-0">
-                              <p className="truncate text-xs font-black text-neutral-900">
-                                {
-                                  customer.name
-                                }
-                              </p>
-
-                              <p className="mt-0.5 truncate text-[9px] text-neutral-400">
-                                {
-                                  customer.orderCode
-                                }{' '}
-                                ·{' '}
-                                {labelStatus(
-                                  customer.status
-                                )}
-                              </p>
-                            </div>
-                          </div>
-
-                          <p className="mt-3 line-clamp-2 text-[10px] leading-5 text-neutral-500">
-                            {customer.address ||
-                              'No delivery address'}
-                          </p>
-
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            {customer.mobile ? (
-                              <a
-                                href={`tel:${customer.mobile}`}
-                                className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-[10px] font-black text-neutral-700"
-                              >
-                                ☎ Call
-                              </a>
-                            ) : (
-                              <span className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-[10px] font-black text-neutral-300">
-                                No mobile
-                              </span>
-                            )}
-
-                            {cleanMobile ? (
-                              <a
-                                href={`https://wa.me/${cleanMobile}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-[10px] font-black text-neutral-700"
-                              >
-                                ✉ Message
-                              </a>
-                            ) : (
-                              <span className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-[10px] font-black text-neutral-300">
-                                No message
-                              </span>
-                            )}
-                          </div>
-                        </article>
-                      )
-                    }
-                  )}
-
-                  {!activeCustomers.length && (
-                    <div className="sm:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-neutral-300 bg-white py-16 text-center">
-                      <p className="text-sm font-black text-neutral-700">
-                        No active customers
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-400">
-                        Customer contacts appear when orders are assigned.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ASSIGNED DELIVERIES */}
-              {driverView ===
-                'assigned' && (
-                <div className="mt-5 space-y-4">
-                  {renderAlarmCard()}
-
-                  <div className="grid gap-4 xl:grid-cols-2">
-                    {visibleActiveOrders.map(
-                      renderTrackingCard
-                    )}
-
-                    {!visibleActiveOrders
-                      .length && (
-                      <div className="xl:col-span-2 rounded-2xl border border-dashed border-neutral-300 bg-white py-16 text-center">
-                        <div className="text-3xl">
-                          🚚
-                        </div>
-
-                        <p className="mt-3 text-sm font-black text-neutral-800">
-                          {searchTerm
-                            ? 'No matching assigned deliveries'
-                            : 'No assigned deliveries'}
-                        </p>
-
-                        <p className="mt-1 text-xs text-neutral-400">
-                          {searchTerm
-                            ? 'Try another order code, customer or mobile number.'
-                            : 'New assigned orders will appear here automatically.'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* COD */}
-              {driverView ===
-                'cod' && (
-                <div className="mt-5">
-                  {renderCodWorkspace()}
-                </div>
-              )}
-
-              {/* RETURN PICKUPS */}
-              {driverView ===
-                'returns' && (
-                <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-5">
-                  <DeliveryReturnPickupTasks
-                    sessionToken={
-                      sessionToken
-                    }
-                  />
-                </div>
-              )}
-
-              {/* HELP */}
-              {driverView ===
-                'help' && (
-                <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                  <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-neutral-400">
-                      Delivery Help
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      {[
-                        [
-                          'Alarm',
-                          'Enable Delivery Alarm once after login. Packed assignments keep sounding until Start Delivery is pressed for every waiting order.',
-                        ],
-                        [
-                          'GPS',
-                          'Allow precise location when an order is Out for Delivery. Use Retry GPS if location permission or signal fails.',
-                        ],
-                        [
-                          'COD',
-                          'Submit only the cash that was physically handed to the Manager/Owner. Pending handovers require approval.',
-                        ],
-                        [
-                          'Failed delivery',
-                          'Use Not Delivered and select the correct reason. Add photos or notes when useful.',
-                        ],
-                      ].map(
-                        ([
-                          title,
-                          body,
-                        ]) => (
-                          <div
-                            key={
-                              title
-                            }
-                            className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3"
-                          >
-                            <p className="text-xs font-black text-neutral-800">
-                              {title}
-                            </p>
-
-                            <p className="mt-1 text-[10px] leading-5 text-neutral-500">
-                              {body}
-                            </p>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-neutral-400">
-                      Store Contact
-                    </p>
-
-                    <h3 className="mt-2 text-base font-black text-neutral-900">
-                      {restaurant.name ||
-                        'Delivery Store'}
-                    </h3>
-
-                    <p className="mt-2 text-xs leading-5 text-neutral-500">
-                      For assignment, payment, customer or delivery workflow problems, contact your Manager/Owner from the store's normal communication channel.
-                    </p>
-
-                    <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[10px] text-neutral-500">
-                      Restaurant code:{' '}
-                      <span className="font-mono font-black text-neutral-800">
-                        {restaurantCode}
-                      </span>
-                    </div>
-                  </section>
-                </div>
-              )}
-
-              {/* SETTINGS */}
-              {driverView ===
-                'settings' && (
-                <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                  <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-neutral-400">
-                      Driver Profile
-                    </p>
-
-                    <div className="mt-4 space-y-3 text-xs">
-                      {[
-                        [
-                          'Name',
-                          driver.name ||
-                            '—',
-                        ],
-                        [
-                          'Mobile',
-                          driver.mobile ||
-                            '—',
-                        ],
-                        [
-                          'Status',
-                          labelStatus(
-                            driver.status ||
-                              'available'
-                          ),
-                        ],
-                        [
-                          'Vehicle',
-                          [
-                            driver.vehicle_type,
-                            driver.vehicle_number,
-                          ]
-                            .filter(
-                              Boolean
-                            )
-                            .join(
-                              ' · '
-                            ) ||
-                            '—',
-                        ],
-                        [
-                          'Restaurant',
-                          restaurant.name ||
-                            '—',
-                        ],
-                      ].map(
-                        ([
-                          label,
-                          value,
-                        ]) => (
-                          <div
-                            key={
-                              label
-                            }
-                            className="flex items-center justify-between gap-4 border-b border-neutral-100 pb-3"
-                          >
-                            <span className="font-semibold text-neutral-400">
-                              {label}
-                            </span>
-
-                            <span className="text-right font-black text-neutral-800">
-                              {value}
-                            </span>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="space-y-4">
-                    {renderAlarmCard()}
-
-                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-neutral-400">
-                        Session
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={logout}
-                        className="mt-4 w-full rounded-xl bg-rose-600 px-4 py-3 text-xs font-black text-white"
-                      >
-                        Sign Out of Driver Portal
-                      </button>
-                    </div>
-                  </section>
-                </div>
-              )}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {moreItems.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    setDriverView(item.key)
+                    setMoreOpen(false)
+                  }}
+                  className={`flex flex-col items-start gap-2 rounded-2xl p-4 text-left ring-1 ${
+                    driverView === item.key ? 'bg-emerald-50 ring-emerald-300' : 'bg-slate-50 ring-slate-200'
+                  }`}
+                >
+                  <Icon name={item.icon} className="h-5 w-5 text-slate-700" />
+                  <span className="text-sm font-bold text-slate-900">{item.label}</span>
+                  <span className="text-[11px] leading-4 text-slate-500">{item.hint}</span>
+                </button>
+              ))}
             </div>
           </div>
-        </section>
-      </div>
+        </div>
+      )}
+
+      {/* BOTTOM TAB BAR */}
+      <nav
+        aria-label="Driver navigation"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
+      >
+        <div className="mx-auto grid max-w-lg grid-cols-5">
+          {tabs.map((tab) => {
+            const active = activeTabKey === tab.key
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => {
+                  setDriverView(tab.key)
+                  setMoreOpen(false)
+                }}
+                aria-current={active ? 'page' : undefined}
+                className={`relative flex flex-col items-center gap-1 py-2.5 ${active ? 'text-emerald-700' : 'text-slate-500'}`}
+              >
+                <Icon name={tab.icon} className="h-5 w-5" />
+                <span className="text-[11px] font-bold">{tab.label}</span>
+                {tab.badge > 0 && (
+                  <span className="absolute right-[22%] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            aria-current={isMoreView ? 'page' : undefined}
+            className={`flex flex-col items-center gap-1 py-2.5 ${isMoreView ? 'text-emerald-700' : 'text-slate-500'}`}
+          >
+            <Icon name="menu" className="h-5 w-5" />
+            <span className="text-[11px] font-bold">More</span>
+          </button>
+        </div>
+      </nav>
     </main>
+  )
+}
+
+function EmptyState({ icon, title, text }) {
+  return (
+    <div className="flex flex-col items-center rounded-2xl bg-white px-6 py-12 text-center ring-1 ring-slate-200">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+        <Icon name={icon} className="h-6 w-6" />
+      </div>
+      <p className="mt-4 text-sm font-bold text-slate-900">{title}</p>
+      <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">{text}</p>
+    </div>
   )
 }

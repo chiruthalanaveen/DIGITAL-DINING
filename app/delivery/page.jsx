@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase'
 import DeliverySavedAddressPicker from '@/app/components/DeliverySavedAddressPicker'
 import DeliveryStoreExperience from '@/app/components/DeliveryStoreExperience'
 import DeliveryAccountCenter from '@/app/components/DeliveryAccountCenter'
-import '@/app/components/delivery-green-market.css'
 
 // Customer's selected delivery destination. It is not proof of GPS accuracy;
 // checkout still confirms the actual address, location pin and delivery radius.
@@ -49,9 +48,9 @@ function storeDistanceKm(store) {
 }
 
 function distanceLabel(distance) {
-  if (distance === null) return 'Delivers to this location'
-  if (distance < 1) return `${Math.max(1, Math.round(distance * 1000))} m away`
-  return `${distance.toFixed(distance < 10 ? 1 : 0)} km away`
+  if (distance === null) return 'Delivers to you'
+  if (distance < 1) return `${Math.max(1, Math.round(distance * 1000))} m`
+  return `${distance.toFixed(distance < 10 ? 1 : 0)} km`
 }
 
 function storeName(store, index) {
@@ -160,14 +159,14 @@ function saveDestination(location) {
 }
 
 const DD_CATEGORIES = [
-  { id: 'food', icon: '🍲', title: 'Food', subtitle: 'Fresh meals', tint: 'peach' },
-  { id: 'groceries', icon: '🛒', title: 'Groceries', subtitle: 'Daily essentials', tint: 'mint' },
-  { id: 'fruits', icon: '🍎', title: 'Fruits', subtitle: 'Naturally good', tint: 'rose' },
-  { id: 'vegetables', icon: '🥦', title: 'Vegetables', subtitle: 'Farm fresh', tint: 'lime' },
+  { id: 'food', icon: '🍲', title: 'Food', bg: 'bg-orange-50' },
+  { id: 'groceries', icon: '🛒', title: 'Groceries', bg: 'bg-emerald-50' },
+  { id: 'fruits', icon: '🍎', title: 'Fruits', bg: 'bg-rose-50' },
+  { id: 'vegetables', icon: '🥦', title: 'Vegetables', bg: 'bg-lime-50' },
 ]
 
-function DDIcon({ name, size = 20 }) {
-  const icons = {
+function Icon({ name, className = 'h-5 w-5' }) {
+  const paths = {
     home: <><path d="m3 10 9-7 9 7v10H3z" /><path d="M9 20v-7h6v7" /></>,
     pin: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></>,
     bag: <><rect x="4" y="7" width="16" height="14" rx="2" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
@@ -175,11 +174,13 @@ function DDIcon({ name, size = 20 }) {
     arrow: <><path d="M5 12h14m-6-6 6 6-6 6" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l4 2" /></>,
     user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-5 16-5 16 0" /></>,
-    gps: <><circle cx="12" cy="12" r="6" /><path d="M12 2v4m0 12v4M2 12h4m12 0h4" /></>,
-    spark: <path d="m12 2 2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2Z" />,
-    refresh: <><path d="M3 12a9 9 0 0 1 15-6l2 2" /><path d="M20 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6l-2-2" /><path d="M4 21v-5h5" /></>,
+    chevron: <path d="m6 9 6 6 6-6" />,
   }
-  return <svg width={size} height={size} viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[name] || icons.bag}</svg>
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[name] || paths.bag}
+    </svg>
+  )
 }
 
 function storePicture(store) {
@@ -218,12 +219,14 @@ function DeliveryCustomerHomeContent() {
   const [accountLabel, setAccountLabel] = useState('Guest')
   const [categoryChoice, setCategoryChoice] = useState('')
   const [lastStoreCode, setLastStoreCode] = useState('')
+
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem('dd_delivery_last_store_code_v1') || localStorage.getItem('digitaldine_delivery_last_store_code') || ''
       if (VALID_STORE_CODE.test(stored)) setLastStoreCode(stored)
     } catch { /* Browser storage is optional. */ }
   }, [])
+
   useEffect(() => {
     let active = true
     const loadLabel = async () => {
@@ -250,9 +253,13 @@ function DeliveryCustomerHomeContent() {
     })
     return () => { active = false; subscription?.unsubscribe() }
   }, [requestedHomeView])
+
   const rankedStores = useMemo(() => stores, [stores])
-  const visibleStores = useMemo(() => rankedStores.filter((item, index) => storeName(item.store, index).toLowerCase().includes(storeSearch.trim().toLowerCase())), [rankedStores, storeSearch])
-  const activeCategory = DD_CATEGORIES.find((row) => row.id === categoryChoice)
+  const visibleStores = useMemo(
+    () => rankedStores.filter((item, index) =>
+      storeName(item.store, index).toLowerCase().includes(storeSearch.trim().toLowerCase())),
+    [rankedStores, storeSearch]
+  )
 
   const backToMarketplace = useCallback(() => {
     hasVisitedStoreRef.current = true
@@ -278,7 +285,6 @@ function DeliveryCustomerHomeContent() {
     document.getElementById('dm-nearby-stores')?.scrollIntoView({ behavior: 'smooth' })
   }, [lastStoreCode, router])
 
-
   const openStore = useCallback((item) => {
     const code = item?.code || restaurantCode(item?.store || item)
     if (!VALID_STORE_CODE.test(code)) {
@@ -287,7 +293,10 @@ function DeliveryCustomerHomeContent() {
       return
     }
     setOpeningStore(code)
-    try { sessionStorage.setItem('dd_delivery_last_store_code_v1', code); localStorage.setItem('digitaldine_delivery_last_store_code', code) } catch { /* optional */ }
+    try {
+      sessionStorage.setItem('dd_delivery_last_store_code_v1', code)
+      localStorage.setItem('digitaldine_delivery_last_store_code', code)
+    } catch { /* optional */ }
     hasVisitedStoreRef.current = true
     // Blinkit-like in-app navigation: /delivery stays mounted; only the
     // selected store view changes. Back restores the nearby-store list.
@@ -496,10 +505,7 @@ function DeliveryCustomerHomeContent() {
   // Orders and Profile are application-level screens. Do not mount a store
   // to show these tabs, even when no store has ever been visited.
   if (requestedHomeView) {
-    return <DeliveryAccountCenter
-      view={requestedHomeView}
-      onGoHome={backToMarketplace}
-    />
+    return <DeliveryAccountCenter view={requestedHomeView} onGoHome={backToMarketplace} />
   }
 
   // The store renders INSIDE the /delivery route without iframe or redirect.
@@ -515,90 +521,350 @@ function DeliveryCustomerHomeContent() {
     )
   }
 
-  return (
-    <div className="dm-market dm-home">
-      <header className="dm-home-top">
-        <div className="dm-home-topinner">
-          <button type="button" className="dm-profile-avatar" onClick={() => openLastStoreView('account')} aria-label="Open account">
-            {accountLabel === 'Guest' ? '👤' : accountLabel.slice(0,1).toUpperCase()}
-          </button>
-          <div className="dm-greeting">
-            <small>Hi, {accountLabel.length > 21 ? `${accountLabel.slice(0,21)}…` : accountLabel}</small>
-            <strong className="dm-home-delivery-caption">Delivery from nearby stores</strong>
-          </div>
+  const scrollToStores = () =>
+    document.getElementById('dm-nearby-stores')?.scrollIntoView({ behavior: 'smooth' })
 
+  return (
+    <div className="min-h-[100dvh] bg-[#f6f7f9] pb-24 text-slate-900">
+      {/* TOP BAR: location + profile */}
+      <header className="sticky top-0 z-30 bg-white shadow-[0_1px_0_rgba(15,23,42,0.06)]">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6">
+          <button
+            type="button"
+            onClick={openMap}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            aria-label="Change delivery location"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
+              <Icon name="pin" className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Delivering to
+              </span>
+              <span className="flex items-center gap-1 text-sm font-bold text-slate-900">
+                <span className="truncate">{destination ? 'Selected location' : 'Detecting location…'}</span>
+                <Icon name="chevron" className="h-4 w-4 shrink-0 text-slate-500" />
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openLastStoreView('account')}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white"
+            aria-label="Open account"
+          >
+            {accountLabel === 'Guest' ? <Icon name="user" className="h-5 w-5" /> : accountLabel.slice(0, 1).toUpperCase()}
+          </button>
         </div>
-        <div className="dm-home-address-select">
-          <DeliverySavedAddressPicker destination={destination} autoApplyDefault
-            onSelect={applyDestination} onReady={() => setInitialAddressResolved(true)} />
+
+        {/* Saved address picker stays mounted for its own logic */}
+        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+          <DeliverySavedAddressPicker
+            destination={destination}
+            autoApplyDefault
+            onSelect={applyDestination}
+            onReady={() => setInitialAddressResolved(true)}
+          />
         </div>
-        <div className="dm-home-search">
-          <DDIcon name="search" size={20} />
-          <input value={storeSearch} onChange={(event) => setStoreSearch(event.target.value)} placeholder="Search nearby stores" aria-label="Search nearby stores" />
-          {storeSearch && <button type="button" onClick={() => setStoreSearch('')} aria-label="Clear search">×</button>}
+
+        {/* SEARCH */}
+        <div className="mx-auto w-full max-w-6xl px-4 pb-4 pt-2 sm:px-6">
+          <label className="flex h-12 items-center gap-3 rounded-2xl bg-slate-100 px-4 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500">
+            <Icon name="search" className="h-5 w-5 text-slate-500" />
+            <input
+              value={storeSearch}
+              onChange={(event) => setStoreSearch(event.target.value)}
+              placeholder="Search nearby stores"
+              aria-label="Search nearby stores"
+              className="min-w-0 flex-1 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-500 sm:text-sm"
+            />
+            {storeSearch && (
+              <button
+                type="button"
+                onClick={() => setStoreSearch('')}
+                aria-label="Clear search"
+                className="text-lg leading-none text-slate-500"
+              >
+                ×
+              </button>
+            )}
+          </label>
         </div>
       </header>
 
-      <main className="dm-home-body">
-        <section className="dm-promo" aria-label="Shop locally">
-          <div>
-            <span className="dm-promo-eyebrow">YOUR LOCAL MARKETPLACE</span>
-            <h1>Fresh finds,<br />right at your door.</h1>
-            <p>Explore food, groceries and everyday essentials from nearby stores.</p>
-            <button type="button" onClick={() => document.getElementById('dm-nearby-stores')?.scrollIntoView({ behavior: 'smooth' })}>Shop now <DDIcon name="arrow" size={15}/></button>
-          </div>
-          <div className="dm-promo-illustration" aria-hidden="true"><span>🥬</span><span>🥑</span><span>🍎</span><span>🥕</span></div>
-        </section>
-
-        <section className="dm-home-section" aria-label="Shopping categories">
-          <div className="dm-section-title"><h2>Categories</h2><button type="button" onClick={() => document.getElementById('dm-nearby-stores')?.scrollIntoView({ behavior: 'smooth' })}>See all</button></div>
-          <div className="dm-category-icons">{DD_CATEGORIES.map((entry) => (
-            <button type="button" key={entry.id} aria-pressed={categoryChoice===entry.id} className={`dm-category-option ${categoryChoice===entry.id ? 'selected' : ''}`}
-              onClick={() => { setCategoryChoice(entry.id); document.getElementById('dm-nearby-stores')?.scrollIntoView({ behavior: 'smooth' }) }}>
-              <span className="dm-category-bubble">{entry.icon}</span><span>{entry.title}</span>
+      <main className="mx-auto w-full max-w-6xl px-4 pt-4 sm:px-6">
+        {/* PROMO BANNER */}
+        <section
+          aria-label="Shop locally"
+          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 to-emerald-800 p-6 text-white shadow-lg shadow-emerald-900/10 sm:p-10"
+        >
+          <div className="relative z-10 max-w-md">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-100">
+              Your local marketplace
+            </p>
+            <h1 className="mt-2 text-2xl font-black leading-tight sm:text-4xl">
+              Fresh finds,<br />delivered fast.
+            </h1>
+            <p className="mt-2 text-sm text-emerald-50/90 sm:text-base">
+              Food, groceries and daily essentials from stores near you.
+            </p>
+            <button
+              type="button"
+              onClick={scrollToStores}
+              className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-white px-5 text-sm font-bold text-emerald-800 shadow-sm hover:bg-emerald-50"
+            >
+              Shop now <Icon name="arrow" className="h-4 w-4" />
             </button>
-          ))}</div>
+          </div>
+          <div className="pointer-events-none absolute -bottom-6 -right-4 flex gap-2 text-5xl opacity-90 sm:text-7xl" aria-hidden="true">
+            <span>🥬</span><span>🍎</span><span>🥕</span>
+          </div>
         </section>
 
-        <section className="dm-home-section dm-nearby" id="dm-nearby-stores" aria-label="Available nearby stores">
-          <div className="dm-section-title"><h2>Nearby stores</h2></div>
-          {(stage === 'loading' || stage === 'redirecting') && <div className="dm-status" role="status"><span className="dm-spinner"/><strong>{stage === 'redirecting' ? 'Opening your store…' : 'Finding stores…'}</strong><p>{message}</p></div>}
-          {(stage === 'error' || stage === 'empty') && <div className="dm-status" role="alert"><span className="dm-status-emoji">📍</span><strong>{stage === 'empty' ? 'No eligible stores here' : 'Unable to find stores'}</strong><p>{stage === 'empty' ? 'Choose another delivery pin. Only approved stores with active plans and sufficient wallet balance appear.' : error}</p><div className="dm-status-actions"><button type="button" onClick={() => window.dispatchEvent(new Event('digitaldine:select-address'))}>Select address</button><button type="button" onClick={detectCurrentGps}>Retry GPS</button></div></div>}
-          {stage === 'ready' && <>
-            <p className="dm-count">{rankedStores.length} eligible {rankedStores.length===1 ? 'store' : 'stores'} in delivery range</p>
-            <div className="dm-store-grid">{visibleStores.map((item,index) => {
-              const picture=storePicture(item.store)
-              return <button type="button" className="dm-shop-card" key={`${item.id}:${item.code}`} disabled={openingStore===item.code} onClick={() => openStore(item)}>
-                <div className="dm-shop-photo">{picture ? <img src={picture} alt="" loading="lazy"/> : <span>🛍️</span>}<span className="dm-shop-open">● Open</span></div>
-                <div className="dm-shop-meta"><strong>{storeName(item.store,index)}</strong><span><DDIcon name="pin" size={13} /> {distanceLabel(item.distance)}</span><small>Store {item.code}</small></div>
+        {/* CATEGORIES */}
+        <section aria-label="Shopping categories" className="mt-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-black">Shop by category</h2>
+            <button type="button" onClick={scrollToStores} className="text-sm font-semibold text-emerald-700">
+              See all
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-3 sm:gap-5">
+            {DD_CATEGORIES.map((entry) => (
+              <button
+                type="button"
+                key={entry.id}
+                aria-pressed={categoryChoice === entry.id}
+                onClick={() => {
+                  setCategoryChoice(entry.id)
+                  scrollToStores()
+                }}
+                className={`flex flex-col items-center gap-2 rounded-2xl p-2 transition ${
+                  categoryChoice === entry.id ? 'ring-2 ring-emerald-500' : ''
+                }`}
+              >
+                <span className={`flex h-16 w-16 items-center justify-center rounded-2xl text-3xl shadow-sm sm:h-20 sm:w-20 ${entry.bg}`}>
+                  {entry.icon}
+                </span>
+                <span className="text-xs font-semibold text-slate-700 sm:text-sm">{entry.title}</span>
               </button>
-            })}</div>
-            {visibleStores.length===0 && <p className="dm-hint">No nearby stores match your search.</p>}
-          </>}
+            ))}
+          </div>
+        </section>
+
+        {/* NEARBY STORES */}
+        <section id="dm-nearby-stores" aria-label="Available nearby stores" className="scroll-mt-40 mt-8">
+          <div className="mb-3 flex items-end justify-between">
+            <div>
+              <h2 className="text-lg font-black">Stores near you</h2>
+              {stage === 'ready' && (
+                <p className="text-xs text-slate-500">
+                  {rankedStores.length} {rankedStores.length === 1 ? 'store' : 'stores'} delivering to you
+                </p>
+              )}
+            </div>
+          </div>
+
+          {(stage === 'loading' || stage === 'redirecting') && (
+            <div role="status" className="flex flex-col items-center gap-3 rounded-2xl bg-white p-8 text-center shadow-sm">
+              <span className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600" aria-hidden="true" />
+              <p className="text-sm font-bold">{stage === 'redirecting' ? 'Opening your store…' : 'Finding stores…'}</p>
+              <p className="text-xs text-slate-500">{message}</p>
+            </div>
+          )}
+
+          {(stage === 'error' || stage === 'empty') && (
+            <div role="alert" className="flex flex-col items-center gap-3 rounded-2xl bg-white p-8 text-center shadow-sm">
+              <span className="text-4xl" aria-hidden="true">📍</span>
+              <p className="font-bold">{stage === 'empty' ? 'No stores deliver here yet' : 'Unable to find stores'}</p>
+              <p className="max-w-sm text-sm text-slate-500">
+                {stage === 'empty'
+                  ? 'Try another delivery location. Only approved stores with active plans and sufficient wallet balance appear.'
+                  : error}
+              </p>
+              <div className="mt-2 flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new Event('digitaldine:select-address'))}
+                  className="h-10 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white"
+                >
+                  Select address
+                </button>
+                <button
+                  type="button"
+                  onClick={detectCurrentGps}
+                  className="h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold"
+                >
+                  Retry GPS
+                </button>
+              </div>
+            </div>
+          )}
+
+          {stage === 'ready' && (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5">
+                {visibleStores.map((item, index) => {
+                  const picture = storePicture(item.store)
+                  const busy = openingStore === item.code
+                  return (
+                    <button
+                      type="button"
+                      key={`${item.id}:${item.code}`}
+                      disabled={Boolean(openingStore)}
+                      onClick={() => openStore(item)}
+                      className="group overflow-hidden rounded-2xl bg-white text-left shadow-sm ring-1 ring-slate-200/70 transition hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60"
+                    >
+                      <div className="relative flex h-28 items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 sm:h-36">
+                        {picture ? (
+                          <img src={picture} alt="" loading="lazy" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-4xl" aria-hidden="true">🛍️</span>
+                        )}
+                        <span className="absolute left-2 top-2 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                          OPEN
+                        </span>
+                      </div>
+                      <div className="p-3">
+                        <p className="line-clamp-1 text-sm font-bold text-slate-900">{storeName(item.store, index)}</p>
+                        <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                          <Icon name="pin" className="h-3.5 w-3.5" />
+                          {distanceLabel(item.distance)}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-400">Store {item.code}</p>
+                        {busy && <p className="mt-2 text-xs font-semibold text-emerald-700">Opening…</p>}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              {visibleStores.length === 0 && (
+                <p className="mt-6 text-center text-sm text-slate-500">No nearby stores match your search.</p>
+              )}
+            </>
+          )}
         </section>
       </main>
-      <nav className="dm-tabbar" aria-label="Delivery navigation">
-        <button type="button" className="active" onClick={() => window.scrollTo({top:0,behavior:'smooth'})}><DDIcon name="home"/><span>Home</span></button>
-        <button type="button" onClick={() => document.getElementById('dm-nearby-stores')?.scrollIntoView({behavior:'smooth'})}><DDIcon name="search"/><span>Explore</span></button>
-        <button type="button" className="dm-tab-main" onClick={() => lastStoreCode ? openLastStoreView() : document.getElementById('dm-nearby-stores')?.scrollIntoView({behavior:'smooth'})} aria-label="Open shopping store"><span className="dm-tab-main-bubble"><DDIcon name="bag"/></span><span>Shop</span></button>
-        <button type="button" onClick={() => openLastStoreView('orders')}><DDIcon name="clock"/><span>Orders</span></button>
-        <button type="button" onClick={() => openLastStoreView('account')}><DDIcon name="user"/><span>Profile</span></button>
+
+      {/* BOTTOM NAV */}
+      <nav
+        aria-label="Delivery navigation"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur pb-[env(safe-area-inset-bottom)]"
+      >
+        <div className="mx-auto grid max-w-3xl grid-cols-5">
+          <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex flex-col items-center gap-1 py-2.5 text-emerald-700">
+            <Icon name="home" className="h-5 w-5" />
+            <span className="text-[11px] font-semibold">Home</span>
+          </button>
+          <button type="button" onClick={scrollToStores} className="flex flex-col items-center gap-1 py-2.5 text-slate-500">
+            <Icon name="search" className="h-5 w-5" />
+            <span className="text-[11px] font-semibold">Explore</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => (lastStoreCode ? openLastStoreView() : scrollToStores())}
+            aria-label="Open shopping store"
+            className="flex flex-col items-center gap-1 py-1.5"
+          >
+            <span className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/30">
+              <Icon name="bag" className="h-6 w-6" />
+            </span>
+            <span className="text-[11px] font-semibold text-slate-600">Shop</span>
+          </button>
+          <button type="button" onClick={() => openLastStoreView('orders')} className="flex flex-col items-center gap-1 py-2.5 text-slate-500">
+            <Icon name="clock" className="h-5 w-5" />
+            <span className="text-[11px] font-semibold">Orders</span>
+          </button>
+          <button type="button" onClick={() => openLastStoreView('account')} className="flex flex-col items-center gap-1 py-2.5 text-slate-500">
+            <Icon name="user" className="h-5 w-5" />
+            <span className="text-[11px] font-semibold">Profile</span>
+          </button>
+        </div>
       </nav>
+
+      {/* LOCATION MAP MODAL */}
+      {mapOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label="Choose delivery location">
+          <div className="w-full max-w-lg rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-black">Choose delivery location</h2>
+              <button type="button" onClick={closeMap} className="h-9 w-9 rounded-full bg-slate-100 text-lg" aria-label="Close">×</button>
+            </div>
+
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={useGpsInMap}
+                disabled={locating}
+                className="h-11 flex-1 rounded-xl bg-emerald-600 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {locating ? 'Detecting…' : 'Use my current location'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-xs font-semibold text-slate-600">
+                Latitude
+                <input
+                  value={latitudeInput}
+                  onChange={(e) => setLatitudeInput(e.target.value)}
+                  inputMode="decimal"
+                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-base text-slate-900 outline-none focus:border-emerald-500 sm:text-sm"
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                Longitude
+                <input
+                  value={longitudeInput}
+                  onChange={(e) => setLongitudeInput(e.target.value)}
+                  inputMode="decimal"
+                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-base text-slate-900 outline-none focus:border-emerald-500 sm:text-sm"
+                />
+              </label>
+            </div>
+
+            {mapError && (
+              <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                {mapError}
+              </p>
+            )}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={placeCoordinatePin}
+                className="h-11 flex-1 rounded-xl border border-slate-300 text-sm font-semibold"
+              >
+                Place pin
+              </button>
+              <button
+                type="button"
+                onClick={() => draftPin && applyDestination({ ...draftPin, source: 'manual' })}
+                disabled={!draftPin}
+                className="h-11 flex-1 rounded-xl bg-slate-900 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Confirm location
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
-
 
 // Next.js 16 prerenders /delivery. useSearchParams() in the client content
 // must render beneath Suspense so the surrounding route can prerender.
 // The fallback is intentionally free of navigation/search-param hooks.
 function DeliveryHomeLoadingFallback() {
   return (
-    <main className="min-h-[100dvh] bg-[#f6f8f6] text-slate-950">
-      <div className="mx-auto min-h-[100dvh] w-full max-w-[540px] px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
-        <section className="mt-5 rounded-[24px] border border-slate-200 bg-white p-7 text-center shadow-sm" role="status" aria-live="polite">
-          <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600" aria-hidden="true" />
-          <p className="mt-4 text-sm font-semibold text-slate-600">Loading delivery locations…</p>
+    <main className="min-h-[100dvh] bg-[#f6f7f9] text-slate-950">
+      <div className="mx-auto min-h-[100dvh] w-full max-w-6xl px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+        <section className="mt-5 flex flex-col items-center gap-3 rounded-2xl bg-white p-8 text-center shadow-sm" role="status" aria-live="polite">
+          <span className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600" aria-hidden="true" />
+          <p className="text-sm font-semibold text-slate-600">Loading delivery locations…</p>
         </section>
       </div>
     </main>

@@ -1,174 +1,83 @@
 'use client'
 
-
-
 import { useState } from 'react'
-
 import Link from 'next/link'
-
 import { useRouter } from 'next/navigation'
-
 import { supabase } from '@/lib/supabase'
 
-
-
 export default function WebsiteOwnerLoginPage() {
-
   const router = useRouter()
 
-
-
   const [email, setEmail] = useState('')
-
   const [password, setPassword] = useState('')
   const [dob, setDob] = useState('')
-
+  const [showDob, setShowDob] = useState(false)
   const [loading, setLoading] = useState(false)
-
   const [oauthLoading, setOauthLoading] = useState('')
-
   const [error, setError] = useState('')
 
-
+  const busy = loading || Boolean(oauthLoading)
 
   const findOwnerRestaurant = async (user) => {
-
     if (!user?.id) {
-
       throw new Error('Authenticated user was not found.')
-
     }
-
-
 
     const { data: restaurant, error: restaurantError } = await supabase
-
       .from('restaurants')
-
       .select('id, name, dob, subscription_status')
-
       .eq('id', user.id)
-
       .maybeSingle()
 
-
-
     if (restaurantError) {
-
-      throw new Error(
-
-        restaurantError.message || 'Unable to load your restaurant account.'
-
-      )
-
+      throw new Error(restaurantError.message || 'Unable to load your restaurant account.')
     }
-
-
 
     if (!restaurant?.id) {
-
       throw new Error(
-
         'No restaurant account is connected to this login. Please register your business first.'
-
       )
-
     }
 
-
-
     return restaurant
-
   }
 
-
-
   const handlePasswordLogin = async (event) => {
-
     event.preventDefault()
-
-    if (loading || oauthLoading) return
-
-
+    if (busy) return
 
     const cleanEmail = email.trim().toLowerCase()
 
-
-
     if (!cleanEmail || !password) {
-
       setError('Enter your email address and password.')
-
       return
-
     }
-
-
 
     setLoading(true)
-
     setError('')
 
-
-
     try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      })
 
-      const { data, error: signInError } =
-
-        await supabase.auth.signInWithPassword({
-
-          email: cleanEmail,
-
-          password,
-
-        })
-
-
-
-      if (signInError) {
-
-        throw new Error(signInError.message || 'Unable to sign in.')
-
-      }
-
-
-
-      if (!data?.user) {
-
-        throw new Error('Login succeeded, but the user session was not found.')
-
-      }
-
-
+      if (signInError) throw new Error(signInError.message || 'Unable to sign in.')
+      if (!data?.user) throw new Error('Login succeeded, but the user session was not found.')
 
       const restaurant = await findOwnerRestaurant(data.user)
-
-
-
-      router.replace(
-
-        `/dashboard/${encodeURIComponent(restaurant.id)}`
-
-      )
-
+      router.replace(`/dashboard/${encodeURIComponent(restaurant.id)}`)
     } catch (loginError) {
-
       console.error('[WEBSITE LOGIN] Password login error:', loginError)
-
       setError(loginError?.message || 'Unable to sign in. Please try again.')
-
     } finally {
-
       setLoading(false)
-
     }
-
   }
 
-
-
   const handleBiometricLogin = async () => {
-    if (loading || oauthLoading) return
+    if (busy) return
+
     const cleanEmail = email.trim().toLowerCase()
     const cleanDob = dob.trim()
 
@@ -184,7 +93,7 @@ export default function WebsiteOwnerLoginPage() {
       if (typeof window === 'undefined' || !window.PublicKeyCredential) {
         throw new Error('Biometric/passkey login is not supported by this browser or device.')
       }
-      if (!supabase.auth.signInWithPasskey || typeof supabase.auth.signInWithPasskey !== 'function') {
+      if (typeof supabase.auth.signInWithPasskey !== 'function') {
         throw new Error('Biometric/passkey login is not available in the current Supabase client.')
       }
 
@@ -201,9 +110,12 @@ export default function WebsiteOwnerLoginPage() {
       }
 
       const restaurant = await findOwnerRestaurant(user)
+
       if (!restaurant?.dob) {
         await supabase.auth.signOut()
-        throw new Error('Date of birth is not available for this account. Please use email/password or Google login.')
+        throw new Error(
+          'Date of birth is not available for this account. Please use email/password or Google login.'
+        )
       }
       if (String(restaurant.dob).slice(0, 10) !== cleanDob) {
         await supabase.auth.signOut()
@@ -219,461 +131,241 @@ export default function WebsiteOwnerLoginPage() {
     }
   }
 
-  const handleGoogleLogin = async () => {
+  const handleOAuth = async (provider) => {
+    if (busy) return
 
-    if (loading || oauthLoading) return
-
-
-
-    setOauthLoading('google')
-
+    setOauthLoading(provider)
     setError('')
 
-
-
     try {
-
-      // Prevent a previous registration attempt from being mistaken for
-
-      // a website owner login.
-
-      localStorage.removeItem('digitaldining_google_registration')
-
-
-
-      const redirectTo =
-
-        `${window.location.origin}/auth/google-complete?source=website`
-
-
-
-      const { error: googleError } =
-
-        await supabase.auth.signInWithOAuth({
-
-          provider: 'google',
-
-          options: {
-
-            redirectTo,
-
-            queryParams: {
-
-              access_type: 'offline',
-
-              prompt: 'select_account',
-
-            },
-
-          },
-
-        })
-
-
-
-      if (googleError) {
-
-        throw googleError
-
+      if (provider === 'google') {
+        localStorage.removeItem('digitaldining_google_registration')
+      } else {
+        localStorage.removeItem('digitaldining_apple_registration')
       }
 
-    } catch (googleError) {
+      const redirectTo = `${window.location.origin}/auth/${provider}-complete?source=website`
 
-      console.error('[WEBSITE LOGIN] Google login error:', googleError)
+      const options =
+        provider === 'google'
+          ? { redirectTo, queryParams: { access_type: 'offline', prompt: 'select_account' } }
+          : { redirectTo }
 
-      setError(
-
-        googleError?.message ||
-
-          'Google login could not be started. Please try again.'
-
-      )
-
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({ provider, options })
+      if (oauthError) throw oauthError
+    } catch (oauthError) {
+      console.error(`[WEBSITE LOGIN] ${provider} login error:`, oauthError)
+      setError(oauthError?.message || `${provider} login could not be started. Please try again.`)
       setOauthLoading('')
-
     }
-
   }
 
+  const inputClass =
+    'h-12 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm font-medium text-neutral-900 placeholder:text-neutral-400 outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100 disabled:opacity-60'
 
-
-  const handleAppleLogin = async () => {
-
-    if (loading || oauthLoading) return
-
-
-
-    setOauthLoading('apple')
-
-    setError('')
-
-
-
-    try {
-
-      localStorage.removeItem('digitaldining_apple_registration')
-
-
-
-      const redirectTo =
-
-        `${window.location.origin}/auth/apple-complete?source=website`
-
-
-
-      const { error: appleError } =
-
-        await supabase.auth.signInWithOAuth({
-
-          provider: 'apple',
-
-          options: { redirectTo },
-
-        })
-
-
-
-      if (appleError) {
-
-        throw appleError
-
-      }
-
-    } catch (appleError) {
-
-      console.error('[WEBSITE LOGIN] Apple login error:', appleError)
-
-      setError(
-
-        appleError?.message ||
-
-          'Apple login could not be started. Please try again.'
-
-      )
-
-      setOauthLoading('')
-
-    }
-
-  }
-
-
+  const labelClass =
+    'mb-1.5 block text-xs font-semibold text-neutral-700'
 
   return (
-
-    <main className="min-h-screen bg-[#f7f7f5] px-4 py-8 text-neutral-950 sm:py-12">
-
-      <div className="mx-auto w-full max-w-md">
-
-        <div className="mb-6 flex items-center justify-between">
-
-          <Link
-
-            href="/"
-
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200 bg-white text-sm font-black shadow-sm transition hover:bg-neutral-50"
-
-            aria-label="Back to Digital Dine-In"
-
-          >
-
-            ←
-
-          </Link>
-
-
-
-          <div className="text-right">
-
-            <p className="text-sm font-black">Digital Dine-In</p>
-
-            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-600">
-
-              Website Owner Login
-
-            </p>
-
-          </div>
-
-        </div>
-
-
-
-        <section className="rounded-[30px] border border-neutral-200 bg-white p-6 shadow-xl shadow-neutral-200/50 sm:p-8">
-
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-neutral-950 text-xl font-black text-white">
-
-            DD
-
-          </div>
-
-
-
-          <div className="mt-5 text-center">
-
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">
-
-              Business Account
-
-            </p>
-
-            <h1 className="mt-2 text-2xl font-black tracking-tight">
-
-              Welcome back
-
-            </h1>
-
-            <p className="mx-auto mt-2 max-w-sm text-xs leading-6 text-neutral-500">
-
-              Sign in to manage your Digital Dine-In business dashboard.
-
-            </p>
-
-          </div>
-
-
-
-          <div className="mt-6 grid gap-3">
-
-            <button
-
-              type="button"
-
-              onClick={handleGoogleLogin}
-
-              disabled={loading || Boolean(oauthLoading)}
-
-              className="flex min-h-12 items-center justify-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 text-xs font-black transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-
-            >
-
-              <span className="text-base font-black text-[#4285F4]">G</span>
-
-              {oauthLoading === 'google'
-
-                ? 'Opening Google...'
-
-                : 'Continue with Google'}
-
-            </button>
-
-
-
-            <button
-
-              type="button"
-
-              onClick={handleAppleLogin}
-
-              disabled={loading || Boolean(oauthLoading)}
-
-              className="flex min-h-12 items-center justify-center gap-3 rounded-xl bg-neutral-950 px-4 text-xs font-black text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-
-            >
-
-              <span className="text-lg">●</span>
-
-              {oauthLoading === 'apple'
-
-                ? 'Opening Apple...'
-
-                : 'Continue with Apple'}
-
-            </button>
-
-          </div>
-
-
-
-          <div className="my-6 flex items-center gap-3">
-
-            <div className="h-px flex-1 bg-neutral-200" />
-
-            <span className="text-[9px] font-black uppercase tracking-[0.18em] text-neutral-400">
-
-              or email
-
-            </span>
-
-            <div className="h-px flex-1 bg-neutral-200" />
-
-          </div>
-
-
-
-          <form onSubmit={handlePasswordLogin} className="space-y-4">
-
-            <label className="block">
-
-              <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.16em] text-neutral-500">
-
-                Email address
-
-              </span>
-
-              <input
-
-                type="email"
-
-                autoComplete="email"
-
-                value={email}
-
-                onChange={(event) => {
-
-                  setEmail(event.target.value)
-
-                  setError('')
-
-                }}
-
-                placeholder="owner@example.com"
-
-                className="h-12 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white"
-
-              />
-
-            </label>
-
-
-
-            <label className="block">
-
-              <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.16em] text-neutral-500">
-
-                Password
-
-              </span>
-
-              <input
-
-                type="password"
-
-                autoComplete="current-password"
-
-                value={password}
-
-                onChange={(event) => {
-
-                  setPassword(event.target.value)
-
-                  setError('')
-
-                }}
-
-                placeholder="Enter your password"
-
-                className="h-12 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white"
-
-              />
-
-            </label>
-
-
-
-            <label className="block">
-              <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.16em] text-neutral-500">
-                Date of birth
-              </span>
-              <input
-                type="date"
-                autoComplete="bday"
-                value={dob}
-                onChange={(event) => {
-                  setDob(event.target.value)
-                  setError('')
-                }}
-                className="h-12 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white"
-              />
-              <p className="mt-1.5 text-[9px] leading-4 text-neutral-400">
-                DOB is used only as an additional account check for biometric login.
+    <main className="min-h-screen bg-neutral-50 text-neutral-950">
+      <div className="mx-auto grid min-h-screen w-full max-w-6xl lg:grid-cols-2">
+
+        {/* Brand panel */}
+        <aside className="relative hidden flex-col justify-between overflow-hidden bg-neutral-950 p-12 text-white lg:flex">
+          <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-orange-500/20 blur-3xl" />
+          <div className="absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-orange-400/10 blur-3xl" />
+
+          <div className="relative flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500 text-sm font-black text-neutral-950">
+              DD
+            </div>
+            <div>
+              <p className="text-sm font-bold">Digital Dine-In</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-400">
+                Business Platform
               </p>
-            </label>
+            </div>
+          </div>
 
-            {error ? (
+          <div className="relative max-w-sm">
+            <h2 className="text-4xl font-black leading-tight tracking-tight">
+              Run your restaurant from one place.
+            </h2>
+            <p className="mt-4 text-sm leading-6 text-neutral-400">
+              Manage orders, menus, staff and delivery from your business dashboard.
+            </p>
+          </div>
 
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[11px] font-bold leading-5 text-red-700">
+          <p className="relative text-xs text-neutral-500">
+            © {new Date().getFullYear()} Digital Dine-In
+          </p>
+        </aside>
 
-                {error}
+        {/* Form panel */}
+        <section className="flex items-center justify-center px-5 py-10 sm:px-8">
+          <div className="w-full max-w-md">
 
+            <div className="mb-8 flex items-center justify-between">
+              <Link
+                href="/"
+                aria-label="Back to Digital Dine-In"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200 bg-white text-sm font-bold shadow-sm transition hover:bg-neutral-50"
+              >
+                ←
+              </Link>
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-600 lg:hidden">
+                Digital Dine-In
+              </span>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-600">
+                Website Owner Login
+              </p>
+              <h1 className="mt-2 text-3xl font-black tracking-tight">Welcome back</h1>
+              <p className="mt-2 text-sm text-neutral-500">
+                Sign in to manage your business dashboard.
+              </p>
+            </div>
+
+            {/* Social sign-in */}
+            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => handleOAuth('google')}
+                disabled={busy}
+                className="flex h-12 items-center justify-center gap-2.5 rounded-xl border border-neutral-200 bg-white text-sm font-semibold transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="text-base font-black text-[#4285F4]">G</span>
+                {oauthLoading === 'google' ? 'Opening Google…' : 'Google'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOAuth('apple')}
+                disabled={busy}
+                className="flex h-12 items-center justify-center gap-2.5 rounded-xl bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="text-base">●</span>
+                {oauthLoading === 'apple' ? 'Opening Apple…' : 'Apple'}
+              </button>
+            </div>
+
+            <div className="my-7 flex items-center gap-3">
+              <div className="h-px flex-1 bg-neutral-200" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                or with email
+              </span>
+              <div className="h-px flex-1 bg-neutral-200" />
+            </div>
+
+            <form onSubmit={handlePasswordLogin} className="space-y-5" noValidate>
+              <div>
+                <label htmlFor="email" className={labelClass}>Email address</label>
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setError('') }}
+                  placeholder="owner@example.com"
+                  className={inputClass}
+                />
               </div>
 
-            ) : null}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label htmlFor="password" className="text-xs font-semibold text-neutral-700">
+                    Password
+                  </label>
+                </div>
+                <input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setError('') }}
+                  placeholder="Enter your password"
+                  className={inputClass}
+                />
+              </div>
 
+              {/* Optional DOB, revealed only for biometric login */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowDob((v) => !v)}
+                  className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                  aria-expanded={showDob}
+                >
+                  {showDob ? 'Hide date of birth' : 'Use biometric login instead?'}
+                </button>
 
+                {showDob && (
+                  <div className="mt-3 rounded-xl border border-orange-100 bg-orange-50/60 p-4">
+                    <label htmlFor="dob" className={labelClass}>Date of birth</label>
+                    <input
+                      id="dob"
+                      type="date"
+                      autoComplete="bday"
+                      value={dob}
+                      onChange={(e) => { setDob(e.target.value); setError('') }}
+                      className={inputClass}
+                    />
+                    <p className="mt-2 text-[11px] leading-4 text-neutral-500">
+                      Used only as an additional account check for biometric login.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleBiometricLogin}
+                      disabled={busy}
+                      className="mt-3 h-11 w-full rounded-xl border border-orange-200 bg-white text-sm font-semibold text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {loading ? 'Verifying…' : 'Continue with Passkey / Biometric'}
+                    </button>
+                  </div>
+                )}
+              </div>
 
-            <button
+              {error && (
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium leading-5 text-red-700"
+                >
+                  {error}
+                </div>
+              )}
 
-              type="submit"
+              <button
+                type="submit"
+                disabled={busy}
+                className="h-12 w-full rounded-xl bg-orange-500 text-sm font-bold text-neutral-950 shadow-sm transition hover:bg-orange-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? 'Signing in…' : 'Log in to dashboard'}
+              </button>
+            </form>
 
-              disabled={loading || Boolean(oauthLoading)}
-
-              className="min-h-12 w-full rounded-xl bg-orange-500 px-4 text-xs font-black text-neutral-950 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
-
-            >
-
-              {loading ? 'Signing in...' : 'Login to Dashboard'}
-
-            </button>
-
-                      <button
-              type="button"
-              onClick={handleBiometricLogin}
-              disabled={loading || Boolean(oauthLoading)}
-              className="mt-3 min-h-12 w-full rounded-xl border border-orange-200 bg-orange-50 px-4 text-xs font-black text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? 'Verifying...' : 'Login with Biometric / Passkey'}
-            </button>
-</form>
-
-
-
-          <div className="mt-6 border-t border-neutral-100 pt-5 text-center">
-
-            <p className="text-[11px] text-neutral-500">
-
+            <p className="mt-8 text-center text-sm text-neutral-500">
               New to Digital Dine-In?{' '}
-
-              <Link href="/register" className="font-black text-orange-600">
-
+              <Link href="/register" className="font-bold text-orange-600 hover:text-orange-700">
                 Register your business
-
               </Link>
-
             </p>
 
+            <div className="mt-8 rounded-2xl border border-neutral-200 bg-white p-4 text-center">
+              <p className="text-xs text-neutral-500">Looking for staff, packer or delivery access?</p>
+              <Link
+                href="/app"
+                className="mt-1 inline-block text-xs font-bold text-neutral-950 underline decoration-orange-400 underline-offset-4"
+              >
+                Open Restaurant App
+              </Link>
+            </div>
+
           </div>
-
         </section>
-
-
-
-        <div className="mt-4 rounded-2xl border border-neutral-200 bg-white/70 p-4 text-center">
-
-          <p className="text-[10px] leading-5 text-neutral-500">
-
-            Looking for staff, packer or delivery access?
-
-          </p>
-
-          <Link
-
-            href="/app"
-
-            className="mt-1 inline-block text-[10px] font-black text-neutral-950 underline decoration-orange-400 underline-offset-4"
-
-          >
-
-            Open Restaurant APP
-
-          </Link>
-
-        </div>
-
       </div>
-
     </main>
-
   )
-
 }
