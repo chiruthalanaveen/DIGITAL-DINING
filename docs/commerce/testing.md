@@ -1,5 +1,9 @@
 # Phase 1 testing
 
+For the latest full application run, see [application-testing.md](application-testing.md):
+50 unit tests, 82 SQL assertions, expanded browser coverage and the repository
+lint/legacy endpoint failures. The earlier results below are historical.
+
 Latest review results: **43/43 unit tests and 76 PostgreSQL assertions passed**,
 with build and desktop/mobile browser checks passing. The earlier run details
 below are historical; current commands, evidence and remaining hosted gaps are

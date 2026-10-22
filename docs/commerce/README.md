@@ -8,6 +8,11 @@ domains, coupons and recurring billing remain later phases.
 
 ## Review and installation
 
+The latest [complete application testing report](application-testing.md) records
+50 passing unit tests, 82 local PostgreSQL assertions and expanded Saree/Grocery
+desktop/mobile evidence. It also records the failing inherited repository lint
+and two missing legacy endpoints; release is not green.
+
 Start with [release-review.md](release-review.md) for the full SQL review,
 preservation and backup analysis, latest test evidence, environment requirements
 and the explicit hosted-staging blockers. Production release is on hold.

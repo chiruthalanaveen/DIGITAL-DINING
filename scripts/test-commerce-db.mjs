@@ -135,6 +135,72 @@ try {
   await client.query('SELECT public.commerce_admin_action($1,$2,$3)', ['assign_owner', JSON.stringify({ website_id: website, user_id: '10000000-0000-4000-8000-000000000001' }), 'development-admin@example.test'])
   await rejectedAfterAdminChange('save_website', { id: website, owner_permissions: { inventory: false } }, 'owner mutation rechecks permission after concurrent Admin restriction')
 
+  // This versioned migration is intentionally one-time, not idempotent. A
+  // second installation must fail without replacing definitions or losing the
+  // already-created commerce history, bucket metadata or legacy fixture data.
+  async function migrationSnapshot() {
+    const schemas = ['public', 'commerce_private', 'auth', 'storage', 'cron']
+    const definitions = await client.query(`
+      SELECT jsonb_build_object(
+        'schemas', (SELECT jsonb_agg(jsonb_build_object('name',n.nspname,'owner',n.nspowner,'acl',n.nspacl::text) ORDER BY n.nspname)
+          FROM pg_namespace n WHERE n.nspname=ANY($1)),
+        'relations', (SELECT jsonb_agg(jsonb_build_object('schema',n.nspname,'name',c.relname,'kind',c.relkind,'owner',c.relowner,'acl',c.relacl::text,'rls',c.relrowsecurity,'force_rls',c.relforcerowsecurity) ORDER BY n.nspname,c.relname)
+          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY($1)),
+        'columns', (SELECT jsonb_agg(jsonb_build_object('table',a.attrelid::regclass::text,'number',a.attnum,'name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'not_null',a.attnotnull,'identity',a.attidentity,'generated',a.attgenerated,'default',pg_get_expr(d.adbin,d.adrelid)) ORDER BY a.attrelid,a.attnum)
+          FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+          WHERE n.nspname=ANY($1) AND a.attnum>0 AND NOT a.attisdropped),
+        'constraints', (SELECT jsonb_agg(jsonb_build_object('table',c.conrelid::regclass::text,'name',c.conname,'definition',pg_get_constraintdef(c.oid)) ORDER BY c.conrelid,c.conname)
+          FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=ANY($1)),
+        'functions', (SELECT jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'owner',p.proowner,'acl',p.proacl::text,'definition',pg_get_functiondef(p.oid)) ORDER BY p.oid)
+          FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=ANY($1) AND p.prokind='f'),
+        'indexes', (SELECT jsonb_agg(to_jsonb(i) ORDER BY i.schemaname,i.tablename,i.indexname) FROM pg_indexes i WHERE i.schemaname=ANY($1)),
+        'policies', (SELECT jsonb_agg(to_jsonb(p) ORDER BY p.schemaname,p.tablename,p.policyname) FROM pg_policies p WHERE p.schemaname=ANY($1)),
+        'triggers', (SELECT jsonb_agg(jsonb_build_object('table',t.tgrelid::regclass::text,'name',t.tgname,'enabled',t.tgenabled,'internal',t.tgisinternal,'definition',pg_get_triggerdef(t.oid)) ORDER BY t.tgrelid,t.tgname)
+          FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY($1)),
+        'default_grants', (SELECT jsonb_agg(to_jsonb(d) ORDER BY d.oid) FROM pg_default_acl d WHERE d.defaclnamespace=0 OR d.defaclnamespace IN (SELECT oid FROM pg_namespace WHERE nspname=ANY($1)))
+      ) AS value
+    `, [schemas])
+    const tables = await client.query(`SELECT n.nspname AS schema,c.relname AS name FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY($1) AND c.relkind='r' ORDER BY n.nspname,c.relname`, [schemas])
+    const commerceRows = {}, legacyRows = {}
+    let bucketRows
+    for (const table of tables.rows) {
+      // Identifiers come only from the fixed local fixture schemas. Quote them
+      // independently instead of interpolating a URL or caller-supplied name.
+      assert.match(table.schema, /^[a-z_][a-z0-9_]*$/)
+      assert.match(table.name, /^[a-z_][a-z0-9_]*$/)
+      const rows = await client.query(`SELECT coalesce(jsonb_agg(to_jsonb(record) ORDER BY to_jsonb(record)::text),'[]'::jsonb) AS value FROM "${table.schema}"."${table.name}" AS record`)
+      const key = `${table.schema}.${table.name}`
+      if (table.schema === 'public' && table.name.startsWith('commerce_')) commerceRows[key] = rows.rows[0].value
+      else if (key === 'storage.buckets') bucketRows = rows.rows[0].value
+      else legacyRows[key] = rows.rows[0].value
+    }
+    assert.equal(Object.keys(commerceRows).length, 9, 'The rerun snapshot must cover all nine commerce tables.')
+    assert.ok(Array.isArray(bucketRows) && bucketRows.some(bucket => bucket.id === 'commerce-media'), 'Snapshot must include the installed commerce bucket.')
+    return { definitions: definitions.rows[0].value, commerceRows, legacyRows, bucketRows }
+  }
+
+  const beforeReapplication = await migrationSnapshot()
+  let reapplicationError
+  try { await client.query(await readFile(path.join(root, 'supabase/migrations/20261022160000_commerce_foundation.sql'), 'utf8')) }
+  catch (error) { reapplicationError = error }
+  assert.equal(reapplicationError?.code, '42P06', 'Reapplying the one-time file must reject the existing schema, not silently replace it.')
+  let abortedTransactionError
+  try { await client.query('SELECT 1') }
+  catch (error) { abortedTransactionError = error }
+  await client.query('ROLLBACK')
+  assert.equal(abortedTransactionError?.code, '25P02', 'A failed migration transaction must be rolled back before further statements can execute.')
+  const afterReapplication = await migrationSnapshot()
+  await client.query(`SELECT commerce_test.check_true(true,'second application of the one-time migration rejects the existing schema')`)
+  await client.query(`SELECT commerce_test.check_true(true,'failed migration reapplication remains aborted until explicit rollback')`)
+  assert.deepEqual(afterReapplication.definitions, beforeReapplication.definitions, 'Migration rerun must preserve schema definitions, constraints, functions, indexes, triggers, RLS and grants.')
+  await client.query(`SELECT commerce_test.check_true(true,'failed migration reapplication preserves new and legacy definitions, RLS and grants')`)
+  assert.deepEqual(afterReapplication.commerceRows, beforeReapplication.commerceRows, 'Migration rerun must preserve every existing commerce record.')
+  await client.query(`SELECT commerce_test.check_true(true,'failed migration reapplication preserves all nine commerce tables data')`)
+  assert.deepEqual(afterReapplication.legacyRows, beforeReapplication.legacyRows, 'Migration rerun must preserve legacy wallet/order, Auth, Storage object and cron fixtures.')
+  await client.query(`SELECT commerce_test.check_true(true,'failed migration reapplication preserves Auth, legacy wallet-order, Storage object and cron fixtures')`)
+  assert.deepEqual(afterReapplication.bucketRows, beforeReapplication.bucketRows, 'Migration rerun must not replace or reconfigure any existing bucket metadata.')
+  await client.query(`SELECT commerce_test.check_true(true,'failed migration reapplication preserves commerce and legacy bucket metadata')`)
+
   const results = await client.query('select label from commerce_test.results order by id')
   for (const { label } of results.rows) console.log(`PASS ${label}`)
   console.log(`${results.rowCount} PostgreSQL assertions passed on an isolated local database.`)

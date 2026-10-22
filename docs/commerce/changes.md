@@ -1,41 +1,32 @@
 # Exact changed-file list
 
-This is the complete current review-branch file list against GitHub main
-`7385253c5381fdf4998fddf8f58e84b783aabba1`, including the earlier maintenance-mode
-prerequisite and the Phase 1 commerce implementation. `A` means added; `M` means
-modified. No files are deleted or renamed.
+This is the complete branch diff against GitHub main
+`7385253c5381fdf4998fddf8f58e84b783aabba1`. A means added; M means modified.
+No files are deleted or renamed. The PR includes the earlier maintenance-mode
+prerequisite `4d036fb`, the commerce implementation `aba881a`, and subsequent
+review/testing work.
 
-The commerce implementation commit `aba881a` changed 51 files compared with its
-working baseline `4d036fb`. The only pre-existing application source change for
-commerce is the new Super Admin navigation/panel. GitHub main does not yet
-contain the earlier maintenance commit `4d036fb`, so the PR includes its ten
-additional paths and the shared admin dashboard too.
+Commerce originally changed 51 files from its working baseline. Its existing
+Admin dashboard insertion is preserved. The latest testing update adds a plural
+delivery returns compatibility route, retains the original singular handler,
+and expands isolated regression/browser/migration-reapplication coverage. The
+foundation migration is byte-for-byte unchanged; no production SQL, live payment,
+production deployment or merge occurred in this testing update.
 
-The latest review adds documentation, read-only staging preflight/guard tests,
-twelve local RLS assertions and the persistent release-hold instruction. It
-changes no application behavior and leaves the versioned migration byte-for-byte
-unchanged. No production SQL, new production deployment/promotion or merge was
-performed for this review.
+## Latest application-testing update versus fbf8132
 
-## Current review update compared with aba881a
-
-- [`AGENTS.md`](../../AGENTS.md)
+- [`app/api/delivery/customer/returns/route.js`](../../app/api/delivery/customer/returns/route.js)
 - [`docs/commerce/README.md`](../../docs/commerce/README.md)
-- [`docs/commerce/backup-recovery.md`](../../docs/commerce/backup-recovery.md)
+- [`docs/commerce/application-regression-report.md`](../../docs/commerce/application-regression-report.md)
+- [`docs/commerce/application-testing.md`](../../docs/commerce/application-testing.md)
 - [`docs/commerce/changes.md`](../../docs/commerce/changes.md)
-- [`docs/commerce/database.md`](../../docs/commerce/database.md)
-- [`docs/commerce/migration-review.md`](../../docs/commerce/migration-review.md)
-- [`docs/commerce/preservation-review.md`](../../docs/commerce/preservation-review.md)
-- [`docs/commerce/preview-and-environment.md`](../../docs/commerce/preview-and-environment.md)
 - [`docs/commerce/release-review.md`](../../docs/commerce/release-review.md)
-- [`docs/commerce/review-test-results.md`](../../docs/commerce/review-test-results.md)
-- [`docs/commerce/staging-verification.md`](../../docs/commerce/staging-verification.md)
 - [`docs/commerce/testing.md`](../../docs/commerce/testing.md)
-- [`scripts/test-commerce-staging.mjs`](../../scripts/test-commerce-staging.mjs)
-- [`supabase/tests/commerce_rls_checkout.sql`](../../supabase/tests/commerce_rls_checkout.sql)
-- [`tests/commerce-staging-guard.test.mjs`](../../tests/commerce-staging-guard.test.mjs)
+- [`scripts/test-commerce-db.mjs`](../../scripts/test-commerce-db.mjs)
+- [`tests/commerce.browser.mjs`](../../tests/commerce.browser.mjs)
+- [`tests/delivery-return-alias.test.mjs`](../../tests/delivery-return-alias.test.mjs)
 
-## Complete PR diff: 70 files
+## Complete PR: 74 files
 
 - **M** [`AGENTS.md`](../../AGENTS.md)
 - **M** [`README.md`](../../README.md)
@@ -49,6 +40,7 @@ performed for this review.
 - **A** [`app/api/commerce/customer/orders/route.js`](../../app/api/commerce/customer/orders/route.js)
 - **A** [`app/api/commerce/workspace/[websiteId]/route.js`](../../app/api/commerce/workspace/[websiteId]/route.js)
 - **A** [`app/api/commerce/workspace/route.js`](../../app/api/commerce/workspace/route.js)
+- **A** [`app/api/delivery/customer/returns/route.js`](../../app/api/delivery/customer/returns/route.js)
 - **A** [`app/commerce/apply/page.jsx`](../../app/commerce/apply/page.jsx)
 - **A** [`app/commerce/auth/page.jsx`](../../app/commerce/auth/page.jsx)
 - **A** [`app/commerce/dashboard/page.jsx`](../../app/commerce/dashboard/page.jsx)
@@ -73,6 +65,8 @@ performed for this review.
 - **A** [`app/shops/[slug]/store-metadata.js`](../../app/shops/[slug]/store-metadata.js)
 - **A** [`app/shops/layout.jsx`](../../app/shops/layout.jsx)
 - **A** [`docs/commerce/README.md`](../../docs/commerce/README.md)
+- **A** [`docs/commerce/application-regression-report.md`](../../docs/commerce/application-regression-report.md)
+- **A** [`docs/commerce/application-testing.md`](../../docs/commerce/application-testing.md)
 - **A** [`docs/commerce/architecture.md`](../../docs/commerce/architecture.md)
 - **A** [`docs/commerce/backup-recovery.md`](../../docs/commerce/backup-recovery.md)
 - **A** [`docs/commerce/changes.md`](../../docs/commerce/changes.md)
@@ -104,6 +98,7 @@ performed for this review.
 - **A** [`tests/commerce-api.test.mjs`](../../tests/commerce-api.test.mjs)
 - **A** [`tests/commerce-staging-guard.test.mjs`](../../tests/commerce-staging-guard.test.mjs)
 - **A** [`tests/commerce.browser.mjs`](../../tests/commerce.browser.mjs)
+- **A** [`tests/delivery-return-alias.test.mjs`](../../tests/delivery-return-alias.test.mjs)
 - **A** [`tests/helpers/commerce-fixture.mjs`](../../tests/helpers/commerce-fixture.mjs)
 - **A** [`tests/maintenance.test.mjs`](../../tests/maintenance.test.mjs)
 - **A** [`vercel.json`](../../vercel.json)

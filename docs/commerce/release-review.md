@@ -1,5 +1,11 @@
 # Client Websites: review before any production release
 
+The newer [complete application test report](application-testing.md) adds the
+delivery returns compatibility fix, 50 unit tests, 82 local SQL assertions and
+expanded Saree/Grocery browser evidence. It also confirms inherited lint failures
+and missing legacy PIN-recovery/billing endpoints. Historical counts below are
+retained as the earlier review record; production release remains on hold.
+
 Review date: 2026-10-22. **Production SQL, merges into main and further production
 deployments/promotions are on hold.** The user explicitly requires separate
 approval after reviewing the final results. No such approval is inferred here.
