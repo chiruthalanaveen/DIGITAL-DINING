@@ -16,6 +16,7 @@ import AdminRestaurantFeeEditor from '@/app/components/AdminRestaurantFeeEditor'
 import AdminDeliverySignupSettings from '@/app/components/AdminDeliverySignupSettings'
 import AdminPrivacyDeletionReviews from '@/app/components/AdminPrivacyDeletionReviews'
 import AdminMaintenanceSettings from '@/app/components/AdminMaintenanceSettings'
+import AdminClientWebsites from '@/app/components/commerce/AdminClientWebsites'
 
 const NAV = [
   ['overview', 'Overview'],
@@ -34,6 +35,7 @@ const NAV = [
   ['reviews', 'Reviews'],
   ['payments', 'Payments'],
   ['system', 'System'],
+  ['client-websites', 'E-Commerce Website Management'],
   ['audit', 'Audit Log'],
 ]
 
@@ -43,7 +45,7 @@ const NAV_GROUPS = [
   { title: 'Commerce', items: ['operations', 'delivery-orders', 'payments', 'inventory'] },
   { title: 'Growth & Onboarding', items: ['custom-plans', 'delivery-signup', 'people'] },
   { title: 'Customer Experience', items: ['live-support', 'support', 'reviews'] },
-  { title: 'Administration', items: ['privacy-deletions', 'system', 'audit'] },
+  { title: 'Administration', items: ['client-websites', 'privacy-deletions', 'system', 'audit'] },
 ]
 
 const NAV_ICONS = {
@@ -51,7 +53,7 @@ const NAV_ICONS = {
   'wallet-controls': 'wallet', 'delivery-signup': 'truck', tenants: 'building',
   operations: 'activity', 'delivery-orders': 'package', people: 'users',
   inventory: 'layers', 'live-support': 'messages', support: 'life-ring',
-  reviews: 'star', payments: 'credit', system: 'settings', audit: 'shield',
+  reviews: 'star', payments: 'credit', system: 'settings', 'client-websites': 'building', audit: 'shield',
 }
 
 const NAV_DESCRIPTIONS = {
@@ -71,6 +73,7 @@ const NAV_DESCRIPTIONS = {
   reviews: 'Customer feedback and moderation',
   payments: 'Payment configurations and controls',
   system: 'Platform settings and diagnostics',
+  'client-websites': 'Independent storefronts, owner applications and website configuration',
   audit: 'Administrative change history',
 }
 
@@ -4343,6 +4346,8 @@ export default function AdminControlCenter() {
               </div>
             </div>
           )}
+
+          {section === 'client-websites' && <AdminClientWebsites />}
 
           {section ===
             'system' && (

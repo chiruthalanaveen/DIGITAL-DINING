@@ -7,6 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test tests/*.test.mjs",
+    "test:commerce": "node --test tests/commerce-api.test.mjs",
+    "test:commerce:db": "node scripts/test-commerce-db.mjs",
+    "test:commerce:browser": "node tests/commerce.browser.mjs",
     "postinstall": "prisma skills sync || exit 0"
   },
   "dependencies": {
@@ -43,6 +47,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "pg": "^8.23.1",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
