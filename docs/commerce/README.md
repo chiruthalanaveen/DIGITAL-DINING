@@ -8,6 +8,10 @@ domains, coupons and recurring billing remain later phases.
 
 ## Review and installation
 
+Start with [release-review.md](release-review.md) for the full SQL review,
+preservation and backup analysis, latest test evidence, environment requirements
+and the explicit hosted-staging blockers. Production release is on hold.
+
 1. Read [architecture.md](architecture.md) for repository analysis, tenant design,
    routes, API contracts and the phase plan.
 2. Follow [database.md](database.md) to install the versioned migration into a
@@ -42,10 +46,12 @@ maintenance-mode commit included in the review branch.
 
 ## Release state
 
-No production database migration, live payment, deployment or merge is part of
-this change. Hosted Supabase integration and compatibility with deployed policies
-remain unverified because no separate development project was available. These
-checks must be completed before production activation.
+No production database migration, live payment or merge was performed. An earlier
+production-target Vercel build was staged before the review hold; existing live
+domains remain on the previous deployment. It is not a staging-backed Preview.
+Hosted Supabase integration remains unverified because no separate development
+project exists. No further production deployment/promotion is authorized until
+the user separately approves after reviewing the final results.
 
 The root [vercel.json](../../vercel.json) disables automatic Git deployment only
 for `feature/client-websites-phase1`, allowing a review PR without a preview

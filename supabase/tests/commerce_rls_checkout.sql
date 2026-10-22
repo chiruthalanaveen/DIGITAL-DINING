@@ -124,6 +124,34 @@ SELECT commerce_test.must_fail('UPDATE public.commerce_orders SET total_paise=1'
 SELECT set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000004',true);
 SELECT commerce_test.check_true((SELECT count(*)=0 FROM public.commerce_orders), 'another customer cannot read the first customer order history');
 
+-- Real rows now exist in every private checkout table. Enable customer access
+-- for BOTH owners so a foreign-tenant denial cannot pass merely because the
+-- feature permission is disabled. The direct SELECTs exercise RLS rather than
+-- an API's website selector or a caller-supplied tenant assertion.
+RESET ROLE;
+UPDATE public.commerce_websites SET owner_permissions=jsonb_set(owner_permissions,'{customers}','true')
+WHERE id IN ('20000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000002');
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',true);
+SELECT commerce_test.check_true((SELECT count(*)=1 FROM public.commerce_websites WHERE id='20000000-0000-4000-8000-000000000001'), 'owner A can read its own private website settings');
+SELECT commerce_test.check_true((SELECT count(*)=2 FROM public.commerce_products WHERE website_id='20000000-0000-4000-8000-000000000001'), 'owner A can read its own product records');
+SELECT commerce_test.check_true((SELECT count(*)=1 FROM public.commerce_customers WHERE website_id='20000000-0000-4000-8000-000000000001'), 'owner A with customer permission can read its own customer record');
+SELECT commerce_test.check_true((SELECT count(*)=1 FROM public.commerce_orders WHERE website_id='20000000-0000-4000-8000-000000000001'), 'owner A can read its own order');
+SELECT commerce_test.check_true((SELECT count(*)=1 FROM public.commerce_order_items WHERE website_id='20000000-0000-4000-8000-000000000001'), 'owner A can read its own order item');
+SELECT set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',true);
+SELECT commerce_test.check_true((SELECT count(*)=1 FROM public.commerce_websites WHERE id='20000000-0000-4000-8000-000000000002') AND (SELECT count(*)=1 FROM public.commerce_products WHERE website_id='20000000-0000-4000-8000-000000000002'), 'owner B retains access to its own website and product');
+SELECT commerce_test.check_true((SELECT count(*)=0 FROM public.commerce_websites WHERE id='20000000-0000-4000-8000-000000000001'), 'owner B cannot SELECT owner A private website settings');
+SELECT commerce_test.check_true((SELECT count(*)=0 FROM public.commerce_products WHERE website_id='20000000-0000-4000-8000-000000000001'), 'owner B cannot SELECT owner A products');
+SELECT commerce_test.check_true((SELECT count(*)=0 FROM public.commerce_customers WHERE website_id='20000000-0000-4000-8000-000000000001'), 'owner B with customer permission cannot SELECT owner A customers');
+SELECT commerce_test.check_true((SELECT count(*)=0 FROM public.commerce_orders WHERE website_id='20000000-0000-4000-8000-000000000001'), 'owner B with order permission cannot SELECT owner A orders');
+SELECT commerce_test.check_true((SELECT count(*)=0 FROM public.commerce_order_items WHERE website_id='20000000-0000-4000-8000-000000000001'), 'owner B cannot SELECT owner A order items');
+RESET ROLE;
+UPDATE public.commerce_websites SET owner_permissions=jsonb_set(owner_permissions,'{customers}','false')
+WHERE id IN ('20000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000002');
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',true);
+SELECT commerce_test.check_true((SELECT count(*)=0 FROM public.commerce_customers WHERE website_id='20000000-0000-4000-8000-000000000001'), 'revoking customer permission also hides the owner own customer records');
+
 RESET ROLE;
 SELECT commerce_test.check_true((SELECT stock_quantity=7 FROM public.commerce_products WHERE id='40000000-0000-4000-8000-000000000001'), 'replay and failed checkout do not double-consume stock');
 SELECT commerce_test.check_true((SELECT count(*)=1 FROM public.commerce_orders), 'failed checkout leaves no partial order');

@@ -1,5 +1,10 @@
 # Phase 1 testing
 
+Latest review results: **43/43 unit tests and 76 PostgreSQL assertions passed**,
+with build and desktop/mobile browser checks passing. The earlier run details
+below are historical; current commands, evidence and remaining hosted gaps are
+in [review-test-results.md](review-test-results.md).
+
 Run these commands from the repository root after `npm ci`:
 
 ```sh

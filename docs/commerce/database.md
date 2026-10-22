@@ -1,5 +1,11 @@
 # Phase 1 database installation and verification
 
+The latest review adds twelve direct owner-isolation assertions: **76 local
+PostgreSQL assertions passed**. The historical 64-assertion run below is retained
+as recorded evidence. See [release-review.md](release-review.md) and
+[review-test-results.md](review-test-results.md) for the complete SQL explanation,
+preservation/backup findings and hosted tests that remain blocked.
+
 This feature requires a SQL migration:
 [`supabase/migrations/20261022160000_commerce_foundation.sql`](../../supabase/migrations/20261022160000_commerce_foundation.sql).
 It was applied and tested on an isolated local PostgreSQL 18.4 database. No
