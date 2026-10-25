@@ -8,10 +8,11 @@ domains, coupons and recurring billing remain later phases.
 
 ## Review and installation
 
-The latest [complete application testing report](application-testing.md) records
-50 passing unit tests, 82 local PostgreSQL assertions and expanded Saree/Grocery
-desktop/mobile evidence. It also records the failing inherited repository lint
-and two missing legacy endpoints; release is not green.
+The latest [PR #3 follow-up report](pr3-followup-report.md) records 82 passing
+unit tests, 82 local PostgreSQL assertions, a passing build and 64 desktop/mobile
+screenshots. Billing bookmarks use current checkout; PIN recovery now reports
+explicit unavailability. Inherited repository lint and hosted verification remain
+release blockers. Staging exists, but two connection settings require correction.
 
 Start with [release-review.md](release-review.md) for the full SQL review,
 preservation and backup analysis, latest test evidence, environment requirements
@@ -54,8 +55,9 @@ maintenance-mode commit included in the review branch.
 No production database migration, live payment or merge was performed. An earlier
 production-target Vercel build was staged before the review hold; existing live
 domains remain on the previous deployment. It is not a staging-backed Preview.
-Hosted Supabase integration remains unverified because no separate development
-project exists. No further production deployment/promotion is authorized until
+Hosted Supabase workflows remain unverified: staging Auth/REST metadata is
+reachable, but its database/API URL settings need correction before migration.
+No further production deployment/promotion is authorized until
 the user separately approves after reviewing the final results.
 
 The root [vercel.json](../../vercel.json) disables automatic Git deployment only

@@ -2,10 +2,23 @@
 
 ## Actual status
 
-The user confirmed that there is **no separate staging Supabase project**. No
-staging credentials are present in this workspace, and read-only inspection of
-the connected Vercel project found that its configured application credentials
-target production only. They were not copied to Preview or used for hosted tests.
+Updated 25 October 2026 (Asia/Kolkata). A separate staging Supabase project now
+exists: `gylicwwrmpqomregevqe`. The staging reference and both JWT key roles/refs
+match, and independent read-only Auth settings/service-role REST metadata
+requests to its confirmed HTTPS origin returned 200. No real Auth session,
+tenant RLS, migration, Storage or hosted workflow test is claimed from those
+metadata requests.
+
+The staging API and database environment values are misconfigured, so the
+preflight refuses them before any database connection. Correct the two secure
+values according to [staging-verification.md](staging-verification.md). Direct
+database hostname resolution separately failed with `EAI_AGAIN` before any
+TCP/TLS/authentication/SQL. These are the present blockers; this is no longer a
+missing-project or missing-key diagnosis.
+
+Earlier read-only inspection of Vercel found Production-only application
+credentials. They were not copied to Preview. Preview environment configuration
+and a working staging database must be verified before creating a new deployment.
 
 There is currently **no Vercel Preview tested against staging Supabase**. The
 earlier URL below is a different artifact and must not be described as one:
@@ -17,8 +30,9 @@ earlier URL below is a different artifact and must not be described as one:
 - Build state: `READY`; source commit: `aba881a`.
 - Target: **production**, with `autoAssignCustomDomains: false` and production
   environment configuration. It was staged before the latest review hold.
-- Existing live domains and the project's active production target were verified
-  to remain bound to `dpl_9Q2yJ1vG7e7oF4fHiLZE1NK4KbsU` after staging.
+- At the earlier deployment check, live domains and the active production target
+  remained bound to `dpl_9Q2yJ1vG7e7oF4fHiLZE1NK4KbsU`. This historical record
+  is not a new live-domain verification.
 
 Do not place test applications, products, customer accounts or orders into that
 production-connected artifact. No new deployment or promotion was performed for
@@ -32,7 +46,7 @@ not need another runtime provider, payment key or database connection URL.
 
 | Variable | Development/Preview value | Exposure |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Separate staging project's API URL | Browser-visible |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://gylicwwrmpqomregevqe.supabase.co` | Browser-visible |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | That staging project's anon/publishable-compatible key supported by the current SDK | Browser-visible; RLS still required |
 | `SUPABASE_SERVICE_ROLE_KEY` | That staging project's service-role key | Server-only secret; never `NEXT_PUBLIC_*` |
 | `SUPABASE_URL` | Same staging URL, for existing modules that use this variable | Server environment |
@@ -67,6 +81,11 @@ by the deployed application, are not committed, and must not contain production
 values. See [staging-verification.md](staging-verification.md) for the guard checks
 and remaining hosted test sequence.
 
+The application does not automatically use the `COMMERCE_STAGING_*` names. Map
+the verified staging URL/keys into the application runtime names above for
+Preview only. Keep direct database credentials out of browser variables. Changing
+the cloud preflight variables alone does not reconfigure a Vercel deployment.
+
 ## Auth redirects, storage and DNS
 
 - In the **staging** Supabase dashboard, enable the intended email verification
@@ -87,7 +106,7 @@ and remaining hosted test sequence.
   routing and verified custom domains remain later work; the example business
   domains are not configured by this feature.
 
-## Create the real Preview only after staging is available
+## Create the real Preview only after staging is verified
 
 1. Positively identify a separate staging Supabase project and complete the
    read-only preflight. Capture a staging backup and compare the existing schema,
@@ -100,12 +119,20 @@ and remaining hosted test sequence.
    create a manual **Preview** with this command:
 
 ```sh
-vercel deploy --environment preview --project digital-dining --scope digital-dining --yes
+vercel deploy --environment preview --project prj_Zh1KOvZq6Vm7e9YecZDwur4RbeHL --scope digital-dining --yes
 ```
+
+The installed Vercel CLI 65.1.0 `deploy --help` was checked locally and confirms
+`--environment` and `--project <NAME_OR_ID>` are supported. The command identifies
+the existing project by ID; its team is `team_v6sVn9Vr7yAcgv3wlQCSZ2aH`.
+The help check disabled telemetry/update checks and supplied no credentials.
+It created no deployment or project. Help output is retained as
+`/workspace/commerce-validation-artifacts/pr3-followup/vercel-deploy-help.log`.
 
 Do not add `--prod`, `--environment production`, `promote` or `alias`. The existing
 branch-specific `vercel.json` guard disables automatic Git deployments; leave it
-in place. This command was **not executed** because staging is unavailable.
+in place. The deployment command was **not executed**: staging database settings,
+migration/workflow verification and Preview-only configuration remain incomplete.
 
 4. Record the new URL and verify via Vercel that `target` is Preview and its
    environment is staging. Run the hosted workflow matrix in
@@ -115,11 +142,18 @@ in place. This command was **not executed** because staging is unavailable.
 
 ## Network limitation and alternative verification
 
-This environment's outbound proxy rejected the earlier staged deployment host
+During the earlier run, the outbound proxy rejected the old staged deployment host
 with an HTTP 403 **during CONNECT, before the application received a request**.
 This is a network limitation; it is not evidence of an application 403 or a
 successful HTTP smoke test. Vercel API metadata and build status were reachable.
 Deployment protection may separately require the user's Vercel login.
+
+The current staging Auth/REST HTTPS checks succeeded. Direct PostgreSQL DNS
+resolution failed before TCP/TLS, and no new staging-backed Preview exists to
+probe. Do not report the historical CONNECT failure as a measured result for a
+future Preview URL. Correct database configuration first; if the exact session
+pooler is used, add its actual hostname to the cloud network allowlist. A hostname
+allowlist alone does not establish that PostgreSQL TCP is reachable.
 
 If a future staging Preview host is also blocked:
 

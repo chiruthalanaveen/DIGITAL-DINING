@@ -131,9 +131,17 @@ async function httpChecks() {
   await api('/api/delivery/customer/return', { expected: 400 })
   await api('/api/delivery/customer/returns', { method: 'POST', body: {}, expected: 400 })
   await api('/api/delivery/customer/return', { method: 'POST', body: {}, expected: 400 })
-  await api('/api/delivery/customer/forgot-pin', { expected: 404 })
-  await api('/api/create-subscription-order', { method: 'POST', body: {}, expected: 404 })
-  console.log('LEGACY FINDINGS: delivery return/returns validation routes respond HTTP400; forgot-pin and create-subscription-order remain missing HTTP404 routes. Missing flows are not counted as functional passes.')
+  await api('/api/delivery/customer/forgot-pin', { expected: 400 })
+  const recovery = await api('/api/delivery/customer/forgot-pin?store=TESTSTORE&mobile=9000000000', { expected: 503 })
+  assert.equal(recovery.code, 'PIN_RECOVERY_UNAVAILABLE')
+  assert.equal((await api('/api/delivery/customer/forgot-pin', { method: 'POST', body: { store: 'TESTSTORE', mobile: '9000000000', newPin: '1234' }, expected: 503 })).code, recovery.code)
+  const retired = await api('/api/create-subscription-order', { method: 'POST', body: {}, expected: 410 })
+  assert.equal(retired.code, 'SUBSCRIPTION_ENDPOINT_RETIRED')
+  const billingId = '11111111-1111-4111-8111-111111111111'
+  const billing = await fetch(`${base}/dashboard/${billingId}/billing?plan=delivery&amount=1`, { redirect: 'manual' })
+  assert.equal(billing.status, 307)
+  assert.equal(new URL(billing.headers.get('location'), base).href, `${base}/subscribe/${billingId}?plan=delivery`)
+  console.log('LEGACY CHECKS: return/returns invalid input HTTP400; PIN recovery validates HTTP400 and reports explicit unavailable HTTP503; retired subscription API HTTP410; bookmarked billing HTTP307 to current subscription checkout. Successful PIN reset and provider payment remain unverified.')
   console.log('PASS: real APIs + PostgreSQL application approval, website setup, tenant isolation, catalog, COD totals, replay, stock failure, cancellation restock and admin audit.')
 }
 
@@ -170,6 +178,17 @@ async function browserChecks() {
   // browser cookie transport; production cookie code is not changed for this test.
   const [name, value] = adminCookie.split('=')
   await context.addCookies([{ name, value, url: base, httpOnly: true, secure: false, sameSite: 'Lax' }])
+
+  await page.goto(`${base}/delivery/forgot-pin?store=TESTSTORE`)
+  await page.getByRole('heading', { name: 'Forgot your PIN?', exact: true }).waitFor()
+  await snapshot('legacy-pin-recovery-form')
+  await page.getByLabel('Mobile number (+91)', { exact: true }).fill('9000000000')
+  const unavailable = page.waitForResponse(response => response.url().includes('/api/delivery/customer/forgot-pin?') && response.status() === 503)
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await unavailable
+  await page.getByRole('alert').filter({ hasText: 'Your PIN has not changed.' }).waitFor()
+  assert.equal(await page.getByRole('button', { name: 'Reset PIN', exact: true }).count(), 0)
+  await snapshot('legacy-pin-recovery-unavailable')
 
   // Exercise registration and the verification gate through the UI. The local
   // adapter does not send real email: only this fixture explicitly simulates

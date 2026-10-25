@@ -1,12 +1,28 @@
 # Hosted Supabase staging verification — blocked, not passed
 
-The user confirmed that no separate Supabase development/staging project exists.
-There are no `COMMERCE_STAGING_*` credentials in this execution environment.
-The existing project `wispidcdmunqzahjacws` is production and is explicitly
-forbidden by the staging preflight. **No hosted migration, hosted fixture setup,
-hosted RLS/workflow test or staging-backed Vercel Preview test has run.** Local
-PostgreSQL and protocol-fixture browser results are separate evidence, documented
-in [testing.md](testing.md) and [review-test-results.md](review-test-results.md).
+Updated 25 October 2026 (Asia/Kolkata). The user has now supplied a separate
+staging project, `gylicwwrmpqomregevqe`, and all five `COMMERCE_STAGING_*`
+variables are present. The staging reference and both legacy JWT keys' reference
+and role claims match. Separate read-only HTTPS requests to the exact,
+user-confirmed staging origin returned **HTTP 200** for Auth settings and
+service-role PostgREST metadata. This confirms those requests authenticated;
+it does not complete a real owner/customer authentication or RLS workflow.
+
+**The complete preflight and hosted migration/workflows remain blocked.** Two
+secure variables have incorrect values: the staging API variable identifies
+localhost port 3000, and the database variable contains an HTTPS API origin
+instead of a PostgreSQL connection URI. The guard rejects this configuration
+before any database connection. A separate DNS lookup of the expected direct
+database hostname failed with `EAI_AGAIN` (`-3`); no TCP connection, TLS handshake,
+database authentication or SQL followed. This does not establish an IPv6, TLS or
+database-password failure.
+
+The production project `wispidcdmunqzahjacws` is explicitly forbidden by the
+staging preflight and was not contacted. **No hosted migration, fixture setup,
+real-session RLS/workflow test or staging-backed Vercel Preview test has run.**
+Local PostgreSQL and protocol-fixture browser results are separate evidence,
+documented in [testing.md](testing.md) and the latest
+[PR #3 follow-up report](pr3-followup-report.md).
 
 The existing deployment
 `https://digital-dining-6kfz79na2-digital-dining.vercel.app` is a staged
@@ -22,8 +38,8 @@ explicit variables, supplied through secure development environment settings:
 
 | Variable | Required value |
 | --- | --- |
-| `COMMERCE_STAGING_PROJECT_REF` | Independently verified reference of a separate development project. |
-| `COMMERCE_STAGING_SUPABASE_URL` | Exactly `https://<that-reference>.supabase.co`. |
+| `COMMERCE_STAGING_PROJECT_REF` | `gylicwwrmpqomregevqe`, the user-confirmed separate staging reference. |
+| `COMMERCE_STAGING_SUPABASE_URL` | Exactly `https://gylicwwrmpqomregevqe.supabase.co`. |
 | `COMMERCE_STAGING_SUPABASE_ANON_KEY` | That project's publishable/anon key. |
 | `COMMERCE_STAGING_SUPABASE_SERVICE_ROLE_KEY` | That project's server-only secret/service-role key. |
 | `COMMERCE_STAGING_DATABASE_URL` | Direct `db.<reference>.supabase.co:5432/postgres` as `postgres`, or the session pooler on port 5432 as `postgres.<reference>`. |
@@ -38,21 +54,60 @@ not signature verification or proof that a project is development. The operator
 must positively identify the project in its Supabase dashboard before configuring
 these variables. Do not relabel a production project as staging.
 
-The actual commands executed for this addition were:
+The current checks executed include:
 
 ```sh
 node --test tests/commerce-staging-guard.test.mjs
-npx --no-install eslint scripts/test-commerce-staging.mjs tests/commerce-staging-guard.test.mjs
-node --check scripts/test-commerce-staging.mjs
 node scripts/test-commerce-staging.mjs
 ```
 
-The eight guard tests passed; ESLint and syntax checks passed. The real preflight
-command exited **1 / blocked** before any connection, reporting all five missing
-explicit staging variables. This is the expected refusal, not a successful hosted
-test. It performed no production or staging network request.
+The eight guard tests passed, including accepted direct/session-pooler shapes and
+production-target rejection. The preflight command exited **1 / blocked** before
+any connection because the API URL shape is incorrect. An explicit validation
+diagnostic identified both misconfigured variables without logging their values
+or any credentials. The earlier missing-variable result is historical.
 
-Once a separate project is configured, the same preflight uses verified TLS and
+A separate Python HTTPS diagnostic used only the exact user-confirmed staging
+origin and keys whose reference/roles matched; it made no database or Auth
+mutations. Auth settings report email signup enabled with confirmation required.
+Service-role REST metadata exposed no commerce tables and no PIN-recovery,
+question-lookup or reset-PIN RPC candidates. Direct database catalog state is
+still unverified. Evidence is outside Git in
+`/workspace/commerce-validation-artifacts/pr3-followup/`:
+`staging-preflight.log`, `staging-read-only-diagnosis.json` and
+`staging-database-network-diagnosis.json`.
+
+### Correct the two secure settings
+
+In the cloud environment settings, replace only these two values; preserve the
+existing matching reference/keys and never paste database passwords into chat:
+
+```text
+COMMERCE_STAGING_SUPABASE_URL=https://gylicwwrmpqomregevqe.supabase.co
+COMMERCE_STAGING_DATABASE_URL=<actual staging PostgreSQL connection URI>
+```
+
+For the database URI, open this staging project's **Connect → Connection String
+→ URI**. Copy either the Direct connection URI or, if direct connectivity is
+unavailable, the **Session pooler URI on port 5432**. Replace its password
+placeholder with the staging database password, URL-encoding special characters.
+The expected shapes are templates, not usable credentials:
+
+```text
+postgresql://postgres:<URL-encoded-staging-password>@db.gylicwwrmpqomregevqe.supabase.co:5432/postgres?sslmode=verify-full
+postgresql://postgres.gylicwwrmpqomregevqe:<URL-encoded-staging-password>@<exact-session-pooler-host>:5432/postgres?sslmode=verify-full
+```
+
+Do not use the Supabase API URL, dashboard URL, anon key, service-role key or
+transaction pooler port 6543 as the database connection. The exact session-pooler
+hostname must come from **Connect**; do not guess its region or allow all poolers.
+The saved cloud network draft includes the staging API and direct database
+hostnames. A session-pooler hostname, if used, needs its own exact allowlist entry.
+Draft persistence does not prove runtime network access or PostgreSQL TCP support.
+Save/publish the corrected cloud configuration, then rerun the preflight; do not
+bypass a failed guard to apply SQL.
+
+Once the settings are corrected, the same preflight uses verified TLS and
 an explicit database connection. It opens a read-only transaction, checks database
 identity/version and the nine commerce table names/RLS-enabled flags, rolls back
 the read-only transaction, then checks Auth settings reachability and PostgREST
@@ -61,15 +116,39 @@ RPC, apply SQL or create/delete test accounts. It accepts no mutation flags. Its
 output always states `hostedWorkflowTestsCompleted: false`; table/RLS presence
 does not establish correct policy behavior.
 
+## Pending migration identity and effects
+
+The unchanged installation file is
+[`20261022160000_commerce_foundation.sql`](../../supabase/migrations/20261022160000_commerce_foundation.sql),
+SHA-256 `dd2882f6329808783b1d4d97c4264f59989b7e834753aa06efe46d63855db1ca`.
+[migration-review.md](migration-review.md) explains every new column and object:
+nine tables/103 columns, twelve functions, six explicit plus nineteen
+constraint-backed indexes, sixteen foreign keys and fifteen policies. There is
+no custom `CREATE TRIGGER`; FK internal triggers include additions on
+`auth.users`. The only top-level data insert creates the public `commerce-media`
+image bucket. The migration does not rewrite existing restaurant, delivery,
+resort, wallet, payment, customer or order rows or invoke cron/settlement jobs.
+
+Shared-object compatibility still requires staging: seven policies are added to
+`storage.objects`, and five Auth foreign keys can prevent future account hard
+deletion while referenced commerce history exists. Local fixture preservation
+does not certify hosted policies/hooks or real legacy workflows. See
+[preservation-review.md](preservation-review.md) and
+[backup-recovery.md](backup-recovery.md) for verification queries, backup scope
+and rollback limits. No backup or restore rehearsal is claimed completed here.
+For the current configuration diagnosis and documentation correction:
+**No SQL migration required.** The existing commerce installation remains pending.
+
 ## Prepare and install only on a separate development project
 
-These are future steps; they were not executed here.
+These installation steps remain **unexecuted**. A working staging database
+connection, target verification, backup and inventory are prerequisites.
 
-1. Create/select a separate Supabase development project under an account and
-   plan selected by the user. Do not create a paid resource automatically. Verify
-   its dashboard reference differs from `wispidcdmunqzahjacws`, and securely add
-   the five staging variables above. Keep service/database secrets server-only.
-   Use `sslmode=verify-full` in the database URL. If certificate validation needs
+1. Select the existing staging project `gylicwwrmpqomregevqe` in the Supabase
+   dashboard and independently confirm its role as development, its database
+   connection details, and its separation from production. Correct the two
+   secure settings above. Keep service/database secrets server-only and use
+   `sslmode=verify-full` in the database URL. If certificate validation needs
    an explicit Supabase CA, install the project's documented CA securely and use
    the appropriate trust-store settings; never disable certificate verification.
 2. Run the read-only preflight before installing anything:

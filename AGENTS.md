@@ -40,9 +40,11 @@ Keep these requirements outside the generated Next.js instruction block above.
 ## Client Websites release hold
 
 The user requires a separate hosted Supabase staging migration/workflow test and
-a Vercel Preview using staging credentials before release review. No staging
-project currently exists; local PostgreSQL/adapter tests do not satisfy those
-hosted checks. The earlier staged Vercel artifact targets production and must not
+a Vercel Preview using staging credentials before release review. Staging project
+`gylicwwrmpqomregevqe` now exists, but its supplied API/database URL settings must
+be corrected before the guarded migration and hosted workflow checks can run.
+Local PostgreSQL/adapter tests do not satisfy those hosted checks. The earlier
+staged Vercel artifact targets production and must not
 be used for test writes. Do not apply production SQL, merge to main, or create or
 promote a production deployment without separate explicit user approval after
 reviewing the final results. See `docs/commerce/release-review.md` for evidence,

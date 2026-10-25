@@ -1,10 +1,12 @@
 # Client Websites: review before any production release
 
-The newer [complete application test report](application-testing.md) adds the
-delivery returns compatibility fix, 50 unit tests, 82 local SQL assertions and
-expanded Saree/Grocery browser evidence. It also confirms inherited lint failures
-and missing legacy PIN-recovery/billing endpoints. Historical counts below are
-retained as the earlier review record; production release remains on hold.
+The latest [PR #3 follow-up report](pr3-followup-report.md) records 82 unit tests,
+82 local SQL assertions, a passing build, 64 screenshots, repaired billing
+navigation and explicit PIN unavailability. Staging now exists and its Auth/REST
+metadata is reachable, but incorrect API/database URL settings block migration
+and hosted workflows. Inherited repository lint also fails. Historical counts
+and the earlier no-staging status below are retained as the 22 October review
+record; use the follow-up for current status. Production release remains on hold.
 
 Review date: 2026-10-22. **Production SQL, merges into main and further production
 deployments/promotions are on hold.** The user explicitly requires separate

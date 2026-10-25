@@ -1,5 +1,11 @@
 # Existing Digital Dine-In regression review
 
+Current results are in the [25 October PR #3 follow-up](pr3-followup-report.md):
+82 unit tests, 82 local SQL assertions, build and 64 screenshots passed. The old
+billing entry point is repaired, PIN recovery reports explicit unavailability,
+and separate staging exists but its connection settings require correction.
+Hosted legacy/provider workflows remain unrun; this matrix records their scope.
+
 This report addresses the existing-application checks requested after the
 commerce implementation. It distinguishes source preservation, isolated handler
 tests and actual browser/database workflow evidence. Production SQL, production
@@ -29,12 +35,13 @@ results in earlier review documents must not be represented as a new hosted run.
 
 ## Configured lint: actual failure and baseline comparison
 
-The repository's configured `npm run lint` **fails** with 169 errors and 180
+The repository's configured `npm run lint` **fails** with 169 errors and 179
 warnings. Running the same installed ESLint against baseline `4d036fb` produced
 169 errors and 177 warnings. After normalizing relative filename, rule and error
 message, there were **zero introduced error differences**. The three additional
 warnings are `@next/next/no-img-element` recommendations for tenant-provided
-storefront images.
+storefront images; replacing obsolete billing code also removed one existing
+unused-variable warning. See [lint-review.md](lint-review.md) for all findings.
 
 The failing whole-repository lint result must remain visible. Passing scoped
 lint for changed files and a successful Next.js build do not convert it to a
@@ -73,14 +80,15 @@ smokes, when recorded separately, cover only those specific assertions.
 | Seasonal advertisements | `/api/delivery/seasonal-ads`, `/api/admin/delivery-seasonal-ads`, `/api/admin/delivery-seasonal-ads/upload`; `/admin/delivery-advertisements`; `delivery_seasonal_campaigns` | Source unchanged. Verify authorized create/edit/media upload, start/end windows, store scoping, inactive/expired campaigns and mobile placement with staged fixtures. No real legacy campaign lifecycle is established by the new commerce banner settings. |
 | Custom delivery boundaries | `app/delivery/page.jsx` and `DeliveryStoreExperience`; `DeliveryLocationMap`; `delivery_polygon_eligible_restaurant_ids` and coverage RPCs | Source retains fail-closed polygon verification in addition to radius, plan, approval and wallet checks. Test inside/outside/on-edge locations, invalid coordinates, absent coverage and RPC failure. No map/provider or hosted polygon-RPC compatibility pass is claimed. |
 
-## Bugs found, one minimal correction, and unresolved source gaps
+## Bugs found and follow-up corrections
 
-The final running Next.js checks confirmed singular/plural return GET/POST invalid
-input responses are HTTP 400; missing PIN recovery GET and old subscription-order
-POST respond HTTP 404. These are actual localhost observations under synthetic
-development configuration. The missing endpoints are findings, not passing
-functional journeys. See [application-testing.md](application-testing.md) for the
-50-test/82-SQL-assertion result, build, screenshots and overall release verdict.
+The 22 October run found two HTTP 404 routes. The final follow-up running Next.js
+checks confirm return/returns validation HTTP 400, PIN malformed input HTTP 400
+and otherwise explicit unavailable HTTP 503, retired subscription-order HTTP 410
+and billing bookmarks HTTP 307 to current checkout. These localhost assertions do
+not establish successful PIN reset or provider integration. Use the
+[current report](pr3-followup-report.md) for 82 unit tests, 82 SQL assertions,
+build, 64 screenshots and release blockers.
 
 ### Delivery customer returns URL — fixed
 
@@ -110,26 +118,28 @@ privacy headers and POST case creation with the expected scoped RPC arguments.
 No service credentials or live RPCs are read/called. Actual route discovery and
 HTTP invalid-input smoke checks are a separate final browser-run requirement.
 
-### Delivery PIN recovery — unresolved baseline source gap
+### Delivery PIN recovery — error handler restored, reset still unresolved
 
 `app/delivery/forgot-pin/page.jsx` calls GET/POST
-`/api/delivery/customer/forgot-pin`; no matching route or Next.js rewrite exists.
-The legacy login links to that page. This is a confirmed repository route gap,
-also present at baseline. Localhost HTTP status evidence should accompany the
-final report; source inspection alone is not a completed recovery workflow test.
-No reset handler was invented without a verified security/retention/session
-invalidation contract and hosted staging tests.
+`/api/delivery/customer/forgot-pin`; the legacy login links to that page. The
+new validated handler replaces the inherited 404 with generic no-store HTTP 503
+for valid accounts, without account lookup, PIN mutation or session changes.
+The UI now shows its unavailable message; five unit tests and actual desktop/
+mobile HTTP/browser assertions pass. No authoritative reset RPC/schema is
+verified, including through the reachable staging REST metadata. Successful
+recovery remains unimplemented; [pin-recovery-review.md](pin-recovery-review.md)
+records the required security/session contract and acceptance checks.
 
-### Old subscription billing page — unresolved baseline source gap
+### Old subscription billing page — repaired through current checkout
 
-`app/dashboard/[id]/billing/page.jsx` POSTs `/api/create-subscription-order`, which
-has no matching handler/rewrite, also at baseline. The separate primary
-`/subscribe/[id]` flow calls the present `/api/create-order` handler; this does not
-make the older billing URL valid. Confirm whether that old page remains an
-intended entry point and verify its localhost failure path. Do not blindly alias
-financial endpoints: request schemas, server pricing, authorization and provider
-verification must be checked first. No provider call or payment remapping was
-made by this review.
+`app/dashboard/[id]/billing/page.jsx` used obsolete prices, a nonexistent endpoint
+and a direct client plan update. No active caller depends on that component or
+API. Bookmarks now redirect to the supported `/subscribe/[id]` flow with a current
+plan allowlist, preserving server pricing/authentication/payment verification.
+The old API returns explicit 410 without provider/data access. Ten focused tests
+and real HTTP redirect/retired-handler checks pass. Seventeen additional actual-
+handler tests verify subscription and wallet boundaries using synthetic SDK/SQL
+dependencies; provider sandbox and real wallet settlement remain unrun.
 
 ## Minimal isolated legacy browser smoke plan
 
@@ -156,9 +166,10 @@ push/email services, external schedulers and live databases unreachable.
    address, wallet and provider-verification APIs without creating any transaction.
    Do not send a valid settlement, top-up, refund or payment request without
    deliberately isolated fixtures and test-mode credentials.
-5. Verify the two missing endpoint paths return a real localhost failure rather
-   than silently skipping them; retain response status and originating page in
-   the report. Keep missing security/provider contracts marked unresolved.
+5. Verify the corrected legacy paths: billing redirect 307 to supported checkout,
+   retired order API 410, malformed PIN recovery 400 and valid recovery unavailable
+   503. Retain the originating page, responses and screenshots. Keep successful
+   PIN reset and provider workflows marked unresolved.
 6. Load the existing Admin overview and at least one legacy read-only panel after
    actual local Admin login. Distinguish data fixture/read-state rendering from
    successful legacy mutations. Verify unauthorized dashboard access separately.
@@ -168,5 +179,5 @@ workflows in the matrix still require a compatible development schema/accounts,
 provider test configuration and known expected data. A build, unchanged source,
 empty mocked dataset or successful new-commerce checkout cannot replace those
 checks. The current evidence does not support an overall **PASS** for every
-existing feature; repository-wide lint, unresolved baseline route gaps and
+existing feature; repository-wide lint, unresolved PIN recovery and
 unavailable hosted/provider verification must remain visible in the final verdict.
