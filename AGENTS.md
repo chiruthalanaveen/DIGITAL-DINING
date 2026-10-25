@@ -37,18 +37,27 @@ For every update:
 
 Keep these requirements outside the generated Next.js instruction block above.
 
-## Client Websites release hold
+## Client Websites main-project scope and release hold
 
-The user requires a separate hosted Supabase staging migration/workflow test and
-a Vercel Preview using staging credentials before release review. Staging project
-`gylicwwrmpqomregevqe` now exists, and its connection settings now validate.
-Direct PostgreSQL DNS and the configured proxy block database access before
-authentication, so the migration
-and hosted commerce RLS/workflow checks remain unrun. Real staging Auth session
-checks passed; they do not establish tenant isolation.
-Local PostgreSQL/adapter tests do not satisfy those hosted checks. The earlier
-staged Vercel artifact targets production and must not
-be used for test writes. Do not apply production SQL, merge to main, or create or
-promote a production deployment without separate explicit user approval after
-reviewing the final results. See `docs/commerce/release-review.md` for evidence,
-remaining risks and exact migration identity.
+On 26 October 2026 the user withdrew staging and selected the existing main
+Supabase project `wispidcdmunqzahjacws` used by the `table-pay` application. In
+direct response to the explicit migration-approval question, the user replied
+"continue". The reviewed `20261022160000_commerce_foundation.sql` is authorized
+for that exact main project only after backup and compatibility checks succeed.
+Do not ask for the same approval again. This does not authorize other migrations,
+a main-branch merge, production deployment/promotion or live payments.
+
+No production SQL has been executed by this work. Main API metadata is reachable;
+main SQL credentials, a verified SQL route and a usable backup are unavailable.
+`COMMERCE_MAIN_DATABASE_URL` is a new name-only environment requirement awaiting
+secure entry/publication. Do not put main credentials in `COMMERCE_STAGING_*`,
+bypass the staging runner's production rejection, or run destructive local test
+fixtures on any hosted database. Do not create live test orders/users or alter
+wallet/payment/customer data as a substitute for compatibility verification.
+
+Stop staging work and retain its historical evidence/private fixtures without
+mutating them. Local development checks may use only their isolated fixtures.
+Follow `docs/commerce/main-project-installation.md` for the pending main-only
+backup, read-only inventory, exact migration and recovery steps. Retain the
+Vercel branch deployment guard and PR #3 draft status. Existing financial data,
+RLS, histories and cron jobs must be preserved.

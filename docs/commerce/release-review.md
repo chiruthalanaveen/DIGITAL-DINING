@@ -1,5 +1,12 @@
 # Client Websites: review before any production release
 
+**Current scope — 26 October:** the user selected main project only and approved
+the reviewed foundation migration after backup/compatibility checks. Staging is
+stopped. Main SQL access and a usable backup remain missing; no production SQL
+was executed. Use [main-project-installation.md](main-project-installation.md)
+for current steps. Prior staging requirements/results below are historical;
+deployment, merging and live payments remain on hold.
+
 The latest [PR #3 follow-up report](pr3-followup-report.md) records 82 unit tests,
 88 local SQL assertions, a passing build, 64 retained screenshots, repaired billing
 navigation and explicit PIN unavailability. Staging configuration now validates

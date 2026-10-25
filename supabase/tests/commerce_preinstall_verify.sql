@@ -1,6 +1,7 @@
 -- READ-ONLY pre-install inventory. No objects, roles or data are changed.
--- Verify staging gylicwwrmpqomregevqe in the dashboard or guarded connection
--- before running. Database name postgres alone does not identify a project.
+-- Verify the explicitly selected project in its dashboard or guarded connection.
+-- Main-project use requires its recorded approval and completed backup checks.
+-- Database name postgres alone does not identify a project.
 -- Keep output private: definitions and cron commands may contain credentials.
 begin transaction read only;
 set local statement_timeout = '15s';

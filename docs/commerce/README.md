@@ -1,5 +1,12 @@
 # Client Websites — Phase 1
 
+**Current scope — 26 October:** the user selected main project only and approved
+the reviewed foundation migration after backup/compatibility checks. Staging is
+stopped. Main SQL access and a usable backup remain missing; no production SQL
+was executed. Use [main-project-installation.md](main-project-installation.md)
+for current steps. Prior staging requirements/results below are historical;
+deployment, merging and live payments remain on hold.
+
 This additive module provides owner applications and approval, independently
 branded tenant catalogs, an owner workspace, image uploads, optional tracked
 inventory, customer accounts and COD orders. It does not charge subscriptions or
@@ -13,6 +20,9 @@ unit tests, 88 local PostgreSQL assertions, 19 real staging Auth checks and a
 passing build; 64 screenshots remain from the unchanged application run. Billing bookmarks use current checkout; PIN recovery now reports
 explicit unavailability. Inherited repository lint and hosted verification remain
 release blockers. Staging settings validate; PostgreSQL network access is blocked.
+
+The following development workflow is retained for reference; main-only
+execution must follow [main-project-installation.md](main-project-installation.md).
 
 Start with [release-review.md](release-review.md) for the full SQL review,
 preservation and backup analysis, latest test evidence, environment requirements

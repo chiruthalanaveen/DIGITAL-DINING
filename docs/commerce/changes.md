@@ -1,43 +1,34 @@
 # Exact changed-file list
 
 Complete PR #3 diff against GitHub main `7385253c5381fdf4998fddf8f58e84b783aabba1`.
-A means added; M means modified. No files are deleted or renamed. Includes the
-maintenance prerequisite, Phase 1 commerce implementation, review/testing work,
-returns compatibility and legacy billing/PIN route handling.
+A means added; M means modified. No files are deleted or renamed.
 
-## Latest staging verification update versus 13ba400: 14 files
+## Latest main-project scope update versus e13e1eb: 7 files
 
-Real staging Auth/session checks now pass, while the corrected PostgreSQL target
-is blocked by DNS/proxy networking and commerce schema exposure is missing.
-A read-only privilege inspection now requires all four service-role grants;
-six negative/recovery regression assertions pass. A checked-in read-only
-pre-install inventory and manual staging SQL Editor/backup instructions make
-remaining installation work reviewable. Application runtime code is unchanged.
-No SQL migration required for this verification correction; the existing
-foundation migration remains byte-for-byte unchanged and uninstalled on hosted
-staging/production by this work. Four new synthetic staging Auth fixtures were
-retained; no existing users or production data were deleted.
+On 26 October 2026 the user selected the existing main Supabase project only and
+approved the reviewed foundation migration conditional on backup/compatibility
+checks. Current instructions retain that approval without asking again, stop
+staging and identify missing secure main SQL access and backup prerequisites.
+A new main-only runbook contains prospective installation/verification commands
+and rollback limits. Runtime application code and the foundation migration are
+unchanged. The pre-install SQL's comments now permit the explicitly approved
+target; its read-only queries are unchanged. A fresh build passed.
 
-See [pr3-followup-report.md](pr3-followup-report.md) for exact commands/results,
-[staging-verification.md](staging-verification.md) for remaining steps, and
-[lint-review.md](lint-review.md) for inherited versus introduced findings.
+No SQL migration required for this documentation/comment update. No production
+SQL, business-data write, backup execution, deployment, merge or payment occurred.
+The foundation installation remains pending. See
+[main-project-installation.md](main-project-installation.md) for current scope and
+[pr3-followup-report.md](pr3-followup-report.md) for historical test evidence.
 
 - **M** [AGENTS.md](../../AGENTS.md)
 - **M** [docs/commerce/README.md](../../docs/commerce/README.md)
-- **M** [docs/commerce/application-regression-report.md](../../docs/commerce/application-regression-report.md)
-- **M** [docs/commerce/application-testing.md](../../docs/commerce/application-testing.md)
-- **M** [docs/commerce/backup-recovery.md](../../docs/commerce/backup-recovery.md)
 - **M** [docs/commerce/changes.md](../../docs/commerce/changes.md)
+- **A** [docs/commerce/main-project-installation.md](../../docs/commerce/main-project-installation.md)
 - **M** [docs/commerce/pr3-followup-report.md](../../docs/commerce/pr3-followup-report.md)
-- **M** [docs/commerce/preview-and-environment.md](../../docs/commerce/preview-and-environment.md)
 - **M** [docs/commerce/release-review.md](../../docs/commerce/release-review.md)
-- **M** [docs/commerce/staging-verification.md](../../docs/commerce/staging-verification.md)
-- **M** [docs/commerce/testing.md](../../docs/commerce/testing.md)
-- **M** [scripts/test-commerce-db.mjs](../../scripts/test-commerce-db.mjs)
-- **A** [supabase/tests/commerce_preinstall_verify.sql](../../supabase/tests/commerce_preinstall_verify.sql)
-- **M** [supabase/tests/commerce_verify.sql](../../supabase/tests/commerce_verify.sql)
+- **M** [supabase/tests/commerce_preinstall_verify.sql](../../supabase/tests/commerce_preinstall_verify.sql)
 
-## Complete PR: 85 files
+## Complete PR: 86 files
 
 - **M** [AGENTS.md](../../AGENTS.md)
 - **M** [README.md](../../README.md)
@@ -87,6 +78,7 @@ See [pr3-followup-report.md](pr3-followup-report.md) for exact commands/results,
 - **A** [docs/commerce/changes.md](../../docs/commerce/changes.md)
 - **A** [docs/commerce/database.md](../../docs/commerce/database.md)
 - **A** [docs/commerce/lint-review.md](../../docs/commerce/lint-review.md)
+- **A** [docs/commerce/main-project-installation.md](../../docs/commerce/main-project-installation.md)
 - **A** [docs/commerce/migration-review.md](../../docs/commerce/migration-review.md)
 - **A** [docs/commerce/pin-recovery-review.md](../../docs/commerce/pin-recovery-review.md)
 - **A** [docs/commerce/pr3-followup-report.md](../../docs/commerce/pr3-followup-report.md)

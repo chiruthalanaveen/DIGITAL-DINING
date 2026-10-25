@@ -1,5 +1,12 @@
 # PR #3 follow-up verification — 25 October 2026
 
+**Current scope — 26 October:** the user selected main project only and approved
+the reviewed foundation migration after backup/compatibility checks. Staging is
+stopped. Main SQL access and a usable backup remain missing; no production SQL
+was executed. Use [main-project-installation.md](main-project-installation.md)
+for current steps. Prior staging requirements/results below are historical;
+deployment, merging and live payments remain on hold.
+
 Branch: `feature/client-websites-phase1`. Draft PR:
 <https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3>.
 
