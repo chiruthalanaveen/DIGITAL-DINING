@@ -8,22 +8,25 @@ The legacy billing entry point is repaired, missing PIN recovery now fails
 explicitly and safely, and the complete local checks pass. Successful PIN reset,
 hosted migration/RLS/workflows and provider integration remain unverified;
 repository-wide lint still fails. No production database connection, SQL, live
-payment, production deployment or merge was performed by this follow-up.
+payment, production deployment or merge was performed by this follow-up. Four
+new tagged Auth fixture accounts were created only in staging; no existing users
+were deleted. The latest application code remains unchanged from `13ba400`.
 
 ## Actual results
 
 | Check | Result and evidence boundary |
 | --- | --- |
 | `npm test` | **PASS: 82/82**, zero failures/skips. 21 commerce API, 14 maintenance, eight staging guards, seven returns, five PIN availability/privacy, ten subscription-route/contracts and 17 legacy payment/wallet guard tests. |
-| `npm run build` | **PASS**, fresh optimized Next.js build and TypeScript checks using clean synthetic development configuration. Executed by the browser runner, not with production or incorrectly configured staging values. |
-| PostgreSQL migration/RLS/concurrency/reapplication | **PASS: 82 assertions** on isolated loopback PostgreSQL 18.4. These are SQL assertions, distinct from the 82 Node tests. |
-| Actual Next.js API and Chromium integration | **PASS**, owner onboarding/admin approval, Saree/Grocery tenant management, products/media/inventory, cart, COD pickup/delivery, owner receipt/status and customer history. Synthetic Auth/REST/Storage adapter over actual PostgreSQL; not hosted Supabase Auth. |
-| Desktop/mobile | **PASS**, 1440×1000 and 375×812; **64 screenshots**, 32 pairs. Includes the PIN form/unavailable state. No browser page errors or horizontal document overflow. PIN unavailable and Grocery confirmation mobile screenshots were visually inspected. |
-| Scoped ESLint | **PASS**, zero errors; three native-image recommendation warnings. |
+| `npm run build` | **PASS**, rerun with clean synthetic development configuration, optimized Next.js build and TypeScript checks. Production configuration was not used. |
+| PostgreSQL migration/RLS/concurrency/reapplication | **PASS: 88 assertions** on isolated loopback PostgreSQL 18.4. These are SQL assertions, distinct from the 82 Node tests. |
+| Actual Next.js API and Chromium integration | **PASS from the prior `13ba400` application run**, owner onboarding/admin approval, Saree/Grocery tenant management, products/media/inventory, cart, COD pickup/delivery, owner receipt/status and customer history. Synthetic Auth/REST/Storage adapter over actual PostgreSQL; not hosted Supabase Auth. |
+| Desktop/mobile | **PASS from that same prior application run**, 1440×1000 and 375×812; **64 screenshots**, 32 pairs. Includes the PIN form/unavailable state. No browser page errors or horizontal document overflow. PIN unavailable and Grocery confirmation mobile screenshots were visually inspected. |
+| Scoped ESLint | **PASS**, zero errors/warnings for the current verification scripts. The earlier full commerce scope retains three image recommendation warnings. |
 | Full `npm run lint` | **FAIL**, 169 errors and 179 warnings. All 169 errors match the pre-commerce baseline; **zero introduced errors**. |
-| Staging Auth settings / service-role REST metadata | **PASS: HTTP 200** using independently verified staging host and matching staging keys, read-only. No user/session/mutation or RLS workflow is implied. |
-| Guarded staging database preflight | **BLOCKED**, exits 1 before DB connection: two configured URLs are incorrect. |
-| Hosted migration, real Auth sessions/RLS, Storage and workflows | **NOT RUN**, database connection configuration unavailable. |
+| Real hosted staging Auth | **PASS: 19 checks**, zero failures; includes four synthetic fixture creations and two settings checks. Real owner/customer password sessions, identity, refresh, logout and denial paths were tested. Email verification/recovery UI and tenant RLS were not. |
+| Staging Auth settings / service-role REST metadata | **PASS: HTTP 200** using the verified staging host and matching staging keys. |
+| Guarded staging database preflight | **BLOCKED**, configuration validation passes; DNS/connection fails `EAI_AGAIN`. Proxy CONNECT to staging DB port 5432 separately returns 403 before PostgreSQL/TLS/authentication. |
+| Hosted migration, tenant RLS, Storage and commerce workflows | **NOT RUN**; database network path unavailable and commerce table/catalog RPC return missing-schema exposure 404 errors. |
 | Existing restaurant/delivery/resort/provider integration | **PARTIAL**, source review plus specified offline guard/returns/maintenance tests only. Compatible legacy staging fixtures and provider sandbox credentials are unavailable. |
 | Staging-backed Vercel Preview | **NOT CREATED / NOT TESTED**, pending validated database and migration. No working Preview URL is claimed. |
 
@@ -93,44 +96,53 @@ assignment finding. No commerce error required a speculative refactor. Rules
 were not disabled, tests were not weakened and unrelated legacy hooks/features
 were not rewritten merely to hide the baseline lint failure.
 
-## Staging: corrected evidence and exact blocker
+## Staging: valid settings, real authentication and exact blocker
 
-Separate staging **now exists** at reference `gylicwwrmpqomregevqe`. Both supplied
-JWT keys identify that reference and their intended anon/service roles. Read-only
-HTTPS checks against the exact independently known staging host succeeded:
-Auth email signup is enabled with email confirmation required; service-role
-REST/OpenAPI metadata is reachable. No commerce tables are exposed there.
-No real signup, email verification, password recovery or owner/customer JWT/RLS
-test was performed by those two metadata requests.
+The staging reference is `gylicwwrmpqomregevqe`. Both earlier URL mistakes have
+been corrected: `validateStagingConfig(process.env)` now passes, the API host is
+`gylicwwrmpqomregevqe.supabase.co`, and the direct database host is
+`db.gylicwwrmpqomregevqe.supabase.co:5432`, with certificate verification enabled.
+Both JWT keys identify staging and authenticate successfully over HTTPS.
+The production reference remains explicitly forbidden, with no fallback to
+existing application credentials.
 
-The strict configured preflight rejects the supplied values:
+**Real Auth: 19 checks passed, zero failures.** These include two settings checks,
+four uniquely tagged synthetic fixture creations, confirmed Saree/Grocery-owner
+and customer password sign-in/token identity, rejection of an unverified owner,
+wrong password, missing/forged JWT, actual customer refresh, local logout and
+revoked-refresh rejection. Confirmed fixtures were prepared through staging Auth
+Admin; actual email-link verification/recovery and browser signup are not claimed.
+Four users are retained for subsequent hosted RLS/workflow tests. Generated
+passwords/sessions are private, mode 0600 outside Git and evidence archives;
+existing users were not deleted. The customer must sign in again after logout.
 
-| Secure setting | Required correction |
-| --- | --- |
-| `COMMERCE_STAGING_SUPABASE_URL` | Set exactly `https://gylicwwrmpqomregevqe.supabase.co`. It currently identifies localhost port 3000. |
-| `COMMERCE_STAGING_DATABASE_URL` | Replace its HTTPS API URL with the staging PostgreSQL URI from **Connect → Connection String → URI**, including the staging database password and TLS. |
+**Database network: blocked before authentication.** Direct DNS lookup and
+`pg.Client.connect()` both return `EAI_AGAIN/getaddrinfo`. An independent standard
+CONNECT handshake through the configured proxy to the exact staging host on
+port 5432 returns **HTTP 403** before any PostgreSQL bytes or credentials. No
+specific rejection reason was provided. The saved network policy already includes
+both exact staging API and database hosts. These observations do not establish
+an incorrect database password, a TLS failure or a proven IPv6 cause.
 
-Keep the existing matching anon/service keys and project reference. Enter
-credentials securely in environment settings, never chat, Git or command logs.
-Do not overwrite the existing production application variables with staging
-values. A direct URI has this shape; it is a template, not a working credential:
+The actual hosted endpoints separately return:
 
-```text
-postgresql://postgres:<URL-ENCODED-STAGING-PASSWORD>@db.gylicwwrmpqomregevqe.supabase.co:5432/postgres?sslmode=verify-full
-```
+- `GET /rest/v1/commerce_products?select=id&limit=1`: **404 / PGRST205**.
+- Read-only `POST /rest/v1/rpc/commerce_public_catalog`: **404 / PGRST202**.
 
-Direct-host DNS resolution separately failed **EAI_AGAIN (-3)** in this runtime.
-No TCP, TLS, authentication or SQL followed, so this does not prove a password,
-IPv6 or PostgreSQL server defect. If direct connectivity remains unavailable,
-use the exact **Session pooler URI on port 5432** from the staging Connect panel;
-its username must identify `postgres.gylicwwrmpqomregevqe`. Its actual pooler
-hostname may need an allowlist addition. Do not guess a regional hostname or
-disable TLS verification.
+These are missing-schema-exposure blockers, not passing product or tenant RLS
+tests. No hosted migration, commerce row, Storage object or payment was created.
 
-Then run `node scripts/test-commerce-staging.mjs` again. Only after it passes,
-complete the staging backup/inventory, migration and actual Auth/tenant workflow
-sequence in [staging-verification.md](staging-verification.md). The guard never
-falls back to production and explicitly forbids `wispidcdmunqzahjacws`.
+Use the alternative staging-only steps in
+[staging-verification.md](staging-verification.md): take/review a staging backup
+and read-only prerequisite inventory, then use the staging SQL Editor or a
+trusted machine/CI with PostgreSQL access to apply the full reviewed migration
+and run its verification queries. The SQL Editor must visibly identify this
+staging reference. Do not run local bootstrap/destructive test fixtures there.
+An exact Session pooler URI on 5432 from this project's Connect panel can also
+be supplied securely and its actual hostname allowlisted before retesting; that
+route has not been demonstrated and must not be guessed. Keep TLS validation.
+After schema installation is verified, the HTTPS Auth/REST path can support real
+Saree/Grocery RLS, product, onboarding and COD workflow tests from this workspace.
 
 ## Pending migration: exact effect and installation boundary
 
@@ -165,6 +177,28 @@ SQL was executed in this follow-up. Exact staging application/verification
 commands are in [staging-verification.md](staging-verification.md), with read-only
 queries in [commerce_verify.sql](../../supabase/tests/commerce_verify.sql).
 
+### Fixed: release verification required ANY service privilege
+
+The read-only `commerce_verify.sql` inspection used a comma-separated privilege
+list in `has_table_privilege`. PostgreSQL interprets that as **ANY** listed grant,
+so missing INSERT, UPDATE or DELETE could be hidden by an existing SELECT grant.
+`service_access` now conjoins all four individual privileges. The authenticated
+direct-write warning intentionally retains ANY semantics, since any forbidden
+write grant is a finding.
+
+Six new real local assertions execute the complete actual verification SQL,
+revoke each privilege independently on one isolated fixture table, require that
+table alone to become unhealthy, restore its grant in `finally`, and confirm all
+nine reports recover. All 88 SQL assertions passed. The checks never revoke a
+hosted privilege and the read-only verification SQL changes no database object.
+
+The prepared [pre-install inventory](../../supabase/tests/commerce_preinstall_verify.sql)
+is also checked into this PR for the manual staging route. Its complete read-only
+SQL executed successfully on the installed local fixture and detected existing
+commerce-name collisions. It has not run on hosted PostgreSQL. This inspection
+checks required roles/columns/ownership, shared policies/triggers and proposed
+name/bucket conflicts; its output is not a restorable backup.
+
 Use [backup-recovery.md](backup-recovery.md) for database/Auth/Storage metadata,
 separate object-byte backups, managed-backup/PITR checks and a restore rehearsal.
 No hosted backup or recovery rehearsal is claimed. Application rollback should
@@ -195,7 +229,9 @@ or replaying wallet/payment transactions is not a data-preserving rollback.
 
 ## Commands and evidence
 
-From `/workspace/DIGITAL-DINING`, executed commands included:
+The prior application run commands remain below. In this continuation, fresh
+`npm test`, `npm run build`, full/scoped lint and the 88-assertion database suite
+completed. Real hosted Auth/presence checks were also executed:
 
 ```sh
 node --test tests/delivery-pin-recovery.test.mjs tests/subscription-billing.test.mjs
@@ -204,6 +240,8 @@ node --test tests/commerce-staging-guard.test.mjs
 npm test
 npm run lint
 node scripts/test-commerce-staging.mjs
+python /workspace/commerce-validation-artifacts/staging-current/test-real-auth.py
+COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55438/commerce_test npm run test:commerce:db
 COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55438/commerce_test COMMERCE_BROWSER_ARTIFACTS=/workspace/commerce-validation-artifacts/pr3-followup npm run test:commerce:browser
 git diff --check
 ```
@@ -212,7 +250,8 @@ The browser runner internally executes `node scripts/test-commerce-db.mjs`,
 **`npm run build`**, and
 `npm run start -- --hostname 127.0.0.1 --port 4320`, using
 `developmentEnvironment()` from the fixture helper. No skip-build flag was used
-for this final run. The same clean environment strips existing provider and
+for that prior application run; the browser was not rerun for this verification-only
+change. The same clean environment strips existing provider and
 Supabase credentials, replaces them with loopback/synthetic values, and blocks
 external browser requests including the Razorpay script.
 
@@ -221,10 +260,15 @@ in [lint-review.md](lint-review.md). Initial four subscription-test harness
 failures were corrected with the required transpiler interop option; the final
 aggregate is the complete 82-pass run. No application assertion was skipped to
 obtain it. Dependencies/lockfile were unchanged and `npm ci` was not repeated.
+The one-time Auth command refuses to overwrite an existing private fixture
+record; preserve/reuse its tagged accounts rather than rerunning account creation.
 
 Logs, `results.json`, the sanitized staging diagnosis, Vercel read-only metadata,
 `screenshots.md` and 64 PNGs are under
-`/workspace/commerce-validation-artifacts/pr3-followup/`, outside Git. The exact
+`/workspace/commerce-validation-artifacts/pr3-followup/`, outside Git. Current
+build/unit/database/lint logs and sanitized hosted Auth/network/presence
+results are separately under `/workspace/commerce-validation-artifacts/staging-current/`.
+The private generated Auth fixture file is excluded from all archives. The exact
 changed-file list is [changes.md](changes.md). PR #3 is the review URL; a local
 loopback URL and an older production-connected artifact are not staging Preview
 evidence. GitHub main remains `7385253c5381fdf4998fddf8f58e84b783aabba1`;

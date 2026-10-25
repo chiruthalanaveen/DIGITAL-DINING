@@ -1,10 +1,10 @@
 # Complete application testing and bug-fix report
 
 **Historical 22 October run.** The [25 October PR #3 follow-up](pr3-followup-report.md)
-supersedes these counts and the two missing-route findings: 82 unit tests, 82 SQL
-assertions, build and 64 screenshots pass; billing redirects to current checkout,
-PIN recovery explicitly returns unavailable, and staging connection settings need
-correction. Repository lint still fails and hosted release checks remain blocked.
+supersedes these counts and the two missing-route findings: 82 unit tests, 88 SQL
+assertions, 19 real staging Auth checks and build pass; 64 earlier screenshots remain; billing redirects to current checkout,
+PIN recovery explicitly returns unavailable, and staging PostgreSQL network
+access blocks migration/tenant workflows. Repository lint still fails and hosted release checks remain blocked.
 
 Review date: 22 October 2026 (Asia/Kolkata). Branch:
 `feature/client-websites-phase1`; draft PR:

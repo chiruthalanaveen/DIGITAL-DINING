@@ -1,7 +1,8 @@
 # Phase 1 testing
 
 For the latest full application run, see [pr3-followup-report.md](pr3-followup-report.md):
-82 unit tests, 82 SQL assertions, a passing build, 64 browser screenshots,
+82 unit tests, 88 SQL assertions, 19 real staging Auth checks, a passing build,
+64 retained browser screenshots,
 billing-route repair, explicit PIN unavailability, inherited lint failures and
 the precise staging connection blockers. The earlier results below are historical.
 

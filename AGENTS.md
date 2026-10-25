@@ -41,8 +41,11 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 The user requires a separate hosted Supabase staging migration/workflow test and
 a Vercel Preview using staging credentials before release review. Staging project
-`gylicwwrmpqomregevqe` now exists, but its supplied API/database URL settings must
-be corrected before the guarded migration and hosted workflow checks can run.
+`gylicwwrmpqomregevqe` now exists, and its connection settings now validate.
+Direct PostgreSQL DNS and the configured proxy block database access before
+authentication, so the migration
+and hosted commerce RLS/workflow checks remain unrun. Real staging Auth session
+checks passed; they do not establish tenant isolation.
 Local PostgreSQL/adapter tests do not satisfy those hosted checks. The earlier
 staged Vercel artifact targets production and must not
 be used for test writes. Do not apply production SQL, merge to main, or create or

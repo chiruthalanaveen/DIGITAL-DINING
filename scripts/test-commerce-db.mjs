@@ -201,6 +201,43 @@ try {
   assert.deepEqual(afterReapplication.bucketRows, beforeReapplication.bucketRows, 'Migration rerun must not replace or reconfigure any existing bucket metadata.')
   await client.query(`SELECT commerce_test.check_true(true,'failed migration reapplication preserves commerce and legacy bucket metadata')`)
 
+  // Exercise the actual read-only release-verification SQL, not a duplicated
+  // expression: PostgreSQL treats comma-separated privilege lists as ANY, while
+  // a healthy service-role result must require SELECT, INSERT, UPDATE and DELETE.
+  const verificationSql = await readFile(path.join(root, 'supabase/tests/commerce_verify.sql'), 'utf8')
+  async function inspectServiceGrants() {
+    let statements
+    try { statements = await client.query(verificationSql) }
+    catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw error
+    }
+    assert.ok(Array.isArray(statements), 'Verification must execute the complete multi-statement SQL file.')
+    const grants = statements.find(statement => statement.fields.some(field => field.name === 'service_access'))
+    assert.ok(grants, 'Verification must include its table privilege report.')
+    assert.equal(grants.rows.length, 9, 'Verification must inspect all nine commerce tables.')
+    assert.equal(new Set(grants.rows.map(row => row.table_name)).size, 9)
+    return grants.rows
+  }
+
+  assert.ok((await inspectServiceGrants()).every(row => row.service_access === true))
+  await client.query(`SELECT commerce_test.check_true(true,'release verification confirms all service privileges on all nine tables')`)
+  for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
+    try {
+      await client.query(`REVOKE ${privilege} ON public.commerce_categories FROM service_role`)
+      const rows = await inspectServiceGrants()
+      assert.equal(rows.find(row => row.table_name === 'commerce_categories').service_access, false, `Missing ${privilege} must fail service access even while the other three grants remain.`)
+      assert.ok(rows.filter(row => row.table_name !== 'commerce_categories').every(row => row.service_access === true), 'A single-table revocation must not affect the other eight reports.')
+      await client.query('SELECT commerce_test.check_true(true,$1)', [`release verification detects missing service-role ${privilege} without failing unrelated tables`])
+    } finally {
+      // This runner is guarded to disposable loopback commerce_test. Always
+      // restore the deliberate fixture grant before any later assertions.
+      await client.query(`GRANT ${privilege} ON public.commerce_categories TO service_role`)
+    }
+  }
+  assert.ok((await inspectServiceGrants()).every(row => row.service_access === true))
+  await client.query(`SELECT commerce_test.check_true(true,'release verification returns healthy after every fixture privilege is restored')`)
+
   const results = await client.query('select label from commerce_test.results order by id')
   for (const { label } of results.rows) console.log(`PASS ${label}`)
   console.log(`${results.rowCount} PostgreSQL assertions passed on an isolated local database.`)

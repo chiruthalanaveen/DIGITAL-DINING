@@ -1,9 +1,10 @@
 # Existing Digital Dine-In regression review
 
 Current results are in the [25 October PR #3 follow-up](pr3-followup-report.md):
-82 unit tests, 82 local SQL assertions, build and 64 screenshots passed. The old
+82 unit tests, 88 local SQL assertions, build and 19 real staging Auth checks
+passed; 64 earlier screenshots remain from the unchanged app. The old
 billing entry point is repaired, PIN recovery reports explicit unavailability,
-and separate staging exists but its connection settings require correction.
+and staging configuration validates but database network access is blocked.
 Hosted legacy/provider workflows remain unrun; this matrix records their scope.
 
 This report addresses the existing-application checks requested after the
@@ -87,7 +88,7 @@ checks confirm return/returns validation HTTP 400, PIN malformed input HTTP 400
 and otherwise explicit unavailable HTTP 503, retired subscription-order HTTP 410
 and billing bookmarks HTTP 307 to current checkout. These localhost assertions do
 not establish successful PIN reset or provider integration. Use the
-[current report](pr3-followup-report.md) for 82 unit tests, 82 SQL assertions,
+[current report](pr3-followup-report.md) for 82 unit tests, 88 SQL assertions,
 build, 64 screenshots and release blockers.
 
 ### Delivery customer returns URL — fixed

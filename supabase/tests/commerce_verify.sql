@@ -10,7 +10,12 @@ select c.relname as table_name, c.relrowsecurity as rls_enabled,
        has_table_privilege('anon', c.oid, 'SELECT') as anon_select,
        has_table_privilege('authenticated', c.oid, 'SELECT') as authenticated_select,
        has_table_privilege('authenticated', c.oid, 'INSERT,UPDATE,DELETE') as authenticated_direct_write,
-       has_table_privilege('service_role', c.oid, 'SELECT,INSERT,UPDATE,DELETE') as service_access
+       -- A comma-separated privilege list checks ANY privilege. Service access
+       -- requires ALL four; otherwise one missing grant can appear healthy.
+       (has_table_privilege('service_role', c.oid, 'SELECT')
+        and has_table_privilege('service_role', c.oid, 'INSERT')
+        and has_table_privilege('service_role', c.oid, 'UPDATE')
+        and has_table_privilege('service_role', c.oid, 'DELETE')) as service_access
 from pg_class c join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and c.relname in (
   'commerce_websites','commerce_memberships','commerce_applications',

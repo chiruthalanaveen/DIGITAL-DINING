@@ -2,19 +2,28 @@
 
 ## Actual status
 
-Updated 25 October 2026 (Asia/Kolkata). A separate staging Supabase project now
-exists: `gylicwwrmpqomregevqe`. The staging reference and both JWT key roles/refs
-match, and independent read-only Auth settings/service-role REST metadata
-requests to its confirmed HTTPS origin returned 200. No real Auth session,
-tenant RLS, migration, Storage or hosted workflow test is claimed from those
-metadata requests.
+Updated 25 October 2026 (Asia/Kolkata). Staging project
+`gylicwwrmpqomregevqe` now passes strict API/database/key configuration validation.
+The earlier incorrect-URL findings are resolved. Auth settings and service-role
+REST metadata return 200. A separate real staging Auth run completed **19 checks,
+zero failures**: four synthetic fixture users, real password sign-in/identity,
+unverified/wrong-password denial, token boundaries, refresh, logout and revoked
+refresh denial. Admin-confirmed fixtures do not establish actual signup-email
+verification/recovery UI or commerce tenant RLS.
 
-The staging API and database environment values are misconfigured, so the
-preflight refuses them before any database connection. Correct the two secure
-values according to [staging-verification.md](staging-verification.md). Direct
-database hostname resolution separately failed with `EAI_AGAIN` before any
-TCP/TLS/authentication/SQL. These are the present blockers; this is no longer a
-missing-project or missing-key diagnosis.
+The remaining blocker is the PostgreSQL network route. Direct DNS lookup and
+`pg.Client.connect` fail `EAI_AGAIN` before TCP/TLS/password validation/SQL. A
+standard configured-proxy CONNECT to the same database host on port 5432 returns
+403 before PostgreSQL bytes or credentials; no rejection reason was supplied.
+Both exact staging API and direct DB hosts already appear in saved network
+configuration. Do not ask for replacement working keys or infer an invalid
+database password. See [staging-verification.md](staging-verification.md) for
+exact Session pooler, trusted-machine and staging SQL Editor alternatives.
+
+Hosted commerce schema exposure remains absent: products return 404 `PGRST205`
+and the catalog RPC returns 404 `PGRST202`. Those read-only observations are not
+RLS-denial passes. No hosted commerce SQL, Storage or application workflow has
+run, and no staging-backed Preview exists.
 
 Earlier read-only inspection of Vercel found Production-only application
 credentials. They were not copied to Preview. Preview environment configuration
@@ -108,10 +117,13 @@ the cloud preflight variables alone does not reconfigure a Vercel deployment.
 
 ## Create the real Preview only after staging is verified
 
-1. Positively identify a separate staging Supabase project and complete the
-   read-only preflight. Capture a staging backup and compare the existing schema,
-   grants, RLS and Auth hooks. Apply only the reviewed versioned migration to that
-   staging database; never install `commerce_bootstrap.sql` on hosted Supabase.
+1. Positively identify staging `gylicwwrmpqomregevqe`. Complete the database
+   preflight/inventory through a supported route: this cloud runtime after its
+   network path is restored, a trusted staging machine/CI runner, or the exact
+   staging SQL Editor sequence in [staging-verification.md](staging-verification.md).
+   Capture/rehearse the staging backup and compare existing schema, grants, RLS,
+   Auth hooks and cron. Apply only the reviewed versioned migration; never install
+   `commerce_bootstrap.sql` on hosted Supabase. No backup/install is completed yet.
 2. Configure the Preview-only application variables listed above. Inspect their
    environment targets; ensure Production values and live domain bindings remain
    unchanged. Add the precise Preview origin to staging Auth redirects.
@@ -131,8 +143,9 @@ It created no deployment or project. Help output is retained as
 
 Do not add `--prod`, `--environment production`, `promote` or `alias`. The existing
 branch-specific `vercel.json` guard disables automatic Git deployments; leave it
-in place. The deployment command was **not executed**: staging database settings,
-migration/workflow verification and Preview-only configuration remain incomplete.
+in place. The deployment command was **not executed**: staging database network
+access, migration/workflow verification and Preview-only configuration remain
+incomplete. Correct staging variable shape alone does not satisfy these checks.
 
 4. Record the new URL and verify via Vercel that `target` is Preview and its
    environment is staging. Run the hosted workflow matrix in
@@ -148,12 +161,21 @@ This is a network limitation; it is not evidence of an application 403 or a
 successful HTTP smoke test. Vercel API metadata and build status were reachable.
 Deployment protection may separately require the user's Vercel login.
 
-The current staging Auth/REST HTTPS checks succeeded. Direct PostgreSQL DNS
-resolution failed before TCP/TLS, and no new staging-backed Preview exists to
-probe. Do not report the historical CONNECT failure as a measured result for a
-future Preview URL. Correct database configuration first; if the exact session
-pooler is used, add its actual hostname to the cloud network allowlist. A hostname
-allowlist alone does not establish that PostgreSQL TCP is reachable.
+Current staging API/REST HTTPS and real Auth-session checks succeeded. Direct
+PostgreSQL DNS fails before TCP/TLS, and a separate standard proxy CONNECT probe
+to the direct DB host on port 5432 returns 403 before a PostgreSQL handshake.
+The proxy gives no precise cause. No new staging-backed Preview exists to probe;
+neither historical Preview CONNECT nor current DB CONNECT is a measured result
+for a future Preview URL.
+
+The current settings validate correctly. If testing the exact Session pooler URI
+from the staging **Connect** panel, use port 5432, the matching staging username
+and verified TLS, and add its actual hostname to the cloud allowlist if needed.
+Do not guess regional hosts or replace a known-good database password solely
+because the network failed. A hostname allowlist does not establish TCP access.
+Alternatively, use the documented staging SQL Editor/trusted-runner procedure
+after backup and read-only inventory, then retain hosted migration/RLS/workflow
+evidence. No network bypass or SQL-over-HTTP RPC is needed or authorized.
 
 If a future staging Preview host is also blocked:
 

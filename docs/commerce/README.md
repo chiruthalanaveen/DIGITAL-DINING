@@ -9,10 +9,10 @@ domains, coupons and recurring billing remain later phases.
 ## Review and installation
 
 The latest [PR #3 follow-up report](pr3-followup-report.md) records 82 passing
-unit tests, 82 local PostgreSQL assertions, a passing build and 64 desktop/mobile
-screenshots. Billing bookmarks use current checkout; PIN recovery now reports
+unit tests, 88 local PostgreSQL assertions, 19 real staging Auth checks and a
+passing build; 64 screenshots remain from the unchanged application run. Billing bookmarks use current checkout; PIN recovery now reports
 explicit unavailability. Inherited repository lint and hosted verification remain
-release blockers. Staging exists, but two connection settings require correction.
+release blockers. Staging settings validate; PostgreSQL network access is blocked.
 
 Start with [release-review.md](release-review.md) for the full SQL review,
 preservation and backup analysis, latest test evidence, environment requirements
@@ -56,7 +56,8 @@ No production database migration, live payment or merge was performed. An earlie
 production-target Vercel build was staged before the review hold; existing live
 domains remain on the previous deployment. It is not a staging-backed Preview.
 Hosted Supabase workflows remain unverified: staging Auth/REST metadata is
-reachable, but its database/API URL settings need correction before migration.
+reachable and real Auth checks pass, but PostgreSQL network access blocks
+migration and tenant workflows.
 No further production deployment/promotion is authorized until
 the user separately approves after reviewing the final results.
 

@@ -5,8 +5,20 @@ backup artifact is claimed to exist. The production project
 `wispidcdmunqzahjacws` remains outside migration/restore authorization. The SQL
 under review is
 [`20261022160000_commerce_foundation.sql`](../../supabase/migrations/20261022160000_commerce_foundation.sql).
-Use the same plan first on the separate staging project, rehearse recovery there,
-and review the results before requesting any later production approval.
+Use the same plan first on staging `gylicwwrmpqomregevqe`, rehearse recovery on an
+independently verified development recovery target, and review the results before
+requesting any later production approval.
+
+Updated 25 October 2026: staging configuration now validates and 19 real Auth
+checks pass, with four new synthetic fixture users retained. No hosted database
+backup, object-byte export, migration or restore rehearsal has run. Direct
+PostgreSQL name resolution fails `EAI_AGAIN`; the configured proxy rejects a
+standard DB CONNECT on port 5432 with 403 before credentials/SQL. The exact API
+and direct DB hosts are already listed in saved network configuration. This is
+not evidence of an invalid database password. A trusted machine/CI runner or
+the staging SQL Editor may provide an approved alternative route, but the backup
+and inventory prerequisites below still apply. SQL Editor result exports do not
+replace a restorable database/Auth/Storage backup.
 
 ## Recovery objectives and ownership
 
@@ -210,7 +222,9 @@ Do not allow restored cron jobs, emails, webhooks or settlement functions to
 contact live providers or production databases; review their destinations before
 enabling them in staging. A restoration is not complete until Auth, object bytes,
 custom policies, operational configuration and development app checks succeed.
-**This restore rehearsal has not run; no separate staging project is available.**
+**This restore rehearsal has not run.** The staging project now exists, but the
+cloud PostgreSQL route is blocked. A separate disposable recovery target and its
+approved restore route must be verified before claiming a recovery rehearsal.
 
 ## Rollback while retaining data
 

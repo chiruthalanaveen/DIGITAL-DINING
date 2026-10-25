@@ -1,10 +1,10 @@
 # Client Websites: review before any production release
 
 The latest [PR #3 follow-up report](pr3-followup-report.md) records 82 unit tests,
-82 local SQL assertions, a passing build, 64 screenshots, repaired billing
-navigation and explicit PIN unavailability. Staging now exists and its Auth/REST
-metadata is reachable, but incorrect API/database URL settings block migration
-and hosted workflows. Inherited repository lint also fails. Historical counts
+88 local SQL assertions, a passing build, 64 retained screenshots, repaired billing
+navigation and explicit PIN unavailability. Staging configuration now validates
+and 19 real Auth checks pass. PostgreSQL DNS/proxy access blocks the migration
+and hosted tenant workflows. Inherited repository lint also fails. Historical counts
 and the earlier no-staging status below are retained as the 22 October review
 record; use the follow-up for current status. Production release remains on hold.
 
