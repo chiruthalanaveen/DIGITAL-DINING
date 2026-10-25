@@ -47,10 +47,18 @@ for that exact main project only after backup and compatibility checks succeed.
 Do not ask for the same approval again. This does not authorize other migrations,
 a main-branch merge, production deployment/promotion or live payments.
 
-No production SQL has been executed by this work. Main API metadata is reachable;
-main SQL credentials, a verified SQL route and a usable backup are unavailable.
-`COMMERCE_MAIN_DATABASE_URL` is a new name-only environment requirement awaiting
-secure entry/publication. Do not put main credentials in `COMMERCE_STAGING_*`,
+No production SQL has been executed by this work. Main API metadata is reachable.
+`COMMERCE_MAIN_DATABASE_URL` has now been supplied and its URI matches the approved
+main project with verified TLS configured; password/SQL access is not yet tested.
+The exact main DB hostname is now published/allowed, but direct DNS still fails
+EAI_AGAIN and the configured proxy CONNECT to port 5432 still returns 403 before
+PostgreSQL/authentication. Do not ask to re-enter that URI, add that hostname or
+approve the migration again. A working SQL execution route and usable backup
+remain prerequisites. An official HTTPS Management API fallback is prepared:
+`SUPABASE_ACCESS_TOKEN` is a saved secret requirement restricted to
+`api.supabase.com`, with no supplied token binding yet. The prepared checker reads
+only fixed-main project/backup metadata and never executes SQL. Enter/publish the
+missing token securely; do not print it. Do not put main credentials in `COMMERCE_STAGING_*`,
 bypass the staging runner's production rejection, or run destructive local test
 fixtures on any hosted database. Do not create live test orders/users or alter
 wallet/payment/customer data as a substitute for compatibility verification.

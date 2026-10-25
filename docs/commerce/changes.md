@@ -3,30 +3,31 @@
 Complete PR #3 diff against GitHub main `7385253c5381fdf4998fddf8f58e84b783aabba1`.
 A means added; M means modified. No files are deleted or renamed.
 
-## Latest main-project scope update versus e13e1eb: 7 files
+## Latest main-access diagnosis versus f1fb01d: 6 files
 
-On 26 October 2026 the user selected the existing main Supabase project only and
-approved the reviewed foundation migration conditional on backup/compatibility
-checks. Current instructions retain that approval without asking again, stop
-staging and identify missing secure main SQL access and backup prerequisites.
-A new main-only runbook contains prospective installation/verification commands
-and rollback limits. Runtime application code and the foundation migration are
-unchanged. The pre-install SQL's comments now permit the explicitly approved
-target; its read-only queries are unchanged. A fresh build passed.
+The supplied main SQL URI is correctly shaped and its exact hostname is now
+published/allowed. Actual PostgreSQL access still fails during DNS and the
+configured proxy CONNECT returns 403 before credentials. Current instructions do
+not request the same URI, hostname or migration approval again. A restricted
+HTTPS Management API access check is prepared, with a missing
+`SUPABASE_ACCESS_TOKEN` requirement scoped to `api.supabase.com`. Backup and
+compatibility checks remain prerequisites; no production SQL was executed.
 
-No SQL migration required for this documentation/comment update. No production
-SQL, business-data write, backup execution, deployment, merge or payment occurred.
-The foundation installation remains pending. See
-[main-project-installation.md](main-project-installation.md) for current scope and
-[pr3-followup-report.md](pr3-followup-report.md) for historical test evidence.
+Runtime application code, the read-only SQL queries and the foundation migration
+are unchanged. Build passed. A separate helper review passed six local mocked
+security checks without network/database calls; those are not production tests.
+No SQL migration required for these documentation changes. Deployment, main
+merge, live payments and live test-data writes remain on hold.
+
+See [main-project-installation.md](main-project-installation.md) for current steps
+and [pr3-followup-report.md](pr3-followup-report.md) for historical test evidence.
 
 - **M** [AGENTS.md](../../AGENTS.md)
 - **M** [docs/commerce/README.md](../../docs/commerce/README.md)
 - **M** [docs/commerce/changes.md](../../docs/commerce/changes.md)
-- **A** [docs/commerce/main-project-installation.md](../../docs/commerce/main-project-installation.md)
+- **M** [docs/commerce/main-project-installation.md](../../docs/commerce/main-project-installation.md)
 - **M** [docs/commerce/pr3-followup-report.md](../../docs/commerce/pr3-followup-report.md)
 - **M** [docs/commerce/release-review.md](../../docs/commerce/release-review.md)
-- **M** [supabase/tests/commerce_preinstall_verify.sql](../../supabase/tests/commerce_preinstall_verify.sql)
 
 ## Complete PR: 86 files
 

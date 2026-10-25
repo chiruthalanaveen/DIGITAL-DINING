@@ -17,17 +17,61 @@ the nine proposed commerce tables nor five proposed public RPCs. This is not a
 complete SQL/catalog conflict check, RLS test or proof of backup readiness.
 The application already uses this main project; runtime keys need no switch.
 
-## Immediate missing prerequisite
+## Current connection state — URI and hostname supplied, PostgreSQL blocked
 
-A name-only requirement has been saved in the cloud environment draft. Enter
-its value securely in environment settings, save and publish the environment,
-then verify the newly connected runtime. The saved requirement is not a supplied
-credential or a working SQL connection:
+`COMMERCE_MAIN_DATABASE_URL` is present and its parsed host is
+`db.wispidcdmunqzahjacws.supabase.co`. Its database/username match main, port 5432
+is used and TLS certificate verification remains enabled. The password is not
+printed or validated: DNS lookup and PostgreSQL connection fail with
+`EAI_AGAIN/getaddrinfo` before TCP/TLS/authentication. The configured proxy
+separately rejects standard CONNECT to the exact host/port with HTTP 403 before
+PostgreSQL bytes or credentials. No rejection reason was supplied.
 
+The user has now published the main hostname's allowlist addition. Readback
+confirms the published configuration includes it, but both connection errors
+persist after that change. Do not request the same URI, hostname or approval
+again. These results do not identify an invalid password or prove an IPv6 cause.
+A hostname allowlist alone does not establish supported PostgreSQL transport.
 
-```text
-COMMERCE_MAIN_DATABASE_URL=<the main project's exact PostgreSQL URI>
+## Next access requirement — official HTTPS Management API
+
+To continue from this workspace without the blocked PostgreSQL transport, a
+`SUPABASE_ACCESS_TOKEN` secret requirement and its exact HTTPS destination
+`api.supabase.com` have been saved in the draft. The first save returned a generic
+error; subsequent readback confirmed both entries exist. The token binding is
+still missing. Open [Supabase Account → Access Tokens](https://supabase.com/dashboard/account/tokens),
+create an account access token with the permissions required for the selected
+main project, enter it in that secure secret field, then save/publish. Never paste
+it into chat, Git, scripts or logs. This is distinct from anon/service-role keys.
+
+The prepared access checker at
+`/workspace/commerce-validation-artifacts/main-project-review/check-main-management.py`
+is fixed to project `wispidcdmunqzahjacws`, allows only GET project/backup-metadata
+endpoints, refuses redirects and alternate targets, and suppresses raw errors or
+responses that could contain secrets. Its current run exits 1 before any HTTP
+request because the token is absent. It cannot execute SQL or certify a backup:
+
+```sh
+python /workspace/commerce-validation-artifacts/main-project-review/check-main-management.py
 ```
+
+A local security review passed six mocked boundary checks without any network or
+database calls: missing credentials/flags/alternate target, project mismatch,
+fixed GET-only endpoints, redirects and sensitive-output filtering. Evidence is
+`management-checker-local-review.json` beside the helper. This does not establish
+real API access or backup readiness.
+
+Once access works, review actual backup availability and SQL/catalog compatibility
+through the supported main-project management API before any migration request.
+The canonical migration may be submitted only after those prerequisites succeed;
+that mutating operation is not part of this checker. Existing conditional SQL
+approval remains recorded; deployments/merges/live payments remain on hold.
+
+## PostgreSQL URI reference and trusted-machine alternative
+
+The existing URI is retained. The instructions below are reference or a route to
+use on a trusted machine that supports PostgreSQL; they are not a request to
+replace it or to change the already-published hostname again.
 
 Obtain it from the main project's **Connect → Connection String → URI → Session
 pooler** on port **5432**. Its username must identify
@@ -45,8 +89,10 @@ Do not put the completed URI in chat, Git, scripts or logs. Do not repurpose any
 `COMMERCE_STAGING_*` variable or the staging guard: that guard intentionally
 forbids production. An anon/service-role API key is not the database password and
 does not establish DDL or backup access. No Supabase management access token is
-currently configured either. A management token is not required if the verified
-PostgreSQL route works, so do not request both credentials by default.
+currently configured. It is now requested specifically because the supplied
+PostgreSQL route was tested and remains blocked; it is not a duplicate database
+password request. If an independently supported PostgreSQL route becomes
+available, the management credential need not be used for SQL execution.
 
 ## Local tooling and network findings
 

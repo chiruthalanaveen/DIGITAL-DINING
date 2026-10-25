@@ -2,7 +2,9 @@
 
 **Current scope — 26 October:** the user selected main project only and approved
 the reviewed foundation migration after backup/compatibility checks. Staging is
-stopped. Main SQL access and a usable backup remain missing; no production SQL
+stopped. The main SQL URI and hostname are supplied, but PostgreSQL networking
+remains blocked. An HTTPS Management API token is now required for the prepared
+alternative access check. Backup/compatibility remain pending; no production SQL
 was executed. Use [main-project-installation.md](main-project-installation.md)
 for current steps. Prior staging requirements/results below are historical;
 deployment, merging and live payments remain on hold.
