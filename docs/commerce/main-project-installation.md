@@ -1,163 +1,120 @@
-# Main-project installation — approved scope, access still required
+# Main-project installation — approved migration, backup still required
 
-Updated 26 October 2026 (Asia/Kolkata). Draft PR #3,
-`feature/client-websites-phase1`.
+Updated 26 October 2026. Target: **table-pay** (`wispidcdmunqzahjacws`). Keep all
+changes on draft PR #3 / `feature/client-websites-phase1`.
 
-Target: `wispidcdmunqzahjacws`, the existing main Supabase API target used by the
-`table-pay` application. The user's latest instruction selects main only, and
-migration approval was given conditionally on backup and compatibility checks.
-Deployment, merging into main and live payments remain on hold. The user has
-withdrawn the staging requirement. Do not request the same migration approval
-again, and do not resume staging tests or repurpose their credentials.
+The user selected main only and approved the reviewed foundation migration
+**after backup and compatibility checks**. Do not request that approval again.
+Staging is stopped; deployment/promotion, main merge, live payments, unrelated
+migrations and live test-data writes remain on hold.
 
-No SQL, backup, restore or production data mutation was executed by this review.
-This document contains no credentials. No restorable backup currently exists
-from this task. Main API metadata authenticated successfully and exposes neither
-the nine proposed commerce tables nor five proposed public RPCs. This is not a
-complete SQL/catalog conflict check, RLS test or proof of backup readiness.
-The application already uses this main project; runtime keys need no switch.
+## Current result
 
-## Current connection state — URI and hostname supplied, PostgreSQL blocked
+[main-preflight-results.md](main-preflight-results.md) is the current detailed
+report. The supplied URI and account token are available. Official HTTPS main
+metadata and read-only SQL work. Required objects/privileges exist and no proposed
+commerce-name collision was found. PostgreSQL 17.6 is confirmed. Read-only schema,
+policy, trigger/function fingerprints and two cron definitions were captured
+privately; no migration, DDL/DML or business-row write occurred.
 
-`COMMERCE_MAIN_DATABASE_URL` is present and its parsed host is
-`db.wispidcdmunqzahjacws.supabase.co`. Its database/username match main, port 5432
-is used and TLS certificate verification remains enabled. The password is not
-printed or validated: DNS lookup and PostgreSQL connection fail with
-`EAI_AGAIN/getaddrinfo` before TCP/TLS/authentication. The configured proxy
-separately rejects standard CONNECT to the exact host/port with HTTP 403 before
-PostgreSQL bytes or credentials. No rejection reason was supplied.
+**No usable backup is available.** Full provider metadata has no completed backup
+record or physical recovery range; PITR is off, and the user confirmed no external
+backup. Catalog fingerprints are not a backup. The public API supports backup
+listing/restoration but no supported public manual-create/download endpoint was
+found. Internal-only restore-point operations and paid upgrades were not used.
 
-The user has now published the main hostname's allowlist addition. Readback
-confirms the published configuration includes it, but both connection errors
-persist after that change. Do not request the same URI, hostname or approval
-again. These results do not identify an invalid password or prove an IPv6 cause.
-A hostname allowlist alone does not establish supported PostgreSQL transport.
+The general Management SQL endpoint still returned a read-only role/transaction
+for a SELECT-only request with `read_only:false`; its cause is unknown. Actual
+DDL execution capability is not established. Do not probe writes before backup
+or try to elevate the existing read-only session.
 
-## Next access requirement — official HTTPS Management API
+## Backup connection and client prerequisites
 
-To continue from this workspace without the blocked PostgreSQL transport, a
-`SUPABASE_ACCESS_TOKEN` secret requirement and its exact HTTPS destination
-`api.supabase.com` have been saved in the draft. The first save returned a generic
-error; subsequent readback confirmed both entries exist. The token binding is
-still missing. Open [Supabase Account → Access Tokens](https://supabase.com/dashboard/account/tokens),
-create an account access token with the permissions required for the selected
-main project, enter it in that secure secret field, then save/publish. Never paste
-it into chat, Git, scripts or logs. This is distinct from anon/service-role keys.
+The supplied direct URI is retained and its hostname is published/allowed, but
+DNS/pg connection returns `EAI_AGAIN` and proxy CONNECT to 5432 returns HTTP 403
+before credentials. These observations do not identify an invalid password or a
+proven IPv6 issue. Do not ask for the same URI, token or direct hostname again.
 
-The prepared access checker at
-`/workspace/commerce-validation-artifacts/main-project-review/check-main-management.py`
-is fixed to project `wispidcdmunqzahjacws`, allows only GET project/backup-metadata
-endpoints, refuses redirects and alternate targets, and suppresses raw errors or
-responses that could contain secrets. Its current run exits 1 before any HTTP
-request because the token is absent. It cannot execute SQL or certify a backup:
-
-```sh
-python /workspace/commerce-validation-artifacts/main-project-review/check-main-management.py
-```
-
-A local security review passed six mocked boundary checks without any network or
-database calls: missing credentials/flags/alternate target, project mismatch,
-fixed GET-only endpoints, redirects and sensitive-output filtering. Evidence is
-`management-checker-local-review.json` beside the helper. This does not establish
-real API access or backup readiness.
-
-Once access works, review actual backup availability and SQL/catalog compatibility
-through the supported main-project management API before any migration request.
-The canonical migration may be submitted only after those prerequisites succeed;
-that mutating operation is not part of this checker. Existing conditional SQL
-approval remains recorded; deployments/merges/live payments remain on hold.
-
-## PostgreSQL URI reference and trusted-machine alternative
-
-The existing URI is retained. The instructions below are reference or a route to
-use on a trusted machine that supports PostgreSQL; they are not a request to
-replace it or to change the already-published hostname again.
-
-Obtain it from the main project's **Connect → Connection String → URI → Session
-pooler** on port **5432**. Its username must identify
-`postgres.wispidcdmunqzahjacws`; its actual regional hostname must be copied from
-Connect, not guessed. Replace the password placeholder with the main database
-password, URL-encoding reserved characters, and keep verified TLS. A direct URI
-is also acceptable only if a supported direct network route is demonstrated:
+Official main pooler configuration supplies this actual hostname:
 
 ```text
-postgresql://postgres:<URL-ENCODED-MAIN-DATABASE-PASSWORD>@db.wispidcdmunqzahjacws.supabase.co:5432/postgres?sslmode=verify-full
-postgresql://postgres.wispidcdmunqzahjacws:<URL-ENCODED-MAIN-DATABASE-PASSWORD>@<EXACT-MAIN-SESSION-POOLER-HOST>:5432/postgres?sslmode=verify-full
+aws-0-ap-south-1.pooler.supabase.com
 ```
 
-Do not put the completed URI in chat, Git, scripts or logs. Do not repurpose any
-`COMMERCE_STAGING_*` variable or the staging guard: that guard intentionally
-forbids production. An anon/service-role API key is not the database password and
-does not establish DDL or backup access. No Supabase management access token is
-currently configured. It is now requested specifically because the supplied
-PostgreSQL route was tested and remains blocked; it is not a duplicate database
-password request. If an independently supported PostgreSQL route becomes
-available, the management credential need not be used for SQL execution.
+Its user is `postgres.wispidcdmunqzahjacws`, database `postgres`. Use the documented
+**Session port 5432** for backup clients. The API's transaction 6543 setting was not
+changed and must not be used as a backup shortcut. Existing credentials can be
+used for this same main database; do not paste or re-enter them unnecessarily.
 
-## Local tooling and network findings
+An official PostgreSQL 17+ client is required; hosted server is 17.6. This Debian 13
+workspace has compatible `libpq5` 17.11 and trusted Debian archive keys/tools, but
+no `pg_dump`, `psql`, `pg_restore` or Supabase CLI. The official package is
+`postgresql-client-17`; access to `deb.debian.org` is needed to retrieve and verify
+signed repository metadata/package checksums before workspace-local extraction.
+No unverified client artifact or system installation was used.
 
-`psql`, `pg_dump`, `pg_restore` and the Supabase CLI were not found on PATH or in
-the existing validation tools. Embedded PostgreSQL 18.4 supplies the local
-server/initdb/control binaries, not these client programs. Install trusted
-PostgreSQL clients appropriate for the hosted server version; a pg_dump client
-must not be older than the server major version. Record client versions and
-retain TLS/signature/checksum verification during installation.
+The environment configuration service returned `INVALID_ARGUMENT` for attempted
+new host additions without a field-level reason. Do not loop unchanged saves.
+Only missing exact entries should be added manually and published, preserving all
+other settings:
 
-A hostname allowlist and a well-shaped URI do not prove SQL connectivity. Probe
-only the explicitly verified main host/port, first through the supported route,
-then perform a read-only identity/version query. Report DNS, TCP, TLS and password
-failures separately without raw exception text or connection URLs. If a Session
-pooler is used, allow only its copied exact hostname. Do not disable TLS, guess
-regional hosts, substitute IPs or expose an ad-hoc SQL-over-HTTP RPC.
+```text
+aws-0-ap-south-1.pooler.supabase.com
+deb.debian.org
+```
 
-## Backup and preservation gate before installation
+A later readback found the pooler hostname present in the editable draft, while
+`deb.debian.org` remained absent. Check current draft/published state before
+asking for another entry; do not repeat a completed user action. No claim is made
+that an allowed route will work until the actual PostgreSQL connection succeeds.
+Use the configured supported proxy route only, keep verified TLS and never guess
+hosts, substitute external IPs, disable checks or create an ad-hoc SQL tunnel/RPC.
 
-1. Positively identify the main project in its Supabase dashboard. Record the
-   database server version and the installation role without exposing secrets.
-2. Inspect actual managed backup/PITR availability and retention in **Database →
-   Backups**. Record a recoverable backup or recovery point predating the change,
-   access/restore instructions and the agreed recovery point/time objectives.
-   Do not assume the plan has managed backups or PITR.
-3. Obtain a consistent logical backup where supported, following the current
-   Supabase backup procedure and the verified client version. Store it outside
-   Git with restrictive permissions and approved encryption. Verify Auth rows,
-   all business/wallet/payment/order/customer tables, Storage metadata, custom
-   policies/triggers/grants and migration history are included. Provider-managed
-   schemas/roles require the documented provider restore flow. A partial export,
-   schema-only SQL Editor export, REST row dump or row fingerprint is not a full
-   restorable database backup. On any permission failure, stop; do not drop
-   required schemas from the backup or change production grants to force it.
-4. Back up Storage object bytes separately, with paginated manifest/checksums.
-   Database backups contain metadata, not the object payloads. Preserve provider
-   settings, encrypted-data key recovery, scheduler definitions and secret-manager
-   configuration separately through approved channels.
-5. Capture private, consistent pre-install catalog/row preservation evidence for
-   the existing public/Auth/Storage/cron objects. Review required columns/functions,
-   installation/storage ownership, private/public proposed-name conflicts, event
-   triggers/default ACL and current policies. No test fixture creation or other
-   test writes belong between preservation snapshots. Read-only REST metadata
-   cannot establish these conditions.
-6. Confirm the backup can be accessed and restored through the supported recovery
-   route. Static dump readability/checksums alone do not prove recovery. Never
-   test a restore against the live source database. The user has declined hosted
-   staging; do not invent a successful restore rehearsal or use the source as its
-   own recovery test. Report any remaining restore-rehearsal limitation explicitly.
+## Backup and compatibility gate
 
-## Apply only after the above gate succeeds
+Before executing the migration from this workspace or a trusted operator machine:
 
-Canonical migration:
-[`20261022160000_commerce_foundation.sql`](../../supabase/migrations/20261022160000_commerce_foundation.sql).
-The [complete migration review](migration-review.md) explains all columns,
-functions, triggers/indexes, policies and shared-object effects. It adds nine
-commerce tables, restricted functions and fifteen policies, including seven on
-shared Storage. Five new Auth foreign keys can restrict future hard deletion.
-Hosted compatibility remains unverified; existing business rows are not rewritten.
+1. Verify the main dashboard reference and SQL connection target. Confirm the
+   actual installer role/version through read-only queries. Token presence alone
+   is not proof of write permission.
+2. Take a consistent complete logical backup using official supported PostgreSQL/
+   Supabase tooling over a verified route. Store it privately outside Git with
+   restrictive permissions and approved encryption. Preserve Auth, business,
+   wallet/payment/order/customer data, schema/RLS/grants/triggers and migration
+   history. Do not silently exclude a required table after a backup error.
+3. Back up Storage bytes separately with a manifest/checksums; database backups
+   contain metadata, not object payloads. Preserve external provider/key/scheduler
+   settings separately. Inspect the actual backup contents and supported restore
+   procedure, and report any untested recovery/managed-schema limitation. Never
+   rehearse a restore against the live source database.
+4. Run [commerce_preinstall_verify.sql](../../supabase/tests/commerce_preinstall_verify.sql)
+   and compare current state with the private pre-install catalog evidence. Check
+   all proposed names, policies, triggers/event hooks, ownership/Supabase custom
+   policy privileges and existing scheduled jobs. Record a coherent before/after
+   comparison window; do not treat legitimate concurrent production activity as
+   migration corruption or alter records to force a matching hash.
+5. Confirm a usable recovery artifact/point and installation capability before
+   DDL. A JSON catalog snapshot, REST export, SQL Editor result or successful
+   `pg_restore --list` alone is not proof of a complete recoverable system.
+
+The full [backup/recovery plan](backup-recovery.md) supplies detailed scope and
+verification queries. Its older development examples are references; do not
+substitute main into destructive local test scripts or resume staging.
+
+## Canonical migration — prospective commands only
+
+Unabridged source:
+[20261022160000_commerce_foundation.sql](../../supabase/migrations/20261022160000_commerce_foundation.sql).
 SHA-256:
 `dd2882f6329808783b1d4d97c4264f59989b7e834753aa06efe46d63855db1ca`.
+[Full review](migration-review.md) explains nine tables/103 columns, twelve
+functions, 25 indexes, fifteen policies and sixteen foreign keys. Seven new
+policies affect shared Storage and five Auth foreign keys can restrict future
+identity deletion. No existing business row is rewritten or wallet/payment/cron
+procedure called by the reviewed migration.
 
-The following are prospective commands, not commands executed in this review.
-The completed secret stays in the environment; shell tracing must remain off.
-Run only from the approved checkout, after a main-specific target/backup guard:
+These commands are **not executed**. Use only after the gate above passes, from
+the verified trusted route with tracing off and secrets securely supplied:
 
 ```sh
 psql "$COMMERCE_MAIN_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/tests/commerce_preinstall_verify.sql
@@ -165,48 +122,32 @@ psql "$COMMERCE_MAIN_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/migrations/
 psql "$COMMERCE_MAIN_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/tests/commerce_verify.sql
 ```
 
-The migration contains its own BEGIN/COMMIT and is one-time. Do not wrap it in
-competing transactions, apply fragments, suppress name conflicts, delete objects,
-rerun blindly, run local bootstrap/checkout test fixtures on main, or use
-`supabase db push` to apply unrelated history. On an error, explicitly roll back
-and inspect state before any retry. Preserve the established migration ledger.
+The file contains its own BEGIN/COMMIT and is one-time. Do not apply fragments,
+wrap competing transactions, suppress conflicts, delete objects to force success,
+blindly rerun it or apply unrelated history through `supabase db push`. If it
+fails, explicitly rollback and inspect state. Preserve the project's established
+migration ledger. Afterward verify all nine RLS tables, complete service grants,
+restricted RPCs, bucket settings and invariants, then compare existing
+business/financial data, RLS and cron preservation evidence.
 
-Compare before/after existing data/definitions. Expected additions are commerce
-objects, one bucket, seven commerce-only Storage policies and Auth foreign-key
-internal triggers. Existing business rows, RLS policies, wallet balances,
-transactions, histories and cron definitions must remain unchanged.
+An operator can use the [main SQL Editor](https://supabase.com/dashboard/project/wispidcdmunqzahjacws/sql)
+after the same backup/compatibility gate; this is not an instruction to skip the
+missing backup. Do not run local bootstrap, checkout/concurrency test fixtures or
+`test-commerce-db.mjs` on main. Actual production RLS/workflow compatibility is
+not certified by a successful installation or past isolated tests.
 
-Application rollback should retain the new schema/history and use the previous
-application version; a table/bucket/Auth-user drop is not a safe rollback. A
-full/PITR restore can discard unrelated activity and requires a separate reviewed
-recovery decision. No production deployment, main merge, payment or live-order
-processing is authorized by completion of the SQL installation.
+## Rollback and evidence
 
-## SQL Editor alternative
+If installation fails before COMMIT, verify transaction rollback and existing
+state. After a committed installation, prefer application rollback while retaining
+commerce orders/audit/users/media. Dropping tables/buckets/identities is not a
+history-preserving rollback. Full/PITR restore can discard unrelated later
+activity and needs its own reviewed recovery decision. No deployment, main merge,
+payment or live-order permission follows automatically from SQL completion.
 
-If the cloud network still cannot reach PostgreSQL, an authorized operator can
-open the main project's [SQL Editor](https://supabase.com/dashboard/project/wispidcdmunqzahjacws/sql)
-from an allowed browser. Verify that exact project reference, complete the same
-backup and preservation prerequisites, then run the read-only
-[pre-install inventory](../../supabase/tests/commerce_preinstall_verify.sql).
-Stop on an object-name conflict, unverified backup, unexpected policy/hook or
-missing installation privilege. Run the full canonical migration once only after
-those checks succeed, then run the complete
-[post-install verification](../../supabase/tests/commerce_verify.sql) and compare
-before/after inventories. Keep result exports private; they may reveal internal
-policies, function or cron configuration. A SQL Editor result export is not a
-restorable backup. Do not paste customer records or credentials into chat.
-
-No new live accounts, orders, wallet entries or payments should be created merely
-to test installation. Existing PIN reset procedures are exposed in main metadata,
-but their argument shapes alone do not prove atomic recovery/session behavior.
-Their implementation still needs review without resetting a real customer's PIN.
-
-For this documentation/header update: **No SQL migration required.** The existing
-foundation migration remains pending until the prerequisites above are met.
-The latest fresh build result is recorded in
-`/workspace/commerce-validation-artifacts/main-project-review/build.log`.
-[Prior test evidence](pr3-followup-report.md) remains historical: 82 unit tests,
-88 local SQL assertions and 19 staging Auth checks passed; staging work is now
-stopped by the user's preference. Production workflow/RLS compatibility is not
-certified by those local or historical results.
+For this read-only investigation/documentation update: **No SQL migration
+required.** The existing foundation installation remains pending. Fresh build
+output is `/workspace/commerce-validation-artifacts/main-release/build.log`;
+[prior test results](pr3-followup-report.md) remain historical and do not certify
+main workflows. Full private catalog/function/cron/connection details stay out of
+Git/public archives. Never print account tokens, DB URLs/passwords or row exports.

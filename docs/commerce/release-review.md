@@ -1,13 +1,11 @@
 # Client Websites: review before any production release
 
-**Current scope — 26 October:** the user selected main project only and approved
-the reviewed foundation migration after backup/compatibility checks. Staging is
-stopped. The main SQL URI and hostname are supplied, but PostgreSQL networking
-remains blocked. An HTTPS Management API token is now required for the prepared
-alternative access check. Backup/compatibility remain pending; no production SQL
-was executed. Use [main-project-installation.md](main-project-installation.md)
-for current steps. Prior staging requirements/results below are historical;
-deployment, merging and live payments remain on hold.
+**Current scope — 26 October:** main-only access is confirmed and read-only SQL
+preflight passes. No usable backup is available; the user confirmed no external
+backup. Migration remains pending, and deployment/merge/live-payment holds remain.
+Use [main-preflight-results.md](main-preflight-results.md) for the current blocker
+and [main-project-installation.md](main-project-installation.md) for execution
+steps. Earlier staging results below are historical.
 
 The latest [PR #3 follow-up report](pr3-followup-report.md) records 82 unit tests,
 88 local SQL assertions, a passing build, 64 retained screenshots, repaired billing

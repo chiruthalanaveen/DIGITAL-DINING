@@ -1,35 +1,33 @@
 # Exact changed-file list
 
-Complete PR #3 diff against GitHub main `7385253c5381fdf4998fddf8f58e84b783aabba1`.
+Complete PR #3 diff against main `7385253c5381fdf4998fddf8f58e84b783aabba1`.
 A means added; M means modified. No files are deleted or renamed.
 
-## Latest main-access diagnosis versus f1fb01d: 6 files
+## Latest main preflight update versus 9643698: 7 files
 
-The supplied main SQL URI is correctly shaped and its exact hostname is now
-published/allowed. Actual PostgreSQL access still fails during DNS and the
-configured proxy CONNECT returns 403 before credentials. Current instructions do
-not request the same URI, hostname or migration approval again. A restricted
-HTTPS Management API access check is prepared, with a missing
-`SUPABASE_ACCESS_TOKEN` requirement scoped to `api.supabase.com`. Backup and
-compatibility checks remain prerequisites; no production SQL was executed.
+Main account access and read-only SQL/catalog compatibility checks completed.
+No commerce-name conflicts were found. Private preservation snapshots were saved,
+but no usable backup exists and the user confirmed no external backup. A verified
+main pooler route and official backup-client download still need working network
+access; current Management SQL queries remain read-only. No migration, DDL/DML,
+production business-row write, paid upgrade, restore, main merge, deployment or
+live payment was performed. Runtime code and the foundation SQL are unchanged.
+Fresh build passed. No SQL migration required for these read-only/doc updates.
 
-Runtime application code, the read-only SQL queries and the foundation migration
-are unchanged. Build passed. A separate helper review passed six local mocked
-security checks without network/database calls; those are not production tests.
-No SQL migration required for these documentation changes. Deployment, main
-merge, live payments and live test-data writes remain on hold.
-
-See [main-project-installation.md](main-project-installation.md) for current steps
-and [pr3-followup-report.md](pr3-followup-report.md) for historical test evidence.
+See [main-preflight-results.md](main-preflight-results.md) and
+[main-project-installation.md](main-project-installation.md) for exact results,
+commands, backup prerequisites and remaining network actions. Earlier test counts
+remain historical; no production workflow/RLS PASS is implied.
 
 - **M** [AGENTS.md](../../AGENTS.md)
 - **M** [docs/commerce/README.md](../../docs/commerce/README.md)
 - **M** [docs/commerce/changes.md](../../docs/commerce/changes.md)
+- **A** [docs/commerce/main-preflight-results.md](../../docs/commerce/main-preflight-results.md)
 - **M** [docs/commerce/main-project-installation.md](../../docs/commerce/main-project-installation.md)
 - **M** [docs/commerce/pr3-followup-report.md](../../docs/commerce/pr3-followup-report.md)
 - **M** [docs/commerce/release-review.md](../../docs/commerce/release-review.md)
 
-## Complete PR: 86 files
+## Complete PR: 87 files
 
 - **M** [AGENTS.md](../../AGENTS.md)
 - **M** [README.md](../../README.md)
@@ -79,6 +77,7 @@ and [pr3-followup-report.md](pr3-followup-report.md) for historical test evidenc
 - **A** [docs/commerce/changes.md](../../docs/commerce/changes.md)
 - **A** [docs/commerce/database.md](../../docs/commerce/database.md)
 - **A** [docs/commerce/lint-review.md](../../docs/commerce/lint-review.md)
+- **A** [docs/commerce/main-preflight-results.md](../../docs/commerce/main-preflight-results.md)
 - **A** [docs/commerce/main-project-installation.md](../../docs/commerce/main-project-installation.md)
 - **A** [docs/commerce/migration-review.md](../../docs/commerce/migration-review.md)
 - **A** [docs/commerce/pin-recovery-review.md](../../docs/commerce/pin-recovery-review.md)
