@@ -1,6 +1,6 @@
 # Main-project installation — approved migration, backup still required
 
-Updated 26 October 2026. Target: **table-pay** (`wispidcdmunqzahjacws`). Keep all
+Updated 27 October 2026. Target: **table-pay** (`wispidcdmunqzahjacws`). Keep all
 changes on draft PR #3 / `feature/client-websites-phase1`.
 
 The user selected main only and approved the reviewed foundation migration
@@ -17,7 +17,7 @@ commerce-name collision was found. PostgreSQL 17.6 is confirmed. Read-only schem
 policy, trigger/function fingerprints and two cron definitions were captured
 privately; no migration, DDL/DML or business-row write occurred.
 
-**No usable backup is available.** Full provider metadata has no completed backup
+**No usable database backup is available.** Full provider metadata has no completed backup
 record or physical recovery range; PITR is off, and the user confirmed no external
 backup. Catalog fingerprints are not a backup. The public API supports backup
 listing/restoration but no supported public manual-create/download endpoint was
@@ -28,47 +28,31 @@ for a SELECT-only request with `read_only:false`; its cause is unknown. Actual
 DDL execution capability is not established. Do not probe writes before backup
 or try to elevate the existing read-only session.
 
-## Backup connection and client prerequisites
+## Backup transport result and concrete alternative
 
-The supplied direct URI is retained and its hostname is published/allowed, but
-DNS/pg connection returns `EAI_AGAIN` and proxy CONNECT to 5432 returns HTTP 403
-before credentials. These observations do not identify an invalid password or a
-proven IPv6 issue. Do not ask for the same URI, token or direct hostname again.
+Both required host entries are now published. The official PostgreSQL 17.11
+clients were retrieved from Debian, verified using signed repository metadata
+and checksums, and extracted outside Git. The supplied URI/token need no re-entry.
 
-Official main pooler configuration supplies this actual hostname:
+The actual main Session pooler is `aws-0-ap-south-1.pooler.supabase.com`, port
+5432, database `postgres`, user `postgres.wispidcdmunqzahjacws`. Transaction port
+6543 was not used or changed. Direct DNS remains unavailable (`EAI_AGAIN`).
+Configured proxy CONNECT now succeeds (200), but normal PostgreSQL SSLRequest
+gets EOF before authentication. Direct TLS has a proxy-issued certificate and
+no negotiated `postgresql` ALPN, which PostgreSQL 17 requires for direct TLS.
+No authentication was sent over that diagnostic route. The verified `psql`
+connection attempt closed before successful login/SQL. This is a cloud transport
+limitation, not evidence of an incorrect password or a Supabase outage.
 
-```text
-aws-0-ap-south-1.pooler.supabase.com
-```
-
-Its user is `postgres.wispidcdmunqzahjacws`, database `postgres`. Use the documented
-**Session port 5432** for backup clients. The API's transaction 6543 setting was not
-changed and must not be used as a backup shortcut. Existing credentials can be
-used for this same main database; do not paste or re-enter them unnecessarily.
-
-An official PostgreSQL 17+ client is required; hosted server is 17.6. This Debian 13
-workspace has compatible `libpq5` 17.11 and trusted Debian archive keys/tools, but
-no `pg_dump`, `psql`, `pg_restore` or Supabase CLI. The official package is
-`postgresql-client-17`; access to `deb.debian.org` is needed to retrieve and verify
-signed repository metadata/package checksums before workspace-local extraction.
-No unverified client artifact or system installation was used.
-
-The environment configuration service returned `INVALID_ARGUMENT` for attempted
-new host additions without a field-level reason. Do not loop unchanged saves.
-Only missing exact entries should be added manually and published, preserving all
-other settings:
-
-```text
-aws-0-ap-south-1.pooler.supabase.com
-deb.debian.org
-```
-
-A later readback found the pooler hostname present in the editable draft, while
-`deb.debian.org` remained absent. Check current draft/published state before
-asking for another entry; do not repeat a completed user action. No claim is made
-that an allowed route will work until the actual PostgreSQL connection succeeds.
-Use the configured supported proxy route only, keep verified TLS and never guess
-hosts, substitute external IPs, disable checks or create an ad-hoc SQL tunnel/RPC.
+Do not request repeated hostname/credential changes, disable verification,
+substitute external IPs, use internal APIs or create an ad-hoc SQL tunnel/RPC.
+Use [trusted-machine-backup.md](trusted-machine-backup.md) from a trusted computer
+with supported PostgreSQL connectivity. It includes read-only logical backup,
+separate Storage payloads, verification and recovery limits. A separate encrypted Storage-only export
+did succeed: four buckets, 28 objects, 7,431,276 bytes, matching before/after
+inventories and authenticated local readback. Its data/key are private and
+outside Git. It is a workspace copy only, not a durable offsite/database backup
+or managed restore rehearsal; the database backup gate remains unsatisfied.
 
 ## Backup and compatibility gate
 
@@ -114,12 +98,17 @@ identity deletion. No existing business row is rewritten or wallet/payment/cron
 procedure called by the reviewed migration.
 
 These commands are **not executed**. Use only after the gate above passes, from
-the verified trusted route with tracing off and secrets securely supplied:
+the repository root on the verified trusted computer. First configure the libpq
+host/user/database and `verify-full`/CA environment in
+[trusted-machine-backup.md](trusted-machine-backup.md). Keep shell tracing off;
+`-W` prompts locally without putting the password/URI in command-line arguments.
+The migration command intentionally does not inherit the backup's read-only
+transaction setting; it is limited to the exact already-approved file:
 
 ```sh
-psql "$COMMERCE_MAIN_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/tests/commerce_preinstall_verify.sql
-psql "$COMMERCE_MAIN_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261022160000_commerce_foundation.sql
-psql "$COMMERCE_MAIN_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/tests/commerce_verify.sql
+PGOPTIONS='-c default_transaction_read_only=on -c lock_timeout=5000' psql -W -X -v ON_ERROR_STOP=1 -f supabase/tests/commerce_preinstall_verify.sql
+PGOPTIONS='-c lock_timeout=5000 -c statement_timeout=120000' psql -W -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261022160000_commerce_foundation.sql
+PGOPTIONS='-c default_transaction_read_only=on -c lock_timeout=5000' psql -W -X -v ON_ERROR_STOP=1 -f supabase/tests/commerce_verify.sql
 ```
 
 The file contains its own BEGIN/COMMIT and is one-time. Do not apply fragments,
@@ -147,7 +136,7 @@ payment or live-order permission follows automatically from SQL completion.
 
 For this read-only investigation/documentation update: **No SQL migration
 required.** The existing foundation installation remains pending. Fresh build
-output is `/workspace/commerce-validation-artifacts/main-release/build.log`;
+output is `/workspace/commerce-validation-artifacts/main-backup-attempt/build.log`;
 [prior test results](pr3-followup-report.md) remain historical and do not certify
 main workflows. Full private catalog/function/cron/connection details stay out of
 Git/public archives. Never print account tokens, DB URLs/passwords or row exports.

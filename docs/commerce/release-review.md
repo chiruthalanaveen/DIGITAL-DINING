@@ -1,11 +1,14 @@
 # Client Websites: review before any production release
 
-**Current scope — 26 October:** main-only access is confirmed and read-only SQL
-preflight passes. No usable backup is available; the user confirmed no external
-backup. Migration remains pending, and deployment/merge/live-payment holds remain.
-Use [main-preflight-results.md](main-preflight-results.md) for the current blocker
-and [main-project-installation.md](main-project-installation.md) for execution
-steps. Earlier staging results below are historical.
+**Current scope — 27 October:** main-only read-only preflight passes. Required
+hosts are published and verified PostgreSQL 17.11 clients are ready, but the cloud
+proxy still closes PostgreSQL negotiation before login. A separate encrypted
+Storage copy passed for 28 objects, but no database backup exists. Migration
+remains pending, and deployment/merge/live-payment holds remain.
+See [main-preflight-results.md](main-preflight-results.md) for evidence,
+[trusted-machine-backup.md](trusted-machine-backup.md) for the supported backup
+alternative, and [main-project-installation.md](main-project-installation.md) for
+the conditional installation steps. Earlier staging results below are historical.
 
 The latest [PR #3 follow-up report](pr3-followup-report.md) records 82 unit tests,
 88 local SQL assertions, a passing build, 64 retained screenshots, repaired billing
@@ -133,8 +136,10 @@ These are future verification steps, not completed hosted results.
 
 ## 7. Backup, recovery and rollback
 
-[backup-recovery.md](backup-recovery.md) is the full plan. **No production backup
-or restore was taken/performed, and no verified backup artifact is claimed.**
+[backup-recovery.md](backup-recovery.md) is the full plan. **No production database
+backup or restore was taken/performed, and no verified database-backup artifact
+is claimed.** The separately verified Storage-only workspace copy is described
+in the current report above.
 It includes checking actual managed backup/PITR availability, secure consistent
 schema/data/role exports, custom Auth/Storage definitions, migration history,
 separate Storage object-byte backups/checksums, operational secrets/configuration

@@ -55,16 +55,29 @@ supplied URI/token, published direct hostname or migration approval again.
 
 Backup gate is unsatisfied: backups[], PITR false, no physical recovery range,
 and the user confirmed no external backup. Catalog snapshots are not backups.
-Direct PostgreSQL remains blocked; the actual main session pooler host is
-`aws-0-ap-south-1.pooler.supabase.com` (port 5432). It and `deb.debian.org` for the
-verified PostgreSQL 17 backup client are not yet allowed. Environment-config tool
-saves were rejected INVALID_ARGUMENT. Later readback found the pooler hostname
-in the editable draft but deb.debian.org absent. Add only the missing client host
-and publish; check current state before asking for a completed action again. Do not bypass network controls,
-disable verification, use internal-only backup APIs, upgrade paid plans or create
-ad-hoc backup/SQL functions. Existing Management SQL SELECT with read_only:false
-still reports a read-only role; write capability is not established. Follow
+Both the actual main session pooler `aws-0-ap-south-1.pooler.supabase.com`
+(port 5432) and `deb.debian.org` are now published/allowed. Official PostgreSQL
+17.11 clients were verified against signed Debian metadata/checksums and extracted
+outside the repository. Do not ask for these hosts or credentials again.
+Direct DNS remains unavailable. The configured proxy now returns CONNECT 200,
+but standard PostgreSQL SSLRequest gets EOF; direct TLS negotiates no required
+`postgresql` ALPN and presents a proxy-issued certificate. This is not a usable
+PostgreSQL connection. No successful PostgreSQL authentication/database backup
+occurred. Do not
+send startup/authentication over the failed alternative TLS route, bypass network
+controls, disable verification, use internal-only backup APIs, upgrade paid plans
+or create ad-hoc backup/SQL functions. Use a trusted operator machine with genuine
+PostgreSQL networking for the backup; see `docs/commerce/trusted-machine-backup.md`.
+Existing Management SQL SELECT with read_only:false still reports a read-only
+role; write capability is not established. Follow
 `docs/commerce/main-preflight-results.md` for evidence and remaining prerequisites.
+
+A separate HTTPS read/list/download-only Storage export succeeded: four buckets,
+28 objects, 7,431,276 plaintext bytes, encrypted with a separate private key.
+Before/after inventories match; manifest and all objects passed authenticated
+local readback. This is a workspace Storage copy only, not a database backup,
+offsite backup or managed recovery rehearsal. Data/key remain outside Git and
+public archives; do not print or upload them. The database backup gate still fails.
 
 Do not put main credentials in COMMERCE_STAGING_*, run destructive test fixtures
 on hosted databases, create live test users/orders or touch wallet/payment data.

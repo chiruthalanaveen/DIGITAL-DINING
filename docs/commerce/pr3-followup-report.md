@@ -1,11 +1,14 @@
 # PR #3 follow-up verification — 25 October 2026
 
-**Current scope — 26 October:** main-only access is confirmed and read-only SQL
-preflight passes. No usable backup is available; the user confirmed no external
-backup. Migration remains pending, and deployment/merge/live-payment holds remain.
-Use [main-preflight-results.md](main-preflight-results.md) for the current blocker
-and [main-project-installation.md](main-project-installation.md) for execution
-steps. Earlier staging results below are historical.
+**Current scope — 27 October:** main-only read-only preflight passes. Required
+hosts are published and verified PostgreSQL 17.11 clients are ready, but the cloud
+proxy still closes PostgreSQL negotiation before login. A separate encrypted
+Storage copy passed for 28 objects, but no database backup exists. Migration
+remains pending, and deployment/merge/live-payment holds remain.
+See [main-preflight-results.md](main-preflight-results.md) for evidence,
+[trusted-machine-backup.md](trusted-machine-backup.md) for the supported backup
+alternative, and [main-project-installation.md](main-project-installation.md) for
+the conditional installation steps. Earlier staging results below are historical.
 
 Branch: `feature/client-websites-phase1`. Draft PR:
 <https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3>.
@@ -208,7 +211,8 @@ name/bucket conflicts; its output is not a restorable backup.
 
 Use [backup-recovery.md](backup-recovery.md) for database/Auth/Storage metadata,
 separate object-byte backups, managed-backup/PITR checks and a restore rehearsal.
-No hosted backup or recovery rehearsal is claimed. Application rollback should
+No hosted database backup or recovery rehearsal is claimed. The current
+Storage-only workspace copy is reported separately above. Application rollback should
 retain commerce history and suspend sales; dropping tables, deleting identities
 or replaying wallet/payment transactions is not a data-preserving rollback.
 

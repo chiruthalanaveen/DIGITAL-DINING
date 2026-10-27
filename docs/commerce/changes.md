@@ -3,31 +3,38 @@
 Complete PR #3 diff against main `7385253c5381fdf4998fddf8f58e84b783aabba1`.
 A means added; M means modified. No files are deleted or renamed.
 
-## Latest main preflight update versus 9643698: 7 files
+## Latest backup transport update versus 26d6697: 8 files
 
-Main account access and read-only SQL/catalog compatibility checks completed.
-No commerce-name conflicts were found. Private preservation snapshots were saved,
-but no usable backup exists and the user confirmed no external backup. A verified
-main pooler route and official backup-client download still need working network
-access; current Management SQL queries remain read-only. No migration, DDL/DML,
-production business-row write, paid upgrade, restore, main merge, deployment or
-live payment was performed. Runtime code and the foundation SQL are unchanged.
-Fresh build passed. No SQL migration required for these read-only/doc updates.
+Both required hosts are published. Official PostgreSQL 17.11 client signatures
+and checksums were verified, and local-only adapter/encryption helpers passed
+8, 11 and 20 synthetic adapter/encryption/Storage export tests. The configured
+proxy still closes PostgreSQL SSL negotiation; direct TLS negotiates no required
+`postgresql` ALPN. A separate encrypted Storage-only copy passed: 28/28 objects,
+7,431,276 bytes, stable inventory and authenticated local readback. It is a
+workspace copy, not an offsite/database backup or full recovery proof. No
+successful database login, database backup, migration or business write occurred. Existing main
+read-only catalog results remain valid evidence within their stated limits.
+No additional credential/hostname entry is needed. The trusted-machine runbook
+provides the supported backup alternative. Fresh `npm run build` passed using
+synthetic development configuration. Application source and foundation SQL are
+unchanged. No SQL migration required for this documentation/investigation update.
 
-See [main-preflight-results.md](main-preflight-results.md) and
-[main-project-installation.md](main-project-installation.md) for exact results,
-commands, backup prerequisites and remaining network actions. Earlier test counts
-remain historical; no production workflow/RLS PASS is implied.
+See [main-preflight-results.md](main-preflight-results.md) for commands/results,
+[trusted-machine-backup.md](trusted-machine-backup.md) for backup steps and
+[main-project-installation.md](main-project-installation.md) for conditional
+installation and rollback. Historical unit/SQL/browser counts were not rerun;
+full production readiness still fails.
 
 - **M** [AGENTS.md](../../AGENTS.md)
-- **M** [docs/commerce/README.md](../../docs/commerce/README.md)
-- **M** [docs/commerce/changes.md](../../docs/commerce/changes.md)
-- **A** [docs/commerce/main-preflight-results.md](../../docs/commerce/main-preflight-results.md)
-- **M** [docs/commerce/main-project-installation.md](../../docs/commerce/main-project-installation.md)
-- **M** [docs/commerce/pr3-followup-report.md](../../docs/commerce/pr3-followup-report.md)
-- **M** [docs/commerce/release-review.md](../../docs/commerce/release-review.md)
+- **M** [docs/commerce/README.md](README.md)
+- **M** [docs/commerce/changes.md](changes.md)
+- **M** [docs/commerce/main-preflight-results.md](main-preflight-results.md)
+- **M** [docs/commerce/main-project-installation.md](main-project-installation.md)
+- **M** [docs/commerce/pr3-followup-report.md](pr3-followup-report.md)
+- **M** [docs/commerce/release-review.md](release-review.md)
+- **A** [docs/commerce/trusted-machine-backup.md](trusted-machine-backup.md)
 
-## Complete PR: 87 files
+## Complete PR: 88 files
 
 - **M** [AGENTS.md](../../AGENTS.md)
 - **M** [README.md](../../README.md)
@@ -88,6 +95,7 @@ remain historical; no production workflow/RLS PASS is implied.
 - **A** [docs/commerce/review-test-results.md](../../docs/commerce/review-test-results.md)
 - **A** [docs/commerce/staging-verification.md](../../docs/commerce/staging-verification.md)
 - **A** [docs/commerce/testing.md](../../docs/commerce/testing.md)
+- **A** [docs/commerce/trusted-machine-backup.md](../../docs/commerce/trusted-machine-backup.md)
 - **A** [lib/commerce/client.js](../../lib/commerce/client.js)
 - **A** [lib/commerce/config.js](../../lib/commerce/config.js)
 - **A** [lib/maintenance-page.ts](../../lib/maintenance-page.ts)

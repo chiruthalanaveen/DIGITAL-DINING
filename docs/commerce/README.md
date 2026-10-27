@@ -1,11 +1,14 @@
 # Client Websites — Phase 1
 
-**Current scope — 26 October:** main-only access is confirmed and read-only SQL
-preflight passes. No usable backup is available; the user confirmed no external
-backup. Migration remains pending, and deployment/merge/live-payment holds remain.
-Use [main-preflight-results.md](main-preflight-results.md) for the current blocker
-and [main-project-installation.md](main-project-installation.md) for execution
-steps. Earlier staging results below are historical.
+**Current scope — 27 October:** main-only read-only preflight passes. Required
+hosts are published and verified PostgreSQL 17.11 clients are ready, but the cloud
+proxy still closes PostgreSQL negotiation before login. A separate encrypted
+Storage copy passed for 28 objects, but no database backup exists. Migration
+remains pending, and deployment/merge/live-payment holds remain.
+See [main-preflight-results.md](main-preflight-results.md) for evidence,
+[trusted-machine-backup.md](trusted-machine-backup.md) for the supported backup
+alternative, and [main-project-installation.md](main-project-installation.md) for
+the conditional installation steps. Earlier staging results below are historical.
 
 This additive module provides owner applications and approval, independently
 branded tenant catalogs, an owner workspace, image uploads, optional tracked
