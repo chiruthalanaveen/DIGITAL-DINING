@@ -1,14 +1,15 @@
 # Client Websites: review before any production release
 
-**Current scope — 27 October:** main-only read-only preflight passes. Required
-hosts are published and verified PostgreSQL 17.11 clients are ready, but the cloud
-proxy still closes PostgreSQL negotiation before login. A separate encrypted
-Storage copy passed for 28 objects, but no database backup exists. Migration
-remains pending, and deployment/merge/live-payment holds remain.
-See [main-preflight-results.md](main-preflight-results.md) for evidence,
-[trusted-machine-backup.md](trusted-machine-backup.md) for the supported backup
-alternative, and [main-project-installation.md](main-project-installation.md) for
-the conditional installation steps. Earlier staging results below are historical.
+**Current scope — 27 October:** the user explicitly waived backup and authorized
+moving forward with the reviewed foundation on main `table-pay`. Fresh
+compatibility checks passed. The complete migration was attempted once through
+the official API, but failed with HTTP 400 / SQLSTATE `25006` at `CREATE SCHEMA`
+because the connection is read-only. Fresh catalog/cron checks confirm no
+migration committed. Backup is no longer a prerequisite; API write access is
+the blocker. See [main-install-results.md](main-install-results.md) and
+[main-project-installation.md](main-project-installation.md) for the exact-file
+SQL Editor route. Deployment/merge/live-payment holds remain. Earlier results
+below are historical.
 
 The latest [PR #3 follow-up report](pr3-followup-report.md) records 82 unit tests,
 88 local SQL assertions, a passing build, 64 retained screenshots, repaired billing
