@@ -16,6 +16,9 @@ import {
 
 } from '@/lib/server/adminSupabase'
 
+import { defaultMaintenanceEnabled } from '@/lib/server/maintenanceSettings'
+import { isSameOriginAdminRequest } from '@/lib/server/adminRequestOrigin'
+
 export const runtime =
 
   'nodejs'
@@ -1957,19 +1960,12 @@ export async function GET(
 
         )
 
-    const siteStatus =
-
-      settingsResult.rows.find(
-
-        (row) =>
-
-          row?.key ===
-
-          'website_status'
-
-      )?.status ||
-
-      'Working'
+    const savedSiteStatus = settingsResult.rows.find(
+      (row) => row?.key === 'website_status'
+    )?.status
+    const siteStatus = ['Working', 'Not Working'].includes(savedSiteStatus)
+      ? savedSiteStatus
+      : defaultMaintenanceEnabled() ? 'Not Working' : 'Working'
 
     const nameMap =
 
@@ -3494,6 +3490,14 @@ if (
       'set_website_status'
 
     ) {
+
+      if (!isSameOriginAdminRequest(request)) {
+        return NextResponse.json({ success: false, message: 'A same-origin request is required.' }, { status: 403 })
+      }
+
+      if (!['Working', 'Not Working'].includes(body?.status)) {
+        return NextResponse.json({ success: false, message: 'Invalid website status.' }, { status: 400 })
+      }
 
       const status =
 
