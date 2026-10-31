@@ -3,35 +3,33 @@
 Complete PR #3 diff against main `7385253c5381fdf4998fddf8f58e84b783aabba1`.
 A means added; M means modified. No files are deleted or renamed.
 
-## Latest backup-waiver/installation attempt versus a0acdf7: 9 files
+## Latest main post-install verification versus 9b2f649: 9 files
 
-The user waived the backup condition. Fresh main compatibility checks passed and
-the exact reviewed foundation was submitted once through the documented API
-with read_only:false. It failed HTTP 400 / SQLSTATE25006 at CREATE SCHEMA because
-the connection is read-only. Fresh after-attempt checks show no commerce objects
-or bucket, identical existing catalog fingerprints/counts and unchanged cron
-definitions. No migration committed. Backup is no longer a prerequisite; the
-concrete operator route is the exact file in the main Supabase SQL Editor.
-Fresh npm run build passed with synthetic development settings. App source and
-foundation SQL are unchanged; no additional migration is needed or created.
-Deployment/merge/live-payment and unrelated-migration holds remain.
+The user manually installed the reviewed foundation. Read-only main verification
+now matches the canonical schema, defaults, grants, RLS policies, constraints,
+indexes and function bodies (after CRLF-to-LF normalization). Existing catalog
+records, four old bucket settings and both cron definitions are unchanged.
+Fresh `npm test` 82/82, local SQL 88 assertions, main read-only REST 11/11 and
+`npm run build` pass. No production mutation was performed during verification. No SQL
+migration required. Do not reapply the foundation; no migration ledger table was
+found. Hosted authenticated tenant workflows remain unverified. Deployment,
+main merge and live payments remain on hold. Application source and foundation
+SQL are unchanged.
 
-See [main-install-results.md](main-install-results.md) for commands/results and
-[main-project-installation.md](main-project-installation.md) for installation and
-rollback. Historical unit/SQL/browser counts were not rerun; hosted RLS/workflows
-remain unverified.
+See [main-postinstall-results.md](main-postinstall-results.md) for exact results,
+commands, evidence, preservation boundaries and remaining risks.
 
 - **M** [AGENTS.md](../../AGENTS.md)
 - **M** [docs/commerce/README.md](README.md)
 - **M** [docs/commerce/changes.md](changes.md)
-- **A** [docs/commerce/main-install-results.md](main-install-results.md)
+- **M** [docs/commerce/main-install-results.md](main-install-results.md)
+- **A** [docs/commerce/main-postinstall-results.md](main-postinstall-results.md)
 - **M** [docs/commerce/main-preflight-results.md](main-preflight-results.md)
 - **M** [docs/commerce/main-project-installation.md](main-project-installation.md)
 - **M** [docs/commerce/pr3-followup-report.md](pr3-followup-report.md)
 - **M** [docs/commerce/release-review.md](release-review.md)
-- **M** [supabase/tests/commerce_preinstall_verify.sql](../../supabase/tests/commerce_preinstall_verify.sql) (comment only)
 
-## Complete PR: 89 files
+## Complete PR: 90 files
 
 - **M** [AGENTS.md](../../AGENTS.md)
 - **M** [README.md](../../README.md)
@@ -82,6 +80,7 @@ remain unverified.
 - **A** [docs/commerce/database.md](../../docs/commerce/database.md)
 - **A** [docs/commerce/lint-review.md](../../docs/commerce/lint-review.md)
 - **A** [docs/commerce/main-install-results.md](../../docs/commerce/main-install-results.md)
+- **A** [docs/commerce/main-postinstall-results.md](../../docs/commerce/main-postinstall-results.md)
 - **A** [docs/commerce/main-preflight-results.md](../../docs/commerce/main-preflight-results.md)
 - **A** [docs/commerce/main-project-installation.md](../../docs/commerce/main-project-installation.md)
 - **A** [docs/commerce/migration-review.md](../../docs/commerce/migration-review.md)

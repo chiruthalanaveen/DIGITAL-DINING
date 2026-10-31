@@ -39,68 +39,61 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
-On 26 October 2026 the user withdrew staging and selected the existing main
-Supabase project `wispidcdmunqzahjacws` used by the `table-pay` application. The
-reviewed `20261022160000_commerce_foundation.sql` was explicitly approved for
-that exact project. On 27 October the user instructed **"FORGET ABOUT THE BACKUP
-AND WORK FORWARD"**, waiving the prior backup prerequisite. Proceed with the
-already-approved exact migration after fresh compatibility checks using a
-supported authorized write connection. Do not ask for migration approval or a
-backup again. This waiver does not authorize other migrations, a main-branch
-merge, production deployment/promotion, live test fixtures or live payments.
+The user selected main Supabase project `table-pay` (`wispidcdmunqzahjacws`) and
+explicitly approved the reviewed `20261022160000_commerce_foundation.sql`. On
+27 October 2026 the user waived the backup prerequisite. On 31 October the user
+reported running the complete reviewed file in the main SQL Editor; subsequent
+read-only verification confirms the foundation is installed. **Do not reapply
+this one-time migration or ask the user to run it, provide credentials or make a
+backup again.** No additional migration is needed for post-install verification.
 
-The foundation source remains canonical at SHA-256
+The canonical source remains SHA-256
 `dd2882f6329808783b1d4d97c4264f59989b7e834753aa06efe46d63855db1ca`.
-Preserve existing business data, RLS policies, financial histories and cron jobs.
-The backup waiver does not waive preservation or permit destructive testing.
+Main PostgreSQL 17.6 metadata matches an independently installed local canonical
+fixture: nine tables/103 columns, twelve functions, fifteen policies, 25 indexes,
+81 constraints, 54 commerce-table constraint triggers and ten Auth FK triggers.
+Columns/defaults/types, grants, function security, policy expressions and other
+compared definitions match. All twelve stored function-body hashes match after
+CRLF-to-LF normalization only. Existing catalog records, four prior bucket
+settings and two cron definitions remain unchanged. These are metadata
+preservation checks, not a full business-row snapshot or recovery proof.
 
-Main-only read-only SQL/catalog checks work via the supplied Management API
-token. Project is confirmed table-pay, PG 17.6. The last preflight found required
-objects/privileges and no commerce collisions; full hosted RLS/workflow behavior
-is not tested. After the backup waiver, fresh main compatibility checks passed.
-The complete canonical foundation SQL was submitted once through the documented
-Management `/database/query` endpoint with read_only:false, preceded only by
-session timeouts (5s lock, 120s statement). It failed HTTP 400 / SQLSTATE 25006:
-`cannot execute CREATE SCHEMA in a read-only transaction`. API identity checks report
-`supabase_read_only_user`; the migration request independently failed as read-only
-and no migration committed. The current blocker is API
-write access, not backup. Post-attempt catalog/cron fingerprints match exactly; see
-`docs/commerce/main-install-results.md`.
-Do not ask for the supplied URI/token, published hostname, backup or migration
-approval again. Do not retry unchanged API requests, use alternative endpoints
-to bypass this denial, elevate roles or create ad-hoc SQL functions/tunnels.
-An authorized operator can install only the already-approved canonical file in
-the main Supabase SQL Editor after the same compatibility checks; do not use
-`supabase db push` or unrelated migration history.
+Eleven read-only hosted REST checks pass: anonymous direct reads on all nine
+commerce tables are rejected (HTTP 401 / SQLSTATE 42501), a missing-slug public
+catalog call returns HTTP 200/null, and a service-role GET with limit zero returns
+200. No business rows or live fixtures were written. Real hosted Auth sessions,
+owner-to-owner RLS isolation and commerce workflows remain untested. Fresh local
+checks pass: 82 Node tests, 88 isolated PostgreSQL assertions and npm run build.
+See `docs/commerce/main-postinstall-results.md` for current evidence and limits.
 
-No usable database backup exists: last provider metadata returned backups[],
-PITR false and no physical recovery range; the user confirmed no external backup.
-Catalog snapshots are not backups. Recovery limitations must be disclosed, but
-backup creation is no longer an installation gate. Retain existing private
-artifacts rather than deleting them or resuming backup preparation.
+The 27 October Management API installation attempt failed HTTP 400 / SQLSTATE
+25006 in a read-only transaction. That failure is historical: the user completed
+installation through the SQL Editor. Do not retry the API migration or treat its
+write denial as an installation blocker. Keep verification read-only; do not
+switch roles, use JWT impersonation, create live test users/orders or call
+mutating RPCs to test production behavior.
 
-Both the actual main session pooler `aws-0-ap-south-1.pooler.supabase.com`
-(port 5432) and `deb.debian.org` are published/allowed. Official PostgreSQL 17.11
-clients were verified against signed Debian metadata/checksums and extracted
-outside the repository. Direct DNS is unavailable; proxy CONNECT returns 200,
-but normal PostgreSQL SSLRequest gets EOF. Direct TLS negotiates no required
-`postgresql` ALPN and has a proxy-issued certificate, so this is not usable
-PostgreSQL transport. Do not disable verification or send authentication over
-that failed alternative route. Do not request repeated hostname/credential edits,
-use internal-only backup APIs or upgrade paid plans.
+The read-only history check found no `supabase_migrations.schema_migrations`
+table. No migration-history metadata was created or repaired by this work. Plan
+a reviewed baseline before any future CLI migration workflow; do not run
+`supabase db push`, replay the foundation or install unrelated migration history
+to populate a ledger.
 
-A separate HTTPS read/list/download-only Storage export succeeded: four buckets,
-28 objects, 7,431,276 plaintext bytes, encrypted with a separate private key.
-Before/after inventories match; manifest and all objects passed authenticated
-local readback. This is a workspace Storage copy only, not a database backup,
-offsite backup or managed recovery rehearsal. Data/key remain outside Git and
-public archives; do not print or upload them.
+Staging remains stopped by user choice. Do not put main credentials in
+COMMERCE_STAGING_*, run destructive fixtures on hosted databases, touch existing
+wallet/payment/customer/order data or alter cron jobs. Local development checks
+use isolated fixtures only. Preserve existing data, RLS, balances, transactions,
+order histories and jobs. The backup waiver does not waive those requirements.
+No production deployment/promotion, main merge, other migration, live fixture or
+live payment approval follows from installation. Retain PR #3 draft status and
+the Vercel `feature/client-websites-phase1` deployment guard.
 
-Do not put main credentials in COMMERCE_STAGING_*, run destructive test fixtures
-on hosted databases, create live test users/orders or touch wallet/payment data.
-Staging remains stopped; preserve its historical evidence/private fixtures.
-Local development checks use only isolated fixtures. Follow
-`docs/commerce/main-project-installation.md` for main-only compatibility, the exact
-migration and verification/recovery steps. Older backup runbooks are optional
-references, not a reason to stop the authorized installation. Retain the Vercel
-branch deployment guard and PR #3 draft status.
+The prior network/client/backup investigations are historical. Published host
+entries and supplied secrets need no re-entry. The cloud's raw PostgreSQL route
+was unavailable; do not disable TLS verification, bypass network controls,
+elevate roles, use internal-only APIs or create ad-hoc SQL tunnels/functions.
+No database backup or managed recovery rehearsal is established. The separate
+28-object encrypted Storage workspace copy and its private key remain outside
+Git/public archives; retain them without resuming backup work or printing data,
+credentials or keys. Follow `docs/commerce/main-project-installation.md` for the
+installed-state runbook and data-preserving rollback considerations.

@@ -1,12 +1,10 @@
 # Historical main preflight and backup investigation — 26–27 October 2026
 
-**Superseded installation status:** the user subsequently waived the backup
-condition. The approved foundation was attempted through the official API and
-rejected as read-only (HTTP 400 / SQLSTATE `25006`); nothing committed. Backup
-is no longer an installation prerequisite. Use
-[main-install-results.md](main-install-results.md) for current results and
-[main-project-installation.md](main-project-installation.md) for the SQL Editor
-route. The rest of this document records the earlier backup investigation.
+**Superseded installation status:** the user waived the backup condition and
+subsequently ran the reviewed SQL in main SQL Editor. The 31 October read-only
+checks verify the foundation is installed. Do not reapply it. Use
+[main-postinstall-results.md](main-postinstall-results.md) for current results.
+The rest of this document records the earlier backup investigation.
 
 Target: `table-pay` (`wispidcdmunqzahjacws`). Branch:
 `feature/client-websites-phase1`; draft [PR #3](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3).

@@ -1,15 +1,14 @@
 # Client Websites — Phase 1
 
-**Current scope — 27 October:** the user explicitly waived backup and authorized
-moving forward with the reviewed foundation on main `table-pay`. Fresh
-compatibility checks passed. The complete migration was attempted once through
-the official API, but failed with HTTP 400 / SQLSTATE `25006` at `CREATE SCHEMA`
-because the connection is read-only. Fresh catalog/cron checks confirm no
-migration committed. Backup is no longer a prerequisite; API write access is
-the blocker. See [main-install-results.md](main-install-results.md) and
-[main-project-installation.md](main-project-installation.md) for the exact-file
-SQL Editor route. Deployment/merge/live-payment holds remain. Earlier results
-below are historical.
+**Current status — 31 October:** the user ran the reviewed SQL in main
+`table-pay`. Read-only verification confirms the canonical foundation is
+installed: nine tables/103 columns, twelve functions, fifteen policies and the
+media bucket. Existing catalog records, old bucket settings and cron definitions
+are unchanged. Fresh 82 Node tests, 88 local SQL assertions, 11 main read-only
+REST checks and the build pass. Do not reapply the foundation. See
+[main-postinstall-results.md](main-postinstall-results.md) for exact results and
+remaining hosted workflow limits. Production deployment/merge/live-payment holds
+remain. Earlier results below are historical.
 
 This additive module provides owner applications and approval, independently
 branded tenant catalogs, an owner workspace, image uploads, optional tracked

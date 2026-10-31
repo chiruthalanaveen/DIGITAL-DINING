@@ -1,4 +1,10 @@
-# Main installation attempt — 27 October 2026
+# Historical API installation attempt — 27 October 2026
+
+**Superseded by the 31 October installation:** the user ran the reviewed SQL in
+main SQL Editor. Independent read-only checks now verify the installed canonical
+schema and permissions. Do not reapply the foundation. See
+[main-postinstall-results.md](main-postinstall-results.md) for current results.
+The rest of this document preserves the earlier failed API attempt.
 
 Target: **table-pay** (`wispidcdmunqzahjacws`). Branch
 `feature/client-websites-phase1`, draft [PR #3](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3).
