@@ -235,7 +235,7 @@ export async function POST(req) {
       error: restaurantError,
     } = await supabase
       .from('restaurants')
-      .select('id, owner_id, name')
+      .select('id, owner_id, name, approval_status')
       .eq('id', restaurantId)
       .eq('owner_id', user.id)
       .maybeSingle()
@@ -262,6 +262,17 @@ export async function POST(req) {
           success: false,
           message:
             'You are not authorized to subscribe for this restaurant.',
+        },
+        { status: 403 }
+      )
+    }
+
+    if (String(restaurant.approval_status || 'pending').trim().toLowerCase() !== 'approved') {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'OWNER_APPROVAL_REQUIRED',
+          message: 'Super Admin approval is required before subscribing for this restaurant.',
         },
         { status: 403 }
       )

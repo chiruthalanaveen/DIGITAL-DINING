@@ -318,7 +318,7 @@ export async function POST(req) {
     } = await admin
       .from('restaurants')
       .select(
-        'id, owner_id, name, phone'
+        'id, owner_id, name, phone, approval_status'
       )
       .eq('id', restaurantId)
       .maybeSingle()
@@ -342,6 +342,17 @@ export async function POST(req) {
           success: false,
           message:
             'You are not authorized to update this restaurant.',
+        },
+        { status: 403 }
+      )
+    }
+
+    if (String(restaurant.approval_status || 'pending').trim().toLowerCase() !== 'approved') {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'OWNER_APPROVAL_REQUIRED',
+          message: 'Super Admin approval is required before activating a subscription for this restaurant.',
         },
         { status: 403 }
       )
@@ -604,11 +615,21 @@ export async function POST(req) {
         payment.status || ''
       )
 
+      if (paymentStatus === 'authorized') {
+        return NextResponse.json(
+          {
+            success: false,
+            pending: true,
+            code: 'PAYMENT_NOT_CAPTURED',
+            message: 'Payment is authorized but has not been captured. The subscription has not been activated. Retry verification shortly; do not pay again.',
+          },
+          { status: 202 }
+        )
+      }
+
       if (
-        ![
-          'authorized',
-          'captured',
-        ].includes(paymentStatus)
+        paymentStatus !== 'captured' ||
+        payment.captured === false
       ) {
         return NextResponse.json(
           {
@@ -665,6 +686,8 @@ export async function POST(req) {
       .from('restaurants')
       .update(updatePayload)
       .eq('id', restaurantId)
+      .eq('owner_id', user.id)
+      .eq('approval_status', 'approved')
       .select(`
         id,
         name,

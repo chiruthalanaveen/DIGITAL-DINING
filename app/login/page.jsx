@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { findOwnerRestaurant as resolveOwnerRestaurant } from '@/lib/ownerAccount'
 
 export default function WebsiteOwnerLoginPage() {
   const router = useRouter()
@@ -18,28 +19,23 @@ export default function WebsiteOwnerLoginPage() {
 
   const busy = loading || Boolean(oauthLoading)
 
-  const findOwnerRestaurant = async (user) => {
+  const findOwnerRestaurant = async (user, includeDob = false) => {
     if (!user?.id) {
       throw new Error('Authenticated user was not found.')
     }
 
-    const { data: restaurant, error: restaurantError } = await supabase
+    const restaurant = await resolveOwnerRestaurant(supabase)
+    if (!includeDob) return restaurant
+
+    // Preserve the existing passkey/DOB check, scoped to the verified business.
+    // DOB is not added to the general identity endpoint's response.
+    const { data: profile, error: profileError } = await supabase
       .from('restaurants')
-      .select('id, name, dob, subscription_status')
-      .eq('id', user.id)
+      .select('dob')
+      .eq('id', restaurant.id)
       .maybeSingle()
-
-    if (restaurantError) {
-      throw new Error(restaurantError.message || 'Unable to load your restaurant account.')
-    }
-
-    if (!restaurant?.id) {
-      throw new Error(
-        'No restaurant account is connected to this login. Please register your business first.'
-      )
-    }
-
-    return restaurant
+    if (profileError) throw new Error('Unable to verify your account details. Please try again.')
+    return { ...restaurant, dob: profile?.dob }
   }
 
   const handlePasswordLogin = async (event) => {
@@ -109,7 +105,7 @@ export default function WebsiteOwnerLoginPage() {
         throw new Error('The biometric credential belongs to a different email account.')
       }
 
-      const restaurant = await findOwnerRestaurant(user)
+      const restaurant = await findOwnerRestaurant(user, true)
 
       if (!restaurant?.dob) {
         await supabase.auth.signOut()

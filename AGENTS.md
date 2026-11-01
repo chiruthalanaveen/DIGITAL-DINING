@@ -39,7 +39,36 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
-### Current shopping increment — 1 November 2026
+### Current platform Phase 0 — 1 November 2026
+
+The new master upgrade request supersedes the previous storefront-only source
+scope. Audit all existing modules and make small critical stabilization fixes;
+do not rebuild or implement every roadmap phase at once. The first increment
+uses `feature/phase0-account-payment-guards`, based on PR #3's `4ac1e12`, and
+addresses owner association/approval and captured-payment/approval guards.
+Keep PR #3 draft and unmerged. Preserve its source and deployment guard; disable
+automatic deployment for this new branch as well before pushing.
+
+Reuse server-verified ownership and approval helpers. Explicit owner_id overrides
+legacy restaurant ID matching; never remap by unverified email/phone or silently
+write corrective mappings. Pending/rejected/suspended owners must stay blocked
+from operations/subscriptions. Treat authorized payments as pending capture,
+not paid. Durable subscription replay prevention needs a separate reviewed
+transactional design; do not invent an in-memory financial ledger.
+
+Production SQL/config changes, deployments (including Preview), main pushes or
+merges, live fixtures and live payments remain prohibited without separate
+approval. No new production queries are necessary. Use synthetic loopback
+fixtures; keep unavailable PIN recovery fail-closed until a verified recovery
+channel exists. Do not reapply the installed commerce foundation or run
+supabase db push. Preserve data, RLS, wallets, orders and cron jobs. See
+`docs/upgrade/feature-audit.md` and `docs/upgrade/master-roadmap.md`.
+
+### Previous shopping increment — historical scope, 1 November 2026
+
+The source-scope restrictions below applied to the completed storefront increment.
+The newer Phase 0 section above expands authorized stabilization work across
+modules. Its production/database/deployment protections remain in effect.
 
 The uploaded seventeen-feature brief limits this increment to three related
 shopping improvements: existing single-image zoom, combined price/availability

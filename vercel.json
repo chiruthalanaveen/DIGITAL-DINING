@@ -2,7 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "feature/client-websites-phase1": false
+      "feature/client-websites-phase1": false,
+      "feature/phase0-account-payment-guards": false
     }
   }
 }

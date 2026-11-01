@@ -4,6 +4,7 @@ import ThemeToggle from '@/app/components/ThemeToggle'
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getOwnerApprovalStatus } from '@/lib/ownerAccount'
 import ResortManagement from '@/app/components/ResortManagement'
 import OwnerDeliveryManagement from '@/app/components/OwnerDeliveryManagement'
 import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
@@ -1581,6 +1582,7 @@ restaurantModuleEnabled,
   // The authenticated Supabase user must own the dashboard being opened.
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
 
     const verifyDashboardAccess = async () => {
       if (!restaurantId) {
@@ -1593,12 +1595,15 @@ restaurantModuleEnabled,
         error
       } = await supabase.auth.getUser()
 
+      if (cancelled) return
       if (error || !user) {
         if (!cancelled) router.replace('/login')
         return
       }
 
       if (!cancelled) {
+        setAuthChecked(false)
+        setRestaurant(null)
         setProfileName(
           user.user_metadata?.full_name ||
           user.user_metadata?.name ||
@@ -1607,53 +1612,23 @@ restaurantModuleEnabled,
         setProfileEmail(user.email || '')
       }
 
-      // Registration stores the Supabase Auth user ID directly in
-      // restaurants.id. Verify both the URL restaurant and logged-in owner
-      // against that same ID. Do not use owner_id here.
-      if (String(restaurantId) !== String(user.id)) {
-        console.error('Dashboard ownership verification failed:', {
-          restaurantId,
-          userId: user.id,
-          reason: 'Restaurant URL does not belong to the authenticated user',
-        })
-
+      try {
+        // The server verifies this URL against owner_id first, with only a
+        // null-owner legacy fallback. Pending owners may read their own status.
+        const access = await getOwnerApprovalStatus(supabase, String(restaurantId), { signal: controller.signal })
         if (!cancelled) {
-          router.replace('/login')
+          setApprovalRestaurantName(String(access.restaurantName || ''))
+          setApprovalStatus(access.approvalStatus)
+          setAuthChecked(true)
         }
-
-        return
-      }
-
-      const { data: ownedRestaurant, error: ownershipError } = await supabase
-        .from('restaurants')
-        .select('id, name, subscription_status, approval_status')
-        .eq('id', user.id)
-        .maybeSingle()
-
-     if (ownershipError || !ownedRestaurant) {
-  console.error('Dashboard ownership verification failed:', {
-    restaurantId,
-    userId: user?.id,
-    ownershipError,
-    ownedRestaurant,
-  })
-
-  if (!cancelled) {
-    router.replace('/login')
-  }
-
-  return
-}
-
-      if (!cancelled) {
-        const status = String(ownedRestaurant.approval_status || 'pending').toLowerCase()
-        setApprovalRestaurantName(String(ownedRestaurant.name || ''))
-        setApprovalStatus(status)
-        setAuthChecked(true)
+      } catch {
+        if (!cancelled) router.replace('/login')
       }
     }
 
-    verifyDashboardAccess()
+    verifyDashboardAccess().catch(() => {
+      if (!cancelled) router.replace('/login')
+    })
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (event, session) => {
@@ -1665,6 +1640,7 @@ restaurantModuleEnabled,
 
     return () => {
       cancelled = true
+      controller.abort()
       authListener?.subscription?.unsubscribe()
     }
   }, [restaurantId, router])
@@ -1702,9 +1678,8 @@ restaurantModuleEnabled,
         return
       }
 
-      // Registration may use restaurants.id = auth.users.id, even if the
-      // optional owner_id is absent or differs. The first owner guard already
-      // verified restaurantId === user.id. Do not require BOTH identities.
+      // A non-null explicit owner always overrides the legacy primary-key
+      // convention. Recheck ownership before refreshing private data.
       const { data: ownedRestaurant, error: ownershipError } = await supabase
         .from('restaurants')
         .select('id, owner_id, approval_status')
@@ -1714,8 +1689,7 @@ restaurantModuleEnabled,
       if (
         ownershipError ||
         !ownedRestaurant ||
-        (String(ownedRestaurant.id) !== String(user.id) &&
-         String(ownedRestaurant.owner_id || '') !== String(user.id))
+        String(ownedRestaurant.owner_id || ownedRestaurant.id) !== String(user.id)
       ) {
         console.error('Dashboard ownership check failed:', ownershipError)
         router.replace('/login')
@@ -3859,6 +3833,7 @@ if (staffError) {
 
   if (authChecked && approvalStatus !== 'approved') {
     const rejected = approvalStatus === 'rejected'
+    const suspended = approvalStatus === 'suspended'
     return (
       <main className="min-h-screen bg-neutral-950 px-4 py-12 text-neutral-100 flex items-center justify-center">
         <section className="w-full max-w-xl rounded-3xl border border-neutral-800 bg-neutral-900 p-6 sm:p-9 text-center shadow-2xl">
@@ -3866,23 +3841,23 @@ if (staffError) {
             {rejected ? '!' : '⏳'}
           </div>
           <p className={`text-xs font-black uppercase tracking-widest ${rejected ? 'text-red-400' : 'text-amber-400'}`}>
-            {rejected ? 'Registration requires attention' : 'Awaiting Super Admin approval'}
+            {suspended ? 'Account suspended' : rejected ? 'Registration requires attention' : 'Awaiting Super Admin approval'}
           </p>
           <h1 className="mt-3 text-2xl font-black text-white">
-            {rejected ? 'Your registration was not approved' : 'Registration received successfully'}
+            {suspended ? 'Your business access is suspended' : rejected ? 'Your registration was not approved' : 'Registration received successfully'}
           </h1>
           {approvalRestaurantName && (
             <p className="mt-2 text-sm font-semibold text-neutral-300">{approvalRestaurantName}</p>
           )}
           <p className="mt-4 text-sm leading-6 text-neutral-400">
-            {rejected
+            {rejected || suspended
               ? 'Please contact the Digital Dine-In Super Admin for a review. You cannot access your Owner Portal until your business is approved.'
               : 'Please contact the Digital Dine-In Super Admin to request account activation. Your Owner Portal will open only after the Super Admin approves your business.'}
           </p>
           <div className="mt-6 rounded-2xl border border-neutral-700 bg-neutral-950 px-4 py-4 text-left">
             <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Account status</p>
             <p className={`mt-1 font-bold ${rejected ? 'text-red-400' : 'text-amber-400'}`}>
-              {rejected ? 'Rejected — contact admin' : 'Pending approval'}
+              {suspended ? 'Suspended — contact admin' : rejected ? 'Rejected — contact admin' : 'Pending approval'}
             </p>
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
