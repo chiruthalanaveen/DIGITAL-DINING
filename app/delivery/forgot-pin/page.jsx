@@ -30,7 +30,8 @@ function Form(){
   try{
    const response=await fetch(`/api/delivery/customer/forgot-pin?store=${encodeURIComponent(store)}&mobile=${encodeURIComponent(mobile)}`,{cache:'no-store'})
    const result=await response.json().catch(()=>({}))
-   if(!response.ok||!result?.questionKey) throw new Error('This account has no security-question recovery. Contact support or use mobile OTP if available.')
+   if(!response.ok) throw new Error(result.message||'PIN recovery is temporarily unavailable. Contact your delivery store for help.')
+   if(!Object.hasOwn(QUESTIONS,result?.questionKey)) throw new Error('This account has no security-question recovery. Contact support or use mobile OTP if available.')
    setQuestionKey(result.questionKey)
   }catch(e){setError(e.message||'Could not load security question.')}
   finally{setBusy(false)}

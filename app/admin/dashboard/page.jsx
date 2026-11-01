@@ -15,6 +15,8 @@ import AdminWalletControls from '@/app/components/AdminWalletControls'
 import AdminRestaurantFeeEditor from '@/app/components/AdminRestaurantFeeEditor'
 import AdminDeliverySignupSettings from '@/app/components/AdminDeliverySignupSettings'
 import AdminPrivacyDeletionReviews from '@/app/components/AdminPrivacyDeletionReviews'
+import AdminMaintenanceSettings from '@/app/components/AdminMaintenanceSettings'
+import AdminClientWebsites from '@/app/components/commerce/AdminClientWebsites'
 
 const NAV = [
   ['overview', 'Overview'],
@@ -33,6 +35,7 @@ const NAV = [
   ['reviews', 'Reviews'],
   ['payments', 'Payments'],
   ['system', 'System'],
+  ['client-websites', 'E-Commerce Website Management'],
   ['audit', 'Audit Log'],
 ]
 
@@ -42,7 +45,7 @@ const NAV_GROUPS = [
   { title: 'Commerce', items: ['operations', 'delivery-orders', 'payments', 'inventory'] },
   { title: 'Growth & Onboarding', items: ['custom-plans', 'delivery-signup', 'people'] },
   { title: 'Customer Experience', items: ['live-support', 'support', 'reviews'] },
-  { title: 'Administration', items: ['privacy-deletions', 'system', 'audit'] },
+  { title: 'Administration', items: ['client-websites', 'privacy-deletions', 'system', 'audit'] },
 ]
 
 const NAV_ICONS = {
@@ -50,7 +53,7 @@ const NAV_ICONS = {
   'wallet-controls': 'wallet', 'delivery-signup': 'truck', tenants: 'building',
   operations: 'activity', 'delivery-orders': 'package', people: 'users',
   inventory: 'layers', 'live-support': 'messages', support: 'life-ring',
-  reviews: 'star', payments: 'credit', system: 'settings', audit: 'shield',
+  reviews: 'star', payments: 'credit', system: 'settings', 'client-websites': 'building', audit: 'shield',
 }
 
 const NAV_DESCRIPTIONS = {
@@ -70,6 +73,7 @@ const NAV_DESCRIPTIONS = {
   reviews: 'Customer feedback and moderation',
   payments: 'Payment configurations and controls',
   system: 'Platform settings and diagnostics',
+  'client-websites': 'Independent storefronts, owner applications and website configuration',
   audit: 'Administrative change history',
 }
 
@@ -1350,6 +1354,16 @@ export default function AdminControlCenter() {
   ] =
     useState(null)
 
+  const syncMaintenanceStatus = useCallback(({ enabled }) => {
+    setData((current) => current ? {
+      ...current,
+      platform: {
+        ...current.platform,
+        websiteStatus: enabled ? 'Not Working' : 'Working',
+      },
+    } : current)
+  }, [])
+
   const [
     loading,
     setLoading,
@@ -2310,6 +2324,13 @@ export default function AdminControlCenter() {
         .dd-admin-ui .dd-nav-button { transition: background .16s ease, color .16s ease, transform .16s ease; }
         .dd-admin-ui .dd-nav-button:hover { transform: translateX(2px); }
         .dd-admin-ui .dd-hero { background: radial-gradient(circle at 88% 0%,rgba(251,146,60,.14),transparent 36%),linear-gradient(115deg,#22202b 0%,#191d29 47%,#111924 100%); }
+        :root[data-theme='light'] .dd-admin-ui { background: var(--bg); }
+        :root[data-theme='light'] .dd-admin-ui > header,
+        :root[data-theme='light'] .dd-admin-ui aside { background: var(--card); }
+        :root[data-theme='light'] .dd-admin-ui header button { background: var(--surface); }
+        :root[data-theme='light'] .dd-admin-ui .dd-hero,
+        :root[data-theme='light'] .dd-admin-ui .dd-metric { background: linear-gradient(135deg, #fff, #f3f6fb); }
+        :root[data-theme='light'] .dd-admin-ui .dd-nav-button[aria-current='page'] { color: #b91c1c; }
         @media (prefers-reduced-motion: reduce) { .dd-admin-ui .dd-metric, .dd-admin-ui .dd-nav-button { transition: none; } .dd-admin-ui .dd-metric:hover,.dd-admin-ui .dd-nav-button:hover { transform: none; } }
       `}</style>
 
@@ -4326,6 +4347,8 @@ export default function AdminControlCenter() {
             </div>
           )}
 
+          {section === 'client-websites' && <AdminClientWebsites />}
+
           {section ===
             'system' && (
             <div>
@@ -4376,65 +4399,7 @@ export default function AdminControlCenter() {
               </div>
 
               <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                        Public Website
-                      </p>
-
-                      <h2 className="mt-1 text-lg font-black text-white">
-                        Website Status
-                      </h2>
-                    </div>
-
-                    <StatusPill
-                      value={
-                        data?.platform
-                          ?.websiteStatus ||
-                        'Working'
-                      }
-                    />
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={
-                        actionLoading
-                      }
-                      onClick={() =>
-                        action({
-                          action:
-                            'set_website_status',
-                          status:
-                            'Working',
-                        })
-                      }
-                      className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white"
-                    >
-                      Working
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={
-                        actionLoading
-                      }
-                      onClick={() =>
-                        action({
-                          action:
-                            'set_website_status',
-                          status:
-                            'Not Working',
-                        })
-                      }
-                      className="rounded-xl bg-red-600 px-4 py-3 text-xs font-black text-white"
-                    >
-                      Not Working
-                    </button>
-                  </div>
-                </div>
+                <AdminMaintenanceSettings onChange={syncMaintenanceStatus} />
 
                 <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
                   <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
