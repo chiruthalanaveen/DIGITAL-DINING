@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { getCommerceClient } from '@/lib/commerce/client'
+import { commerceEmailRedirect } from '@/lib/commerce/authRedirect'
 
 function nextPath() {
   const next = new URL(window.location.href).searchParams.get('next')
@@ -51,12 +52,12 @@ export default function OwnerAuth() {
       const client = getCommerceClient('owner')
       const password = String(fields.get('password') || '')
       if (mode === 'signup') {
-        const { data, error } = await client.auth.signUp({ email: email.trim(), password, options: { data: { commerce_owner_name: String(fields.get('name') || '').trim() }, emailRedirectTo: `${window.location.origin}/commerce/auth?next=/commerce/apply` } })
+        const { data, error } = await client.auth.signUp({ email: email.trim(), password, options: { data: { commerce_owner_name: String(fields.get('name') || '').trim() }, emailRedirectTo: commerceEmailRedirect(window.location.origin, { audience: 'owner' }) } })
         if (error) throw new Error('Unable to create your account. Check your details or try signing in instead.')
         if (data.session?.user.email_confirmed_at) router.push('/commerce/apply')
         else setNotice('Check your email for a verification link. Once verified, sign in to submit your website application.')
       } else if (mode === 'recover') {
-        const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/commerce/auth?recovery=1` })
+        const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: commerceEmailRedirect(window.location.origin, { audience: 'owner', recovery: true }) })
         if (error) throw new Error('Unable to request a recovery email right now. Please try again later.')
         setNotice('If an account exists for this address, you will receive a recovery link. Please check your inbox.')
       } else if (mode === 'update') {

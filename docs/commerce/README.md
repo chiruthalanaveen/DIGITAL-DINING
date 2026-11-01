@@ -1,80 +1,66 @@
-# Client Websites — Phase 1
+# Client Websites — shopping increment
 
-**Current status — 31 October:** the user ran the reviewed SQL in main
-`table-pay`. Read-only verification confirms the canonical foundation is
-installed: nine tables/103 columns, twelve functions, fifteen policies and the
-media bucket. Existing catalog records, old bucket settings and cron definitions
-are unchanged. Fresh 82 Node tests, 88 local SQL assertions, 11 main read-only
-REST checks and the build pass. Do not reapply the foundation. See
-[main-postinstall-results.md](main-postinstall-results.md) for exact results and
-remaining hosted workflow limits. Production deployment/merge/live-payment holds
-remain. Earlier results below are historical.
+Updated 1 November 2026. Work remains on `feature/client-websites-phase1`, draft
+[PR #3](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3).
 
-This additive module provides owner applications and approval, independently
-branded tenant catalogs, an owner workspace, image uploads, optional tracked
-inventory, customer accounts and COD orders. It does not charge subscriptions or
-integrate another payment provider. Industry-specific templates, verified custom
-domains, coupons and recurring billing remain later phases.
+The [current report](storefront-increment-report.md) records the first three
+shopping improvements from the uploaded brief: combined price/availability
+filters, accessible zoom for the existing product image, and a premium bag and
+checkout presentation. It also carries the commerce email callback repair.
+[storefront-roadmap.md](storefront-roadmap.md) maps all seventeen requests,
+before/after UX, dependencies and later migration approvals. Multiple product
+images, variants, reviews, coupons, notifications and online payments are not
+activated by this increment.
 
-## Review and installation
+The original storefront stylesheet is preserved. `storefront-modern.css` is not
+in this checkout; any local copy/import must be retained. The new editorial and
+gallery files are additive and scoped. Tenant names, photos, colors, categories,
+prices and stock come from the catalog. No shared component hardcodes the sample
+store, fake reviews, discounts or delivery promises.
 
-The latest [PR #3 follow-up report](pr3-followup-report.md) records 82 passing
-unit tests, 88 local PostgreSQL assertions, 19 real staging Auth checks and a
-passing build; 64 screenshots remain from the unchanged application run. Billing bookmarks use current checkout; PIN recovery now reports
-explicit unavailability. Inherited repository lint and hosted verification remain
-release blockers. Staging settings validate; PostgreSQL network access is blocked.
+No SQL migration required. The existing foundation was installed by the user and
+[verified on 31 October](main-postinstall-results.md). Do not run it again or
+replay migration history. The latest user instructions prohibit production SQL,
+secret changes, deployment, live payments and merging without separate approval.
+The code is not represented as deployed. The Vercel feature-branch guard remains.
 
-The following development workflow is retained for reference; main-only
-execution must follow [main-project-installation.md](main-project-installation.md).
+## Development and acceptance
 
-Start with [release-review.md](release-review.md) for the full SQL review,
-preservation and backup analysis, latest test evidence, environment requirements
-and the explicit hosted-staging blockers. Production release is on hold.
+Use the [isolated development workflow](testing.md). Destructive SQL/browser
+fixtures permit only an explicit loopback `commerce_test` database and must never
+be pointed at a hosted project. Current tests use synthetic credentials and a
+local Auth/REST/Storage adapter over actual PostgreSQL. Email/code exchanges are
+simulated provider interactions, not proof of real Supabase email delivery.
 
-1. Read [architecture.md](architecture.md) for repository analysis, tenant design,
-   routes, API contracts and the phase plan.
-2. Follow [database.md](database.md) to install the versioned migration into a
-   **separate Supabase development project**, inspect the read-only verification
-   queries, and understand the data-preserving rollback approach. The destructive
-   local database fixtures must never be installed into a hosted/shared project.
-3. Use the development project's `NEXT_PUBLIC_SUPABASE_URL`,
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY` and server-only `SUPABASE_SERVICE_ROLE_KEY`.
-   Keep the existing `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `ADMIN_SESSION_SECRET`
-   configuration for the development Super Admin. Never commit credential files.
-   Configure Supabase Auth email verification and allow development redirects to
-   `/commerce/auth` and `/shops/<slug>/account` for the tested application origin.
-4. Run `npm ci`, `npm test`, `npm run build`, then `npm run dev` using that
-   development configuration. Existing global maintenance mode also applies to
-   the new public/owner pages; turn it off through the development Admin settings
-   when reviewing them.
-5. Visit `/commerce/auth` to create and verify a development owner, then submit
-   `/commerce/apply`. In `/admin/dashboard`, open **E-Commerce Website
-   Management**, review/approve the application, set up its website and assign
-   the verified owner. Configure branding, permissions and pickup/delivery.
-6. In `/commerce/dashboard`, add categories/products and stock if inventory is
-   enabled. Activate the website through Super Admin, then open `/shops/<slug>`.
-   Use a separate development customer session for COD checkout and order history.
+The module continues to provide applications and Super Admin approval,
+owner/store assignment, branded catalogs, optional inventory, customer accounts
+and COD pickup/delivery orders. Existing feature/owner permissions and active
+store checks remain authoritative. The new browsing controls default to the
+original complete catalog; zoom appears only with a supplied working image.
+Checkout remains governed by the existing store COD/fulfillment configuration.
 
-For a fully isolated local review without hosted Supabase, follow
-[testing.md](testing.md). Its browser runner starts Next.js using only synthetic
-development credentials and loopback services, runs the migration tests, and
-removes its running HTTP services on exit.
+Commerce verification/recovery emails now return through
+`/auth/callback/commerce`, using the correct owner or storefront client scope.
+That prefix matches the observed primary-origin callback allowlist. Each actual
+Preview or additional hostname needs its precise allowed origin and verified
+email-provider configuration. Existing restaurant/delivery auth callbacks are
+unchanged. See [preview-and-environment.md](preview-and-environment.md) for the
+measured Vercel access limitation and configuration review; do not resume the
+withdrawn staging/backup workflow or copy production secrets without review.
 
-See [changes.md](changes.md) for the exact file list and the prerequisite
-maintenance-mode commit included in the review branch.
+Read [storefront-increment-report.md](storefront-increment-report.md) for final
+commands/results, screenshots, performance-measurement limits, TXT code handoff,
+manual acceptance and outstanding release risks. The [changed-file list](changes.md)
+identifies the exact first-increment and complete PR files.
 
-## Release state
+## Retained review material
 
-No production database migration, live payment or merge was performed. An earlier
-production-target Vercel build was staged before the review hold; existing live
-domains remain on the previous deployment. It is not a staging-backed Preview.
-Hosted Supabase workflows remain unverified: staging Auth/REST metadata is
-reachable and real Auth checks pass, but PostgreSQL network access blocks
-migration and tenant workflows.
-No further production deployment/promotion is authorized until
-the user separately approves after reviewing the final results.
+- [Architecture and API contracts](architecture.md)
+- [Every foundation database object](migration-review.md)
+- [Installed-state verification and recovery considerations](main-project-installation.md)
+- [Historical application testing](application-testing.md)
+- [Historical PIN/billing follow-up](pr3-followup-report.md)
+- [Original production-release review](release-review.md)
 
-The root [vercel.json](../../vercel.json) disables automatic Git deployment only
-for `feature/client-websites-phase1`, allowing a review PR without a preview
-deployment. Other branches retain their existing deployment behavior. This guard
-does not disable manual CLI/API deployment; none was performed for this feature.
+The older reports retain their dated observations. They must not be used to
+claim current Preview URLs, fresh screenshots or hosted workflows passed.

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { getCommerceClient } from '@/lib/commerce/client'
+import { commerceEmailRedirect } from '@/lib/commerce/authRedirect'
 
 export const OWNER_BUSINESSES = [
   ['general', 'General retail'], ['sarees', 'Sarees & ethnic wear'], ['fashion', 'Fashion & clothing'],
@@ -55,7 +56,7 @@ export function OwnerAccess({ state, children }) {
       setBusy(true)
       setNotice('')
       try {
-        const { error } = await state.client.auth.resend({ type: 'signup', email: state.session.user.email, options: { emailRedirectTo: `${window.location.origin}/commerce/auth?next=/commerce/apply` } })
+        const { error } = await state.client.auth.resend({ type: 'signup', email: state.session.user.email, options: { emailRedirectTo: commerceEmailRedirect(window.location.origin, { audience: 'owner' }) } })
         setNotice(error ? 'Unable to resend verification right now. Please try again later.' : 'Verification email requested. Check your inbox and spam folder.')
       } catch {
         setNotice('Unable to resend verification right now. Please try again later.')

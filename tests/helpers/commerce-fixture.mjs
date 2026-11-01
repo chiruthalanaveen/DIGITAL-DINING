@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import http from 'node:http'
 import { Pool, types } from 'pg'
 
@@ -73,6 +73,9 @@ export async function createCommerceFixture({ databaseUrl, port = 4319, appOrigi
   assert.ok(!target.searchParams.has('host') && !target.searchParams.has('hostaddr'))
   const pool = new Pool({ connectionString: databaseUrl, max: 8, application_name: 'commerce-browser-development-fixture' })
   const users = new Map()
+  const passwords = new Map()
+  const emailLinks = new Map()
+  const authorizationCodes = new Map()
   const uploads = new Map()
   const requests = []
   const state = { unavailable: false, requests }
@@ -85,10 +88,39 @@ export async function createCommerceFixture({ databaseUrl, port = 4319, appOrigi
     }
     await pool.query('INSERT INTO auth.users(id,email,email_confirmed_at,raw_user_meta_data) VALUES ($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET email=excluded.email,email_confirmed_at=excluded.email_confirmed_at', [user.id, user.email, user.email_confirmed_at, JSON.stringify(user.user_metadata)])
     users.set(user.id, user)
+    passwords.set(user.id, LOCAL_PASSWORD)
   }
 
   function session(user) {
     return { access_token: signedToken(user), refresh_token: `local-refresh-${user.id}`, token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user }
+  }
+
+  function issueEmailLink(account, type, redirectTo, challenge, method) {
+    const destination = new URL(redirectTo)
+    // Model the provider's configured callback allowlist, not a direct return
+    // to arbitrary owner/store pages. No real email or public test endpoint.
+    assert.equal(destination.origin, appOrigin, 'Development email redirect must stay on the local app.')
+    assert.ok(destination.pathname.startsWith('/auth/callback'), 'Development email redirect must match the callback allowlist.')
+    assert.equal(method, 's256', 'Browser email authentication must use S256 PKCE.')
+    assert.match(challenge, /^[A-Za-z0-9_-]{43}$/)
+    for (const item of authorizationCodes.values()) {
+      if (item.userId === account.id && item.type === type && !item.used) item.expiresAt = 0
+    }
+    const code = `local-code-${randomUUID()}`
+    destination.searchParams.set('code', code)
+    const record = { code, userId: account.id, type, challenge, used: false, expiresAt: Date.now() + 600000, url: destination.href }
+    authorizationCodes.set(code, record)
+    emailLinks.set(`${account.email.toLowerCase()}:${type}`, record)
+  }
+
+  function getEmailLink(email, type = 'signup') {
+    return emailLinks.get(`${String(email).toLowerCase()}:${type}`)?.url || null
+  }
+
+  function expireEmailLink(link) {
+    const item = authorizationCodes.get(new URL(link).searchParams.get('code'))
+    assert.ok(item, 'Only an issued development email link may be expired.')
+    item.expiresAt = 0
   }
 
   async function database(role, subject, work) {
@@ -127,22 +159,58 @@ export async function createCommerceFixture({ databaseUrl, port = 4319, appOrigi
       requests.push({ method: req.method, path: url.pathname, role })
 
       if (url.pathname === '/auth/v1/token' && req.method === 'POST') {
-        const account = url.searchParams.get('grant_type') === 'refresh_token'
+        const grantType = url.searchParams.get('grant_type')
+        if (grantType === 'pkce') {
+          const issued = authorizationCodes.get(json.auth_code)
+          const verifier = typeof json.code_verifier === 'string' ? json.code_verifier : ''
+          const challenge = createHash('sha256').update(verifier).digest('base64url')
+          if (!issued || issued.used || issued.expiresAt <= Date.now() || !verifier || challenge !== issued.challenge) {
+            return respond(400, { error: 'invalid_grant', error_code: 'flow_state_not_found', error_description: 'Development email link is invalid or expired.' })
+          }
+          issued.used = true
+          const account = users.get(issued.userId)
+          if (issued.type === 'signup') {
+            const confirmedAt = new Date().toISOString()
+            await pool.query('UPDATE auth.users SET email_confirmed_at=$2 WHERE id=$1', [account.id, confirmedAt])
+            account.email_confirmed_at = confirmedAt
+            account.confirmed_at = confirmedAt
+          }
+          return respond(200, session(account))
+        }
+        const account = grantType === 'refresh_token'
           ? users.get(String(json.refresh_token || '').replace('local-refresh-', ''))
-          : [...users.values()].find(item => item.email === json.email && json.password === LOCAL_PASSWORD)
+          : [...users.values()].find(item => item.email === json.email && json.password === passwords.get(item.id))
         if (!account) return respond(400, { error: 'invalid_grant', error_description: 'Development credentials rejected.' })
+        if (!account.email_confirmed_at) return respond(400, { error: 'invalid_grant', error_code: 'email_not_confirmed', error_description: 'Development email confirmation required.' })
         return respond(200, session(account))
       }
       if (url.pathname === '/auth/v1/user') {
         if (!user) return respond(401, { message: 'Invalid development session.', code: 'bad_jwt' })
+        if (req.method === 'PUT') {
+          if (typeof json.password !== 'string' || json.password.length < 8) return respond(400, { message: 'Development password rejected.', code: 'weak_password' })
+          passwords.set(user.id, json.password)
+        }
         return respond(200, user)
       }
-      if (['/auth/v1/recover', '/auth/v1/resend'].includes(url.pathname)) return respond(200, {})
+      if (['/auth/v1/recover', '/auth/v1/resend'].includes(url.pathname) && req.method === 'POST') {
+        const account = [...users.values()].find(item => item.email === json.email)
+        const type = url.pathname.endsWith('/recover') ? 'recovery' : 'signup'
+        if (account && (type === 'recovery' || !account.email_confirmed_at)) {
+          issueEmailLink(account, type, url.searchParams.get('redirect_to'), json.code_challenge, json.code_challenge_method)
+        }
+        // Unknown emails produce the same response without creating a user or
+        // exposing an email link through HTTP.
+        return respond(200, {})
+      }
       if (url.pathname === '/auth/v1/logout') return respond(204)
       if (url.pathname === '/auth/v1/signup') {
+        const existing = [...users.values()].find(item => item.email === json.email)
+        if (existing) return respond(200, { ...existing, identities: [] })
         const account = { id: randomUUID(), email: json.email, aud: 'authenticated', role: 'authenticated', email_confirmed_at: null, user_metadata: json.data || {}, app_metadata: { provider: 'email', providers: ['email'] }, created_at: new Date().toISOString(), identities: [] }
         await pool.query('INSERT INTO auth.users(id,email,raw_user_meta_data) VALUES ($1,$2,$3)', [account.id, account.email, JSON.stringify(account.user_metadata)])
         users.set(account.id, account)
+        passwords.set(account.id, json.password)
+        issueEmailLink(account, 'signup', url.searchParams.get('redirect_to'), json.code_challenge, json.code_challenge_method)
         return respond(200, account)
       }
 
@@ -223,7 +291,7 @@ export async function createCommerceFixture({ databaseUrl, port = 4319, appOrigi
   })
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve) })
   return {
-    pool, state, users, session,
+    pool, state, users, session, getEmailLink, expireEmailLink,
     async close() { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await pool.end() },
   }
 }

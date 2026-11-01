@@ -1,14 +1,12 @@
 # PR #3 follow-up verification — 25 October 2026
 
-**Current status — 31 October:** the user ran the reviewed SQL in main
-`table-pay`. Read-only verification confirms the canonical foundation is
-installed: nine tables/103 columns, twelve functions, fifteen policies and the
-media bucket. Existing catalog records, old bucket settings and cron definitions
-are unchanged. Fresh 82 Node tests, 88 local SQL assertions, 11 main read-only
-REST checks and the build pass. Do not reapply the foundation. See
-[main-postinstall-results.md](main-postinstall-results.md) for exact results and
-remaining hosted workflow limits. Production deployment/merge/live-payment holds
-remain. Earlier results below are historical.
+**Current code status — 1 November:** the first shopping increment and commerce
+email callback repair are on PR #3. Use
+[storefront-increment-report.md](storefront-increment-report.md) and
+[storefront-roadmap.md](storefront-roadmap.md) for current scope, checks and later
+feature dependencies. The foundation is already installed; do not reapply it.
+Production SQL, deployments and merging remain on hold. The report below is
+historical.
 
 Branch: `feature/client-websites-phase1`. Draft PR:
 <https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3>.

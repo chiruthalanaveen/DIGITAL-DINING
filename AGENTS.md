@@ -39,6 +39,37 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
+### Current shopping increment — 1 November 2026
+
+The uploaded seventeen-feature brief limits this increment to three related
+shopping improvements: existing single-image zoom, combined price/availability
+filters, and the premium bag/checkout presentation. Later database-backed
+features remain in `docs/commerce/storefront-roadmap.md`; do not implement all
+seventeen at once, invent catalog content or add live commerce payments.
+Preserve the pending commerce email callback repair and its scoped PKCE sessions.
+
+The latest user instructions prohibit production SQL, production secret changes,
+deployments (including Preview), PR merges and direct main pushes without
+explicit approval. Do not run even read-only production SQL for this increment.
+Use isolated loopback fixtures/development credentials for testing. Do not modify
+restaurant QR, delivery/discontinued delivery, resort, wallet, unrelated auth or
+payment functionality. Keep changes on PR #3 and retain its deployment guard.
+
+The original `storefront.css` must remain byte-for-byte intact. This checkout
+does not contain `storefront-modern.css`; preserve it if subsequently supplied.
+The editorial and gallery styles are separate scoped additions. Maintain cart
+storage keys, server-authoritative totals/stock, pickup/COD, verification and
+Super Admin assignment/activation/permissions. No schema change is needed for
+this first increment; the existing foundation must not be reapplied.
+
+Handoff must include full changed JS/JSX files as downloadable TXT artifacts,
+their exact repository/VS Code destinations, styles/tests, screenshots, actual
+checks and manual acceptance steps. Do not claim field p75 Web Vitals or real
+hosted Auth/payment tests from local simulations. See
+`docs/commerce/storefront-increment-report.md` for current evidence.
+
+### Installed foundation and historical verification
+
 The user selected main Supabase project `table-pay` (`wispidcdmunqzahjacws`) and
 explicitly approved the reviewed `20261022160000_commerce_foundation.sql`. On
 27 October 2026 the user waived the backup prerequisite. On 31 October the user

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdir, open } from 'node:fs/promises'
+import { mkdir, open, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { spawn } from 'node:child_process'
@@ -166,12 +166,300 @@ async function browserChecks() {
     assert.equal(await target.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name} has horizontal mobile overflow.`)
     await target.setViewportSize({ width: 1440, height: 1000 })
   }
+  const storefrontWidths = [360, 390, 768, 1440]
+  const storefrontCheckpoints = []
+  const contrastSamples = []
+  let nativeBrowserChromeVisits = 0
+  async function assertButtonContrast(target, name) {
+    const ratio = await target.evaluate(element => {
+      const style = getComputedStyle(element)
+      // Tailwind can resolve to CSS Color 4 syntax (for example oklch), not
+      // numeric rgb(). Convert the actual painted color to sRGB before WCAG.
+      const canvas = document.createElement('canvas')
+      canvas.width = 2; canvas.height = 1
+      const drawing = canvas.getContext('2d', { willReadFrequently: true })
+      const parse = (value, x) => {
+        if (!CSS.supports('color', value)) return null
+        drawing.fillStyle = value; drawing.fillRect(x, 0, 1, 1)
+        const pixel = [...drawing.getImageData(x, 0, 1, 1).data]
+        return [...pixel.slice(0, 3), pixel[3] / 255]
+      }
+      const foreground = parse(style.color, 0), background = parse(style.backgroundColor, 1)
+      if (!foreground || !background || (foreground[3] ?? 1) !== 1 || (background[3] ?? 1) !== 1) return null
+      const luminance = channels => channels.slice(0, 3).map(value => {
+        const part = value / 255
+        return part <= .04045 ? part / 12.92 : ((part + .055) / 1.055) ** 2.4
+      }).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0)
+      const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a)
+      return (values[0] + .05) / (values[1] + .05)
+    })
+    assert.ok(ratio !== null && ratio >= 4.5, `${name} has insufficient computed text/background contrast (${ratio}).`)
+    contrastSamples.push({ name, ratio })
+  }
+  async function snapshotWidths(name, target = page) {
+    for (const width of storefrontWidths) {
+      await target.setViewportSize({ width, height: width < 768 ? 812 : width < 1440 ? 1024 : 1000 })
+      const modalOpen = await target.locator('dialog[open]').count() > 0
+      // Capture modal UI in its actual viewport. Whole-document captures of
+      // fixed dialogs/sticky headers can misleadingly place them mid-page.
+      if (!modalOpen) await target.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }))
+      assert.equal(await target.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name} overflows at ${width}px.`)
+      const bagButton = target.locator('.cs-header .cs-bag')
+      if (await bagButton.count()) {
+        const box = await bagButton.boundingBox()
+        assert.ok(box && box.x >= -1 && box.x + box.width <= width + 1 && box.width >= 44 && box.height >= 44, `${name} has clipped or undersized persistent bag access at ${width}px.`)
+      }
+      for (const dialog of await target.locator('dialog[open]').all()) {
+        const box = await dialog.boundingBox()
+        assert.ok(box && box.x >= -1 && box.x + box.width <= width + 1, `${name} has a clipped dialog at ${width}px.`)
+      }
+      await target.screenshot({ path: path.join(artifacts, `${name}-${width}.png`), fullPage: !modalOpen })
+      storefrontCheckpoints.push({ name, width, noHorizontalDocumentOverflow: true })
+    }
+    await target.setViewportSize({ width: 1440, height: 1000 })
+  }
+  async function focusRemainsIn(selector) {
+    const inspect = () => page.evaluate(value => {
+      const dialog = document.querySelector(value)
+      return {
+        inside: Boolean(dialog?.open && dialog.contains(document.activeElement)),
+        modal: Boolean(dialog?.matches(':modal')),
+        documentFocused: document.hasFocus(),
+        activeTag: document.activeElement?.tagName,
+      }
+    }, selector)
+    let focus = await inspect()
+    // Chromium's native dialog tab order includes browser chrome after the
+    // final in-page control (BODY + document.hasFocus=false). That is not a
+    // focusable background page element. Verify its next Tab returns inside.
+    if (!focus.inside && focus.modal && !focus.documentFocused && focus.activeTag === 'BODY') {
+      nativeBrowserChromeVisits += 1
+      await page.keyboard.press('Tab')
+      focus = await inspect()
+    }
+    assert.equal(focus.inside && focus.modal && focus.documentFocused, true, `Keyboard focus escaped the active modal: ${JSON.stringify(focus)}.`)
+  }
   async function signInOwner(target, email, destination = '/commerce/dashboard') {
     await target.goto(`${base}/commerce/auth${destination === '/commerce/apply' ? '?next=/commerce/apply' : ''}`)
     await target.getByLabel('Email address', { exact: true }).fill(email)
     await target.getByLabel('Password', { exact: true }).fill(LOCAL_PASSWORD)
     await target.getByRole('button', { name: /^Sign in/ }).click()
     await target.waitForURL(`${base}${destination}`)
+  }
+
+  async function callbackFailure(link, checkpoint) {
+    await page.goto(link)
+    await page.getByRole('heading', { name: 'We could not complete sign-in.', exact: true }).waitFor()
+    await page.getByRole('alert').filter({ hasText: 'This link is invalid or expired' }).waitFor()
+    assert.equal(new URL(page.url()).origin, base, 'An invalid callback left the application origin.')
+    assert.equal(new URL(page.url()).pathname, '/auth/callback/commerce')
+    await assertButtonContrast(page.getByRole('link', { name: 'Back to sign in', exact: true }), 'Callback back-to-sign-in link')
+    if (checkpoint) await snapshot(checkpoint)
+  }
+
+  async function storedScopes(keys) {
+    return page.evaluate(names => Object.fromEntries(names.map(key => [key, localStorage.getItem(key)])), keys)
+  }
+
+  async function passwordStatus(email, password) {
+    const response = await fetch('http://127.0.0.1:4319/auth/v1/token?grant_type=password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
+    })
+    return response.status
+  }
+
+  function emailLink(email, type, audience, store) {
+    const link = fixture.getEmailLink(email, type)
+    assert.ok(link, 'The isolated Auth provider did not issue an email link.')
+    const url = new URL(link)
+    assert.equal(url.origin, base)
+    assert.equal(url.pathname, '/auth/callback/commerce', 'Email redirected outside the configured callback prefix.')
+    assert.equal(url.searchParams.get('audience'), audience)
+    assert.equal(url.searchParams.get('store'), store || null)
+    assert.equal(url.searchParams.get('recovery'), type === 'recovery' ? '1' : null)
+    assert.ok(url.searchParams.get('code'))
+    return link
+  }
+
+  async function storefrontIncrementChecks(imageUrl) {
+    const viewProduct = page.getByRole('button', { name: 'View Silk Saree', exact: true })
+    // A missing tenant photo must remain an honest, non-zoomable fallback.
+    await viewProduct.focus()
+    await page.keyboard.press('Enter')
+    await page.locator('.cs-product-dialog[open]').waitFor()
+    await page.locator('.cs-product-dialog[open] .cs-gallery > .cs-gallery-missing').getByText('Product image unavailable', { exact: true }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Zoom image of Silk Saree', exact: true }).count(), 0)
+    await snapshotWidths('editorial-product-missing-image')
+    await page.keyboard.press('Escape')
+    await page.locator('.cs-product-dialog[open]').waitFor({ state: 'hidden' })
+    assert.equal(await viewProduct.evaluate(element => document.activeElement === element), true, 'Closing product details did not restore the invoking control.')
+
+    const workspacePath = `/api/commerce/workspace/${storeA.id}`
+    const action = (name, payload) => api(workspacePath, { user: ownerA, method: 'POST', body: { action: name, payload } })
+    // Reuse the photo actually uploaded through the owner UI earlier in this
+    // isolated run. The shared storefront never receives a hardcoded demo image.
+    await action('save_product', {
+      id: productA.id, category_id: productA.category_id, name: productA.name,
+      slug: productA.slug, description: productA.description, price_paise: productA.price_paise,
+      image_url: imageUrl, attributes: productA.attributes, active: true,
+    })
+    const accessory = (await action('save_category', { name: 'QA Accessories', slug: 'qa-accessories', active: true })).result
+    const cotton = (await action('save_product', {
+      name: 'QA Cotton Scarf', slug: 'qa-cotton-scarf', category_id: productA.category_id,
+      description: 'Isolated price-filter regression product.', price_paise: 5995,
+      image_url: `http://127.0.0.1:4319/storage/v1/object/public/commerce-media/${storeA.id}/missing-regression-photo.png`, attributes: { material: 'organic' }, active: true,
+    })).result
+    const soldOut = (await action('save_product', {
+      name: 'QA Sold Out Accessory', slug: 'qa-sold-out-accessory', category_id: accessory.id,
+      description: 'Isolated availability-filter regression product.', price_paise: 3499,
+      image_url: '', attributes: {}, active: true,
+    })).result
+    await action('adjust_stock', { product_id: cotton.id, delta: 3, reason: 'Local filter regression inventory.' })
+    await page.reload()
+    await page.getByRole('button', { name: 'View QA Cotton Scarf', exact: true }).waitFor()
+    await assertButtonContrast(page.locator('.cs-hero .cs-primary'), 'Storefront primary shopping action')
+    await snapshotWidths('editorial-storefront')
+    const minimumPrice = page.getByLabel('Minimum price (₹)', { exact: true })
+    const maximumPrice = page.getByLabel('Maximum price (₹)', { exact: true })
+    const availability = page.getByLabel(/^Availability/)
+    const clearFilters = page.getByRole('group', { name: 'Refine the collection' }).getByRole('button', { name: 'Clear filters', exact: true })
+    const resultCount = page.locator('.cs-results')
+    assert.match(await resultCount.textContent(), /Showing 3 of 3 products/)
+    await page.getByRole('button', { name: 'Sarees', exact: true }).click()
+    await availability.selectOption('in-stock')
+    await page.getByLabel(/^Sort by/).selectOption('price-low')
+    assert.deepEqual(await page.locator('.cs-product-name').allTextContents(), ['QA Cotton Scarf', 'Silk Saree'])
+    await page.getByRole('searchbox', { name: 'Search products' }).fill('organic')
+    await minimumPrice.fill('59.95')
+    await maximumPrice.fill('59.95')
+    assert.deepEqual(await page.locator('.cs-product-name').allTextContents(), ['QA Cotton Scarf'], 'Search/category/price/availability/sort did not compose.')
+    assert.match(await resultCount.textContent(), /Showing 1 of 3 products in Sarees/)
+    await snapshotWidths('editorial-filters-applied')
+    await minimumPrice.fill('59.96')
+    await page.getByRole('alert').filter({ hasText: 'Minimum price must not exceed maximum price.' }).waitFor()
+    assert.equal(await page.locator('.cs-product').count(), 0)
+    await maximumPrice.fill('60.00')
+    await page.getByRole('heading', { name: 'No products match your search.', exact: true }).waitFor()
+    assert.equal(await page.locator('.cs-product').count(), 0, 'A one-paise price boundary included a cheaper product.')
+    await minimumPrice.fill('0')
+    await maximumPrice.fill('59.95')
+    assert.deepEqual(await page.locator('.cs-product-name').allTextContents(), ['QA Cotton Scarf'])
+    await maximumPrice.fill('1.001')
+    await page.getByRole('alert').filter({ hasText: 'up to two decimal places' }).waitFor()
+    assert.equal(await maximumPrice.getAttribute('aria-invalid'), 'true')
+    await snapshotWidths('editorial-filters-invalid-range')
+    await clearFilters.click()
+    assert.equal(await minimumPrice.inputValue(), '')
+    assert.equal(await maximumPrice.inputValue(), '')
+    assert.equal(await page.getByRole('searchbox', { name: 'Search products' }).inputValue(), '')
+    assert.equal(await availability.inputValue(), 'all')
+    assert.equal(await page.getByRole('button', { name: 'All products', exact: true }).getAttribute('aria-pressed'), 'true')
+    assert.match(await resultCount.textContent(), /Showing 3 of 3 products/)
+    await availability.selectOption('sold-out')
+    assert.deepEqual(await page.locator('.cs-product-name').allTextContents(), ['QA Sold Out Accessory'])
+    assert.equal(await page.getByRole('button', { name: 'Add QA Sold Out Accessory to bag', exact: true }).isDisabled(), true)
+    await page.getByRole('button', { name: 'Sarees', exact: true }).click()
+    assert.equal(await page.locator('.cs-product').count(), 0, 'A sold-out product crossed the selected category.')
+    await clearFilters.click()
+    await page.getByLabel(/^Sort by/).selectOption('name')
+    await page.getByRole('button', { name: 'View QA Cotton Scarf', exact: true }).click()
+    await page.locator('.cs-product-dialog[open] .cs-gallery > .cs-gallery-missing').getByText('Product image unavailable', { exact: true }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Zoom image of QA Cotton Scarf', exact: true }).count(), 0, 'A failed tenant image left a broken zoom action.')
+    await page.keyboard.press('Escape')
+    await page.locator('.cs-product-dialog[open]').waitFor({ state: 'hidden' })
+
+    await viewProduct.focus()
+    await page.keyboard.press('Enter')
+    await page.locator('.cs-product-dialog[open]').waitFor()
+    const zoomTrigger = page.getByRole('button', { name: 'Zoom image of Silk Saree', exact: true })
+    await zoomTrigger.waitFor()
+    await zoomTrigger.locator('img').evaluate(image => image.decode())
+    assert.equal(await zoomTrigger.locator('img').evaluate(image => image.complete && image.naturalWidth > 0), true)
+    assert.equal(await zoomTrigger.locator('img').getAttribute('src'), imageUrl)
+    assert.equal(await zoomTrigger.locator('img').count(), 1, 'A one-image product acquired invented gallery images.')
+    await snapshotWidths('editorial-product-image')
+    await zoomTrigger.focus()
+    await page.keyboard.press('Enter')
+    await page.locator('.cs-gallery-dialog[open]').waitFor()
+    assert.equal(await page.locator('.cs-product-dialog[open]').count(), 1)
+    const zoomLevel = page.getByLabel('Image zoom level', { exact: true })
+    assert.equal(await zoomLevel.textContent(), '100%')
+    await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
+    assert.equal(await zoomLevel.textContent(), '150%')
+    for (let index = 0; index < 3; index++) await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
+    assert.equal(await zoomLevel.textContent(), '300%')
+    assert.equal(await page.getByRole('button', { name: 'Zoom in', exact: true }).isDisabled(), true)
+    await page.getByRole('button', { name: 'Zoom out', exact: true }).click()
+    assert.equal(await zoomLevel.textContent(), '250%')
+    await page.getByRole('button', { name: 'Reset zoom', exact: true }).click()
+    assert.equal(await zoomLevel.textContent(), '100%')
+    for (const name of ['Close image zoom', 'Zoom in', 'Zoom out']) {
+      const box = await page.getByRole('button', { name, exact: true }).boundingBox()
+      assert.ok(box && box.width >= 44 && box.height >= 44, `${name} is not touch-friendly.`)
+    }
+    for (let index = 0; index < 8; index++) { await page.keyboard.press('Tab'); await focusRemainsIn('.cs-gallery-dialog') }
+    await snapshotWidths('editorial-product-image-zoom')
+    await page.keyboard.press('Escape')
+    await page.locator('.cs-gallery-dialog[open]').waitFor({ state: 'hidden' })
+    assert.equal(await page.locator('.cs-product-dialog[open]').count(), 1, 'Escape from image zoom also closed product details.')
+    assert.equal(await zoomTrigger.evaluate(element => document.activeElement === element), true, 'Image zoom did not return focus to its trigger.')
+    await zoomTrigger.click()
+    await page.locator('.cs-gallery-dialog[open]').waitFor()
+    await page.mouse.click(2, 2)
+    await page.locator('.cs-gallery-dialog[open]').waitFor({ state: 'hidden' })
+    assert.equal(await page.locator('.cs-product-dialog[open]').count(), 1, 'Image backdrop also closed product details.')
+    assert.equal(await zoomTrigger.evaluate(element => document.activeElement === element), true)
+    await page.keyboard.press('Escape')
+    await page.locator('.cs-product-dialog[open]').waitFor({ state: 'hidden' })
+    assert.equal(await viewProduct.evaluate(element => document.activeElement === element), true)
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    assert.equal(await page.locator('.cs-product-photo img').first().evaluate(image => getComputedStyle(image).transitionDuration), '0s', 'Reduced motion left product-image animation enabled.')
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+
+    // Restore the original active catalog before the existing order/retry cases.
+    await action('archive_product', { id: cotton.id })
+    await action('archive_product', { id: soldOut.id })
+    await action('archive_category', { id: accessory.id })
+    await page.reload()
+    assert.deepEqual((await api('/api/commerce/catalog/qa-saree-store')).products.map(product => product.id), [productA.id])
+  }
+
+  async function storefrontLabMeasurements() {
+    const samples = []
+    for (const width of storefrontWidths) {
+      const target = await context.newPage()
+      target.on('pageerror', error => errors.push(error.message))
+      await target.setViewportSize({ width, height: width < 768 ? 812 : width < 1440 ? 1024 : 1000 })
+      await target.addInitScript(() => {
+        const metrics = { lcpMs: null, cls: 0, lcpSupported: false, clsSupported: false }
+        window.__commerceLabMetrics = metrics
+        try {
+          new PerformanceObserver(list => { for (const entry of list.getEntries()) metrics.lcpMs = entry.startTime }).observe({ type: 'largest-contentful-paint', buffered: true })
+          metrics.lcpSupported = true
+        } catch {}
+        try {
+          new PerformanceObserver(list => { for (const entry of list.getEntries()) if (!entry.hadRecentInput) metrics.cls += entry.value }).observe({ type: 'layout-shift', buffered: true })
+          metrics.clsSupported = true
+        } catch {}
+      })
+      await target.goto(`${base}/shops/qa-saree-store`)
+      await target.getByRole('heading', { name: 'Saree Store, made for you.', exact: true }).waitFor()
+      await target.evaluate(async () => {
+        await document.fonts.ready
+        await Promise.all([...document.images].map(image => image.decode().catch(() => {})))
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      })
+      assert.equal(await target.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+      samples.push({ width, ...await target.evaluate(() => ({ ...window.__commerceLabMetrics, observedAtMs: performance.now() })) })
+      await target.close()
+    }
+    await writeFile(path.join(artifacts, 'storefront-lab-performance.json'), JSON.stringify({
+      scope: 'One unthrottled loopback navigation per viewport; local browser lab only',
+      observationWindow: 'Initial load through font/image readiness and two animation frames; not the full page lifespan.',
+      samples, inpMeasured: false, field75thPercentileMeasured: false,
+      targetsAreNotClaims: { lcpMs: 2500, inpMs: 200, cls: .1 },
+    }, null, 2) + '\n')
   }
 
   // The app's real HMAC cookie is Secure in production mode. Adapt only the local
@@ -190,9 +478,26 @@ async function browserChecks() {
   assert.equal(await page.getByRole('button', { name: 'Reset PIN', exact: true }).count(), 0)
   await snapshot('legacy-pin-recovery-unavailable')
 
-  // Exercise registration and the verification gate through the UI. The local
-  // adapter does not send real email: only this fixture explicitly simulates
-  // successful confirmation before continuing with a real application request.
+  const separateKeys = ['sb-127-auth-token', 'digital-dine-commerce:customer:qa-grocery-store']
+  await page.evaluate(({ legacy, grocery, owner }) => {
+    localStorage.setItem('sb-127-auth-token', legacy)
+    localStorage.setItem('digital-dine-commerce:customer:qa-grocery-store', grocery)
+    localStorage.setItem('digital-dine-commerce:owner', owner)
+  }, {
+    legacy: JSON.stringify(fixture.session(fixture.users.get(ownerB.id))),
+    grocery: JSON.stringify(fixture.session(fixture.users.get(buyerB.id))),
+    owner: JSON.stringify(fixture.session(fixture.users.get(ownerA.id))),
+  })
+  const separateSessions = await storedScopes(separateKeys)
+  const initialOwner = await page.evaluate(() => localStorage.getItem('digital-dine-commerce:owner'))
+  await callbackFailure(`${base}/auth/callback/commerce?audience=owner`, 'commerce-callback-invalid')
+  assert.equal(await page.evaluate(() => localStorage.getItem('digital-dine-commerce:owner')), initialOwner, 'A missing-code callback changed the existing owner session.')
+  await callbackFailure(`${base}/auth/callback/commerce?audience=owner&code=unused&next=https%3A%2F%2Foutside.example.test`)
+  assert.deepEqual(await storedScopes(separateKeys), separateSessions)
+
+  // The fixture models a provider email, one-use authorization code and S256
+  // verifier check. The real browser SDK must exchange its own stored verifier;
+  // the browser test no longer directly confirms SQL rows or signs in manually.
   const signupEmail = 'new-owner@commerce.example.test'
   await page.goto(`${base}/commerce/auth?mode=signup&next=/commerce/apply`)
   await page.getByRole('heading', { name: 'Create your owner account', exact: true }).waitFor()
@@ -206,11 +511,25 @@ async function browserChecks() {
   const signupOwner = [...fixture.users.values()].find(user => user.email === signupEmail)
   assert.ok(signupOwner && !signupOwner.email_confirmed_at)
   await api('/api/commerce/applications', { user: signupOwner, expected: 403 })
-  const confirmedAt = new Date().toISOString()
-  await fixture.pool.query('UPDATE auth.users SET email_confirmed_at=$2 WHERE id=$1', [signupOwner.id, confirmedAt])
-  signupOwner.email_confirmed_at = confirmedAt
-  signupOwner.confirmed_at = confirmedAt
-  await signInOwner(page, signupEmail, '/commerce/apply')
+  const ownerVerification = emailLink(signupEmail, 'signup', 'owner')
+  const unsafeOwnerReturn = new URL(ownerVerification)
+  unsafeOwnerReturn.searchParams.set('next', 'https://outside.example.test')
+  await callbackFailure(unsafeOwnerReturn.href)
+  assert.equal(await page.evaluate(() => localStorage.getItem('digital-dine-commerce:owner')), initialOwner, 'An unsafe callback consumed the existing owner session or PKCE code.')
+  const wrongOwnerScope = new URL(ownerVerification)
+  wrongOwnerScope.searchParams.set('audience', 'customer')
+  wrongOwnerScope.searchParams.set('store', 'qa-grocery-store')
+  await callbackFailure(wrongOwnerScope.href, 'commerce-callback-wrong-scope')
+  assert.equal(await page.evaluate(() => localStorage.getItem('digital-dine-commerce:owner')), initialOwner, 'A wrong-scope callback consumed the owner session or verifier.')
+  assert.deepEqual(await storedScopes(separateKeys), separateSessions)
+  await page.goto(ownerVerification)
+  await page.waitForURL(`${base}/commerce/apply`)
+  await page.getByLabel('Owner name', { exact: true }).waitFor()
+  assert.ok(signupOwner.email_confirmed_at, 'The authorization-code exchange did not confirm the signup.')
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('digital-dine-commerce:owner')).user.id), signupOwner.id)
+  assert.deepEqual(await storedScopes(separateKeys), separateSessions, 'Owner confirmation overwrote another authentication scope.')
+  await callbackFailure(ownerVerification, 'commerce-callback-replayed')
+  await page.goto(`${base}/commerce/apply`)
   await page.getByLabel('Owner name', { exact: true }).fill('Nila New Owner')
   await page.getByLabel('Business / store name', { exact: true }).fill('Nila Sarees Application')
   await page.getByLabel(/^Business category/).selectOption('sarees')
@@ -225,6 +544,40 @@ async function browserChecks() {
   await snapshot('owner-onboarding-submitted')
   const signupApplication = (await api('/api/commerce/applications', { user: signupOwner })).applications.find(application => application.business_name === 'Nila Sarees Application')
   assert.equal(signupApplication.status, 'submitted')
+
+  async function requestOwnerRecovery(email) {
+    await page.goto(`${base}/commerce/auth`)
+    await page.getByRole('button', { name: 'Forgot password?', exact: true }).click()
+    await page.getByLabel('Email address', { exact: true }).fill(email)
+    await page.getByRole('button', { name: /^Send recovery link/ }).click()
+    await page.getByRole('status').filter({ hasText: 'If an account exists for this address' }).waitFor()
+  }
+  await requestOwnerRecovery(signupEmail)
+  const expiredOwnerRecovery = emailLink(signupEmail, 'recovery', 'owner')
+  fixture.expireEmailLink(expiredOwnerRecovery)
+  const ownerBeforeExpired = await page.evaluate(() => localStorage.getItem('digital-dine-commerce:owner'))
+  await callbackFailure(expiredOwnerRecovery, 'commerce-callback-expired')
+  assert.equal(await page.evaluate(() => localStorage.getItem('digital-dine-commerce:owner')), ownerBeforeExpired, 'An expired callback cleared a valid owner session.')
+  await requestOwnerRecovery(signupEmail)
+  const ownerRecovery = emailLink(signupEmail, 'recovery', 'owner')
+  await page.goto(ownerRecovery)
+  await page.waitForURL(`${base}/commerce/auth?recovery=1`)
+  await page.getByRole('heading', { name: 'Choose a new password', exact: true }).waitFor()
+  await snapshot('owner-password-recovery-update')
+  const recoveredOwnerPassword = 'new-owner-recovered-password'
+  await page.getByLabel('New password', { exact: true }).fill(recoveredOwnerPassword)
+  await page.getByRole('button', { name: /^Update password/ }).click()
+  await page.getByRole('status').filter({ hasText: 'Your password has been updated.' }).waitFor()
+  assert.equal(await passwordStatus(signupEmail, LOCAL_PASSWORD), 400, 'The old owner password still signs in after recovery.')
+  assert.equal(await passwordStatus(signupEmail, recoveredOwnerPassword), 200)
+  const ownerBeforeReplay = await page.evaluate(() => localStorage.getItem('digital-dine-commerce:owner'))
+  await callbackFailure(ownerRecovery)
+  assert.equal(await page.evaluate(() => localStorage.getItem('digital-dine-commerce:owner')), ownerBeforeReplay, 'A replayed recovery link changed the valid owner session.')
+  assert.deepEqual(await storedScopes(separateKeys), separateSessions)
+  const beforeUnknownRecovery = fixture.users.size
+  await requestOwnerRecovery('unregistered-owner@commerce.example.test')
+  assert.equal(fixture.getEmailLink('unregistered-owner@commerce.example.test', 'recovery'), null)
+  assert.equal(fixture.users.size, beforeUnknownRecovery, 'A generic recovery request created an account.')
 
   await page.goto(`${base}/admin/dashboard`)
   await page.getByRole('button', { name: 'E-Commerce Website Management', exact: true }).click()
@@ -251,7 +604,20 @@ async function browserChecks() {
   await page.getByLabel('Product slug', { exact: true }).fill('qa-draft-item')
   await page.getByLabel('Price (₹)', { exact: true }).fill('49.95')
   await page.getByLabel('Published in your catalog', { exact: true }).uncheck()
-  await page.getByLabel('Product image', { exact: true }).setInputFiles({ name: 'local-test.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z1WQAAAAASUVORK5CYII=', 'base64') })
+  const developmentPhoto = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 640; canvas.height = 800
+    const drawing = canvas.getContext('2d')
+    drawing.fillStyle = '#e6d6c3'; drawing.fillRect(0, 0, 640, 800)
+    drawing.fillStyle = '#7b3150'; drawing.fillRect(80, 60, 480, 680)
+    drawing.strokeStyle = '#d8b980'; drawing.lineWidth = 5
+    for (let position = 105; position < 550; position += 35) { drawing.beginPath(); drawing.moveTo(position, 60); drawing.lineTo(position, 740); drawing.stroke() }
+    drawing.fillStyle = '#fffaf0'; drawing.fillRect(105, 615, 430, 88)
+    drawing.fillStyle = '#362831'; drawing.font = 'bold 25px sans-serif'; drawing.fillText('DEVELOPMENT PHOTO', 121, 651)
+    drawing.font = '18px sans-serif'; drawing.fillText('Synthetic tenant-upload fixture', 121, 681)
+    return canvas.toDataURL('image/png').split(',')[1]
+  })
+  await page.getByLabel('Product image', { exact: true }).setInputFiles({ name: 'local-test.png', mimeType: 'image/png', buffer: Buffer.from(developmentPhoto, 'base64') })
   await page.getByRole('img', { name: 'Product image preview', exact: true }).waitFor()
   await snapshot('owner-product-form')
   await page.getByRole('button', { name: 'Save product', exact: true }).click()
@@ -315,15 +681,76 @@ async function browserChecks() {
   const preserved = await page.evaluate(() => localStorage.getItem('digital-dine-commerce:owner'))
   assert.ok(preserved, 'Owner session was not stored independently.')
 
+  const customerProtectedKeys = ['digital-dine-commerce:owner', ...separateKeys]
+  const beforeCustomerCallbacks = await storedScopes(customerProtectedKeys)
+  const signupCustomerEmail = 'pkce-customer@commerce.example.test'
+  await page.goto(`${base}/shops/qa-saree-store/account`)
+  await page.getByRole('button', { name: 'Create account', exact: true }).first().click()
+  await page.getByLabel('Your name', { exact: true }).fill('PKCE Customer')
+  await page.getByLabel('Email address', { exact: true }).fill(signupCustomerEmail)
+  await page.getByLabel(/^Password/).fill(LOCAL_PASSWORD)
+  await page.locator('form').getByRole('button', { name: 'Create account', exact: true }).click()
+  await page.getByRole('status').filter({ hasText: 'Check your email to verify your account.' }).waitFor()
+  const originalCustomerVerification = emailLink(signupCustomerEmail, 'signup', 'customer', 'qa-saree-store')
+  await page.getByRole('button', { name: 'Resend verification email', exact: true }).click()
+  await page.getByRole('status').filter({ hasText: 'A verification email has been requested.' }).waitFor()
+  const customerVerification = emailLink(signupCustomerEmail, 'signup', 'customer', 'qa-saree-store')
+  assert.notEqual(customerVerification, originalCustomerVerification, 'Resend did not issue a new PKCE email link.')
+  const wrongStore = new URL(customerVerification)
+  wrongStore.searchParams.set('store', 'qa-grocery-store')
+  await callbackFailure(wrongStore.href)
+  assert.deepEqual(await storedScopes(customerProtectedKeys), beforeCustomerCallbacks, 'A wrong-store callback changed another stored session.')
+  await page.goto(customerVerification)
+  await page.waitForURL(`${base}/shops/qa-saree-store/account`)
+  await page.getByText(signupCustomerEmail, { exact: true }).waitFor()
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('digital-dine-commerce:customer:qa-saree-store')).user.email), signupCustomerEmail)
+  assert.deepEqual(await storedScopes(customerProtectedKeys), beforeCustomerCallbacks)
+  await snapshot('customer-email-confirmed')
+  const customerBeforeExpired = await page.evaluate(() => localStorage.getItem('digital-dine-commerce:customer:qa-saree-store'))
+  await callbackFailure(originalCustomerVerification)
+  assert.equal(await page.evaluate(() => localStorage.getItem('digital-dine-commerce:customer:qa-saree-store')), customerBeforeExpired, 'An expired customer link changed the valid customer session.')
+  await page.goto(`${base}/shops/qa-saree-store/account`)
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await page.getByRole('button', { name: 'Forgot your password?', exact: true }).click()
+  const beforeUnknownCustomerRecovery = fixture.users.size
+  await page.getByLabel('Email address', { exact: true }).fill('unregistered-customer@commerce.example.test')
+  await page.getByRole('button', { name: 'Send recovery link', exact: true }).click()
+  await page.getByRole('status').filter({ hasText: 'If this email has an account' }).waitFor()
+  assert.equal(fixture.getEmailLink('unregistered-customer@commerce.example.test', 'recovery'), null)
+  assert.equal(fixture.users.size, beforeUnknownCustomerRecovery)
+  await page.getByLabel('Email address', { exact: true }).fill(signupCustomerEmail)
+  await page.getByRole('button', { name: 'Send recovery link', exact: true }).click()
+  await page.getByRole('status').filter({ hasText: 'If this email has an account' }).waitFor()
+  const customerRecovery = emailLink(signupCustomerEmail, 'recovery', 'customer', 'qa-saree-store')
+  await page.goto(customerRecovery)
+  await page.waitForURL(`${base}/shops/qa-saree-store/account?recovery=1`)
+  await page.getByRole('heading', { name: 'Choose a new password', exact: true }).waitFor()
+  await snapshot('customer-password-recovery-update')
+  const recoveredCustomerPassword = 'customer-recovered-password'
+  await page.getByLabel(/^New password/).fill(recoveredCustomerPassword)
+  await page.getByRole('button', { name: 'Update password', exact: true }).click()
+  await page.getByRole('status').filter({ hasText: 'Your password has been updated.' }).waitFor()
+  assert.equal(await passwordStatus(signupCustomerEmail, LOCAL_PASSWORD), 400)
+  assert.equal(await passwordStatus(signupCustomerEmail, recoveredCustomerPassword), 200)
+  assert.deepEqual(await storedScopes(customerProtectedKeys), beforeCustomerCallbacks, 'Customer recovery changed owner, legacy or another storefront session.')
+  const customerBeforeReplay = await page.evaluate(() => localStorage.getItem('digital-dine-commerce:customer:qa-saree-store'))
+  await callbackFailure(customerRecovery)
+  assert.equal(await page.evaluate(() => localStorage.getItem('digital-dine-commerce:customer:qa-saree-store')), customerBeforeReplay, 'A replayed customer recovery link changed the valid session.')
+  await page.goto(`${base}/shops/qa-saree-store/account`)
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  assert.deepEqual(await storedScopes(customerProtectedKeys), beforeCustomerCallbacks)
+
   const buyerSession = fixture.session(fixture.users.get(buyerA.id))
   await page.evaluate(({ key, value }) => localStorage.setItem(key, value), { key: 'digital-dine-commerce:customer:qa-saree-store', value: JSON.stringify(buyerSession) })
   await page.goto(`${base}/shops/qa-saree-store`)
   await page.getByRole('heading', { name: 'Saree Store, made for you.' }).waitFor()
+  await storefrontIncrementChecks(draft.image_url)
+  await storefrontLabMeasurements()
   await snapshot('saree-homepage')
   await snapshot('saree-product-listing')
   await page.getByRole('searchbox', { name: 'Search products' }).fill('no development match')
   await page.getByRole('heading', { name: 'No products match your search.' }).waitFor()
-  await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
+  await page.getByRole('group', { name: 'Refine the collection' }).getByRole('button', { name: 'Clear filters', exact: true }).click()
   await page.getByRole('button', { name: 'Sarees', exact: true }).click()
   await page.getByRole('button', { name: 'View Silk Saree', exact: true }).click()
   await page.getByRole('heading', { name: 'Silk Saree', exact: true }).waitFor()
@@ -333,11 +760,37 @@ async function browserChecks() {
   await page.reload()
   await page.getByRole('button', { name: 'Open shopping bag, 1 items', exact: true }).waitFor()
   await page.getByRole('button', { name: /Open shopping bag/ }).click()
+  const cartDialog = page.locator('.cs-cart-dialog[open]')
+  assert.equal(await page.getByRole('navigation', { name: 'Checkout steps', exact: true }).getByRole('button').count(), 3)
+  assert.equal(await page.getByLabel('Your name', { exact: true }).getAttribute('autocomplete'), 'name')
+  assert.equal(await page.getByLabel('Phone number', { exact: true }).getAttribute('autocomplete'), 'tel')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await snapshotWidths('editorial-bag-selection')
+  await page.getByRole('button', { name: /^Continue to checkout/ }).click()
+  assert.equal(await page.locator('.cs-checkout-step').filter({ has: page.getByRole('heading', { name: 'Make it yours', exact: true }) }).evaluate(element => document.activeElement === element), true)
+  await snapshotWidths('editorial-bag-fulfilment')
+  await page.getByRole('button', { name: /^Review order/ }).click()
+  assert.equal(await page.locator('.cs-review').evaluate(element => document.activeElement === element), true)
+  await snapshotWidths('editorial-bag-review')
+  await page.getByRole('navigation', { name: 'Checkout steps' }).getByRole('button', { name: /Your bag/ }).click()
+  await page.getByRole('button', { name: 'Close shopping bag', exact: true }).focus()
+  await page.keyboard.press('Shift+Tab')
+  await focusRemainsIn('.cs-cart-dialog')
+  await page.keyboard.press('Tab')
+  await focusRemainsIn('.cs-cart-dialog')
+  await page.keyboard.press('Escape')
+  await cartDialog.waitFor({ state: 'hidden' })
+  assert.equal(await page.getByRole('button', { name: /Open shopping bag/ }).evaluate(element => document.activeElement === element), true, 'Closing the bag did not return focus to its trigger.')
+  await page.getByRole('button', { name: /Open shopping bag/ }).click()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.getByRole('button', { name: 'Add one Silk Saree', exact: true }).click()
   assert.equal(await page.locator('.cs-quantity span').textContent(), '2')
   await page.getByRole('button', { name: 'Remove one Silk Saree', exact: true }).click()
   assert.equal(await page.locator('.cs-quantity span').textContent(), '1')
-  await page.getByRole('button', { name: 'Remove one Silk Saree', exact: true }).click()
+  for (let index = 0; index < 4; index++) await page.getByRole('button', { name: 'Add one Silk Saree', exact: true }).click()
+  assert.equal(await page.locator('.cs-quantity span').textContent(), '5')
+  assert.equal(await page.getByRole('button', { name: 'Add one Silk Saree', exact: true }).isDisabled(), true, 'Bag quantity exceeded tracked stock.')
+  await page.getByRole('button', { name: 'Remove Silk Saree from bag', exact: true }).click()
   await page.getByRole('heading', { name: 'Your bag is waiting.', exact: true }).waitFor()
   await snapshot('cart-empty-after-removal')
   await page.getByRole('button', { name: 'Continue browsing', exact: true }).click()
@@ -442,6 +895,14 @@ async function browserChecks() {
   await page.goto(`${base}/shops/qa-grocery-store`)
   await page.getByRole('heading', { name: 'Grocery Store, made for you.', exact: true }).waitFor()
   await page.getByRole('button', { name: 'Fresh Produce', exact: true }).waitFor()
+  const groceryAvailability = page.getByLabel(/^Availability/)
+  await groceryAvailability.selectOption('in-stock')
+  await page.getByLabel('Minimum price (₹)', { exact: true }).fill('99.00')
+  await page.getByLabel('Maximum price (₹)', { exact: true }).fill('99.00')
+  assert.deepEqual(await page.locator('.cs-product-name').allTextContents(), ['Grocery Basket'], 'Untracked zero stock was incorrectly unavailable.')
+  assert.equal(await groceryAvailability.locator('option[value="sold-out"]').count(), 0)
+  assert.match(await page.locator('.cs-results').textContent(), /Showing 1 of 1 product/)
+  await page.getByRole('group', { name: 'Refine the collection' }).getByRole('button', { name: 'Clear filters', exact: true }).click()
   await snapshot('grocery-homepage')
   await page.getByRole('button', { name: 'View Grocery Basket', exact: true }).waitFor()
   assert.equal(await page.getByRole('button', { name: 'View Silk Saree', exact: true }).count(), 0)
@@ -455,6 +916,13 @@ async function browserChecks() {
   await page.getByLabel('Phone number', { exact: true }).fill('9000000002')
   await page.getByLabel(/^How would you like your order/).selectOption('delivery')
   await page.getByLabel('Delivery address', { exact: true }).fill('Development-only grocery delivery address')
+  // A controlled textarea can contribute its value to label text in the
+  // browser locator model. Select the same named control after filling it.
+  const deliveryAddress = page.locator('.cs-checkout textarea[name="deliveryAddress"]')
+  assert.equal(await deliveryAddress.inputValue(), 'Development-only grocery delivery address')
+  assert.equal(await deliveryAddress.getAttribute('autocomplete'), 'street-address')
+  await page.locator('.cs-totals > p').filter({ hasText: 'Delivery' }).getByText('₹50.00', { exact: true }).waitFor()
+  await page.locator('.cs-totals .cs-total').getByText('₹149.00', { exact: true }).waitFor()
   await snapshot('grocery-checkout')
   await page.getByRole('button', { name: 'Place order', exact: true }).click()
   await page.getByRole('heading', { name: 'Your order is confirmed.', exact: true }).waitFor()
@@ -479,8 +947,20 @@ async function browserChecks() {
   await page.getByRole('link', { name: 'View order history', exact: true }).click()
   await page.locator('.cs-history-order').filter({ hasText: groceryOrderId }).getByText(/^confirmed$/i).waitFor()
   await snapshot('grocery-customer-history')
+  await snapshotWidths('editorial-customer-history')
   assert.deepEqual(errors, [], `Browser page errors: ${errors.join('; ')}`)
-  console.log(`PASS: owner signup with simulated email confirmation, browser onboarding/admin rejection, admin branding/features isolation, product create/edit/archive/media/inventory, Saree Store and Grocery Store general-template storefronts, cart quantity/removal/persistence, both COD checkout/confirmation/owner receipt/status/history flows, lost/changed retry reconciliation, account privacy/isolation and desktop/mobile layouts. External requests blocked: ${[...blocked].join(', ') || 'none'}.`)
+  await writeFile(path.join(artifacts, 'storefront-increment-checks.json'), JSON.stringify({
+    result: 'PASS', widths: storefrontWidths, checkpoints: storefrontCheckpoints,
+    contrastSamples,
+    nativeBrowserChromeVisits,
+    scope: 'Actual isolated Next.js shopper UI using synthetic tenant data and a labelled development upload',
+    filterCompositionAndPaiseBounds: true, missingAndSingleImageFallback: true, brokenImageFallback: true,
+    nestedZoomKeyboardFocusAndEscape: true, reducedMotionChecked: true,
+    bagStepsAndAutofill: true, stockAwareQuantitiesAndRemove: true,
+    untrackedInventoryAvailable: true, actualServerFeeAndCODRetryRetained: true,
+    realHostedAuthTested: false, productionWrites: false, field75thPercentileMeasured: false,
+  }, null, 2) + '\n')
+  console.log(`PASS: owner/customer PKCE email confirmation and recovery via the real SDK with a simulated provider, resend, password replacement, expired/replayed/wrong-scope callback rejection, legacy/owner/store session isolation, browser onboarding/admin rejection, admin branding/features isolation, product create/edit/archive/media/inventory, Saree Store and Grocery Store general-template storefronts, cart quantity/removal/persistence, both COD checkout/confirmation/owner receipt/status/history flows, lost/changed retry reconciliation, account privacy/isolation and desktop/mobile layouts. External requests blocked: ${[...blocked].join(', ') || 'none'}.`)
 }
 
 try {

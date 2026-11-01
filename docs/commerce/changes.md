@@ -1,35 +1,55 @@
 # Exact changed-file list
 
-Complete PR #3 diff against main `7385253c5381fdf4998fddf8f58e84b783aabba1`.
+Updated 1 November 2026. Branch `feature/client-websites-phase1`, [PR #3](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3).
 A means added; M means modified. No files are deleted or renamed.
 
-## Latest main post-install verification versus 9b2f649: 9 files
+## Current storefront/Auth increment: 26 files
 
-The user manually installed the reviewed foundation. Read-only main verification
-now matches the canonical schema, defaults, grants, RLS policies, constraints,
-indexes and function bodies (after CRLF-to-LF normalization). Existing catalog
-records, four old bucket settings and both cron definitions are unchanged.
-Fresh `npm test` 82/82, local SQL 88 assertions, main read-only REST 11/11 and
-`npm run build` pass. No production mutation was performed during verification. No SQL
-migration required. Do not reapply the foundation; no migration ledger table was
-found. Hosted authenticated tenant workflows remain unverified. Deployment,
-main merge and live payments remain on hold. Application source and foundation
-SQL are unchanged.
+Compared with previous branch commit `a65cb4a7a41ac9cf9e82a419f147eee65e8345d3`. Three shopper improvements
+(existing-image zoom, combined filters, editorial bag/checkout) and the pending
+commerce-only email callback repair. No server/API, foundation SQL, original
+storefront CSS, legacy Auth or unrelated business module changed in this increment.
 
-See [main-postinstall-results.md](main-postinstall-results.md) for exact results,
-commands, evidence, preservation boundaries and remaining risks.
+**No SQL migration required.** Unit 101/101, PostgreSQL 88 assertions, final build
+and integrated browser suite pass; 118 screenshots cover four requested widths.
+Full ESLint remains failing with 169 inherited errors. Hosted Auth/SMTP, provider
+payments and Preview remain unverified. No production SQL/deployment/main merge.
+See [storefront-increment-report.md](storefront-increment-report.md) for exact
+commands, evidence, local-only limitations, handoff and rollback.
 
 - **M** [AGENTS.md](../../AGENTS.md)
+- **A** [app/auth/callback/commerce/page.jsx](../../app/auth/callback/commerce/page.jsx)
+- **A** [app/components/commerce/CommerceAuthCallback.jsx](../../app/components/commerce/CommerceAuthCallback.jsx)
+- **M** [app/components/commerce/OwnerAuth.jsx](../../app/components/commerce/OwnerAuth.jsx)
+- **M** [app/components/commerce/OwnerSession.jsx](../../app/components/commerce/OwnerSession.jsx)
+- **A** [app/components/commerce/ProductGallery.jsx](../../app/components/commerce/ProductGallery.jsx)
+- **M** [app/components/commerce/StoreAccount.jsx](../../app/components/commerce/StoreAccount.jsx)
+- **M** [app/components/commerce/Storefront.jsx](../../app/components/commerce/Storefront.jsx)
+- **A** [app/components/commerce/StorefrontBag.jsx](../../app/components/commerce/StorefrontBag.jsx)
+- **A** [app/components/commerce/product-gallery.css](../../app/components/commerce/product-gallery.css)
+- **A** [app/components/commerce/storefront-editorial.css](../../app/components/commerce/storefront-editorial.css)
+- **M** [app/shops/[slug]/loading.jsx](../../app/shops/[slug]/loading.jsx)
+- **M** [app/shops/layout.jsx](../../app/shops/layout.jsx)
 - **M** [docs/commerce/README.md](README.md)
 - **M** [docs/commerce/changes.md](changes.md)
-- **M** [docs/commerce/main-install-results.md](main-install-results.md)
-- **A** [docs/commerce/main-postinstall-results.md](main-postinstall-results.md)
-- **M** [docs/commerce/main-preflight-results.md](main-preflight-results.md)
-- **M** [docs/commerce/main-project-installation.md](main-project-installation.md)
 - **M** [docs/commerce/pr3-followup-report.md](pr3-followup-report.md)
+- **M** [docs/commerce/preview-and-environment.md](preview-and-environment.md)
 - **M** [docs/commerce/release-review.md](release-review.md)
+- **A** [docs/commerce/storefront-increment-report.md](storefront-increment-report.md)
+- **A** [docs/commerce/storefront-roadmap.md](storefront-roadmap.md)
+- **A** [lib/commerce/authRedirect.js](../../lib/commerce/authRedirect.js)
+- **A** [lib/commerce/storefront.js](../../lib/commerce/storefront.js)
+- **A** [tests/commerce-auth-redirect.test.mjs](../../tests/commerce-auth-redirect.test.mjs)
+- **A** [tests/commerce-storefront.test.mjs](../../tests/commerce-storefront.test.mjs)
+- **M** [tests/commerce.browser.mjs](../../tests/commerce.browser.mjs)
+- **M** [tests/helpers/commerce-fixture.mjs](../../tests/helpers/commerce-fixture.mjs)
 
-## Complete PR: 90 files
+## Complete PR against main: 102 files
+
+Compared with main snapshot `7385253c5381fdf4998fddf8f58e84b783aabba1`. This includes earlier work; its legacy
+route and billing changes are not new changes from the storefront increment.
+The already-installed foundation is included for review/history only. Do not
+reapply it or treat this complete-PR list as a new SQL installation request.
 
 - **M** [AGENTS.md](../../AGENTS.md)
 - **M** [README.md](../../README.md)
@@ -46,6 +66,7 @@ commands, evidence, preservation boundaries and remaining risks.
 - **A** [app/api/create-subscription-order/route.js](../../app/api/create-subscription-order/route.js)
 - **A** [app/api/delivery/customer/forgot-pin/route.js](../../app/api/delivery/customer/forgot-pin/route.js)
 - **A** [app/api/delivery/customer/returns/route.js](../../app/api/delivery/customer/returns/route.js)
+- **A** [app/auth/callback/commerce/page.jsx](../../app/auth/callback/commerce/page.jsx)
 - **A** [app/commerce/apply/page.jsx](../../app/commerce/apply/page.jsx)
 - **A** [app/commerce/auth/page.jsx](../../app/commerce/auth/page.jsx)
 - **A** [app/commerce/dashboard/page.jsx](../../app/commerce/dashboard/page.jsx)
@@ -53,14 +74,19 @@ commands, evidence, preservation boundaries and remaining risks.
 - **A** [app/commerce/page.jsx](../../app/commerce/page.jsx)
 - **A** [app/components/AdminMaintenanceSettings.jsx](../../app/components/AdminMaintenanceSettings.jsx)
 - **A** [app/components/commerce/AdminClientWebsites.jsx](../../app/components/commerce/AdminClientWebsites.jsx)
+- **A** [app/components/commerce/CommerceAuthCallback.jsx](../../app/components/commerce/CommerceAuthCallback.jsx)
 - **A** [app/components/commerce/OwnerApplication.jsx](../../app/components/commerce/OwnerApplication.jsx)
 - **A** [app/components/commerce/OwnerAuth.jsx](../../app/components/commerce/OwnerAuth.jsx)
 - **A** [app/components/commerce/OwnerDashboard.jsx](../../app/components/commerce/OwnerDashboard.jsx)
 - **A** [app/components/commerce/OwnerSession.jsx](../../app/components/commerce/OwnerSession.jsx)
+- **A** [app/components/commerce/ProductGallery.jsx](../../app/components/commerce/ProductGallery.jsx)
 - **A** [app/components/commerce/StoreAccount.jsx](../../app/components/commerce/StoreAccount.jsx)
 - **A** [app/components/commerce/Storefront.jsx](../../app/components/commerce/Storefront.jsx)
+- **A** [app/components/commerce/StorefrontBag.jsx](../../app/components/commerce/StorefrontBag.jsx)
 - **A** [app/components/commerce/admin-commerce.css](../../app/components/commerce/admin-commerce.css)
 - **A** [app/components/commerce/owner.css](../../app/components/commerce/owner.css)
+- **A** [app/components/commerce/product-gallery.css](../../app/components/commerce/product-gallery.css)
+- **A** [app/components/commerce/storefront-editorial.css](../../app/components/commerce/storefront-editorial.css)
 - **A** [app/components/commerce/storefront.css](../../app/components/commerce/storefront.css)
 - **M** [app/dashboard/[id]/billing/page.jsx](../../app/dashboard/[id]/billing/page.jsx)
 - **M** [app/delivery/forgot-pin/page.jsx](../../app/delivery/forgot-pin/page.jsx)
@@ -71,30 +97,34 @@ commands, evidence, preservation boundaries and remaining risks.
 - **A** [app/shops/[slug]/page.jsx](../../app/shops/[slug]/page.jsx)
 - **A** [app/shops/[slug]/store-metadata.js](../../app/shops/[slug]/store-metadata.js)
 - **A** [app/shops/layout.jsx](../../app/shops/layout.jsx)
-- **A** [docs/commerce/README.md](../../docs/commerce/README.md)
-- **A** [docs/commerce/application-regression-report.md](../../docs/commerce/application-regression-report.md)
-- **A** [docs/commerce/application-testing.md](../../docs/commerce/application-testing.md)
-- **A** [docs/commerce/architecture.md](../../docs/commerce/architecture.md)
-- **A** [docs/commerce/backup-recovery.md](../../docs/commerce/backup-recovery.md)
-- **A** [docs/commerce/changes.md](../../docs/commerce/changes.md)
-- **A** [docs/commerce/database.md](../../docs/commerce/database.md)
-- **A** [docs/commerce/lint-review.md](../../docs/commerce/lint-review.md)
-- **A** [docs/commerce/main-install-results.md](../../docs/commerce/main-install-results.md)
-- **A** [docs/commerce/main-postinstall-results.md](../../docs/commerce/main-postinstall-results.md)
-- **A** [docs/commerce/main-preflight-results.md](../../docs/commerce/main-preflight-results.md)
-- **A** [docs/commerce/main-project-installation.md](../../docs/commerce/main-project-installation.md)
-- **A** [docs/commerce/migration-review.md](../../docs/commerce/migration-review.md)
-- **A** [docs/commerce/pin-recovery-review.md](../../docs/commerce/pin-recovery-review.md)
-- **A** [docs/commerce/pr3-followup-report.md](../../docs/commerce/pr3-followup-report.md)
-- **A** [docs/commerce/preservation-review.md](../../docs/commerce/preservation-review.md)
-- **A** [docs/commerce/preview-and-environment.md](../../docs/commerce/preview-and-environment.md)
-- **A** [docs/commerce/release-review.md](../../docs/commerce/release-review.md)
-- **A** [docs/commerce/review-test-results.md](../../docs/commerce/review-test-results.md)
-- **A** [docs/commerce/staging-verification.md](../../docs/commerce/staging-verification.md)
-- **A** [docs/commerce/testing.md](../../docs/commerce/testing.md)
-- **A** [docs/commerce/trusted-machine-backup.md](../../docs/commerce/trusted-machine-backup.md)
+- **A** [docs/commerce/README.md](README.md)
+- **A** [docs/commerce/application-regression-report.md](application-regression-report.md)
+- **A** [docs/commerce/application-testing.md](application-testing.md)
+- **A** [docs/commerce/architecture.md](architecture.md)
+- **A** [docs/commerce/backup-recovery.md](backup-recovery.md)
+- **A** [docs/commerce/changes.md](changes.md)
+- **A** [docs/commerce/database.md](database.md)
+- **A** [docs/commerce/lint-review.md](lint-review.md)
+- **A** [docs/commerce/main-install-results.md](main-install-results.md)
+- **A** [docs/commerce/main-postinstall-results.md](main-postinstall-results.md)
+- **A** [docs/commerce/main-preflight-results.md](main-preflight-results.md)
+- **A** [docs/commerce/main-project-installation.md](main-project-installation.md)
+- **A** [docs/commerce/migration-review.md](migration-review.md)
+- **A** [docs/commerce/pin-recovery-review.md](pin-recovery-review.md)
+- **A** [docs/commerce/pr3-followup-report.md](pr3-followup-report.md)
+- **A** [docs/commerce/preservation-review.md](preservation-review.md)
+- **A** [docs/commerce/preview-and-environment.md](preview-and-environment.md)
+- **A** [docs/commerce/release-review.md](release-review.md)
+- **A** [docs/commerce/review-test-results.md](review-test-results.md)
+- **A** [docs/commerce/staging-verification.md](staging-verification.md)
+- **A** [docs/commerce/storefront-increment-report.md](storefront-increment-report.md)
+- **A** [docs/commerce/storefront-roadmap.md](storefront-roadmap.md)
+- **A** [docs/commerce/testing.md](testing.md)
+- **A** [docs/commerce/trusted-machine-backup.md](trusted-machine-backup.md)
+- **A** [lib/commerce/authRedirect.js](../../lib/commerce/authRedirect.js)
 - **A** [lib/commerce/client.js](../../lib/commerce/client.js)
 - **A** [lib/commerce/config.js](../../lib/commerce/config.js)
+- **A** [lib/commerce/storefront.js](../../lib/commerce/storefront.js)
 - **A** [lib/maintenance-page.ts](../../lib/maintenance-page.ts)
 - **A** [lib/server/adminRequestOrigin.js](../../lib/server/adminRequestOrigin.js)
 - **A** [lib/server/commerce/catalog.js](../../lib/server/commerce/catalog.js)
@@ -112,7 +142,9 @@ commands, evidence, preservation boundaries and remaining risks.
 - **A** [supabase/tests/commerce_rls_checkout.sql](../../supabase/tests/commerce_rls_checkout.sql)
 - **A** [supabase/tests/commerce_verify.sql](../../supabase/tests/commerce_verify.sql)
 - **A** [tests/commerce-api.test.mjs](../../tests/commerce-api.test.mjs)
+- **A** [tests/commerce-auth-redirect.test.mjs](../../tests/commerce-auth-redirect.test.mjs)
 - **A** [tests/commerce-staging-guard.test.mjs](../../tests/commerce-staging-guard.test.mjs)
+- **A** [tests/commerce-storefront.test.mjs](../../tests/commerce-storefront.test.mjs)
 - **A** [tests/commerce.browser.mjs](../../tests/commerce.browser.mjs)
 - **A** [tests/delivery-pin-recovery.test.mjs](../../tests/delivery-pin-recovery.test.mjs)
 - **A** [tests/delivery-return-alias.test.mjs](../../tests/delivery-return-alias.test.mjs)

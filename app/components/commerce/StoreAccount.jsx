@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { commerceFetch, getCommerceClient } from '@/lib/commerce/client'
+import { commerceEmailRedirect } from '@/lib/commerce/authRedirect'
 import { StoreBrand, storeStyle } from './Storefront'
 
 const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(value || 0) / 100)
@@ -32,6 +33,7 @@ export default function StoreAccount({ website }) {
   useEffect(() => {
     let alive = true
     let authVersion = 0
+    let recoveryRequested = new URL(window.location.href).searchParams.get('recovery') === '1'
     const client = getCommerceClient(`customer:${website.slug}`)
     clientRef.current = client
     function acceptSession(next) {
@@ -44,6 +46,7 @@ export default function StoreAccount({ website }) {
         setError(''); setNotice('')
       }
       setSession(next); setReady(true)
+      if (nextId && recoveryRequested) { recoveryRequested = false; setMode('update') }
     }
     client.auth.getSession().then(({ data }) => { if (!authVersion) acceptSession(data.session) }).catch(() => { if (alive) { setReady(true); setError('We could not check your session. Please try signing in again.') } })
     const { data: listener } = client.auth.onAuthStateChange((event, next) => {
@@ -73,7 +76,7 @@ export default function StoreAccount({ website }) {
     const client = clientRef.current
     setBusy(true); setError(''); setNotice('')
     try {
-      const redirectTo = `${window.location.origin}${home}/account`
+      const redirectTo = commerceEmailRedirect(window.location.origin, { audience: 'customer', slug: website.slug, recovery: mode === 'recover' })
       if (mode === 'recover') {
         const { error: authError } = await client.auth.resetPasswordForEmail(form.email.trim(), { redirectTo })
         if (authError) throw new Error('We could not send a recovery request right now. Please try again later.')
@@ -105,7 +108,7 @@ export default function StoreAccount({ website }) {
     if (busy || !clientRef.current || !email) return
     setBusy(true); setError(''); setNotice('')
     try {
-      const { error: authError } = await clientRef.current.auth.resend({ type: 'signup', email, options: { emailRedirectTo: `${window.location.origin}${home}/account` } })
+      const { error: authError } = await clientRef.current.auth.resend({ type: 'signup', email, options: { emailRedirectTo: commerceEmailRedirect(window.location.origin, { audience: 'customer', slug: website.slug }) } })
       if (authError) throw new Error('We could not resend the verification email. Please wait a moment and try again.')
       setNotice('A verification email has been requested. Check your inbox and spam folder.')
     } catch (authError) { setError(authError.message) }
