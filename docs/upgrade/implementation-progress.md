@@ -4,6 +4,9 @@
 `4ac1e12` from draft [commerce PR #3](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3).
 The master audit and dependency roadmap were created before implementation.
 This is the first bounded stabilization increment, not the complete upgrade.
+Implementation commit: `60a8ea14157c402148eb51713929b69562c1ebdf`, delivered
+through stacked **draft [PR #4](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/4)**
+targeting PR #3's feature branch. Neither PR is merged.
 
 ## Owner association and approval
 
@@ -89,6 +92,16 @@ baseline on its feature branch. It needs no database rollback and must retain
 the installed foundation and data. Reverting reintroduces known defects; use
 an alternate verified fix before any affected release. Production deployments,
 SQL/config changes, main merges and live financial operations remain held.
+
+Full TXT handoff is outside Git at
+`/workspace/commerce-handoff/phase0-stabilization-20261101/`, with exact VS Code
+destinations in `README.md` and hashes/operations in `manifest.json`. Its sibling
+`phase0-stabilization-20261101-code-txt.zip` contains complete changed JS/JSX/MJS
+files and the deployment-guard configuration. The sibling
+`phase0-stabilization-20261101-evidence.zip` contains the final 154 screenshots,
+logs, summaries and command wrappers. Remove only the appended `.txt` extension
+when applying source; compare local differences and retain the existing PR #3
+implementation. No SQL or provider keys are included or required by the patch.
 
 ## Exact changed files
 

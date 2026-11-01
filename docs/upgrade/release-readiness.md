@@ -3,10 +3,10 @@
 1 November 2026. **Overall production release: BLOCKED.**
 
 Current branch: `feature/phase0-account-payment-guards`, based on `4ac1e12`.
-The intended delivery is a separate stacked **draft** PR targeting
-`feature/client-websites-phase1`; commerce PR #3 remains draft and unmerged.
-Do not invent a PR or Preview URL before it exists and is verified. The final
-Phase 0 progress/test reports must record the actual commit and PR reference.
+Delivered as stacked **draft [PR #4](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/4)**,
+targeting `feature/client-websites-phase1`; commerce PR #3 remains draft and
+unmerged. Implementation commit: `60a8ea14157c402148eb51713929b69562c1ebdf`.
+No Preview URL is established; a pushed branch is not a deployment.
 
 ## Increment status
 
