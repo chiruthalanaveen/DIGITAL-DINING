@@ -52,7 +52,7 @@ function fixture(t, overrides = {}) {
   }
   const state = {
     user: { id: ownerId },
-    restaurant: { id: restaurantId, owner_id: ownerId, name: 'Development Restaurant', phone: '9000000000' },
+    restaurant: { id: restaurantId, owner_id: ownerId, name: 'Development Restaurant', phone: '9000000000', approval_status: 'approved' },
     queries: [], clients: [], orders: [], providerReads: [], updates: [], defaults: [],
     order: {
       id: 'order_development', amount: 149900, currency: 'INR',
@@ -185,6 +185,29 @@ test('current subscription checkout requires a valid owner session and denies an
   assert.deepEqual(state.updates, [])
 })
 
+test('subscription creation and both activation modes require explicit Super Admin approval before provider or mutation work', async t => {
+  for (const approvalStatus of ['pending', 'rejected', 'suspended', null, undefined, '']) {
+    const { load, state } = fixture(t)
+    state.restaurant.approval_status = approvalStatus
+    const attempts = [
+      ['app/api/create-order/route.js', { restaurantId, plan: 'restaurant_pro', billingCycle: '1month' }],
+      ['app/api/verify-subscription/route.js', paidPayload()],
+      ['app/api/verify-subscription/route.js', { restaurantId, mode: 'coupon', couponCode: 'local-unavailable-coupon' }],
+    ]
+    for (const [route, payload] of attempts) {
+      const response = await load(route).POST(request(payload))
+      assert.equal(response.status, 403, `${route}: ${approvalStatus}`)
+      const body = await response.json()
+      assert.equal(body.success, false)
+      assert.equal(body.code, 'OWNER_APPROVAL_REQUIRED')
+    }
+    assert.deepEqual(state.orders, [])
+    assert.deepEqual(state.providerReads, [])
+    assert.deepEqual(state.updates, [])
+    assert.deepEqual(state.defaults, [])
+  }
+})
+
 test('all fifteen current plan/cycle combinations use server prices despite a forged client amount', async t => {
   const { load, state } = fixture(t)
   const route = load('app/api/create-order/route.js')
@@ -258,6 +281,31 @@ test('subscription verification rejects mismatched tenant, plan, amount, currenc
   }
 })
 
+test('authorized but uncaptured subscription payment remains pending without activation or delivery defaults', async t => {
+  const { load, state } = fixture(t)
+  state.payment.status = 'authorized'
+  state.payment.captured = false
+  const response = await load('app/api/verify-subscription/route.js').POST(request(paidPayload()))
+  assert.equal(response.status, 202)
+  const body = await response.json()
+  assert.equal(body.success, false)
+  assert.equal(body.pending, true)
+  assert.equal(body.code, 'PAYMENT_NOT_CAPTURED')
+  assert.equal(state.providerReads.length, 2)
+  assert.deepEqual(state.updates, [])
+  assert.deepEqual(state.defaults, [])
+})
+
+test('contradictory captured=false provider response cannot activate a subscription', async t => {
+  const { load, state } = fixture(t)
+  state.payment.captured = false
+  const response = await load('app/api/verify-subscription/route.js').POST(request(paidPayload()))
+  assert.equal(response.status, 400)
+  assert.equal((await response.json()).success, false)
+  assert.deepEqual(state.updates, [])
+  assert.deepEqual(state.defaults, [])
+})
+
 test('verified test payment activates only the authenticated restaurant and prepares delivery settings when applicable', async t => {
   const { load, state } = fixture(t)
   state.order.notes.plan_code = 'restaurant_delivery'
@@ -269,7 +317,7 @@ test('verified test payment activates only the authenticated restaurant and prep
   assert.equal(state.updates.length, 1)
   const update = state.updates[0]
   assert.equal(update.table, 'restaurants')
-  assert.deepEqual(update.filters, [['id', restaurantId]])
+  assert.deepEqual(update.filters, [['id', restaurantId], ['owner_id', ownerId], ['approval_status', 'approved']])
   assert.equal(update.payload.plan_code, 'restaurant_delivery')
   assert.equal(update.payload.delivery_enabled, true)
   assert.equal(update.payload.resort_enabled, false)

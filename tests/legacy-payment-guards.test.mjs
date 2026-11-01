@@ -37,7 +37,7 @@ function fixture(overrides = {}) {
       DIGITAL_DINE_WALLET_RAZORPAY_KEY_SECRET: secret,
     },
     tables: {
-      restaurants: [{ id: restaurantId, owner_id: ownerId, name: 'Local restaurant', phone: '9000000000' }],
+      restaurants: [{ id: restaurantId, owner_id: ownerId, name: 'Local restaurant', phone: '9000000000', approval_status: 'approved' }],
       delivery_wallet_topups: [{ id: topupId, restaurant_id: restaurantId, amount_paise: 200000, razorpay_order_id: orderId, status: 'created' }],
       delivery_store_wallets: [{ restaurant_id: restaurantId, min_topup_paise: 200000 }],
     },

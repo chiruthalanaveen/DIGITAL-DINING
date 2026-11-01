@@ -375,13 +375,21 @@ export async function POST(request) {
         payment.status || ''
       )
 
-    if (
-      ![
-        'authorized',
-        'captured',
-      ].includes(
-        paymentStatus
+    if (paymentStatus === 'authorized') {
+      return NextResponse.json(
+        {
+          success: false,
+          pending: true,
+          code: 'PAYMENT_NOT_CAPTURED',
+          message: 'Payment is authorized but has not been captured. The order has not been marked paid. Retry verification shortly; do not pay again.',
+        },
+        { status: 202 }
       )
+    }
+
+    if (
+      paymentStatus !== 'captured' ||
+      payment.captured === false
     ) {
       return NextResponse.json(
         {
