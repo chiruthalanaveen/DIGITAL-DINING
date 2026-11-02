@@ -8,7 +8,7 @@ import { DELIVERY_MOBILE_SESSION_COOKIE, readDeliveryMobileSession } from '@/lib
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 const CODE = /^[a-zA-Z0-9_-]{1,80}$/
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const HASH = /^[0-9a-f]{64}$/i
 const GOOGLE = 'delivery_customer_saved_addresses'
 const MOBILE = 'delivery_customer_mobile_saved_addresses'
@@ -66,11 +66,22 @@ async function list(admin, auth) {
   if (error) throw error
   return data || []
 }
+function numericValue(value) {
+  if (typeof value === 'number') return value
+  if (typeof value !== 'string') return NaN
+  const text = value.trim()
+  // Accept decimal coordinates from manual inputs without coercing missing
+  // values, booleans or containers into a fabricated zero/one coordinate.
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return NaN
+  return Number(text)
+}
 function clean(raw) {
   const string = (key, max) => String(raw?.[key] ?? '').trim().slice(0, max)
   const mobile = string('recipient_mobile', 30).replace(/\D/g, '')
-  const lat = Number(raw?.latitude), lng = Number(raw?.longitude)
-  const accuracy = raw?.gps_accuracy_m === '' || raw?.gps_accuracy_m == null ? null : Number(raw.gps_accuracy_m)
+  const lat = numericValue(raw?.latitude), lng = numericValue(raw?.longitude)
+  const rawAccuracy = raw?.gps_accuracy_m
+  const accuracy = rawAccuracy == null || (typeof rawAccuracy === 'string' && !rawAccuracy.trim())
+    ? null : numericValue(rawAccuracy)
   const payload = {
     label: string('label', 40) || 'Home', recipient_name: string('recipient_name', 120),
     recipient_mobile: mobile, address_line1: string('address_line1', 240),

@@ -39,6 +39,26 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
+### Current address fix and Vercel publication request — 2 November 2026
+
+The user requested the next work and Vercel publication. Prepare a manual Preview
+as the default target, with paid subscriptions off; this authorizes Preview work
+without removing the production SQL/configuration, live-payment or merge holds.
+Do not promote to production or copy Production secrets into Preview. Verify
+actual project/Preview configuration before publishing, build from source and
+retain every automatic Git deployment guard. Fresh project/team/Preview/deploy
+metadata checks return HTTP403; resolve legitimate access rather than bypassing
+controls or claiming a deployment URL. No CLI deployment was created.
+
+Continue the bounded saved-address coordinate validation fix on
+`feature/phase0-address-coordinate-validation`, based on PR #5's `deee372`.
+Validate existing GPS/map-pin input without coercing missing/boolean/array
+values to coordinates. Preserve zero, manual selection, customer/store scope
+and optional accuracy semantics. No SQL migration is required for this fix;
+do not modify existing stored addresses. The separate subscription ledger SQL
+remains unapplied to hosted databases and its rollout flag remains disabled.
+See `docs/upgrade/address-coordinate-report.md` for the current slice.
+
 ### Current durable subscription increment — 1–2 November 2026
 
 Continue Phase 0 on `feature/phase0-subscription-ledger`, based on PR #4's
