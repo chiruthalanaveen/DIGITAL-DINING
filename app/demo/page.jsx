@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -45,42 +45,11 @@ const portals = [
   },
 ]
 
-export default function RealDemoPage() {
-  const router = useRouter()
+const subscribeOrigin = () => () => {}
+const readOrigin = () => window.location.origin
+const serverOrigin = () => ''
 
-  const [loadingRole, setLoadingRole] = useState('')
-  const [error, setError] = useState('')
-  const [restaurantId, setRestaurantId] = useState('')
-  const [siteOrigin, setSiteOrigin] = useState('')
-
-  useEffect(() => {
-    setSiteOrigin(window.location.origin)
-
-    // The ID is intentionally exposed only for navigation/QR purposes.
-    // Login credentials remain server-side.
-    const id = String(
-      process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || ''
-    ).trim()
-
-    setRestaurantId(id)
-  }, [])
-
-  const openCustomer = () => {
-    if (!restaurantId) {
-      setError(
-        'NEXT_PUBLIC_DEMO_RESTAURANT_ID is not configured.'
-      )
-      return
-    }
-
-    router.push(
-      `/menu/${encodeURIComponent(
-        restaurantId
-      )}?table=1&demo=1`
-    )
-  }
-
-  const saveStaffSession = (sessionData) => {
+function saveStaffSession(sessionData) {
     const session = {
       sessionId: sessionData?.sessionId || null,
       sessionToken: sessionData?.sessionToken,
@@ -111,6 +80,31 @@ export default function RealDemoPage() {
 
     localStorage.removeItem('digital-dine-app-session')
   }
+
+
+export default function RealDemoPage() {
+  const router = useRouter()
+
+  const [loadingRole, setLoadingRole] = useState('')
+  const [error, setError] = useState('')
+  const restaurantId = String(process.env.NEXT_PUBLIC_DEMO_RESTAURANT_ID || '').trim()
+  const siteOrigin = useSyncExternalStore(subscribeOrigin, readOrigin, serverOrigin)
+
+  const openCustomer = () => {
+    if (!restaurantId) {
+      setError(
+        'NEXT_PUBLIC_DEMO_RESTAURANT_ID is not configured.'
+      )
+      return
+    }
+
+    router.push(
+      `/menu/${encodeURIComponent(
+        restaurantId
+      )}?table=1&demo=1`
+    )
+  }
+
 
   const launchRealPortal = async (role) => {
     if (loadingRole) return

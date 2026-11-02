@@ -30,7 +30,7 @@ export default function KitchenPortal({ params }) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
-  const [currentTime, setCurrentTime] = useState(Date.now())
+  const [currentTime, setCurrentTime] = useState(() => Date.now())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
   const [newOrderAlert, setNewOrderAlert] = useState(null)

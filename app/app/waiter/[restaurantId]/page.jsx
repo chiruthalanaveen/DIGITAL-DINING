@@ -202,6 +202,17 @@ export default function WaiterPortal({ params }) {
 
 
 
+      // Reflect actual playback changes, including browser/external pauses.
+      audio.onpause = () => {
+        if (!audio.paused) return
+        alarmActiveRef.current = false
+        setAlarmActive(false)
+      }
+      audio.onended = () => {
+        if (!audio.ended) return
+        alarmActiveRef.current = false
+        setAlarmActive(false)
+      }
       alarmAudioRef.current = audio
 
     }
@@ -215,94 +226,35 @@ export default function WaiterPortal({ params }) {
 
 
   const stopAlarm = useCallback(() => {
-
     alarmActiveRef.current = false
-
-
-
     const audio = alarmAudioRef.current
-
-
-
     if (audio) {
-
       try {
-
         audio.pause()
-
         audio.currentTime = 0
-
-      } catch {}
-
+      } catch { /* The audio pause event owns the displayed playback status. */ }
     }
-
-
-
-    setAlarmActive(false)
-
   }, [])
 
-
-
-  const startAlarm = useCallback(
-
-    async () => {
-
-      if (!soundEnabledRef.current) return
-
-
-
-      const audio = initializeAlarmAudio()
-
-
-
-      if (!audio) return
-
-      if (alarmActiveRef.current) return
-
-
-
-      try {
-
-        audio.loop = true
-
-        audio.currentTime = 0
-
-
-
-        await audio.play()
-
-
-
-        alarmActiveRef.current = true
-
-        setAlarmActive(true)
-
-      } catch (error) {
-
-        console.error(
-
-          'Waiter alarm could not start:',
-
-          error
-
-        )
-
-
-
-        setAlarmActive(false)
-
-        alarmActiveRef.current = false
-
-      }
-
-    },
-
-    [initializeAlarmAudio]
-
-  )
-
-
+  const startAlarm = useCallback(() => {
+    if (!soundEnabledRef.current) return
+    const audio = initializeAlarmAudio()
+    if (!audio || alarmActiveRef.current) return
+    const play = async () => {
+      audio.loop = true
+      audio.currentTime = 0
+      await audio.play()
+    }
+    return play().then(() => {
+      if (audio.paused) return
+      alarmActiveRef.current = true
+      setAlarmActive(true)
+    }).catch((error) => {
+      console.error('Waiter alarm could not start:', error)
+      setAlarmActive(false)
+      alarmActiveRef.current = false
+    })
+  }, [initializeAlarmAudio])
 
   const enableAlarmSound = async () => {
 

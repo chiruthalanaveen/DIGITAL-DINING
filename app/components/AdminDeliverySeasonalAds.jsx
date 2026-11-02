@@ -39,23 +39,21 @@ export default function AdminDeliverySeasonalAds() {
   const [uploading, setUploading] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
-  const update = (key, value) => setForm(current => ({ ...current, [key]: value }))
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const response = await fetch('/api/admin/delivery-seasonal-ads', { cache: 'no-store', credentials: 'same-origin' })
-      const json = await response.json().catch(() => ({}))
-      if (!response.ok || !json.success) throw new Error(json.message || 'Unable to load ads.')
-      setStores(json.stores || [])
-      setCampaigns(json.campaigns || [])
-    } catch (err) { setError(err.message) }
-    finally { setLoading(false) }
-  }, [])
+  const update = (key, value) => setForm(current => ({ ...current, [key]: key === 'restaurantId' ? value || stores[0]?.id || '' : value }))
+  const load = useCallback(() =>
+    fetch('/api/admin/delivery-seasonal-ads', { cache: 'no-store', credentials: 'same-origin' })
+      .then(async response => {
+        const json = await response.json().catch(() => ({}))
+        if (!response.ok || !json.success) throw new Error(json.message || 'Unable to load ads.')
+        setStores(json.stores || [])
+        setCampaigns(json.campaigns || [])
+        setForm(current => current.restaurantId || !json.stores?.length ? current : { ...current, restaurantId: json.stores[0].id })
+        setError('')
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false))
+  , [])
   useEffect(() => { void load() }, [load])
-  useEffect(() => {
-    if (stores.length && !form.restaurantId) setForm(current => ({ ...current, restaurantId: stores[0].id }))
-  }, [stores, form.restaurantId])
   const rows = useMemo(() => campaigns.filter(row => !filterStore || row.restaurant_id === filterStore), [campaigns, filterStore])
   const byId = useMemo(() => new Map(stores.map(row => [row.id, row])), [stores])
   const reset = () => setForm({ ...initial(), restaurantId: filterStore || stores[0]?.id || '' })
@@ -74,6 +72,7 @@ export default function AdminDeliverySeasonalAds() {
       if (!response.ok || !json.success) throw new Error(json.message || 'Unable to save campaign.')
       setNotice(json.message || 'Campaign saved.')
       reset()
+      setLoading(true)
       await load()
     } catch (err) { setError(err.message) }
     finally { setSaving(false) }
@@ -91,6 +90,7 @@ export default function AdminDeliverySeasonalAds() {
       if (!response.ok || !json.success) throw new Error(json.message || 'Unable to update campaign.')
       setNotice(json.message || 'Campaign updated.')
       if (form.id === row.id && operation === 'delete') reset()
+      setLoading(true)
       await load()
     } catch (err) { setError(err.message) }
     finally { setSaving(false) }
@@ -148,7 +148,7 @@ export default function AdminDeliverySeasonalAds() {
         <button type="submit" disabled={saving || uploading || !form.restaurantId} className="w-full rounded-xl bg-emerald-600 p-3 text-sm font-black text-white disabled:opacity-50">{saving ? 'Saving…' : form.id ? 'Save campaign changes' : 'Create draft campaign'}</button>
       </form>
       <div className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
-        <div className="flex items-center justify-between"><h2 className="text-lg font-black">Campaigns</h2><button className="text-xs font-bold text-emerald-400" type="button" disabled={loading} onClick={load}>{loading ? 'Loading…' : 'Refresh'}</button></div>
+        <div className="flex items-center justify-between"><h2 className="text-lg font-black">Campaigns</h2><button className="text-xs font-bold text-emerald-400" type="button" disabled={loading} onClick={() => { setLoading(true); setError(''); void load() }}>{loading ? 'Loading…' : 'Refresh'}</button></div>
         <label><span className={label}>Filter by store</span><select className={cn} value={filterStore} onChange={e => setFilterStore(e.target.value)}><option value="">All delivery stores</option>{stores.map(row => <option key={row.id} value={row.id}>{row.name} · {row.restaurant_code}</option>)}</select></label>
         {rows.length === 0 && <p className="rounded-xl bg-neutral-950 p-4 text-sm text-neutral-400">No seasonal campaigns yet.</p>}
         {rows.map(row => <article key={row.id} className="rounded-xl border border-neutral-700 bg-neutral-950 p-3">

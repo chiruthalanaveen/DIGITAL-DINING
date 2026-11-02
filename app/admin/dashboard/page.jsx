@@ -1071,30 +1071,31 @@ function AdminRegistrationApprovals() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
-  const load = useCallback(async (filter) => {
-    setLoading(true)
-    setError('')
-    try {
-      const response = await fetch(
-        `/api/admin/registrations?status=${encodeURIComponent(filter)}`,
-        { cache: 'no-store' }
-      )
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok || result.success !== true) {
-        throw new Error(result.message || 'Unable to load registrations.')
-      }
-      setRegistrations(Array.isArray(result.registrations) ? result.registrations : [])
-    } catch (err) {
-      setError(err?.message || 'Unable to load registrations.')
-      setRegistrations([])
-    } finally {
-      setLoading(false)
-    }
+  const loadRegistrations = useCallback((filter) => {
+    return fetch(`/api/admin/registrations?status=${encodeURIComponent(filter)}`, { cache: 'no-store' })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok || result.success !== true) {
+          throw new Error(result.message || 'Unable to load registrations.')
+        }
+        setRegistrations(Array.isArray(result.registrations) ? result.registrations : [])
+      })
+      .catch((err) => {
+        setError(err?.message || 'Unable to load registrations.')
+        setRegistrations([])
+      })
+      .finally(() => setLoading(false))
   }, [])
 
+  const load = (filter) => {
+    setLoading(true)
+    setError('')
+    return loadRegistrations(filter)
+  }
+
   useEffect(() => {
-    load(statusFilter)
-  }, [load, statusFilter])
+    loadRegistrations(statusFilter)
+  }, [loadRegistrations, statusFilter])
 
   const decide = async (row, action) => {
     if (savingId || row.approval_status !== 'pending') return
@@ -1168,7 +1169,7 @@ function AdminRegistrationApprovals() {
           <button
             type="button"
             key={value}
-            onClick={() => { setNotice(''); setError(''); setStatusFilter(value) }}
+            onClick={() => { setNotice(''); setError(''); if (statusFilter !== value) setLoading(true); setStatusFilter(value) }}
             className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${
               statusFilter === value
                 ? 'bg-red-600 text-white'
@@ -1302,15 +1303,6 @@ export default function AdminControlCenter() {
   const [commandOpen, setCommandOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
 
-  // Only the interface changes here; selecting a section never mutates tenant data.
-  const switchSection = (key) => {
-    if (!NAV.some(([navKey]) => navKey === key)) return
-    setSection(key)
-    setNavigationOpen(false)
-    setCommandOpen(false)
-    setCommandQuery('')
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
 
   useEffect(() => {
     const keyHandler = (event) => {
@@ -1412,28 +1404,28 @@ export default function AdminControlCenter() {
   const [otpSettingsError, setOtpSettingsError] = useState('')
   const [otpSettingsNotice, setOtpSettingsNotice] = useState('')
 
-  const loadOtpSettings = useCallback(async () => {
+  const fetchOtpSettings = useCallback(() => {
+    return fetch('/api/admin/customer-auth-settings', { cache: 'no-store' })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok || result.success !== true || typeof result.otpEnabled !== 'boolean') {
+          throw new Error(result.message || 'Unable to load customer OTP settings.')
+        }
+        setOtpEnabled(result.otpEnabled)
+      })
+      .catch((err) => setOtpSettingsError(err.message || 'Unable to load customer OTP settings.'))
+      .finally(() => setOtpSettingsLoading(false))
+  }, [setOtpEnabled])
+
+  const loadOtpSettings = () => {
     setOtpSettingsLoading(true)
     setOtpSettingsError('')
-    try {
-      const response = await fetch('/api/admin/customer-auth-settings', {
-        cache: 'no-store',
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok || result.success !== true || typeof result.otpEnabled !== 'boolean') {
-        throw new Error(result.message || 'Unable to load customer OTP settings.')
-      }
-      setOtpEnabled(result.otpEnabled)
-    } catch (err) {
-      setOtpSettingsError(err.message || 'Unable to load customer OTP settings.')
-    } finally {
-      setOtpSettingsLoading(false)
-    }
-  }, [])
+    return fetchOtpSettings()
+  }
 
   useEffect(() => {
-    if (section === 'system') loadOtpSettings()
-  }, [section, loadOtpSettings])
+    if (section === 'system') fetchOtpSettings()
+  }, [section, fetchOtpSettings])
 
   const saveOtpSettings = async () => {
     if (otpSettingsSaving || otpSettingsLoading) return
@@ -1511,20 +1503,9 @@ export default function AdminControlCenter() {
       total: 0,
     })
 
-  const loadData =
+  const fetchData =
     useCallback(
-      async (
-        quiet = false
-      ) => {
-        if (quiet) {
-          setRefreshing(true)
-        } else {
-          setLoading(true)
-        }
-
-        setTimedOut(false)
-        setError('')
-
+      () => {
         const controller =
           new AbortController()
 
@@ -1537,9 +1518,7 @@ export default function AdminControlCenter() {
             15000
           )
 
-        try {
-          const response =
-            await fetch(
+        return fetch(
               '/api/admin/control-center',
               {
                 cache:
@@ -1547,7 +1526,7 @@ export default function AdminControlCenter() {
                 signal:
                   controller.signal,
               }
-            )
+            ).then(async (response) => {
 
           const payload =
             await response
@@ -1579,7 +1558,7 @@ export default function AdminControlCenter() {
           setData(
             payload
           )
-        } catch (loadError) {
+        }).catch((loadError) => {
           const aborted =
             loadError?.name ===
             'AbortError'
@@ -1590,21 +1569,29 @@ export default function AdminControlCenter() {
               : loadError?.message ||
                   'Unable to load Admin Control Center.'
           )
-        } finally {
+        }).finally(() => {
           window.clearTimeout(
             timeoutId
           )
 
           setLoading(false)
           setRefreshing(false)
-        }
+        })
       },
       [router]
     )
 
+  const loadData = useCallback((quiet = false) => {
+    if (quiet) setRefreshing(true)
+    else setLoading(true)
+    setTimedOut(false)
+    setError('')
+    return fetchData()
+  }, [fetchData])
+
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    fetchData()
+  }, [fetchData])
 
   const action =
     async (
@@ -1704,19 +1691,13 @@ export default function AdminControlCenter() {
       }
     }
 
-  const loadLiveSupport =
+  const fetchLiveSupport =
     useCallback(
       async (
         sessionId = '',
         quiet = false
       ) => {
-        if (!quiet) {
-          setLiveSupportLoading(
-            true
-          )
-        }
 
-        try {
           const query =
             sessionId
               ? `?sessionId=${encodeURIComponent(
@@ -1724,14 +1705,13 @@ export default function AdminControlCenter() {
                 )}`
               : ''
 
-          const response =
-            await fetch(
+          return fetch(
               `/api/admin/live-support${query}`,
               {
                 cache:
                   'no-store',
               }
-            )
+            ).then(async (response) => {
 
           const payload =
             await response
@@ -1829,21 +1809,42 @@ export default function AdminControlCenter() {
           setLiveSupportError(
             ''
           )
-        } catch (supportError) {
+        }).catch((supportError) => {
           setLiveSupportError(
             supportError?.message ||
               'Unable to load Live Support.'
           )
-        } finally {
+        }).finally(() => {
           if (!quiet) {
             setLiveSupportLoading(
               false
             )
           }
-        }
+        })
       },
       []
     )
+
+  const loadLiveSupport = useCallback((sessionId = '', quiet = false) => {
+    if (!quiet) setLiveSupportLoading(true)
+    return fetchLiveSupport(sessionId, quiet)
+  }, [fetchLiveSupport])
+
+  // Only the interface changes here; selecting a section never mutates tenant data.
+  const switchSection = (key) => {
+    if (!NAV.some(([navKey]) => navKey === key)) return
+    if (key === 'system' && key !== section) {
+      setOtpSettingsLoading(true)
+      setOtpSettingsError('')
+    }
+    if (key === 'live-support' && key !== section) setLiveSupportLoading(true)
+    setSection(key)
+    setNavigationOpen(false)
+    setCommandOpen(false)
+    setCommandQuery('')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
 
   const runLiveSupportAction =
     async ({
@@ -2046,14 +2047,14 @@ export default function AdminControlCenter() {
           return
         }
 
-        await loadLiveSupport(
+        await fetchLiveSupport(
           selectedLiveSupport?.id ||
             '',
           true
         )
       }
 
-    loadLiveSupport(
+    fetchLiveSupport(
       selectedLiveSupport?.id ||
         '',
       false
@@ -2074,7 +2075,7 @@ export default function AdminControlCenter() {
   }, [
     section,
     selectedLiveSupport?.id,
-    loadLiveSupport,
+    fetchLiveSupport,
   ])
 
   const tenants =
@@ -2114,7 +2115,7 @@ export default function AdminControlCenter() {
         )
       },
       [
-        data?.tenants,
+        data,
         search,
       ]
     )

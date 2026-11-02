@@ -937,7 +937,7 @@ function SignupContent() {
                       <option value="private_phrase">What is your private recovery phrase hint?</option>
                       <option value="first_trip">Which place did you first travel alone to?</option>
                       <option value="childhood_street">Which street did you grow up on?</option>
-                      <option value="first_teacher">What was your first teacher's name?</option>
+                      <option value="first_teacher">What was your first teacher&apos;s name?</option>
                     </select>
                     <label htmlFor="security-answer" className="block text-xs font-black text-neutral-700">Private answer (8+ characters)</label>
                     <input id="security-answer" type="password" minLength={8} maxLength={72}
@@ -945,7 +945,7 @@ function SignupContent() {
                       onChange={event => setSecurityAnswer(event.target.value)}
                       placeholder="Enter a private answer" required
                       className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold" />
-                    <p className="text-[11px] leading-5 text-emerald-900">Don't use a publicly known answer. PIN recovery requires this answer AND your recovery code.</p>
+                    <p className="text-[11px] leading-5 text-emerald-900">Don&apos;t use a publicly known answer. PIN recovery requires this answer AND your recovery code.</p>
                   </div>
                 )}
 

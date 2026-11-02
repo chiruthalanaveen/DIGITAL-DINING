@@ -339,19 +339,12 @@ export default function ManagerDeliveryManagement({
     [playAlarm]
   )
 
-  const loadData = useCallback(
-    async (quiet = false) => {
-      if (quiet) {
-        setRefreshing(true)
-      } else {
-        setLoading(true)
-      }
+  const requestData = useCallback(
+    async (isCurrent = () => true) => {
+      const fetchResponse = async () => (getData())
+      return fetchResponse().then(async ({ data, error: rpcError }) => {
+        if (!isCurrent()) return
 
-      setError('')
-
-      try {
-        const { data, error: rpcError } =
-          await getData()
 
         if (rpcError) throw rpcError
 
@@ -385,7 +378,10 @@ export default function ManagerDeliveryManagement({
             ? data.drivers
             : []
         )
-      } catch (loadError) {
+
+      }).catch((loadError) => {
+        if (!isCurrent()) return
+
         console.error(
           'Manager Delivery load error:',
           loadError
@@ -395,17 +391,40 @@ export default function ManagerDeliveryManagement({
           loadError?.message ||
             'Unable to load Delivery operations.'
         )
-      } finally {
+      }).finally(() => {
+        if (!isCurrent()) return
+
         setLoading(false)
         setRefreshing(false)
-      }
+      })
     },
     [getData, announceNewOrders]
   )
 
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadData = useCallback((quiet = false) => {
+    if (quiet) setRefreshing(true)
+    else setLoading(true)
+    setError('')
+    return requestData()
+  }, [requestData])
+
+  const requestContext = [restaurantId, restaurantCode, sessionToken, sessionMode, userId, password, alarmEnabled]
+  const [previousRequestData, setPreviousRequestData] = useState(requestContext)
+  if (previousRequestData.some((value, index) => value !== requestContext[index])) {
+    setPreviousRequestData(requestContext)
+    setLoading(true)
+    setError('')
+  }
+
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    let active = true
+    const isCurrent = () => active
+
+    requestData(isCurrent)
+
+    return () => { active = false }
+  }, [requestData])
 
   useEffect(() => {
     const interval = window.setInterval(

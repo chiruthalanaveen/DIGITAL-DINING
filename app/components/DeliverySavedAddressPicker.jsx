@@ -32,7 +32,10 @@ export default function DeliverySavedAddressPicker({
   const [open, setOpen] = useState(false)
   const [editor, setEditor] = useState(false)
   const [addresses, setAddresses] = useState([])
-  const [availability, setAvailability] = useState({})
+  const [availabilityResult, setAvailabilityResult] = useState(null)
+  const availability = availabilityResult?.addresses === addresses &&
+    availabilityResult?.restaurantCode === restaurantCode && availabilityResult?.open === open
+    ? availabilityResult.values : {}
   const availabilityRevision = useRef(0)
   const [identity, setIdentity] = useState('')
   const [account, setAccount] = useState({})
@@ -50,9 +53,11 @@ export default function DeliverySavedAddressPicker({
   const lastAutoRef = useRef('')
   const currentRequest = useRef(0)
   const onSelectRef = useRef(onSelect)
-  onSelectRef.current = onSelect
   const onReadyRef = useRef(onReady)
-  onReadyRef.current = onReady
+  useEffect(() => {
+    onSelectRef.current = onSelect
+    onReadyRef.current = onReady
+  }, [onSelect, onReady])
   useEffect(() => {
     const openSelector = () => setOpen(true)
     window.addEventListener('digitaldine:select-address', openSelector)
@@ -92,11 +97,9 @@ export default function DeliverySavedAddressPicker({
     recipientMobile: address.recipient_mobile,
   }), [])
 
-  const load = useCallback(async (applyDefault = true) => {
+  const load = useCallback((applyDefault = true) => {
     const id = ++currentRequest.current
-    setLoading(true)
-    try {
-      const result = await callApi('GET')
+    return callApi('GET').then(result => {
       if (id !== currentRequest.current) return
       const rows = Array.isArray(result.addresses) ? result.addresses : []
       setAddresses(rows)
@@ -115,23 +118,24 @@ export default function DeliverySavedAddressPicker({
         }
       }
       onReadyRef.current?.(usableDefault)
-    } catch (caught) {
+    }).catch(caught => {
       if (id !== currentRequest.current) return
       onReadyRef.current?.(false)
       setIdentity('')
       setAddresses([])
       setSelected('')
       setError(caught?.message || 'Unable to access saved addresses.')
-    } finally {
+    }).finally(() => {
       if (id === currentRequest.current) setLoading(false)
-    }
+    })
   }, [callApi, autoApplyDefault, toPoint, restaurantCode])
 
   useEffect(() => {
     lastAutoRef.current = ''
     void load(true)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      Promise.resolve().then(() => void load(true))
+      // Leave Supabase's auth callback before taking its session lock.
+      Promise.resolve().then(() => { setLoading(true); void load(true) })
     })
     return () => { currentRequest.current += 1; subscription?.unsubscribe() }
   }, [load])
@@ -141,7 +145,6 @@ export default function DeliverySavedAddressPicker({
   useEffect(() => {
     const sequence = ++availabilityRevision.current
     if (!open || !addresses.length) return undefined
-    setAvailability(Object.fromEntries(addresses.map(a => [a.id, 'checking'])))
     const check = async () => {
       for (let start = 0; start < addresses.length; start += 3) {
         const results = await Promise.all(addresses.slice(start, start + 3).map(async address => {
@@ -169,7 +172,13 @@ export default function DeliverySavedAddressPicker({
           } catch { return [address.id, 'unknown'] }
         }))
         if (availabilityRevision.current !== sequence) return
-        setAvailability(current => ({ ...current, ...Object.fromEntries(results) }))
+        setAvailabilityResult(current => ({
+          addresses, restaurantCode, open,
+          values: {
+            ...(current?.addresses === addresses && current?.restaurantCode === restaurantCode && current?.open === open ? current.values : {}),
+            ...Object.fromEntries(results),
+          },
+        }))
       }
     }
     void check()
@@ -343,7 +352,7 @@ export default function DeliverySavedAddressPicker({
         </div>
         {point && validPin(point.latitude, point.longitude) && <div className="overflow-hidden rounded-2xl border border-slate-200"><DeliveryLocationMap latitude={Number(point.latitude)} longitude={Number(point.longitude)}
           onChange={({ latitude, longitude }) => { setPoint({ latitude, longitude }); setAccuracy(null) }} zoom={16} height={240} /></div>}
-        <p className="mt-2 text-xs text-slate-500">Select the GPS pin while adding the address. You won't need the map again at checkout.</p>
+        <p className="mt-2 text-xs text-slate-500">Select the GPS pin while adding the address. You won&apos;t need the map again at checkout.</p>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <Field label="Latitude" value={point?.latitude ?? ''} onChange={value => setPoint(current => ({ ...current, latitude: value }))} inputMode="decimal" />
           <Field label="Longitude" value={point?.longitude ?? ''} onChange={value => setPoint(current => ({ ...current, longitude: value }))} inputMode="decimal" />

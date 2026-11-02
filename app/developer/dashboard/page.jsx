@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -10,25 +10,27 @@ export default function DeveloperDashboard() {
   const [globalAnnouncement, setGlobalAnnouncement] = useState('')
   const [maintenanceMode, setMaintenanceMode] = useState(false)
 
-  useEffect(() => {
-    fetchAllTenants()
+
+  const fetchAllTenants = useCallback(() => {
+    return supabase
+      .from('restaurants')
+      .select('*')
+      .order('name', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) throw new Error(error.message)
+        setTenants(data || [])
+      })
+      .catch((err) => alert('Sync Error: ' + err.message))
+      .finally(() => setLoading(false))
   }, [])
 
-  const fetchAllTenants = async () => {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('restaurants')
-        .select('*')
-        .order('name', { ascending: true })
+  useEffect(() => {
+    fetchAllTenants()
+  }, [fetchAllTenants])
 
-      if (error) throw new Error(error.message)
-      setTenants(data || [])
-    } catch (err) {
-      alert('Sync Error: ' + err.message)
-    } finally {
-      setLoading(false)
-    }
+  const refreshTenants = () => {
+    setLoading(true)
+    return fetchAllTenants()
   }
 
   // Developer Action: Force-upgrade or modify tenant subscription status remotely
@@ -42,7 +44,7 @@ export default function DeveloperDashboard() {
 
       if (error) throw new Error(error.message)
       alert(`Tenant status successfully changed to: ${newStatus}`)
-      fetchAllTenants()
+      refreshTenants()
     } catch (err) {
       alert('Action Failed: ' + err.message)
     }
@@ -96,7 +98,7 @@ export default function DeveloperDashboard() {
           <div className="p-6 border-b border-neutral-800 flex items-center justify-between">
             <h2 className="text-sm font-black text-white uppercase tracking-wider">Connected Restaurant Instances ({tenants.length})</h2>
             <button 
-              onClick={fetchAllTenants}
+              onClick={refreshTenants}
               className="text-xs text-cyan-400 hover:underline font-bold"
             >
               🔄 Refresh Node Sync

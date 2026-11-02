@@ -23,53 +23,46 @@ const dateTimeIST = (value) => {
   })
 }
 
-export default function ManagerWalletReadOnly({ restaurantId, sessionToken }) {
+export default function ManagerWalletReadOnly(props) {
+  // A different manager session must never render the previous session's wallet.
+  return <ManagerWalletReadOnlyContent key={JSON.stringify([props.restaurantId, props.sessionToken])} {...props} />
+}
+
+function ManagerWalletReadOnlyContent({ restaurantId, sessionToken }) {
   const [wallet, setWallet] = useState(null)
   const [transactions, setTransactions] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(Boolean(restaurantId && sessionToken))
+  const [error, setError] = useState(restaurantId && sessionToken ? '' : 'Sign in to your manager account to view the wallet.')
   const [expanded, setExpanded] = useState(false)
 
-  const load = useCallback(async (signal, silent = false) => {
-    if (!restaurantId || !sessionToken) {
-      setLoading(false)
-      setWallet(null)
-      setError('Sign in to your manager account to view the wallet.')
-      return
-    }
-
-    if (!silent) setLoading(true)
-    try {
-      const response = await fetch(
-        `/api/manager/wallet?restaurantId=${encodeURIComponent(restaurantId)}`,
-        {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${sessionToken}` },
-          cache: 'no-store',
-          signal,
-        }
-      )
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.message || 'Unable to load wallet.')
+  const load = useCallback((signal, silent = false) => {
+    if (!restaurantId || !sessionToken) return
+    return fetch(
+      `/api/manager/wallet?restaurantId=${encodeURIComponent(restaurantId)}`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${sessionToken}` },
+        cache: 'no-store',
+        signal,
       }
+    ).then(async response => {
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.success) throw new Error(data?.message || 'Unable to load wallet.')
       if (signal?.aborted) return
       setWallet(data.wallet || null)
       setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
       setError('')
-    } catch (err) {
+    }).catch(err => {
       if (err?.name === 'AbortError' || signal?.aborted) return
       if (!silent) setWallet(null)
       setError(err?.message || 'Unable to load wallet.')
-    } finally {
+    }).finally(() => {
       if (!signal?.aborted && !silent) setLoading(false)
-    }
+    })
   }, [restaurantId, sessionToken])
 
   useEffect(() => {
     const controller = new AbortController()
-    setWallet(null)
-    setTransactions([])
     void load(controller.signal)
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -96,7 +89,7 @@ export default function ManagerWalletReadOnly({ restaurantId, sessionToken }) {
         </div>
         <button
           type="button"
-          onClick={() => void load(undefined, false)}
+          onClick={() => { if (!restaurantId || !sessionToken) return; setLoading(true); void load(undefined, false) }}
           disabled={loading}
           className="rounded-xl border border-neutral-700 px-4 py-2 text-xs font-bold text-neutral-200 hover:border-orange-500 disabled:opacity-50"
         >

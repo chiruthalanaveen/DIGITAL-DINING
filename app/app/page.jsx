@@ -12,6 +12,8 @@ import {
 
   useState,
 
+  useSyncExternalStore,
+
 } from 'react'
 
 import { useRouter } from 'next/navigation'
@@ -363,6 +365,14 @@ function rolesForPlan(planCode) {
 
 
 
+const subscribeEntryCode = () => () => {}
+function readEntryCode() {
+  if ((window.location.pathname.replace(/\/+$/, '') || '/') !== '/app') return ''
+  const code = String(new URLSearchParams(window.location.search).get('code') || '').trim()
+  return /^\d{5}$/.test(code) ? code : ''
+}
+const serverEntryCode = () => null
+
 export default function DigitalDineApp() {
 
   const router = useRouter()
@@ -410,6 +420,13 @@ export default function DigitalDineApp() {
     useState('')
 
 
+
+  const entryCode = useSyncExternalStore(subscribeEntryCode, readEntryCode, serverEntryCode)
+  const [entryInitialized, setEntryInitialized] = useState(false)
+  if (!entryInitialized && entryCode !== null) {
+    setEntryInitialized(true)
+    setRestaurantCode(entryCode)
+  }
 
   const planCode = useMemo(
 
@@ -828,31 +845,15 @@ export default function DigitalDineApp() {
   // This preserves the convenience of returning with the same code
   // without bypassing the Restaurant Code step.
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (!entryInitialized || typeof window === 'undefined') return
 
     const pathname =
       window.location.pathname.replace(/\/+$/, '') || '/'
 
     if (pathname !== '/app') return
 
-    const params =
-      new URLSearchParams(window.location.search)
-
-    const rawCode =
-      String(params.get('code') || '').trim()
-
-    const prefilledCode =
-      /^\d{5}$/.test(rawCode)
-        ? rawCode
-        : ''
-
-    // Always force the /app entry back to Step 1.
-    setRestaurant(null)
-    setRole('')
-    setUserId('')
-    setPassword('')
-    setError('')
-    setRestaurantCode(prefilledCode)
+    // Entry fields already start empty. The hydration-safe query snapshot above
+    // pre-fills only the return code and never opens a saved staff session.
 
     // Remove query data from the visible URL after reading the
     // optional 5-digit return code. This also prevents OAuth-style
@@ -868,7 +869,7 @@ export default function DigitalDineApp() {
     console.info(
       '[DIGITAL DINE APP] Code-first entry ready.'
     )
-  }, [])
+  }, [entryInitialized])
 
 
 

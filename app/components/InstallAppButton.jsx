@@ -4,6 +4,7 @@ import {
   useEffect,
   useState,
 } from 'react'
+import { useStandaloneMode } from '@/lib/useStandaloneMode'
 
 function isStandalone() {
   if (
@@ -55,8 +56,9 @@ export default function InstallAppButton({
   const [promptEvent, setPromptEvent] =
     useState(null)
 
-  const [installed, setInstalled] =
+  const [installedByEvent, setInstalled] =
     useState(false)
+  const installed = useStandaloneMode() || installedByEvent
 
   const [helpOpen, setHelpOpen] =
     useState(false)
@@ -65,21 +67,6 @@ export default function InstallAppButton({
     useState(false)
 
   useEffect(() => {
-    setInstalled(
-      isStandalone()
-    )
-
-    // The early instrumentation listener stores the event here.
-    if (
-      window
-        .__digitalDineInstallPrompt
-    ) {
-      setPromptEvent(
-        window
-          .__digitalDineInstallPrompt
-      )
-    }
-
     const onPrompt = (
       event
     ) => {

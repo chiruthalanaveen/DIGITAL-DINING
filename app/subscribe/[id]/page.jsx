@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useMemo, useState } from 'react'
+import { use, useMemo, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -117,6 +117,28 @@ const money = (value) =>
     maximumFractionDigits: 0,
   })}`
 
+function subscribeRazorpay(callback) {
+  if (window.Razorpay) return () => {}
+  const selector = 'script[data-digital-dining-razorpay="true"]'
+  let script = document.querySelector(selector)
+  if (!script) {
+    script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.dataset.digitalDiningRazorpay = 'true'
+    document.body.appendChild(script)
+  }
+  script.addEventListener('load', callback)
+  script.addEventListener('error', callback)
+  return () => {
+    script.removeEventListener('load', callback)
+    script.removeEventListener('error', callback)
+  }
+}
+
+const readRazorpayLoaded = () => Boolean(window.Razorpay)
+const serverRazorpayLoaded = () => false
+
 export default function SubscriptionPage({ params, searchParams }) {
   const unwrappedParams = use(params)
   const unwrappedSearchParams = use(searchParams)
@@ -135,7 +157,7 @@ export default function SubscriptionPage({ params, searchParams }) {
   const [couponCode, setCouponCode] = useState('')
   const [couponLoading, setCouponLoading] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [scriptLoaded, setScriptLoaded] = useState(false)
+  const scriptLoaded = useSyncExternalStore(subscribeRazorpay, readRazorpayLoaded, serverRazorpayLoaded)
   const [isActivated, setIsActivated] = useState(false)
   const [activatedRestaurant, setActivatedRestaurant] = useState(null)
   const [isPaymentReplay, setIsPaymentReplay] = useState(false)
@@ -149,40 +171,6 @@ export default function SubscriptionPage({ params, searchParams }) {
     selectedPlanData.prices[billingCycle] || 0
   )
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined
-
-    if (window.Razorpay) {
-      setScriptLoaded(true)
-      return undefined
-    }
-
-    const selector = 'script[data-digital-dining-razorpay="true"]'
-    let script = document.querySelector(selector)
-
-    const onLoad = () => setScriptLoaded(true)
-    const onError = () => setScriptLoaded(false)
-
-    if (!script) {
-      script = document.createElement('script')
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-      script.async = true
-      script.dataset.digitalDiningRazorpay = 'true'
-      document.body.appendChild(script)
-    }
-
-    script.addEventListener('load', onLoad)
-    script.addEventListener('error', onError)
-
-    if (window.Razorpay) {
-      setScriptLoaded(true)
-    }
-
-    return () => {
-      script?.removeEventListener('load', onLoad)
-      script?.removeEventListener('error', onError)
-    }
-  }, [])
 
   const getAccessToken = async () => {
     const {

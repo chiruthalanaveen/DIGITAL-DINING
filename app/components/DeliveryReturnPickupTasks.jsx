@@ -64,7 +64,7 @@ export default function DeliveryReturnPickupTasks({
     useState([])
 
   const [loading, setLoading] =
-    useState(false)
+    useState(Boolean(sessionToken))
 
   const [error, setError] =
     useState('')
@@ -72,37 +72,23 @@ export default function DeliveryReturnPickupTasks({
   const [updatingId, setUpdatingId] =
     useState('')
 
-  const loadPickups =
-    useCallback(
-      async (
-        silent = false
-      ) => {
-        const token =
-          String(
-            sessionToken || ''
-          ).trim()
-
-        if (!token) {
-          setPickups([])
-          return
-        }
-
-        if (!silent) {
-          setLoading(true)
-        }
-
-        try {
-          const {
-            data,
-            error: rpcError,
-          } =
-            await supabase.rpc(
+  const requestPickups = useCallback(
+    async (silent = false, isCurrent = () => true) => {
+      const token = String(sessionToken || '').trim()
+      if (!token) return
+      const fetchResponse = async () => (supabase.rpc(
               'delivery_driver_get_return_pickups',
               {
                 p_session_token:
                   token,
               }
-            )
+            ))
+      return fetchResponse().then(async ({
+            data,
+            error: rpcError,
+          }) => {
+        if (!isCurrent()) return
+
 
           if (rpcError) {
             throw rpcError
@@ -124,7 +110,10 @@ export default function DeliveryReturnPickupTasks({
           )
 
           setError('')
-        } catch (loadError) {
+
+      }).catch((loadError) => {
+        if (!isCurrent()) return
+
           console.error(
             'Driver return pickup load error:',
             loadError
@@ -136,21 +125,44 @@ export default function DeliveryReturnPickupTasks({
                 'Unable to load return pickups.'
             )
           }
-        } finally {
+        }).finally(() => {
+        if (!isCurrent()) return
+
           if (!silent) {
             setLoading(false)
           }
-        }
+        })
       },
       [sessionToken]
     )
 
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadPickups = useCallback((silent = false) => {
+    if (!String(sessionToken || '').trim()) {
+      setPickups([])
+      setLoading(false)
+      return
+    }
+    if (!silent) setLoading(true)
+    return requestPickups(silent)
+  }, [requestPickups, sessionToken])
+
+  const [previousRequestPickups, setPreviousRequestPickups] = useState(() => requestPickups)
+  if (previousRequestPickups !== requestPickups) {
+    setPreviousRequestPickups(() => requestPickups)
+    setLoading(Boolean(sessionToken))
+    setError('')
+  }
+
   useEffect(() => {
+    let active = true
+    const isCurrent = () => active
+
     if (!sessionToken) {
       return undefined
     }
 
-    loadPickups(false)
+    requestPickups(false, isCurrent)
 
     const timer =
       window.setInterval(
@@ -166,13 +178,13 @@ export default function DeliveryReturnPickupTasks({
       )
 
     return () =>
-      window.clearInterval(
+      { active = false; window.clearInterval(
         timer
-      )
+      ) }
   }, [
     sessionToken,
-    loadPickups,
-  ])
+    requestPickups,
+  , loadPickups])
 
   const active =
     useMemo(

@@ -22,6 +22,13 @@ export function developmentEnvironment({ fixturePort = 4319 } = {}) {
   for (const key of ['PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'TERM', 'TMPDIR', 'NODE_PATH', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE']) {
     if (process.env[key]) clean[key] = process.env[key]
   }
+  // Keep the calling tool's execution context unchanged for child compilers,
+  // browsers and local fixtures. Dropping it can discard granted permissions;
+  // copying it never grants more than the calling process already received.
+  // Application/service/provider credentials still come only from fixtures.
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith('CODEX_') && !/TOKEN|SECRET|PASSWORD|CREDENTIAL|PRIVATE_KEY|API_KEY/i.test(key)) clean[key] = process.env[key]
+  }
   return Object.assign(clean, {
     NEXT_TELEMETRY_DISABLED: '1',
     NEXT_PUBLIC_SUPABASE_URL: `http://127.0.0.1:${fixturePort}`,

@@ -14,6 +14,8 @@ import {
 
   useState,
 
+  useSyncExternalStore,
+
 } from 'react'
 
 
@@ -184,6 +186,19 @@ function Stars({
 
 
 
+function subscribeSupportIdentity(callback) {
+  window.addEventListener('storage', callback)
+  window.addEventListener('digitaldine:support-identity', callback)
+  return () => {
+    window.removeEventListener('storage', callback)
+    window.removeEventListener('digitaldine:support-identity', callback)
+  }
+}
+function readSupportIdentity(key) {
+  try { return localStorage.getItem(key) || '' }
+  catch { return '' }
+}
+
 export default function DeliveryCustomerSupportChat({
 
   restaurantCode,
@@ -217,17 +232,22 @@ export default function DeliveryCustomerSupportChat({
 
 
 
-  const [orderCode, setOrderCode] =
-
-    useState('')
-
-
-
-  const [mobile, setMobile] =
-
-    useState('')
-
-
+  const storageKey = `digitaldine_delivery_support_${restaurantCode}`
+  const storedIdentity = useSyncExternalStore(
+    subscribeSupportIdentity,
+    () => readSupportIdentity(storageKey),
+    () => ''
+  )
+  const savedIdentity = useMemo(() => {
+    try { return JSON.parse(storedIdentity || '{}') || {} }
+    catch { return {} }
+  }, [storedIdentity])
+  const [orderDraft, setOrderDraft] = useState(null)
+  const [mobileDraft, setMobileDraft] = useState(null)
+  const orderCode = orderDraft?.key === storageKey ? orderDraft.value : String(savedIdentity.orderCode || '')
+  const mobile = mobileDraft?.key === storageKey ? mobileDraft.value : digits(savedIdentity.mobile, 10)
+  const setOrderCode = value => setOrderDraft({ key: storageKey, value })
+  const setMobile = value => setMobileDraft({ key: storageKey, value })
 
   const [thread, setThread] =
 
@@ -367,94 +387,6 @@ export default function DeliveryCustomerSupportChat({
 
 
 
-  const storageKey =
-
-    useMemo(
-
-      () =>
-
-        `digitaldine_delivery_support_${restaurantCode}`,
-
-      [restaurantCode]
-
-    )
-
-
-
-  useEffect(() => {
-
-    if (
-
-      typeof window ===
-
-      'undefined'
-
-    ) {
-
-      return
-
-    }
-
-
-
-    try {
-
-      const saved =
-
-        JSON.parse(
-
-          localStorage.getItem(
-
-            storageKey
-
-          ) || '{}'
-
-        )
-
-
-
-      if (saved?.orderCode) {
-
-        setOrderCode(
-
-          String(
-
-            saved.orderCode
-
-          )
-
-        )
-
-      }
-
-
-
-      if (saved?.mobile) {
-
-        setMobile(
-
-          digits(
-
-            saved.mobile,
-
-            10
-
-          )
-
-        )
-
-      }
-
-    } catch {
-
-      // Ignore invalid local storage.
-
-    }
-
-  }, [storageKey])
-
-
-
   const saveIdentity =
 
     useCallback(
@@ -501,6 +433,7 @@ export default function DeliveryCustomerSupportChat({
 
           )
 
+          window.dispatchEvent(new Event('digitaldine:support-identity'))
         } catch {
 
           // Ignore unavailable local storage.

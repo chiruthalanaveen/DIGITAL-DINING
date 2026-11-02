@@ -11,8 +11,9 @@
  */
 
 'use strict'
-const fs = require('node:fs')
-const path = require('node:path')
+async function main() {
+const fs = await import('node:fs')
+const path = await import('node:path')
 
 const root = process.cwd()
 const mode = process.argv.includes('--apply') ? 'apply' : 'dry-run'
@@ -126,3 +127,10 @@ else {
   if (refs.length > 70) console.log(`  ...and ${refs.length - 70} more.`)
 }
 console.log('\nNext: manually update listed links to /delivery or your existing business portal, only where appropriate.')
+
+}
+
+main().catch(error => {
+  console.error(error)
+  process.exitCode = 1
+})

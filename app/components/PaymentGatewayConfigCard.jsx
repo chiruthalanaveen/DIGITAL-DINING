@@ -2,13 +2,25 @@
 
 
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
 
 
 
-export default function PaymentGatewayConfigCard({
+async function getAccessToken() {
+  const { data, error } = await supabase.auth.getSession()
+  if (error) throw error
+  const token = data?.session?.access_token
+  if (!token) throw new Error('Your login session has expired. Please sign in again.')
+  return token
+}
+
+export default function PaymentGatewayConfigCard(props) {
+  return <PaymentGatewayConfigCardContent key={JSON.stringify([props.restaurantId, props.module === undefined ? 'restaurant' : props.module])} {...props} />
+}
+
+function PaymentGatewayConfigCardContent({
 
   restaurantId,
 
@@ -72,68 +84,11 @@ export default function PaymentGatewayConfigCard({
 
 
 
-  const getAccessToken = async () => {
-
-    const {
-
-      data,
-
-      error,
-
-    } =
-
-      await supabase.auth.getSession()
-
-
-
-    if (error) throw error
-
-
-
-    const token =
-
-      data?.session?.access_token
-
-
-
-    if (!token) {
-
-      throw new Error(
-
-        'Your login session has expired. Please sign in again.'
-
-      )
-
-    }
-
-
-
-    return token
-
-  }
-
-
-
-  const loadConfig = async () => {
+  const loadConfig = useCallback(() => {
 
     if (!restaurantId) return
 
-
-
-    setLoading(true)
-
-    setMessage('')
-
-
-
-    try {
-
-      const token =
-
-        await getAccessToken()
-
-
-
+    return getAccessToken().then(async token => {
       const response = await fetch(
 
         `/api/payment-gateways/config?restaurantId=${encodeURIComponent(
@@ -230,8 +185,7 @@ export default function PaymentGatewayConfigCard({
 
       )
 
-    } catch (error) {
-
+    }).catch(error => {
       console.error(
 
         `${module} gateway load error:`,
@@ -250,23 +204,17 @@ export default function PaymentGatewayConfigCard({
 
       )
 
-    } finally {
+    }).finally(() => setLoading(false))
 
-      setLoading(false)
-
-    }
-
-  }
+  }, [restaurantId, module])
 
 
 
   useEffect(() => {
 
-    loadConfig()
+    void loadConfig()
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  }, [restaurantId, module])
+  }, [loadConfig])
 
 
 
@@ -1008,7 +956,11 @@ export default function PaymentGatewayConfigCard({
 
                 setKeySecret('')
 
-                loadConfig()
+                setLoading(true)
+
+                setMessage('')
+
+                void loadConfig()
 
               }}
 

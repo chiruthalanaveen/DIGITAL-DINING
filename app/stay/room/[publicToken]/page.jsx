@@ -1,35 +1,43 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function RoomGuestPortal() {
   const params = useParams()
   const token = String(params?.publicToken || '').trim()
+  return <RoomGuestContent key={token} token={token} />
+}
+
+function RoomGuestContent({ token }) {
   const [room, setRoom] = useState(null)
   const [guestName, setGuestName] = useState('')
   const [requestType, setRequestType] = useState('water')
   const [message, setMessage] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loadedToken, setLoadedToken] = useState(null)
+  const loading = Boolean(token && loadedToken !== token)
   const [sending, setSending] = useState(false)
   const [notice, setNotice] = useState('')
 
-  const loadRoom = useCallback(async () => {
+  useEffect(() => {
     if (!token) return
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.rpc('get_public_room_guest_portal', { p_room_token: token })
-      if (error) throw error
-      if (!data?.success) throw new Error(data?.message || 'Room QR is invalid.')
-      setRoom(data.room)
-    } catch (e) {
-      console.error(e)
-      setNotice('This room QR link is invalid or no longer active.')
-    } finally { setLoading(false) }
+    let active = true
+    supabase.rpc('get_public_room_guest_portal', { p_room_token: token })
+      .then(({ data, error }) => {
+        if (!active) return
+        if (error) throw error
+        if (!data?.success) throw new Error(data?.message || 'Room QR is invalid.')
+        setRoom(data.room)
+      })
+      .catch((error) => {
+        if (!active) return
+        console.error(error)
+        setNotice('This room QR link is invalid or no longer active.')
+      })
+      .finally(() => { if (active) setLoadedToken(token) })
+    return () => { active = false }
   }, [token])
-
-  useEffect(() => { loadRoom() }, [loadRoom])
 
   const chooseRequest = (label) => {
     const types = {

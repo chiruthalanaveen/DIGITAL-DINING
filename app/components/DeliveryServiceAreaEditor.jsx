@@ -160,9 +160,9 @@ export default function DeliveryServiceAreaEditor({
   const [savedEnabled, setSavedEnabled] = useState(false)
   const [center, setCenter] = useState(null)
   const [radiusKm, setRadiusKm] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [loadingState, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+  const [errorState, setError] = useState('')
   const [notice, setNotice] = useState('')
 
   const call = useCallback(async (verb, next = {}) => {
@@ -193,18 +193,23 @@ export default function DeliveryServiceAreaEditor({
     return data
   }, [role,restaurantId,restaurantCode,sessionMode,sessionToken,userId,password])
 
-  const load = useCallback(async () => {
+  const hasStoreContext = Boolean(restaurantId && restaurantCode)
+  const loading = hasStoreContext && loadingState
+  const error = hasStoreContext
+    ? errorState
+    : 'Store ID or store code is missing. Reload the management portal.'
+
+  const load = useCallback(async (isCurrent = () => true) => {
     if (!restaurantId || !restaurantCode) {
-      setLoading(false)
-      setError('Store ID or store code is missing. Reload the management portal.')
       return
     }
-    setLoading(true); setError(''); setNotice('')
-    try {
-      const [result, coverage] = await Promise.all([
+    const fetchResponse = async () => (Promise.all([
         call('get'),
         supabase.rpc('get_public_delivery_coverage', { p_restaurant_code: restaurantCode }),
-      ])
+      ]))
+      return fetchResponse().then(async ([result, coverage]) => {
+        if (!isCurrent()) return
+
       const pts = normalize(result.vertices)
       setPoints(pts); setSavedPoints(pts)
       setEnabled(result.enabled === true); setSavedEnabled(result.enabled === true)
@@ -213,11 +218,27 @@ export default function DeliveryServiceAreaEditor({
         setCenter({ lat: Number(c.delivery_origin_latitude), lng: Number(c.delivery_origin_longitude) })
       } else if (pts.length) setCenter(pts[0])
       setRadiusKm(Math.max(0, Number(c.max_delivery_distance_km || 0)))
-    } catch(e) { setError(e?.message || 'Unable to load service area.') }
-    finally { setLoading(false) }
+
+      }).catch((e) => {
+        if (!isCurrent()) return
+ setError(e?.message || 'Unable to load service area.') }).finally(() => {
+        if (!isCurrent()) return
+ setLoading(false) })
   }, [call,restaurantId,restaurantCode])
 
-  useEffect(() => { void load() }, [load])
+  const [previousLoad, setPreviousLoad] = useState(() => load)
+  if (previousLoad !== load) {
+    setPreviousLoad(() => load)
+    setLoading(true)
+    setError('')
+    setNotice('')
+  }
+  useEffect(() => {
+    let active = true
+    const isCurrent = () => active
+ void load(isCurrent)
+    return () => { active = false }
+  }, [load])
 
   const save = async () => {
     if (saving || loading) return

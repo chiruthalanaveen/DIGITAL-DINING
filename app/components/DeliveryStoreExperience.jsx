@@ -2,9 +2,11 @@
 
 import {
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -177,6 +179,15 @@ function ProductPlaceholder({ packaged }) {
   )
 }
 
+function subscribeStoreUrl(callback) {
+  window.addEventListener('popstate', callback)
+  window.addEventListener('digitaldine:store-url', callback)
+  return () => {
+    window.removeEventListener('popstate', callback)
+    window.removeEventListener('digitaldine:store-url', callback)
+  }
+}
+
 export default function DeliveryStoreExperience({
   restaurantCode: selectedStoreCode,
   onBackToStores,
@@ -188,6 +199,13 @@ export default function DeliveryStoreExperience({
   // Same component is mounted inline on /delivery and at the legacy
   // /delivery/[restaurantcode] deep link. Never duplicate checkout logic.
   const restaurantCode = String(selectedStoreCode || '').trim()
+  const currentHref = useSyncExternalStore(subscribeStoreUrl, () => window.location.href, () => '')
+  const returnOrderCode = useMemo(() => {
+    try {
+      const code = new URL(currentHref).searchParams.get('returnOrder') || ''
+      return /^[A-Za-z0-9_-]{1,100}$/.test(code) ? code : ''
+    } catch { return '' }
+  }, [currentHref])
 
   useEffect(() => {
     if (!/^[A-Za-z0-9_-]{1,80}$/.test(restaurantCode)) return
@@ -196,14 +214,14 @@ export default function DeliveryStoreExperience({
     } catch { /* optional browser storage */ }
   }, [restaurantCode])
 
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(Boolean(restaurantCode))
   const [storeData, setStoreData] = useState(null)
   // ERP platform fee quote. Only the server sets the actual fee.
   const [platformFeeQuote, setPlatformFeeQuote] = useState({
     loaded: false,
     customerAmount: 0,
   })
-  const [error, setError] = useState('')
+  const [error, setError] = useState(restaurantCode ? '' : 'Delivery store code is missing.')
 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
@@ -233,102 +251,7 @@ export default function DeliveryStoreExperience({
   const [selectedSavedAddressId, setSelectedSavedAddressId] = useState('')
   const addressValidationRef = useRef(0)
 
-  // Carry the verified location chosen on /delivery to checkout.
-  // Saved address fields are applied only for the SAME currently signed-in
-  // Supabase user. A location is NEVER accepted as proof of store coverage;
-  // the existing server order validation remains authoritative.
-  useEffect(() => {
-    let active = true
-    const restore = async () => {
-      try {
-        const raw = sessionStorage.getItem('digitaldine_delivery_selected_location_v1')
-        if (!raw) return
-        const selected = JSON.parse(raw)
-        const latitude = Number(selected?.latitude)
-        const longitude = Number(selected?.longitude)
-        const selectedAt = Number(selected?.selectedAt)
-        if (!Number.isFinite(selectedAt) || Date.now() - selectedAt > 2 * 60 * 60 * 1000 ||
-            !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
-            !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return
-        const saved = selected.source === 'saved'
-        if (saved) {
-          // The selected saved address may belong to another Google session.
-          // A verified mobile account must never inherit that account's address.
-          const sessionCheck = await fetch(
-            `/api/delivery/customer/session?restaurantCode=${encodeURIComponent(restaurantCode)}`,
-            { credentials: 'same-origin', cache: 'no-store' }
-          ).catch(() => null)
-          if (!sessionCheck || sessionCheck.status !== 401) return
-          const { data, error } = await supabase.auth.getUser()
-          if (error || !data?.user?.id || data.user.id !== selected.ownerUserId) return
-          // Re-read the address from the protected table. Do not trust
-          // editable browser storage as a source for account address fields.
-          const { data: address, error: addrError } = await supabase
-            .from('delivery_customer_saved_addresses')
-            .select('id,address_line1,address_line2,landmark,city,state,pincode,recipient_name,recipient_mobile,latitude,longitude,gps_accuracy_m')
-            .eq('id', String(selected.savedAddressId || ''))
-            .eq('user_id', data.user.id)
-            .maybeSingle()
-          if (!active || addrError || !address) return
-          // Ensure this saved pin is the same as the selected location.
-          if (Math.abs(Number(address.latitude) - latitude) > 0.0000002 ||
-              Math.abs(Number(address.longitude) - longitude) > 0.0000002) return
-          setCheckout((current) => current.latitude && current.longitude ? current : ({
-            ...current,
-            latitude: latitude.toFixed(7), longitude: longitude.toFixed(7),
-            locationAccuracy: address.gps_accuracy_m != null ? String(address.gps_accuracy_m) : '',
-            addressLine1: address.address_line1 || '', addressLine2: address.address_line2 || '',
-            landmark: address.landmark || '', city: address.city || '', state: address.state || '',
-            pincode: address.pincode || '',
-            customerName: current.customerName || address.recipient_name || '',
-            customerMobile: current.customerMobile || address.recipient_mobile || '',
-          }))
-          setLocationConfirmed(true)
-          return
-        }
-        if (!active) return
-        setCheckout((current) => current.latitude && current.longitude ? current : ({
-          ...current,
-          latitude: latitude.toFixed(7), longitude: longitude.toFixed(7),
-          locationAccuracy: selected.source === 'gps' && Number(selected.accuracy) > 0
-            ? String(Number(selected.accuracy).toFixed(2)) : '',
-        }))
-        setLocationConfirmed(false)
-        // A GPS/map destination was selected on /delivery. Resolve its
-        // written address and validate coverage automatically so checkout can
-        // display a confirmed address rather than another map/pin form.
-        // If reverse-geocoding is incomplete, the customer chooses/edits an
-        // address in their saved-address book instead of placing a blind order.
-        try {
-          const response = await fetch(
-            `/api/location/reverse?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`,
-            { method: 'GET', cache: 'no-store' }
-          )
-          const payload = await response.json().catch(() => ({}))
-          if (!active || !response.ok || payload?.success !== true) return
-          const address = payload.address || {}
-          const point = {
-            latitude, longitude, accuracy: selected.source === 'gps' ? selected.accuracy : null,
-            addressLine1: String(address.addressLine1 || '').trim(),
-            addressLine2: String(address.addressLine2 || '').trim(),
-            landmark: String(address.landmark || '').trim(),
-            city: String(address.city || '').trim(),
-            state: String(address.state || '').trim(),
-            pincode: digits(address.pincode, 6),
-          }
-          if (point.addressLine1 && point.city && point.state && point.pincode.length === 6) {
-            await selectSavedAddressAtCheckout(point)
-          }
-        } catch {
-          // The address picker remains available. Never invent address data.
-        }
-      } catch {
-        // Optional browser storage can be unavailable. Checkout still works.
-      }
-    }
-    void restore()
-    return () => { active = false }
-  }, [restaurantCode])
+
 
   const [afterSalesOpen, setAfterSalesOpen] = useState(false)
   const [afterSalesTab, setAfterSalesTab] = useState('request')
@@ -365,31 +288,34 @@ export default function DeliveryStoreExperience({
       : 'guest'
   const activeIdentityRef = useRef(activeIdentityKey)
 
-  useEffect(() => {
-    // A logout, Google switch, or Mobile/PIN login invalidates all old orders.
-    activeIdentityRef.current = activeIdentityKey
+  const [previousIdentityKey, setPreviousIdentityKey] = useState(activeIdentityKey)
+  // Reset private account views before children render with a changed identity.
+  if (previousIdentityKey !== activeIdentityKey) {
+    setPreviousIdentityKey(activeIdentityKey)
     setTrackingOrders([])
     setTrackingAccountEmail('')
     setTrackingOpen(false)
     setAfterSalesOrder(null)
     setAfterSalesOpen(false)
-    addressValidationRef.current += 1
     setLocationConfirmed(false)
     setSelectedSavedAddressId('')
+  }
+  useEffect(() => {
+    activeIdentityRef.current = activeIdentityKey
+    addressValidationRef.current += 1
   }, [activeIdentityKey])
 
   const isCustomerSignedIn = Boolean(activeAccountType)
-  const isCustomerSessionLoading = customerAuthLoading || mobileAuthLoading
+  const isCustomerSessionLoading = customerAuthLoading || Boolean(restaurantCode && mobileAuthLoading)
   const [accountOpen, setAccountOpen] = useState(false)
   const [returnsByStore, setReturnsByStore] = useState({})
-  const [returnsEnabled, setReturnsEnabled] = useState(false)
-  const [returnsPolicyLoaded, setReturnsPolicyLoaded] = useState(false)
+  const [returnsPolicy, setReturnsPolicy] = useState(null)
+  const returnsEnabled = returnsPolicy?.restaurantCode === restaurantCode && returnsPolicy.enabled
+  const returnsPolicyLoaded = returnsPolicy?.restaurantCode === restaurantCode
 
   // Store policy is public, but the API and database trigger also enforce it.
   useEffect(() => {
     let active = true
-    setReturnsEnabled(false)
-    setReturnsPolicyLoaded(false)
     if (!restaurantCode) return
     const load = async () => {
       try {
@@ -398,12 +324,10 @@ export default function DeliveryStoreExperience({
           { p_restaurant_code: restaurantCode }
         )
         if (policyError) throw policyError
-        if (active) setReturnsEnabled(data?.success === true && data.returnsEnabled === true)
+        if (active) setReturnsPolicy({ restaurantCode, enabled: data?.success === true && data.returnsEnabled === true })
       } catch (policyError) {
         console.warn('Delivery return policy unavailable:', policyError?.message)
-        if (active) setReturnsEnabled(false)
-      } finally {
-        if (active) setReturnsPolicyLoaded(true)
+        if (active) setReturnsPolicy({ restaurantCode, enabled: false })
       }
     }
     void load()
@@ -441,7 +365,7 @@ export default function DeliveryStoreExperience({
       }
     }
     if (restaurantCode) void loadMobileSession()
-    else setMobileAuthLoading(false)
+
     return () => { active = false }
   }, [restaurantCode])
 
@@ -575,24 +499,8 @@ export default function DeliveryStoreExperience({
       selectedDistanceKm > coverageRadiusKm
   )
 
-  const loadStore = async (quiet = false) => {
-    if (!restaurantCode) {
-      setError('Delivery store code is missing.')
-      setLoading(false)
-      return
-    }
-
-    if (!quiet) {
-      setLoading(true)
-      setError('')
-    }
-
-    try {
-      const { data, error: rpcError } = await supabase.rpc(
-        'get_public_delivery_store',
-        { p_restaurant_code: restaurantCode }
-      )
-
+  const requestStore = (quiet = false) => {
+    return supabase.rpc('get_public_delivery_store', { p_restaurant_code: restaurantCode }).then(async ({ data, error: rpcError }) => {
       if (rpcError) throw rpcError
 
       if (!data?.success) {
@@ -644,6 +552,40 @@ export default function DeliveryStoreExperience({
         coverage: coverageData,
       })
 
+      const updatedMenuItems = Array.isArray(data.menu_items) ? data.menu_items : []
+      if (updatedMenuItems.length) {
+    setCart((current) => {
+      let changed = false
+      const nextCart = { ...current }
+
+      for (const [itemId, rawQuantity] of Object.entries(current)) {
+        const item = updatedMenuItems.find((row) => String(row.id) === String(itemId))
+
+        if (!item) {
+          delete nextCart[itemId]
+          changed = true
+          continue
+        }
+
+        const stock = deliveryStockInfo(item)
+        const currentQuantity = Math.max(0, Math.floor(Number(rawQuantity || 0)))
+        const nextQuantity = Math.min(currentQuantity, stock.maxCartQuantity)
+
+        if (nextQuantity !== currentQuantity) {
+          changed = true
+
+          if (nextQuantity <= 0) {
+            delete nextCart[itemId]
+          } else {
+            nextCart[itemId] = nextQuantity
+          }
+        }
+      }
+
+      return changed ? nextCart : current
+    })
+      }
+
       if (!quiet) {
         if (data?.settings?.cod_enabled) {
           setPaymentMethod('cod')
@@ -651,29 +593,34 @@ export default function DeliveryStoreExperience({
           setPaymentMethod('razorpay')
         }
       }
-    } catch (loadError) {
+    }).catch(loadError => {
       console.error('Delivery store load error:', loadError)
 
       if (!quiet) {
         setError(loadError?.message || 'Unable to load Delivery store.')
       }
-    } finally {
+    }).finally(() => {
       if (!quiet) {
         setLoading(false)
       }
-    }
+    })
   }
 
-  const loadProductReviews = async () => {
+  const loadStore = (quiet = false) => {
     if (!restaurantCode) {
-      setProductReviews({})
-      return
+      setError('Delivery store code is missing.')
+      setLoading(false)
+      return Promise.resolve()
     }
-    try {
-      const { data, error: reviewError } = await supabase.rpc(
-        'get_public_delivery_product_reviews',
-        { p_restaurant_code: restaurantCode }
-      )
+    if (!quiet) {
+      setLoading(true)
+      setError('')
+    }
+    return requestStore(quiet)
+  }
+
+  const loadProductReviews = () => {
+    return supabase.rpc('get_public_delivery_product_reviews', { p_restaurant_code: restaurantCode }).then(({ data, error: reviewError }) => {
       if (reviewError) throw reviewError
       const rows =
         data?.success && Array.isArray(data?.products) ? data.products : []
@@ -683,16 +630,17 @@ export default function DeliveryStoreExperience({
         if (id) next[id] = row
       })
       setProductReviews(next)
-    } catch (reviewLoadError) {
+    }).catch(reviewLoadError => {
       // Reviews are additive. Do not block ordering if review
       // backend has not been installed yet.
       console.warn('Delivery product review load warning:', reviewLoadError)
-    }
+    })
   }
 
   useEffect(() => {
-    loadStore()
-    loadProductReviews()
+    if (!restaurantCode) return
+    void requestStore()
+    void loadProductReviews()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantCode])
 
@@ -745,46 +693,6 @@ export default function DeliveryStoreExperience({
         quantity: Number(cart[item.id] || 0),
       }))
   }, [menuItems, cart])
-
-  /*
-   * Inventory can change while the customer is browsing.
-   * Keep the cart inside the latest public available-stock limit.
-   * The server inventory engine remains the final authority.
-   */
-  useEffect(() => {
-    if (!menuItems.length) return
-
-    setCart((current) => {
-      let changed = false
-      const nextCart = { ...current }
-
-      for (const [itemId, rawQuantity] of Object.entries(current)) {
-        const item = menuItems.find((row) => String(row.id) === String(itemId))
-
-        if (!item) {
-          delete nextCart[itemId]
-          changed = true
-          continue
-        }
-
-        const stock = deliveryStockInfo(item)
-        const currentQuantity = Math.max(0, Math.floor(Number(rawQuantity || 0)))
-        const nextQuantity = Math.min(currentQuantity, stock.maxCartQuantity)
-
-        if (nextQuantity !== currentQuantity) {
-          changed = true
-
-          if (nextQuantity <= 0) {
-            delete nextCart[itemId]
-          } else {
-            nextCart[itemId] = nextQuantity
-          }
-        }
-      }
-
-      return changed ? nextCart : current
-    })
-  }, [menuItems])
 
   const cartCount = cartRows.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -1016,6 +924,10 @@ export default function DeliveryStoreExperience({
   }
 
   const initialViewHandled = useRef('')
+  const handleRequestedView = useEffectEvent(requestedView => {
+    if (requestedView === 'orders') openTracking()
+    else openCustomerAccount()
+  })
 
   useEffect(() => {
     if (isCustomerSessionLoading || !restaurantCode) return
@@ -1033,10 +945,8 @@ export default function DeliveryStoreExperience({
       url.searchParams.delete('view')
       window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
     }
-    if (requestedView === 'orders') openTracking()
-    else openCustomerAccount()
+    handleRequestedView(requestedView)
     // Use the verified Mobile/PIN-vs-Google account selection already present.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCustomerSessionLoading, restaurantCode, initialView])
 
   const resetAfterSalesRequest = () => {
@@ -1059,31 +969,37 @@ export default function DeliveryStoreExperience({
     setAfterSalesOpen(true)
   }
 
-  // Deep link from an order belonging to a different delivery store.
-  // Google sessions may span stores; mobile/PIN sessions remain store-scoped.
-  useEffect(() => {
-    if (!restaurantCode || isCustomerSessionLoading || !returnsPolicyLoaded) return
-    try {
-      const url = new URL(window.location.href)
-      const orderCode = url.searchParams.get('returnOrder') || ''
-      if (!/^[A-Za-z0-9_-]{1,100}$/.test(orderCode)) return
-      url.searchParams.delete('returnOrder')
-      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
-      if (!isCustomerSignedIn) {
-        const next = `/delivery/${encodeURIComponent(restaurantCode)}?returnOrder=${encodeURIComponent(orderCode)}`
-        router.push(`/delivery/login?next=${encodeURIComponent(next)}`)
-        return
-      }
-      if (returnsEnabled) {
-        openAfterSales({ orderCode, mobile: mobileCustomer?.mobile || '', tab: 'request' })
-      } else {
+  const [handledReturnLink, setHandledReturnLink] = useState('')
+  const returnLinkKey = `${restaurantCode}:${returnOrderCode}`
+  // URL state is external. Adjust this component's modal state before rendering
+  // its children; the effect below only consumes the URL and navigates guests.
+  if (!returnOrderCode && handledReturnLink) setHandledReturnLink('')
+  if (restaurantCode && returnOrderCode && !isCustomerSessionLoading && returnsPolicyLoaded && handledReturnLink !== returnLinkKey) {
+    setHandledReturnLink(returnLinkKey)
+    if (isCustomerSignedIn) {
+      if (returnsEnabled) openAfterSales({ orderCode: returnOrderCode, mobile: mobileCustomer?.mobile || '', tab: 'request' })
+      else {
         setTrackingError('This store has disabled new return requests. Existing return cases can still be tracked.')
         setTrackingOpen(true)
       }
+    }
+  }
+
+  // Google sessions may span stores; Mobile/PIN sessions remain store-scoped.
+  useEffect(() => {
+    if (!returnOrderCode || handledReturnLink !== returnLinkKey) return
+    try {
+      const url = new URL(window.location.href)
+      if (url.searchParams.get('returnOrder') !== returnOrderCode) return
+      url.searchParams.delete('returnOrder')
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+      window.dispatchEvent(new Event('digitaldine:store-url'))
+      if (!isCustomerSignedIn) {
+        const next = `/delivery/${encodeURIComponent(restaurantCode)}?returnOrder=${encodeURIComponent(returnOrderCode)}`
+        router.push(`/delivery/login?next=${encodeURIComponent(next)}`)
+      }
     } catch { /* invalid location state; do not block store */ }
-    // Trigger only on store/session-policy readiness, not every popup state update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantCode, isCustomerSessionLoading, returnsPolicyLoaded, isCustomerSignedIn, returnsEnabled])
+  }, [handledReturnLink, returnLinkKey, returnOrderCode, isCustomerSignedIn, restaurantCode, router])
 
   const closeAfterSales = () => {
     setAfterSalesOpen(false)
@@ -1226,7 +1142,7 @@ export default function DeliveryStoreExperience({
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok || data?.success !== true) {
-        if (data?.code === 'CUSTOMER_RETURNS_DISABLED') setReturnsEnabled(false)
+        if (data?.code === 'CUSTOMER_RETURNS_DISABLED') setReturnsPolicy({ restaurantCode, enabled: false })
         throw new Error(data?.message || 'Unable to submit the after-sales request.')
       }
 
@@ -1459,6 +1375,104 @@ export default function DeliveryStoreExperience({
       return false
     }
   }
+
+
+  // Carry the verified location chosen on /delivery to checkout.
+  // Saved address fields are applied only for the SAME currently signed-in
+  // Supabase user. A location is NEVER accepted as proof of store coverage;
+  // the existing server order validation remains authoritative.
+  useEffect(() => {
+    let active = true
+    const restore = async () => {
+      try {
+        const raw = sessionStorage.getItem('digitaldine_delivery_selected_location_v1')
+        if (!raw) return
+        const selected = JSON.parse(raw)
+        const latitude = Number(selected?.latitude)
+        const longitude = Number(selected?.longitude)
+        const selectedAt = Number(selected?.selectedAt)
+        if (!Number.isFinite(selectedAt) || Date.now() - selectedAt > 2 * 60 * 60 * 1000 ||
+            !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+            !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return
+        const saved = selected.source === 'saved'
+        if (saved) {
+          // The selected saved address may belong to another Google session.
+          // A verified mobile account must never inherit that account's address.
+          const sessionCheck = await fetch(
+            `/api/delivery/customer/session?restaurantCode=${encodeURIComponent(restaurantCode)}`,
+            { credentials: 'same-origin', cache: 'no-store' }
+          ).catch(() => null)
+          if (!sessionCheck || sessionCheck.status !== 401) return
+          const { data, error } = await supabase.auth.getUser()
+          if (error || !data?.user?.id || data.user.id !== selected.ownerUserId) return
+          // Re-read the address from the protected table. Do not trust
+          // editable browser storage as a source for account address fields.
+          const { data: address, error: addrError } = await supabase
+            .from('delivery_customer_saved_addresses')
+            .select('id,address_line1,address_line2,landmark,city,state,pincode,recipient_name,recipient_mobile,latitude,longitude,gps_accuracy_m')
+            .eq('id', String(selected.savedAddressId || ''))
+            .eq('user_id', data.user.id)
+            .maybeSingle()
+          if (!active || addrError || !address) return
+          // Ensure this saved pin is the same as the selected location.
+          if (Math.abs(Number(address.latitude) - latitude) > 0.0000002 ||
+              Math.abs(Number(address.longitude) - longitude) > 0.0000002) return
+          setCheckout((current) => current.latitude && current.longitude ? current : ({
+            ...current,
+            latitude: latitude.toFixed(7), longitude: longitude.toFixed(7),
+            locationAccuracy: address.gps_accuracy_m != null ? String(address.gps_accuracy_m) : '',
+            addressLine1: address.address_line1 || '', addressLine2: address.address_line2 || '',
+            landmark: address.landmark || '', city: address.city || '', state: address.state || '',
+            pincode: address.pincode || '',
+            customerName: current.customerName || address.recipient_name || '',
+            customerMobile: current.customerMobile || address.recipient_mobile || '',
+          }))
+          setLocationConfirmed(true)
+          return
+        }
+        if (!active) return
+        setCheckout((current) => current.latitude && current.longitude ? current : ({
+          ...current,
+          latitude: latitude.toFixed(7), longitude: longitude.toFixed(7),
+          locationAccuracy: selected.source === 'gps' && Number(selected.accuracy) > 0
+            ? String(Number(selected.accuracy).toFixed(2)) : '',
+        }))
+        setLocationConfirmed(false)
+        // A GPS/map destination was selected on /delivery. Resolve its
+        // written address and validate coverage automatically so checkout can
+        // display a confirmed address rather than another map/pin form.
+        // If reverse-geocoding is incomplete, the customer chooses/edits an
+        // address in their saved-address book instead of placing a blind order.
+        try {
+          const response = await fetch(
+            `/api/location/reverse?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`,
+            { method: 'GET', cache: 'no-store' }
+          )
+          const payload = await response.json().catch(() => ({}))
+          if (!active || !response.ok || payload?.success !== true) return
+          const address = payload.address || {}
+          const point = {
+            latitude, longitude, accuracy: selected.source === 'gps' ? selected.accuracy : null,
+            addressLine1: String(address.addressLine1 || '').trim(),
+            addressLine2: String(address.addressLine2 || '').trim(),
+            landmark: String(address.landmark || '').trim(),
+            city: String(address.city || '').trim(),
+            state: String(address.state || '').trim(),
+            pincode: digits(address.pincode, 6),
+          }
+          if (point.addressLine1 && point.city && point.state && point.pincode.length === 6) {
+            await selectSavedAddressAtCheckout(point)
+          }
+        } catch {
+          // The address picker remains available. Never invent address data.
+        }
+      } catch {
+        // Optional browser storage can be unavailable. Checkout still works.
+      }
+    }
+    void restore()
+    return () => { active = false }
+  }, [restaurantCode])
 
   const placeOrder = async (event) => {
     event.preventDefault()

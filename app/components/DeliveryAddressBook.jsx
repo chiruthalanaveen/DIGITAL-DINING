@@ -99,7 +99,7 @@ export default function DeliveryAddressBook({ destination, onUseLocation, onUseC
   const [authLoading, setAuthLoading] = useState(true)
   const [addresses, setAddresses] = useState([])
   const [addressLoading, setAddressLoading] = useState(false)
-  const [availability, setAvailability] = useState({})
+  const [availabilityResult, setAvailabilityResult] = useState(null)
   const [availabilityRevision, setAvailabilityRevision] = useState(0)
   const [message, setMessage] = useState('')
   const [open, setOpen] = useState(false)
@@ -116,6 +116,10 @@ export default function DeliveryAddressBook({ destination, onUseLocation, onUseC
   const sessionRef = useRef(0)
   const availabilityRef = useRef(0)
   const coordsRef = useRef(0)
+  // Results belong to one exact account/address refresh, so stale cards show checking.
+  const availability = availabilityResult?.userId === user?.id && availabilityResult?.addresses === addresses &&
+    availabilityResult?.open === open && availabilityResult?.revision === availabilityRevision
+    ? availabilityResult.values : {}
 
   const loadSavedAddresses = useCallback(async (uid) => {
     if (!uid) return
@@ -140,7 +144,7 @@ export default function DeliveryAddressBook({ destination, onUseLocation, onUseC
       const { data, error } = await supabase.auth.getUser()
       if (!active || sessionRef.current !== epoch) return
       if (error || !data?.user) {
-        setUser(null); setAddresses([]); setAvailability({}); setAuthLoading(false)
+        setUser(null); setAddresses([]); setAvailabilityResult(null); setAuthLoading(false)
       } else {
         setUser(data.user); setAuthLoading(false)
         await loadSavedAddresses(data.user.id)
@@ -156,9 +160,7 @@ export default function DeliveryAddressBook({ destination, onUseLocation, onUseC
 
   useEffect(() => {
     const run = ++availabilityRef.current
-    if (!user?.id || !addresses.length) { setAvailability({}); return }
-    const initial = Object.fromEntries(addresses.map((address) => [address.id, { status: 'checking' }]))
-    setAvailability(initial)
+    if (!user?.id || !addresses.length) return
     // Bound concurrency for multiple address cards; results are scoped to this user.
     const check = async () => {
       const results = {}
@@ -173,7 +175,13 @@ export default function DeliveryAddressBook({ destination, onUseLocation, onUseC
         }))
         if (availabilityRef.current !== run) return
         for (const [id, result] of resolved) results[id] = result
-        setAvailability((current) => ({ ...current, ...Object.fromEntries(resolved) }))
+        setAvailabilityResult(current => ({
+          userId: user.id, addresses, open, revision: availabilityRevision,
+          values: {
+            ...(current?.userId === user.id && current?.addresses === addresses && current?.open === open && current?.revision === availabilityRevision ? current.values : {}),
+            ...Object.fromEntries(resolved),
+          },
+        }))
       }
     }
     void check()
@@ -378,7 +386,7 @@ export default function DeliveryAddressBook({ destination, onUseLocation, onUseC
                   <button type="button" onClick={() => router.push('/delivery/login?next=%2Fdelivery%3Fchoose%3D1')} className="mt-3 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">Sign in</button>
                 </div>
               ) : addresses.length === 0 ? (
-                <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">No saved addresses yet. Add your home, work or a recipient's address.</div>
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">No saved addresses yet. Add your home, work or a recipient&apos;s address.</div>
               ) : (
                 <div className="mt-3 grid gap-3">
                   {addresses.map((address) => {

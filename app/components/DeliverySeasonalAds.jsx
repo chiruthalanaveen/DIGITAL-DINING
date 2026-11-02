@@ -11,13 +11,18 @@ const REFRESH_MS = 60000
 const THEMES = ['violet', 'sunset', 'gold', 'emerald', 'blue']
 
 export default function DeliverySeasonalAds({ restaurantCode, onBrowse, onCategory }) {
+  const [retryCount, setRetryCount] = useState(0)
+  return <SeasonalAdsContent key={`${restaurantCode}:${retryCount}`} restaurantCode={restaurantCode} onBrowse={onBrowse} onCategory={onCategory} onRetry={() => setRetryCount(count => count + 1)} />
+}
+
+function SeasonalAdsContent({ restaurantCode, onBrowse, onCategory, onRetry }) {
   const [campaigns, setCampaigns] = useState([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [interacting, setInteracting] = useState(false)
-  const [visible, setVisible] = useState(false)
-  const [fetchState, setFetchState] = useState('idle')
+  const [observedVisible, setVisible] = useState(false)
+  const visible = observedVisible || typeof IntersectionObserver === 'undefined'
+  const [fetchState, setFetchState] = useState(STORE_CODE.test(String(restaurantCode || '')) ? 'loading' : 'idle')
   const [fetchError, setFetchError] = useState('')
-  const [retryCount, setRetryCount] = useState(0)
   const sliderRef = useRef(null)
   const sectionRef = useRef(null)
   const resumeTimerRef = useRef(null)
@@ -50,20 +55,14 @@ export default function DeliverySeasonalAds({ restaurantCode, onBrowse, onCatego
   }, [])
 
   useEffect(() => {
-    // A store switch or manual retry resets the currently displayed campaigns.
-    // No expired campaigns or campaigns belonging to another store are retained.
+    // The keyed content resets on store changes/retry before anything is painted.
+    // Abort old requests so another store's campaigns can never replace this one.
     const requestGeneration = ++refreshRef.current
     let disposed = false
     let request = null
-    setCampaigns([])
-    setActiveIndex(0)
-    setVisible(false)
-    setFetchState('loading')
-    setFetchError('')
     if (sliderRef.current) sliderRef.current.scrollLeft = 0
 
     if (!STORE_CODE.test(String(restaurantCode || ''))) {
-      setFetchState('idle')
       return undefined
     }
 
@@ -144,13 +143,12 @@ export default function DeliverySeasonalAds({ restaurantCode, onBrowse, onCatego
       document.removeEventListener('visibilitychange', onVisible)
       refreshRef.current += 1
     }
-  }, [restaurantCode, retryCount])
+  }, [restaurantCode])
 
   useEffect(() => {
     if (!campaigns.length) return undefined
     const section = sectionRef.current
     if (!section || typeof IntersectionObserver === 'undefined') {
-      setVisible(true)
       return undefined
     }
     const observer = new IntersectionObserver(([entry]) => {
@@ -159,14 +157,6 @@ export default function DeliverySeasonalAds({ restaurantCode, onBrowse, onCatego
     observer.observe(section)
     return () => observer.disconnect()
   }, [campaigns.length])
-
-  useEffect(() => {
-    // If an admin removes a slide while it is selected, return to a valid slide.
-    if (!campaigns.length) return
-    const viewport = sliderRef.current
-    if (!viewport) return
-    if (activeIndex >= campaigns.length) moveTo(0, 'instant')
-  }, [campaigns.length, activeIndex, moveTo])
 
   useEffect(() => {
     if (campaigns.length < 2 || interacting || !visible ||
@@ -205,7 +195,7 @@ export default function DeliverySeasonalAds({ restaurantCode, onBrowse, onCatego
     return (
       <div className="dds-ads-fetch-notice" role="status">
         <span>{fetchError || 'Seasonal advertisements are temporarily unavailable.'}</span>
-        <button type="button" onClick={() => setRetryCount(count => count + 1)}>
+        <button type="button" onClick={onRetry}>
           Retry ads
         </button>
       </div>

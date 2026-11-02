@@ -351,11 +351,10 @@ export default function NativeDeliveryPush({
           return
         }
 
-        setStatus('working')
-        setMessage('')
-
         try {
           await installListeners()
+          setStatus('working')
+          setMessage('')
           await createAndroidChannel()
 
           let permissions =
@@ -480,15 +479,19 @@ export default function NativeDeliveryPush({
       }
     }
 
-    installListeners()
-
-    if (shouldRestore) {
-      registerNativePush({
-        promptIfNeeded: false,
-      })
-    }
+    let disposed = false
+    void installListeners().then(() => {
+      if (!disposed && shouldRestore) {
+        void registerNativePush({ promptIfNeeded: false })
+      }
+    }).catch(error => {
+      if (disposed) return
+      setStatus('error')
+      setMessage(error?.message || 'Unable to enable native Delivery notifications.')
+    })
 
     return () => {
+      disposed = true
       const handles = [
         ...listenerHandlesRef.current,
       ]
@@ -552,11 +555,13 @@ export default function NativeDeliveryPush({
           onClick={
             active
               ? disableNativePush
-              : () =>
-                  registerNativePush({
-                    promptIfNeeded:
-                      true,
+              : () => {
+                  setStatus('working')
+                  setMessage('')
+                  void registerNativePush({
+                    promptIfNeeded: true,
                   })
+                }
           }
           className={`rounded-xl px-4 py-3 text-xs font-black text-white disabled:opacity-50 ${
             active

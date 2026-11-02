@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useStandaloneMode } from '@/lib/useStandaloneMode'
 
 /** Browser-native PWA installation UI. Never claims to install silently. */
 export default function DDAppInstall({ className = '', label = 'Install app', swPath = '', swScope = '' }) {
   const [promptEvent, setPromptEvent] = useState(null)
-  const [installed, setInstalled] = useState(false)
+  const [installedByEvent, setInstalled] = useState(false)
+  const installed = useStandaloneMode() || installedByEvent
   const [help, setHelp] = useState(false)
 
   useEffect(() => {
@@ -14,8 +16,6 @@ export default function DDAppInstall({ className = '', label = 'Install app', sw
         // Installation should not interrupt authenticated user workflows.
       })
     }
-    const checkInstalled = () => window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator.standalone === true
-    setInstalled(Boolean(checkInstalled()))
     const beforeInstall = (event) => {
       event.preventDefault()
       setPromptEvent(event)

@@ -3,8 +3,9 @@
  * Run: node fix-delivery-suspense.cjs app/delivery/page.jsx
  * Creates a .backup-before-suspense file and preserves all existing UI.
  */
-const fs = require('node:fs')
-const path = require('node:path')
+async function main() {
+const fs = await import('node:fs')
+const path = await import('node:path')
 const file = path.resolve(process.argv[2] || 'app/delivery/page.jsx')
 if (!fs.existsSync(file)) {
   console.error('File not found:', file)
@@ -61,3 +62,10 @@ fs.writeFileSync(file + '.backup-before-suspense', original, { flag: 'wx' })
 fs.writeFileSync(file, updated)
 console.log('Fixed:', file)
 console.log('Backup:', file + '.backup-before-suspense')
+
+}
+
+main().catch(error => {
+  console.error(error)
+  process.exitCode = 1
+})

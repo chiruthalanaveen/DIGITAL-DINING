@@ -150,13 +150,21 @@ function ensureRazorpayScript() {
 
 
 
-export default function OwnerDeliveryWallet({ restaurantId }) {
+export default function OwnerDeliveryWallet(props) {
+
+  // Reset private wallet state when the selected business changes.
+
+  return <OwnerDeliveryWalletContent key={props.restaurantId || ''} {...props} />
+
+}
+
+function OwnerDeliveryWalletContent({ restaurantId }) {
 
   const [wallet, setWallet] = useState(null)
 
   const [transactions, setTransactions] = useState([])
 
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(Boolean(restaurantId))
 
   const [busy, setBusy] = useState(false)
 
@@ -178,63 +186,33 @@ export default function OwnerDeliveryWallet({ restaurantId }) {
 
 
 
-  const loadWallet = useCallback(async ({ silent = false } = {}) => {
+  const loadWallet = useCallback(({ silent = false } = {}) => {
 
     if (!restaurantId) return
 
-    if (!silent) setLoading(true)
-
-    try {
-
-      const token = await getOwnerToken()
+    return getOwnerToken().then(async token => {
 
       const response = await fetch(
-
         `/api/owner/wallet?restaurantId=${encodeURIComponent(restaurantId)}`,
-
-        {
-
-          cache: 'no-store',
-
-          headers: { Authorization: `Bearer ${token}` },
-
-        }
-
+        { cache: 'no-store', headers: { Authorization: `Bearer ${token}` } }
       )
-
       const data = await parseResponse(response)
-
       setWallet(data.wallet)
-
       setRestaurantChargeCustomer(data.wallet?.restaurantChargeCustomer === true)
-
       setDeliveryChargeCustomer(data.wallet?.deliveryChargeCustomer === true)
-
       setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
-
       setErrorMessage('')
-
-    } catch (error) {
-
+    }).catch(error => {
       setErrorMessage(error?.message || 'Unable to load wallet.')
-
-    } finally {
-
+    }).finally(() => {
       if (!silent) setLoading(false)
-
-    }
+    })
 
   }, [restaurantId])
 
 
 
   useEffect(() => {
-
-    setWallet(null)
-
-    setTransactions([])
-
-    setLoading(true)
 
     void loadWallet()
 
@@ -484,7 +462,7 @@ export default function OwnerDeliveryWallet({ restaurantId }) {
 
           type="button"
 
-          onClick={() => void loadWallet()}
+          onClick={() => { if (!restaurantId) return; setLoading(true); void loadWallet() }}
 
           disabled={loading || busy}
 
@@ -579,7 +557,7 @@ export default function OwnerDeliveryWallet({ restaurantId }) {
 
               <p className="mt-1 text-xs leading-5 text-neutral-400">
 
-                The Super Admin sets the amount. You can only choose whether it is added to your customer's bill or absorbed by your business.
+                The Super Admin sets the amount. You can only choose whether it is added to your customer&apos;s bill or absorbed by your business.
 
               </p>
 

@@ -11,8 +11,12 @@ const dateUTC = (value) => {
 
 // Add <AdminWalletAdjustments restaurantId={selectedRestaurantId} onAdjusted={refreshWallet} />
 // to the existing Super Admin wallet page. The UI never sends actor name/email.
-export default function AdminWalletAdjustments({ restaurantId, onAdjusted }) {
-  const [loading, setLoading] = useState(false)
+export default function AdminWalletAdjustments(props) {
+  return <AdminWalletAdjustmentsContent key={props.restaurantId || ''} {...props} />
+}
+
+function AdminWalletAdjustmentsContent({ restaurantId, onAdjusted }) {
+  const [loading, setLoading] = useState(Boolean(restaurantId))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -26,21 +30,19 @@ export default function AdminWalletAdjustments({ restaurantId, onAdjusted }) {
   const [proof, setProof] = useState(null)
   const [proofInputKey, setProofInputKey] = useState(0)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(() => {
     if (!restaurantId) return
-    setLoading(true)
-    try {
-      const response = await fetch(`/api/admin/wallet-adjustments?restaurantId=${encodeURIComponent(restaurantId)}`, {
-        credentials: 'same-origin', cache: 'no-store',
-      })
+    return fetch(`/api/admin/wallet-adjustments?restaurantId=${encodeURIComponent(restaurantId)}`, {
+      credentials: 'same-origin', cache: 'no-store',
+    }).then(async response => {
       const data = await response.json()
       if (!response.ok || !data.success) throw new Error(data.message || 'Unable to load wallet.')
       setActorEmail(data.actorEmail || '')
       setWallet(data.wallet || null)
       setAdjustments(Array.isArray(data.adjustments) ? data.adjustments : [])
       setError('')
-    } catch (err) { setError(err?.message || 'Unable to load wallet.') }
-    finally { setLoading(false) }
+    }).catch(err => setError(err?.message || 'Unable to load wallet.'))
+      .finally(() => setLoading(false))
   }, [restaurantId])
 
   useEffect(() => { void refresh() }, [refresh])
@@ -73,6 +75,7 @@ export default function AdminWalletAdjustments({ restaurantId, onAdjusted }) {
       setReferenceNote('')
       setProof(null)
       setProofInputKey((value) => value + 1)
+      setLoading(true)
       await refresh()
       if (typeof onAdjusted === 'function') onAdjusted(data)
     } catch (err) { setError(err?.message || 'Wallet adjustment failed.') }
@@ -98,7 +101,7 @@ export default function AdminWalletAdjustments({ restaurantId, onAdjusted }) {
           <h2 className="mt-1 text-xl font-black">Adjust wallet balance</h2>
           <p className="mt-1 text-xs text-neutral-300">Every manual credit or debit is recorded with proof and the signed-in admin identity.</p>
         </div>
-        <button type="button" onClick={() => void refresh()} disabled={loading || saving} className="rounded-xl border border-neutral-700 px-3 py-2 text-xs font-bold">Refresh</button>
+        <button type="button" onClick={() => { if (!restaurantId) return; setLoading(true); void refresh() }} disabled={loading || saving} className="rounded-xl border border-neutral-700 px-3 py-2 text-xs font-bold">Refresh</button>
       </div>
       <div className="mt-4 rounded-2xl bg-neutral-900 p-4 text-sm">
         <p><strong>Signed in as:</strong> {actorEmail || 'Checking admin session...'}</p>
