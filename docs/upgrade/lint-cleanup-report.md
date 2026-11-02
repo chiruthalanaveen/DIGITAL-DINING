@@ -1,6 +1,10 @@
 # Repository lint cleanup — 2 November 2026
 
-**Lint and local regression verification: PASS. Production release: PARTIAL PASS.**
+**Lint and local regression verification: PASS. Production publication: PASS.**
+The user subsequently approved publication of this reviewed source; see the
+[Production release record](production-release-20261102.md) for its live URL,
+exact deployed SHA and successful build/HTTP/mobile checks. Hosted business
+verification limits below remain; no SQL or merge was authorized by publication.
 All 169 inherited ESLint errors are fixed in source. The repository now reports
 **0 errors /169 warnings**, down from 169 errors /179 warnings. No new warning
 messages, rule downgrades, ignore patterns or lint suppressions were introduced;
@@ -151,10 +155,11 @@ legacy business workflow matrix remain unverified.** No new SQL test was
 necessary for this source-only cleanup; prior PostgreSQL evidence is historical
 and is not counted as a new hosted test. Staging remains stopped by user choice.
 
-Preview has no approved runtime settings and no new Preview URL exists. The
-live-target decision remains unanswered. No production deployment/promotion,
-SQL execution, merge or live payment follows from this cleanup or "continue".
-Those holds remain for the user's separate release review/approval.
+Preview still has no approved runtime settings and no Preview URL was created.
+The user later explicitly selected Production, and publication is complete as
+recorded above. That approval did not authorize SQL, merges or live payments;
+those holds remain. The original conditional "continue" was not treated as
+production authorization.
 
 Rollback is a reviewed source revert of this cleanup while retaining the
 address fix at `a733fba`; no database rollback is required. A revert restores

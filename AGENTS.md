@@ -39,6 +39,27 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
+### Published Production release — 2 November 2026
+
+After reviewing the passing lint/test/build report, the user explicitly said
+"publish it to production". That authorization supersedes the earlier deployment
+holds below for application commit `84188e385d0286fc7d40cec03a179a68a905a167`
+only. It is now deployed as `dpl_GfDtcTFMBixnAKawp8XiGuBnANro`, Production/READY,
+on https://www.digitaldine-in.online/. All six existing aliases were verified
+against that deployment, with redirects/protection/cron settings preserved.
+
+The remote npm build, twelve safe HTTP checks and four live desktop/mobile
+home/admin checks pass. No SQL, authenticated production fixture, live payment,
+main push or PR merge was performed. Paid subscription checkout stays disabled;
+the pending ledger remains unapplied. Do not enable it or infer approval for
+SQL/merges/provider tests. Automatic Git deployment guards remain in place.
+
+Subsequent record-only commits do not change the deployed application SHA.
+Do not redeploy merely to publish documentation. Future source publication
+requires applicable user authorization. See
+`docs/upgrade/production-release-20261102.md` for exact evidence, the previous
+rollback target, proxy limits and unverified hosted Auth/RLS/provider coverage.
+
 ### Current repository lint cleanup — 2 November 2026
 
 The user explicitly requested fixing all 169 inherited lint errors before
@@ -50,8 +71,8 @@ guarded feature branch and keep all PRs unmerged.
 
 No SQL migration required. Do not change hosted data, policies, cron jobs,
 payment configuration or the pending subscription migration/rollout flag.
-Publication target approval remains unanswered; the conditional request to
-continue once requirements are complete does not approve production release.
+At that stage publication approval was unanswered. The later explicit Production
+authorization and completed release are recorded above; other holds remain.
 See `docs/upgrade/lint-cleanup-report.md` for current results and limitations.
 
 ### Current address fix and Vercel publication request — 2 November 2026
@@ -64,9 +85,9 @@ actual project/Preview configuration before publishing, build from source and
 retain every automatic Git deployment guard. The updated team-scoped token now
 returns HTTP200 for project, Preview-environment and deployment-list reads.
 Preview has zero environment bindings; all fourteen existing bindings are
-Production-only. The target question is still unanswered. Do not infer approval
-for production or copy Production secrets into Preview. No deployment was
-created. See `docs/upgrade/vercel-publication-status.md` for the release record.
+Production-only. The subsequent explicit Production choice and publication are
+recorded above. No Preview was created and Production secrets must not be copied
+into Preview. See `docs/upgrade/vercel-publication-status.md` for current state.
 
 Continue the bounded saved-address coordinate validation fix on
 `feature/phase0-address-coordinate-validation`, based on PR #5's `deee372`.
