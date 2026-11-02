@@ -16,7 +16,7 @@ const env = developmentEnvironment()
 const restaurantId = '11111111-1111-4111-8111-111111111111'
 const restaurant = { id: restaurantId, name: 'Development Staff Store', restaurant_code: '12345', plan_code: 'restaurant_resort_delivery', status: 'approved', is_open: true }
 const requests = [], checkpoints = [], blocked = new Set(), pageErrors = []
-let orders = [], readyOrders = [], fixture, server, browser
+let orders = [], readyOrders = [], fixture, server, browser, lastFailure = null
 await mkdir(artifacts, { recursive: true })
 
 function sampleOrder(id) {
@@ -31,8 +31,10 @@ function rpc(name, payload) {
   if (name === 'get_delivery_packer_portal_data') return { success: true, packer: { name: 'Development Packer' }, restaurant, orders: [] }
   if (name === 'delivery_driver_get_cod_summary') return { success: true, summary: {}, settlements: [] }
   if (name === 'delivery_driver_update_live_location') return { success: true, location: { captured_at: '2026-11-02T00:01:00Z' } }
+  if (name === 'delivery_driver_stop_live_location') return { success: true }
   if (name === 'validate_staff_app_session') return { success: true, restaurantId, restaurantCode: '12345', userId: 'development-manager' }
   if (name === 'get_manager_dashboard_data_session') return { success: true, restaurantId, restaurant, menuItems: [], dailyOffers: [], orders: [], staffList: [] }
+  if (name === 'get_manager_delivery_data_session') return { success: true, restaurantId, restaurant, orders: [], menuItems: [], drivers: [], offers: [] }
   if (name === 'get_manager_table_inventory_session') return { success: true, tables: [] }
   if (name === 'get_waiter_portal_data_session') return { success: true, restaurantId, restaurantCode: '12345', userId: 'development-waiter', menuItems: [], readyOrders }
   return null
@@ -106,14 +108,31 @@ async function snapshot(page, name) {
   checkpoints.push(name)
 }
 
+async function recordFailure(error, page, checkpoint) {
+  const evidence = {
+    checkpoint, name: error.name, message: error.message,
+    url: page.url(), completedCheckpoints: [...checkpoints], pageErrors: [...pageErrors],
+    observedRpcNames: [...new Set(requests.map(row => row.rpc).filter(Boolean))],
+  }
+  evidence.headings = await page.locator('h1,h2,h3').allTextContents().catch(() => [])
+  evidence.fixtureCounters = await page.evaluate(() => {
+    const fixture = window.staffFixture
+    return fixture ? { created: fixture.created.length, revoked: fixture.revoked.length, watches: fixture.watches, cleared: fixture.cleared, audioPlays: fixture.audioPlays, audioPauses: fixture.audioPauses } : null
+  }).catch(() => null)
+  await page.screenshot({ path: path.join(artifacts, `failure-${checkpoint}.png`), fullPage: true }).catch(() => {})
+  await writeFile(path.join(artifacts, 'failure.json'), JSON.stringify(evidence, null, 2) + '\n')
+  lastFailure = evidence
+}
+
 async function driverChecks(route, name) {
   const key = 'digitaldining_delivery_driver_session_12345'
   const token = `development-${name}-session`
+  const appVariant = route.startsWith('/app/')
   orders = [sampleOrder('ORDER-A')]
   const { context, page } = await contextWithStorage({ [key]: token })
   try {
     await page.goto(base + route)
-    await page.getByText('DEV-ORDER-A', { exact: true }).first().waitFor()
+    await page.getByText(/^#?\s*DEV-ORDER-A$/).first().waitFor()
     await page.locator('input[type=file]').first().waitFor()
     await page.waitForFunction(() => window.staffFixture.watches.length > 0)
     assert.ok(requests.some(row => row.rpc === 'get_delivery_driver_portal_data' && row.payload.p_session_token === token), 'Saved session was not restored through the RPC.')
@@ -121,7 +140,9 @@ async function driverChecks(route, name) {
       const id = window.staffFixture.watches.at(-1)
       window.staffFixture.callbacks[id]({ coords: { latitude: 17.4, longitude: 78.5, accuracy: 5, heading: null, speed: null } })
     })
+    if (appVariant) await page.getByRole('button', { name: /Dashboard/ }).click()
     await page.getByText(/Live location is being shared/).first().waitFor()
+    if (appVariant) await page.getByRole('button', { name: /Tracking/ }).click()
     const png = Buffer.from(await page.evaluate(() => {
       const canvas = document.createElement('canvas')
       canvas.width = 2; canvas.height = 2
@@ -143,18 +164,22 @@ async function driverChecks(route, name) {
     assert.ok(await page.evaluate(() => window.staffFixture.cleared.length > 0), 'Completed context must stop its GPS watch.')
     orders = [sampleOrder('ORDER-B')]
     await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-    await page.getByText('DEV-ORDER-B', { exact: true }).first().waitFor()
+    await page.getByText(/^#?\s*DEV-ORDER-B$/).first().waitFor()
+    if (appVariant) await page.getByRole('button', { name: /Dashboard/ }).click()
     await page.getByText('Allow precise location access to share your live delivery position.', { exact: true }).first().waitFor()
     assert.ok(await page.evaluate(() => window.staffFixture.watches.length >= 2), 'A new order context needs a new GPS watch.')
     checkpoints.push(`${name}-preview-resource-cleanup-and-gps-context-reset`)
-  } finally { await context.close() }
+  } catch (error) { await recordFailure(error, page, name); throw error }
+  finally { await context.close() }
   const expired = await contextWithStorage({ [key]: 'expired-development-session' })
   try {
     await expired.page.goto(base + route)
-    await expired.page.getByRole('heading', { name: /Delivery Driver Login/ }).waitFor()
+    const heading = route.startsWith('/app/') ? 'Delivery Driver Login' : 'Driver sign in'
+    await expired.page.getByRole('heading', { name: heading, exact: true }).waitFor()
     assert.equal(await expired.page.evaluate(key => localStorage.getItem(key), key), null)
     checkpoints.push(`${name}-expired-session-cleared`)
-  } finally { await expired.context.close() }
+  } catch (error) { await recordFailure(error, expired.page, `${name}-expired-session`); throw error }
+  finally { await expired.context.close() }
 }
 
 async function packerChecks(route, name) {
@@ -166,14 +191,16 @@ async function packerChecks(route, name) {
     await empty.page.getByRole('heading', { name: /Delivery Packer Login/ }).waitFor()
     assert.equal(requests.filter(row => row.rpc === 'get_delivery_packer_portal_data').length, before, 'Logged-out portal must not fetch private data.')
     checkpoints.push(`${name}-logged-out-without-private-rpc`)
-  } finally { await empty.context.close() }
+  } catch (error) { await recordFailure(error, empty.page, `${name}-logged-out`); throw error }
+  finally { await empty.context.close() }
   const valid = await contextWithStorage({ [key]: `development-${name}-session` })
   try {
     await valid.page.goto(base + route)
     await valid.page.getByText(restaurant.name, { exact: true }).first().waitFor()
     assert.equal(await valid.page.getByRole('heading', { name: /Delivery Packer Login/ }).count(), 0)
     await snapshot(valid.page, `${name}-restored-session`)
-  } finally { await valid.context.close() }
+  } catch (error) { await recordFailure(error, valid.page, `${name}-restored-session`); throw error }
+  finally { await valid.context.close() }
 }
 
 async function managerChecks(route, name) {
@@ -181,22 +208,26 @@ async function managerChecks(route, name) {
   const { context, page } = await contextWithStorage({ 'digital-dine-staff-session': JSON.stringify(saved) })
   try {
     await page.goto(`${base}${route}?module=delivery`)
-    const delivery = page.getByRole('button', { name: /Delivery Dashboard/ })
+    const switcher = route.startsWith('/app/') ? page.locator('.dd-mobile-module-switch') : page
+    const delivery = switcher.getByRole('button', { name: /Delivery(?: Dashboard)?$/ })
     await delivery.waitFor()
     assert.match(await delivery.getAttribute('class'), /bg-emerald-600/, 'Allowed notification deep link should select Delivery.')
-    const restaurantTab = page.getByRole('button', { name: /Restaurant Dashboard/ })
+    const restaurantTab = switcher.getByRole('button', { name: /Restaurant(?: Dashboard)?$/ })
     await restaurantTab.click()
     assert.match(await restaurantTab.getAttribute('class'), /bg-orange-500/, 'Manual module selection must remain available.')
     await snapshot(page, `${name}-restored-module-selection`)
-  } finally { await context.close() }
+  } catch (error) { await recordFailure(error, page, name); throw error }
+  finally { await context.close() }
   const wrong = await contextWithStorage({ 'digital-dine-staff-session': JSON.stringify({ ...saved, restaurantId: '22222222-2222-4222-8222-222222222222' }) })
   try {
     const before = requests.filter(row => row.rpc === 'validate_staff_app_session').length
     await wrong.page.goto(base + route)
-    await wrong.page.getByRole('heading', { name: 'Restaurant Manager', exact: true }).waitFor()
+    const heading = route.startsWith('/app/') ? 'Manager sign in' : 'Restaurant Manager'
+    await wrong.page.getByRole('heading', { name: heading, exact: true }).waitFor()
     assert.equal(requests.filter(row => row.rpc === 'validate_staff_app_session').length, before, 'Another restaurant session must not be consumed.')
     checkpoints.push(`${name}-wrong-restaurant-session-rejected`)
-  } finally { await wrong.context.close() }
+  } catch (error) { await recordFailure(error, wrong.page, `${name}-wrong-restaurant`); throw error }
+  finally { await wrong.context.close() }
 }
 
 async function waiterChecks(route, name) {
@@ -219,7 +250,8 @@ async function waiterChecks(route, name) {
     assert.ok(await page.evaluate(previous => window.staffFixture.audioPauses > previous, pauses), 'Clearing ready orders should pause the real audio owner.')
     assert.equal(await page.getByText('🚨 ALARM ACTIVE', { exact: true }).count(), 0)
     checkpoints.push(`${name}-audio-playback-and-pause-event-status`)
-  } finally { await context.close() }
+  } catch (error) { await recordFailure(error, page, name); throw error }
+  finally { await context.close() }
 }
 
 try {
@@ -270,6 +302,9 @@ try {
   await writeFile(path.join(artifacts, 'summary.json'), JSON.stringify({ result: 'PASS', checkpoints, widths: [1440, 375], pageErrors, blockedExternalHosts: [...blocked], rpcCount: requests.filter(row => row.rpc).length, realHostedAuthTested: false, realRlsTested: false, productionWrites: false, paymentsProcessed: false, fixture: 'Loopback simulated RPC responses; GPS callbacks and photo uploads are synthetic.' }, null, 2) + '\n')
   console.log(`PASS: ${checkpoints.length} staff hydration/session/preview/GPS/module checkpoints. Evidence: ${artifacts}`)
   }
+} catch (error) {
+  await writeFile(path.join(artifacts, 'summary.json'), JSON.stringify({ result: 'FAIL', completedCheckpoints: checkpoints, failure: lastFailure || { name: error.name, message: error.message }, pageErrors, realHostedAuthTested: false, realRlsTested: false, productionWrites: false, paymentsProcessed: false }, null, 2) + '\n')
+  throw error
 } finally {
   if (browser) await browser.close()
   if (server?.pid) { try { process.kill(-server.pid, 'SIGTERM') } catch { /* Already exited. */ } }

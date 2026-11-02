@@ -1,11 +1,13 @@
 # Vercel publication status — 2 November 2026
 
 The subsequent [repository lint cleanup](lint-cleanup-report.md) fixes all 169
-errors, with zero new warnings. Its 182 individual unit tests and direct type
-check pass, but the current build/full browser checks are blocked by execution
-permissions. The earlier successful address-only build below is historical;
-it does not establish readiness for this broader change. No new deployment has
-been created. Keep SQL, paid-checkout and merge holds in place.
+errors, with zero new warnings. Its 183 individual unit tests, standard build,
+direct type check and four local browser suites pass; 68 screenshots cover
+desktop/mobile layouts. Initial child-process execution restrictions were
+resolved by retaining the unchanged granted context in development launchers.
+Hosted Auth/RLS/provider validation remains incomplete. No new deployment has
+been created. Keep SQL, paid-checkout and merge holds in place; the live-target
+decision is still unanswered and Preview still lacks runtime configuration.
 
 The user requested Vercel publication and updated access twice. The final
 team-scoped token fixes the original denial: project, environment and deployment
