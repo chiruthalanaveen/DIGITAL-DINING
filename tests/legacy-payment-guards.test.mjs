@@ -13,6 +13,7 @@ const { NextRequest } = require('next/server')
 const restaurantId = '11111111-1111-4111-8111-111111111111'
 const ownerId = '22222222-2222-4222-8222-222222222222'
 const topupId = '33333333-3333-4333-8333-333333333333'
+const checkoutId = '44444444-4444-4444-8444-444444444444'
 const secret = 'local-razorpay-secret-never-a-real-credential'
 const orderId = 'order_local_only'
 const paymentId = 'pay_local_only'
@@ -24,13 +25,14 @@ const confirmation = { ...subscription, razorpay_order_id: orderId, razorpay_pay
 // credentials are read or changed; SDK, SQL and HTTP effects are local fixtures.
 function fixture(overrides = {}) {
   const state = {
-    calls: [], writes: [], providerCalls: [], clients: [], logs: [],
+    calls: [], writes: [], providerCalls: [], clients: [], logs: [], ledgerCalls: [],
     user: { id: ownerId },
     access: { ok: true, restaurantId },
     environment: {
       NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'local-anon-only',
       SUPABASE_SERVICE_ROLE_KEY: 'local-service-only',
+      SUBSCRIPTION_PAID_CHECKOUT_ENABLED: 'true',
       PLATFORM_RAZORPAY_KEY_ID: 'rzp_test_local_only',
       PLATFORM_RAZORPAY_KEY_SECRET: secret,
       DIGITAL_DINE_WALLET_RAZORPAY_KEY_ID: 'rzp_test_local_wallet_only',
@@ -41,10 +43,16 @@ function fixture(overrides = {}) {
       delivery_wallet_topups: [{ id: topupId, restaurant_id: restaurantId, amount_paise: 200000, razorpay_order_id: orderId, status: 'created' }],
       delivery_store_wallets: [{ restaurant_id: restaurantId, min_topup_paise: 200000 }],
     },
-    providerOrder: { id: orderId, amount: 149900, currency: 'INR', notes: { restaurant_id: restaurantId, owner_id: ownerId, plan_code: 'restaurant_pro', billing_cycle: '1month' } },
+    providerOrder: { id: orderId, amount: 149900, currency: 'INR', notes: { restaurant_id: restaurantId, owner_id: ownerId, plan_code: 'restaurant_pro', billing_cycle: '1month', checkout_id: checkoutId } },
     providerPayment: { id: paymentId, order_id: orderId, amount: 149900, currency: 'INR', status: 'captured', captured: true },
     ...overrides,
   }
+  const checkoutIntents = new Map([[checkoutId, {
+    id: checkoutId, restaurant_id: restaurantId, owner_id: ownerId,
+    plan_code: 'restaurant_pro', billing_cycle: '1month', amount_paise: 149900,
+    currency: 'INR', provider_key_id: state.environment.PLATFORM_RAZORPAY_KEY_ID,
+    provider_order_id: orderId, created_at: '2026-11-01T00:00:00.000Z',
+  }]])
   const client = {
     auth: {
       async getUser(token) {
@@ -71,6 +79,46 @@ function fixture(overrides = {}) {
       return query
     },
     async rpc(name, args) {
+      if (name.startsWith('subscription_')) {
+        state.ledgerCalls.push({ rpc: name, args })
+        if (name === 'subscription_open_checkout') {
+          const checkout = {
+            id: args.p_checkout_id, restaurant_id: args.p_restaurant_id, owner_id: args.p_owner_id,
+            plan_code: args.p_plan_code, billing_cycle: args.p_billing_cycle,
+            amount_paise: args.p_amount_paise, currency: args.p_currency,
+            provider_key_id: args.p_provider_key_id, provider_order_id: null,
+            created_at: '2026-11-01T00:00:00.000Z',
+          }
+          checkoutIntents.set(checkout.id, checkout)
+          return { data: { success: true, checkout }, error: null }
+        }
+        const checkout = checkoutIntents.get(args.p_checkout_id)
+        assert.ok(checkout, 'Only the recorded local checkout may be bound or activated')
+        if (name === 'subscription_bind_checkout') {
+          checkout.provider_order_id = args.p_provider_order_id
+          return { data: { success: true, checkout }, error: null }
+        }
+        assert.equal(name, 'subscription_activate_payment')
+        assert.equal(checkout.provider_order_id, args.p_provider_order_id)
+        assert.equal(checkout.restaurant_id, args.p_restaurant_id)
+        assert.equal(checkout.owner_id, args.p_owner_id)
+        state.writes.push({ rpc: name, args })
+        const expiry = '2026-12-01T00:00:00.000Z'
+        return { data: {
+          success: true, replayed: false,
+          receipt: {
+            checkout_id: checkout.id, provider_order_id: args.p_provider_order_id,
+            provider_payment_id: args.p_provider_payment_id, amount_paise: args.p_amount_paise,
+            currency: 'INR', activated_at: '2026-11-01T00:00:00.000Z', subscription_expires_at: expiry,
+          },
+          restaurant: {
+            id: restaurantId, name: state.tables.restaurants[0].name, plan: 'Pro',
+            plan_code: 'restaurant_pro', billing_cycle: '1month', subscription_status: 'active',
+            subscription_expires_at: expiry, business_type: 'restaurant',
+            resort_enabled: false, delivery_enabled: false,
+          },
+        }, error: null }
+      }
       state.writes.push({ rpc: name, args })
       assert.equal(name, 'delivery_wallet_credit_verified_topup')
       return { data: { topup_status: 'paid', credited: true, wallet_balance_paise: 200000 }, error: null }
@@ -104,6 +152,7 @@ function fixture(overrides = {}) {
       if (specifier === '@supabase/supabase-js') return { createClient: (url, key, options) => { state.clients.push({ url, key, options }); return client } }
       if (specifier === '@/lib/server/ownerApproval') return { requireApprovedOwner: async () => state.access }
       if (specifier === '@/lib/server/adminSupabase') return { getAdminSupabase: () => { state.calls.push({ admin: true }); return client } }
+      if (specifier === '@/lib/server/subscriptionLedger') return load('lib/server/subscriptionLedger.js')
       return nativeRequire(specifier)
     }
     loaded._compile("const process = require('__fixture_environment__'); const console = require('__fixture_console__'); const fetch = require('__fixture_fetch__');\n" + ts.transpileModule(readFileSync(filename, 'utf8'), {
@@ -219,16 +268,18 @@ test('subscription confirmation refuses underpaid, foreign-currency and failed p
   }
 })
 
-test('verified synthetic subscription activates only the owned restaurant after provider checks', async () => {
+test('verified synthetic subscription delegates activation to the owned recorded checkout after provider checks', async () => {
   const { load, state } = fixture()
   const response = await load('app/api/verify-subscription/route.js').POST(request(confirmation))
   assert.equal(response.status, 200)
   assert.equal((await response.json()).restaurant.plan_code, 'restaurant_pro')
-  assert.equal(state.writes.length, 1)
-  assert.equal(state.writes[0].table, 'restaurants')
-  assert.equal(state.writes[0].payload.subscription_status, 'active')
-  assert.equal(state.writes[0].payload.delivery_enabled, false)
-  assert.ok(state.calls.find(call => call.update)?.filters.some(([key, value]) => key === 'id' && value === restaurantId))
+  assert.deepEqual(state.writes, [{ rpc: 'subscription_activate_payment', args: {
+    p_checkout_id: checkoutId, p_restaurant_id: restaurantId, p_owner_id: ownerId,
+    p_provider_order_id: orderId, p_provider_payment_id: paymentId, p_amount_paise: 149900,
+    p_currency: 'INR', p_plan_code: 'restaurant_pro', p_billing_cycle: '1month',
+    p_provider_key_id: 'rzp_test_local_only',
+  } }])
+  assert.equal(state.calls.some(call => call.update), false, 'There must be no direct restaurant-update fallback')
   assert.equal(state.providerCalls.filter(call => call.order || call.payment).length, 2)
 })
 

@@ -1,5 +1,10 @@
 # Phase 0 implementation progress
 
+This is the completed first increment (PR #4). Current follow-up, 2 November:
+[durable subscription activation](subscription-ledger-report.md), with its own
+migration review, test evidence and changed-file list. Neither increment is a
+production deployment.
+
 1 November 2026. Branch `feature/phase0-account-payment-guards`, based on
 `4ac1e12` from draft [commerce PR #3](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3).
 The master audit and dependency roadmap were created before implementation.

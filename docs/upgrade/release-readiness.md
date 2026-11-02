@@ -1,5 +1,12 @@
 # Phase 0 release readiness
 
+Updated 2 November 2026: **production release remains BLOCKED**. The
+[new durable subscription flow](subscription-ledger-report.md) has local tests
+and a review-only migration, disabled by default. Supabase 17 compatibility,
+current target privileges/legacy triggers and real provider proof remain
+unverified; no hosted SQL, rollout flag or deployment has been applied. The body
+below records the preceding PR #4 increment and its still-relevant release gates.
+
 1 November 2026. **Overall production release: BLOCKED.**
 
 Current branch: `feature/phase0-account-payment-guards`, based on `4ac1e12`.

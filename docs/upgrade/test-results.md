@@ -1,5 +1,10 @@
 # Phase 0 test evidence
 
+Historical first-increment report (PR #4). The
+[current subscription ledger report](subscription-ledger-report.md) contains the
+newer 142-test run and separately tested migration. Counts below remain the
+actual earlier results, not current platform-wide certification.
+
 1 November 2026. Tests use synthetic development credentials only. No hosted
 Supabase project, production data, live order or payment provider was used.
 

@@ -738,12 +738,17 @@ async function browserChecks() {
   assert.equal(await page.evaluate(() => localStorage.getItem('digital-dine-commerce:customer:qa-saree-store')), customerBeforeReplay, 'A replayed customer recovery link changed the valid session.')
   await page.goto(`${base}/shops/qa-saree-store/account`)
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  // A click does not await the async SDK logout. Let its storage cleanup finish
+  // before seeding the next isolated actor, or it can delete that new session.
+  await page.getByRole('heading', { name: 'Welcome back', exact: true }).waitFor()
+  await page.waitForFunction(() => localStorage.getItem('digital-dine-commerce:customer:qa-saree-store') === null)
   assert.deepEqual(await storedScopes(customerProtectedKeys), beforeCustomerCallbacks)
 
   const buyerSession = fixture.session(fixture.users.get(buyerA.id))
   await page.evaluate(({ key, value }) => localStorage.setItem(key, value), { key: 'digital-dine-commerce:customer:qa-saree-store', value: JSON.stringify(buyerSession) })
   await page.goto(`${base}/shops/qa-saree-store`)
   await page.getByRole('heading', { name: 'Saree Store, made for you.' }).waitFor()
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('digital-dine-commerce:customer:qa-saree-store') || 'null')?.user?.id), buyerA.id, 'The previous logout removed the newly seeded customer session.')
   await storefrontIncrementChecks(draft.image_url)
   await storefrontLabMeasurements()
   await snapshot('saree-homepage')
@@ -759,6 +764,7 @@ async function browserChecks() {
   await page.getByRole('button', { name: 'Add Silk Saree to bag', exact: true }).click()
   await page.reload()
   await page.getByRole('button', { name: 'Open shopping bag, 1 items', exact: true }).waitFor()
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('digital-dine-commerce:customer:qa-saree-store') || 'null')?.user?.id), buyerA.id, 'Cart persistence reload lost the customer session.')
   await page.getByRole('button', { name: /Open shopping bag/ }).click()
   const cartDialog = page.locator('.cs-cart-dialog[open]')
   assert.equal(await page.getByRole('navigation', { name: 'Checkout steps', exact: true }).getByRole('button').count(), 3)

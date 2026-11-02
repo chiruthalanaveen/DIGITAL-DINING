@@ -1,5 +1,10 @@
 # Phase 0 security review
 
+Current follow-up, 2 November: the
+[subscription ledger review](subscription-ledger-review.md) and
+[test report](subscription-ledger-report.md) address replay in a new, default-off
+flow. The migration is not hosted; this does not close production release gates.
+
 1 November 2026. Branch: `feature/phase0-account-payment-guards`, based on
 commerce commit `4ac1e12`. This is a bounded repository/local-fixture review,
 not a certification of the installed production database or every platform role.

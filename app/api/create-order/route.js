@@ -1,6 +1,8 @@
 import Razorpay from 'razorpay'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
+import { callSubscriptionLedger, assertCheckoutBinding, isSubscriptionCheckoutId, requirePaidSubscriptionCheckout, SubscriptionLedgerError } from '@/lib/server/subscriptionLedger'
 
 export const runtime = 'nodejs'
 
@@ -89,7 +91,7 @@ export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}))
 
-    const restaurantId = String(body.restaurantId || '').trim()
+    const restaurantId = String(body.restaurantId || '').trim().toLowerCase()
     const planCode = String(body.plan || body.planCode || '')
       .trim()
       .toLowerCase()
@@ -103,6 +105,10 @@ export async function POST(req) {
         },
         { status: 400 }
       )
+    }
+
+    if (!isSubscriptionCheckoutId(restaurantId)) {
+      return NextResponse.json({ success: false, message: 'A valid restaurant ID is required.' }, { status: 400 })
     }
 
     const selectedPlan = PLANS[planCode]
@@ -137,6 +143,7 @@ export async function POST(req) {
       process.env.NEXT_PUBLIC_SUPABASE_URL
     const anonKey =
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
     const { keyId, keySecret } =
       getPlatformRazorpayConfig()
@@ -162,6 +169,8 @@ export async function POST(req) {
     if (!anonKey) {
       missingConfig.push('NEXT_PUBLIC_SUPABASE_ANON_KEY')
     }
+
+    if (!serviceRoleKey) missingConfig.push('SUPABASE_SERVICE_ROLE_KEY')
 
     if (missingConfig.length > 0) {
       console.error(
@@ -278,6 +287,8 @@ export async function POST(req) {
       )
     }
 
+    requirePaidSubscriptionCheckout()
+
     const amountInPaise = Math.round(
       amountInRupees * 100
     )
@@ -295,6 +306,18 @@ export async function POST(req) {
         { status: 400 }
       )
     }
+
+    const admin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+    const checkoutId = crypto.randomUUID()
+    const expectedCheckout = { checkoutId, restaurantId, ownerId: user.id, planCode, billingCycle, amountPaise: amountInPaise, keyId }
+    const opened = await callSubscriptionLedger(admin, 'subscription_open_checkout', {
+      p_checkout_id: checkoutId, p_restaurant_id: restaurantId, p_owner_id: user.id,
+      p_plan_code: planCode, p_billing_cycle: billingCycle, p_amount_paise: amountInPaise,
+      p_currency: 'INR', p_provider_key_id: keyId,
+    })
+    assertCheckoutBinding(opened, expectedCheckout)
 
     const razorpay = new Razorpay({
       key_id: keyId,
@@ -315,19 +338,28 @@ export async function POST(req) {
         billing_cycle: billingCycle,
         owner_id: user.id,
         amount_rupees: String(amountInRupees),
+        checkout_id: checkoutId,
       },
     })
 
-    if (!order?.id) {
+    if (typeof order?.id !== 'string' || !order.id ||
+        Number(order.amount) !== amountInPaise || order.currency !== 'INR') {
       throw new Error(
         'Razorpay did not return a valid order.'
       )
     }
 
+    const bound = await callSubscriptionLedger(admin, 'subscription_bind_checkout', {
+      p_checkout_id: checkoutId, p_restaurant_id: restaurantId, p_owner_id: user.id,
+      p_provider_order_id: order.id,
+    })
+    assertCheckoutBinding(bound, { ...expectedCheckout, orderId: order.id })
+
     return NextResponse.json({
       success: true,
       order,
       orderId: order.id,
+      checkoutId,
       amount: order.amount,
       currency: order.currency,
       // Safe to expose Key ID to Razorpay Checkout.
@@ -338,21 +370,16 @@ export async function POST(req) {
       planName: selectedPlan.name,
     })
   } catch (error) {
-    console.error(
-      'Razorpay subscription order creation failed:',
-      error
-    )
-
-    const razorpayMessage =
-      error?.error?.description ||
-      error?.description ||
-      error?.message ||
-      'Internal Server Error during order creation.'
+    if (error instanceof SubscriptionLedgerError) {
+      return NextResponse.json({ success: false, code: error.code, message: error.message },
+        { status: error.status, headers: { 'Cache-Control': 'no-store' } })
+    }
+    console.error('Subscription checkout creation failed.', { code: error?.code || error?.name || 'unknown' })
 
     return NextResponse.json(
       {
         success: false,
-        message: razorpayMessage,
+        message: 'Unable to prepare subscription checkout. Please try again later. If you already paid, do not pay again; contact support.',
       },
       { status: 500 }
     )

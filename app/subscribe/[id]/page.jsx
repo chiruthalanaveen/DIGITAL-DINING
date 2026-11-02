@@ -138,6 +138,7 @@ export default function SubscriptionPage({ params, searchParams }) {
   const [scriptLoaded, setScriptLoaded] = useState(false)
   const [isActivated, setIsActivated] = useState(false)
   const [activatedRestaurant, setActivatedRestaurant] = useState(null)
+  const [isPaymentReplay, setIsPaymentReplay] = useState(false)
 
   const selectedPlanData = useMemo(
     () => PLANS[selectedPlan] || PLANS.restaurant_pro,
@@ -261,6 +262,7 @@ export default function SubscriptionPage({ params, searchParams }) {
       const data = await readJsonResponse(response)
 
       setActivatedRestaurant(data.restaurant || null)
+      setIsPaymentReplay(false)
       setIsActivated(true)
     } catch (error) {
       console.error('Coupon activation error:', error)
@@ -297,6 +299,7 @@ export default function SubscriptionPage({ params, searchParams }) {
     const data = await readJsonResponse(response)
 
     setActivatedRestaurant(data.restaurant || null)
+    setIsPaymentReplay(data.replayed === true)
     setIsActivated(true)
   }
 
@@ -354,7 +357,7 @@ export default function SubscriptionPage({ params, searchParams }) {
         key: razorpayKey,
         amount: orderAmount,
         currency: orderData.currency || 'INR',
-        name: 'Digital Dining',
+        name: 'Digital Dine-In',
         description: `${selectedPlanData.name} (${billingCycle}) Subscription`,
         order_id: orderId,
 
@@ -367,7 +370,7 @@ export default function SubscriptionPage({ params, searchParams }) {
             console.error('Subscription verification failed:', error)
 
             alert(
-              'Payment was received, but subscription verification failed: ' +
+              'Payment verification has not completed: ' +
                 (error?.message || 'Please contact support.')
             )
           } finally {
@@ -376,7 +379,7 @@ export default function SubscriptionPage({ params, searchParams }) {
         },
 
         prefill: {
-          name: 'Digital Dining Partner',
+          name: 'Digital Dine-In Partner',
         },
 
         theme: {
@@ -411,7 +414,7 @@ export default function SubscriptionPage({ params, searchParams }) {
   }
 
   if (isActivated) {
-    const activePlanCode =
+    const verifiedPlanCode =
       activatedRestaurant?.plan_code || selectedPlanData.code
 
     return (
@@ -422,19 +425,21 @@ export default function SubscriptionPage({ params, searchParams }) {
           </div>
 
           <h1 className="mt-5 text-2xl font-black text-white">
-            Subscription activated
+            {isPaymentReplay ? 'Payment already verified' : 'Subscription activated'}
           </h1>
 
           <p className="mt-2 text-sm text-neutral-400">
-            Your Digital Dining workspace has been updated successfully.
+            {isPaymentReplay
+              ? 'No subscription changes were made. Open your dashboard to view your current subscription status.'
+              : 'Your Digital Dining workspace has been updated successfully.'}
           </p>
 
           <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
             <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
-              Active plan
+              {isPaymentReplay ? 'Originally verified plan' : 'Active plan'}
             </p>
             <p className="mt-1 text-sm font-black text-emerald-400">
-              {PLANS[activePlanCode]?.name ||
+              {PLANS[verifiedPlanCode]?.name ||
                 selectedPlanData.name}
             </p>
           </div>

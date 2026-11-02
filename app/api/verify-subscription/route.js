@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import Razorpay from 'razorpay'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { callSubscriptionLedger, assertActivationReceipt, isSubscriptionCheckoutId, requirePaidSubscriptionCheckout, SubscriptionLedgerError } from '@/lib/server/subscriptionLedger'
 
 export const runtime = 'nodejs'
 
@@ -112,22 +113,6 @@ function getPlatformRazorpayConfig() {
   }
 }
 
-function getExpiry(billingCycle) {
-  const expiry = new Date()
-
-  if (billingCycle === '1month') {
-    expiry.setMonth(expiry.getMonth() + 1)
-  } else if (billingCycle === '6months') {
-    expiry.setMonth(expiry.getMonth() + 6)
-  } else if (billingCycle === '12months') {
-    expiry.setFullYear(expiry.getFullYear() + 1)
-  } else {
-    throw new Error('Invalid billing cycle.')
-  }
-
-  return expiry
-}
-
 function safeEqual(first, second) {
   const a = Buffer.from(String(first || ''))
   const b = Buffer.from(String(second || ''))
@@ -208,7 +193,7 @@ export async function POST(req) {
 
     const restaurantId = String(
       body.restaurantId || ''
-    ).trim()
+    ).trim().toLowerCase()
 
     const mode =
       body.mode === 'coupon'
@@ -223,6 +208,10 @@ export async function POST(req) {
         },
         { status: 400 }
       )
+    }
+
+    if (!isSubscriptionCheckoutId(restaurantId)) {
+      return NextResponse.json({ success: false, message: 'A valid restaurant ID is required.' }, { status: 400 })
     }
 
     const supabaseUrl =
@@ -360,6 +349,9 @@ export async function POST(req) {
 
     let planCode = ''
     let billingCycle = ''
+    let activation
+
+    if (mode === 'payment') requirePaidSubscriptionCheckout()
 
     // ==================================================
     // TEST COUPON - ONE MONTH FREE
@@ -550,6 +542,8 @@ export async function POST(req) {
       )
 
       if (
+        order?.id !== razorpayOrderId ||
+        payment?.id !== razorpayPaymentId ||
         orderRestaurantId !== restaurantId ||
         orderOwnerId !== String(user.id) ||
         orderPlanCode !== requestedPlanCode ||
@@ -643,6 +637,26 @@ export async function POST(req) {
 
       planCode = orderPlanCode
       billingCycle = orderBillingCycle
+
+      const checkoutId = order?.notes?.checkout_id
+      if (!isSubscriptionCheckoutId(checkoutId)) {
+        return NextResponse.json({
+          success: false,
+          code: 'SUBSCRIPTION_RECONCILIATION_REQUIRED',
+          message: 'This payment predates secure checkout registration or needs an account review. If you already paid, do not pay again; contact support with your payment reference.',
+        }, { status: 409, headers: { 'Cache-Control': 'no-store' } })
+      }
+
+      activation = await callSubscriptionLedger(admin, 'subscription_activate_payment', {
+        p_checkout_id: checkoutId, p_restaurant_id: restaurantId, p_owner_id: user.id,
+        p_provider_order_id: razorpayOrderId, p_provider_payment_id: razorpayPaymentId,
+        p_amount_paise: expectedAmount, p_currency: 'INR', p_plan_code: planCode,
+        p_billing_cycle: billingCycle, p_provider_key_id: keyId,
+      })
+      assertActivationReceipt(activation, {
+        checkoutId, restaurantId, orderId: razorpayOrderId, paymentId: razorpayPaymentId,
+        amountPaise: expectedAmount, planCode, billingCycle,
+      }, selectedPlan)
     }
 
     // ==================================================
@@ -661,80 +675,9 @@ export async function POST(req) {
       )
     }
 
-    const subscriptionExpiry =
-      getExpiry(billingCycle)
-
-    const updatePayload = {
-      plan: selectedPlan.legacyPlan,
-      plan_code: planCode,
-      billing_cycle: billingCycle,
-      subscription_status: 'active',
-      subscription_expires_at:
-        subscriptionExpiry.toISOString(),
-      business_type:
-        selectedPlan.businessType,
-      resort_enabled:
-        selectedPlan.resortEnabled,
-      delivery_enabled:
-        selectedPlan.deliveryEnabled,
-    }
-
-    const {
-      data: updatedRestaurant,
-      error: updateError,
-    } = await admin
-      .from('restaurants')
-      .update(updatePayload)
-      .eq('id', restaurantId)
-      .eq('owner_id', user.id)
-      .eq('approval_status', 'approved')
-      .select(`
-        id,
-        name,
-        plan,
-        plan_code,
-        billing_cycle,
-        subscription_status,
-        subscription_expires_at,
-        business_type,
-        resort_enabled,
-        delivery_enabled
-      `)
-      .single()
-
-    if (updateError) {
-      console.error(
-        'Subscription update failed:',
-        updateError
-      )
-
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            updateError.message ||
-            'Unable to activate subscription.',
-        },
-        { status: 500 }
-      )
-    }
-
-    if (
-      !updatedRestaurant ||
-      updatedRestaurant.plan_code !==
-        planCode ||
-      updatedRestaurant
-        .subscription_status !== 'active'
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            'Subscription database update could not be confirmed.',
-        },
-        { status: 500 }
-      )
-    }
+    // The RPC has atomically recorded the consumed payment and subscription.
+    // Replays return its frozen result; never run a direct activation fallback.
+    const updatedRestaurant = activation.restaurant
 
     // New Delivery subscriptions need their one-per-tenant settings row.
     if (selectedPlan.deliveryEnabled) {
@@ -761,29 +704,32 @@ export async function POST(req) {
         // settings row could not be prepared; the dashboard can retry.
         console.error(
           'Unable to prepare Delivery settings:',
-          deliverySettingsError
+          { code: deliverySettingsError.code || 'unknown' }
         )
       }
     }
 
     return NextResponse.json({
       success: true,
-      message:
-        `${selectedPlan.name} subscription activated successfully.`,
+      message: activation.replayed
+        ? 'This payment was already verified. No subscription changes were made.'
+        : `${selectedPlan.name} subscription activated successfully.`,
       restaurant: updatedRestaurant,
+      replayed: activation.replayed,
+      receipt: activation.receipt,
     })
   } catch (error) {
-    console.error(
-      'VERIFY SUBSCRIPTION ERROR:',
-      error
-    )
+    if (error instanceof SubscriptionLedgerError) {
+      return NextResponse.json({ success: false, code: error.code, message: error.message },
+        { status: error.status, headers: { 'Cache-Control': 'no-store' } })
+    }
+    console.error('Subscription verification failed.', { code: error?.code || error?.name || 'unknown' })
 
     return NextResponse.json(
       {
         success: false,
         message:
-          error?.message ||
-          'Unable to verify subscription.',
+          'Unable to verify subscription. If you already paid, do not pay again; retry verification or contact support.',
       },
       { status: 500 }
     )
