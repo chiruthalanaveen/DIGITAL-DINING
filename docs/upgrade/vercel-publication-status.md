@@ -6,6 +6,12 @@ metadata now return HTTP 200. No token/secret value was printed, decrypted or
 copied. No deployment, production SQL, hosted setting change or merge has yet
 been performed by this request.
 
+Prepared source: commit `d8af507afd6322c23a99070d4544da222ad27b40` on
+`feature/phase0-address-coordinate-validation`, in draft
+[PR #6](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/6), based on
+draft PR #5. A later documentation-only commit does not change this tested
+application source. No PR has been merged and main has not been updated.
+
 ## Verified project and current configuration
 
 - Project `digital-dining`, ID `prj_Zh1KOvZq6Vm7e9YecZDwur4RbeHL`.
@@ -38,9 +44,14 @@ including the fact that paid subscription checkout remains disabled until its
 separate migration/configuration gates pass. Main/PR merges and new SQL remain
 separate actions; publishing does not authorize them.
 
+A fresh read-only continuation check again returned HTTP200 for project,
+Preview-environment and deployment-list metadata, with zero Preview bindings
+and no new deployment. The pending target choice has not received an answer.
+This is a configuration/authorization boundary, not an unresolved token error.
+
 The latest source includes the [address fixes](address-coordinate-report.md)
-plus earlier draft work. It passes154 unit tests and a fresh build. Full lint
-remains169 inherited errors/179 warnings, with zero new errors/warnings.
+plus earlier draft work. It passes 154 unit tests and a fresh build. Full lint
+remains 169 inherited errors/179 warnings, with zero new errors/warnings.
 **No SQL migration required for this address/publication increment.** The ledger
 migration from PR #5 is still unapplied and must not be run to unblock a Preview.
 
@@ -78,3 +89,19 @@ earlier denial evidence. `npm run build` passed with synthetic local settings;
 its output is not a hosted-deployable artifact. Vercel CLI `65.9.0` was installed
 outside the repository with install scripts disabled and no real application/
 Vercel credentials passed to the installer. Project dependencies are unchanged.
+
+The CLI rejects the environment's opaque credential handle during local token
+validation, before creating a deployment; the same credential works in official
+REST API requests. Do not edit/decode it or request another replacement. The
+prepared fallback is the official `POST /v13/deployments` API with the linked
+GitHub repository, branch and exact committed SHA. The Preview request omits
+`target`; Production explicitly sets `target: production` only after the target
+decision. Both request templates pin the subscription flag to `false` at build
+and runtime. These templates are prepared only; no deployment POST was sent.
+Do not use CLI `--verify`, alter deployment protection or create bypass secrets.
+
+The continuation also reran `npm run build` with the same clean synthetic
+loopback environment: **PASS, exit 0**. No hosted credentials were passed to
+that build. Evidence is `continue-build-review/{summary.json,build.log}`.
+The earlier 154-test and inherited-lint results remain applicable because this
+continuation changes release documentation only.

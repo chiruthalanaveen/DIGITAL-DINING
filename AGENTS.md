@@ -46,9 +46,12 @@ as the default target, with paid subscriptions off; this authorizes Preview work
 without removing the production SQL/configuration, live-payment or merge holds.
 Do not promote to production or copy Production secrets into Preview. Verify
 actual project/Preview configuration before publishing, build from source and
-retain every automatic Git deployment guard. Fresh project/team/Preview/deploy
-metadata checks return HTTP403; resolve legitimate access rather than bypassing
-controls or claiming a deployment URL. No CLI deployment was created.
+retain every automatic Git deployment guard. The updated team-scoped token now
+returns HTTP200 for project, Preview-environment and deployment-list reads.
+Preview has zero environment bindings; all fourteen existing bindings are
+Production-only. The target question is still unanswered. Do not infer approval
+for production or copy Production secrets into Preview. No deployment was
+created. See `docs/upgrade/vercel-publication-status.md` for the release record.
 
 Continue the bounded saved-address coordinate validation fix on
 `feature/phase0-address-coordinate-validation`, based on PR #5's `deee372`.
