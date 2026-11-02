@@ -7,6 +7,10 @@ current target privileges/legacy triggers and real provider proof remain
 unverified; no hosted SQL, rollout flag or deployment has been applied. The body
 below records the preceding PR #4 increment and its still-relevant release gates.
 
+The new flow is delivered in stacked draft
+[PR #5](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/5), based on PR #4.
+Both PRs and commerce PR #3 remain unmerged.
+
 1 November 2026. **Overall production release: BLOCKED.**
 
 Current branch: `feature/phase0-account-payment-guards`, based on `4ac1e12`.

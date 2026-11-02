@@ -4,6 +4,9 @@
 from draft PR #4. PR #4 and commerce PR #3 remain draft and unmerged. This is a
 separate Phase 0 increment, not a production release.
 
+Delivered through stacked **draft [PR #5](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/5)**,
+targeting PR #4's feature branch. Implementation commit: `6dd2407`.
+
 **Local implementation: PASS with inherited lint failure disclosed. Hosted
 release: BLOCKED.** The new migration is prepared for review, not applied to any
 hosted project. Paid checkout is disabled by default. The previous deployed
