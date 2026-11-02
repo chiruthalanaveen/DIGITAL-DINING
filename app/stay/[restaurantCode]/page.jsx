@@ -128,37 +128,15 @@ function tomorrowDate(days = 1) {
 
 
 export default function ResortBookingPage() {
-  useMobileViewportLock()
-
-
-
   const params = useParams()
+  const restaurantCode = typeof params?.restaurantCode === 'string'
+    ? decodeURIComponent(params.restaurantCode)
+    : ''
+  return <ResortBookingContent key={restaurantCode} restaurantCode={restaurantCode} />
+}
 
-
-
-
-
-
-
-  const restaurantCode =
-
-
-
-    typeof params?.restaurantCode === 'string'
-
-
-
-      ? decodeURIComponent(params.restaurantCode)
-
-
-
-      : ''
-
-
-
-
-
-
+function ResortBookingContent({ restaurantCode }) {
+  useMobileViewportLock()
 
   const [loading, setLoading] = useState(true)
 
@@ -329,10 +307,8 @@ export default function ResortBookingPage() {
 
 
   useEffect(() => {
-
-
-
     if (!restaurantCode) return
+    const loadResort = async () => {
 
 
 
@@ -340,27 +316,7 @@ export default function ResortBookingPage() {
 
 
 
-    loadResort()
 
-
-
-  }, [restaurantCode])
-
-
-
-
-
-
-
-  const loadResort = async () => {
-
-
-
-    setLoading(true)
-
-
-
-    setMessage('')
 
 
 
@@ -519,12 +475,8 @@ export default function ResortBookingPage() {
 
 
   }
-
-
-
-
-
-
+    loadResort()
+  }, [restaurantCode])
 
   const checkAvailability = async () => {
 

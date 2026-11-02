@@ -14,6 +14,7 @@ import {
 
   useState,
 
+  useSyncExternalStore,
 } from 'react'
 
 
@@ -85,6 +86,32 @@ function formatDate(value) {
 
 
 
+function subscribeStoredSession(onChange) {
+  window.addEventListener('storage', onChange)
+  return () => window.removeEventListener('storage', onChange)
+}
+
+function subscribeHydration() { return () => {} }
+
+function readStoredSession(storageKey) {
+  try { return localStorage.getItem(storageKey) || '' } catch { return '' }
+}
+
+// The server snapshot stays logged out; browser storage is read after hydration.
+function usePortalSession(storageKey) {
+  const savedToken = useSyncExternalStore(
+    subscribeStoredSession, () => readStoredSession(storageKey), () => ''
+  )
+  const hydrated = useSyncExternalStore(subscribeHydration, () => true, () => false)
+  const [override, setOverride] = useState(null)
+  const overrideMatches = override?.key === storageKey && override.savedToken === savedToken
+  // Never revive an in-memory token after a store switch or external logout.
+  if (override && !overrideMatches) setOverride(null)
+  const token = overrideMatches ? override.token : savedToken
+  const setToken = (nextToken) => setOverride({ key: storageKey, token: nextToken, savedToken: readStoredSession(storageKey) })
+  return [token, setToken, !hydrated]
+}
+
 export default function DeliveryPackerPortal({
 
   params,
@@ -117,13 +144,7 @@ export default function DeliveryPackerPortal({
 
 
 
-  const [
-
-    sessionToken,
-
-    setSessionToken,
-
-  ] = useState('')
+  const [sessionToken, setSessionToken, loading] = usePortalSession(storageKey)
 
 
 
@@ -157,13 +178,6 @@ export default function DeliveryPackerPortal({
 
 
 
-  const [
-
-    loading,
-
-    setLoading,
-
-  ] = useState(true)
 
 
 
@@ -303,37 +317,7 @@ export default function DeliveryPackerPortal({
 
 
 
-  useEffect(() => {
 
-    try {
-
-      const saved =
-
-        localStorage.getItem(
-
-          storageKey
-
-        )
-
-
-
-      if (saved) {
-
-        setSessionToken(saved)
-
-      }
-
-    } catch {
-
-      // Ignore unavailable local storage.
-
-    }
-
-
-
-    setLoading(false)
-
-  }, [storageKey])
 
 
 
@@ -349,147 +333,33 @@ export default function DeliveryPackerPortal({
 
 
 
-  const loadPortal = async (
-
-    tokenOverride = '',
-
-    quiet = false
-
-  ) => {
-
-    const token =
-
-      String(
-
-        tokenOverride ||
-
-          sessionToken ||
-
-          ''
-
-      ).trim()
-
-
-
-    if (!token) {
-
-      setPortalData(null)
-
-      return
-
+  const loadPortal = (tokenOverride = '') => {
+    const token = String(tokenOverride || sessionToken || '').trim()
+    if (!token) return
+    const requestPortal = async () => {
+      const { data, error: rpcError } = await supabase.rpc('get_delivery_packer_portal_data', {
+        p_session_token: token,
+      })
+      if (rpcError) throw rpcError
+      if (!data?.success) throw new Error(data?.message || 'Packer session is invalid.')
+      return data
     }
-
-
-
-    if (quiet) {
-
-      setRefreshing(true)
-
-    }
-
-
-
-    try {
-
-      const {
-
-        data,
-
-        error: rpcError,
-
-      } = await supabase.rpc(
-
-        'get_delivery_packer_portal_data',
-
-        {
-
-          p_session_token:
-
-            token,
-
-        }
-
-      )
-
-
-
-      if (rpcError) {
-
-        throw rpcError
-
-      }
-
-
-
-      if (!data?.success) {
-
-        throw new Error(
-
-          data?.message ||
-
-            'Packer session is invalid.'
-
-        )
-
-      }
-
-
-
+    return requestPortal().then((data) => {
       setPortalData(data)
-
       setError('')
-
-    } catch (loadError) {
-
-      console.error(
-
-        'Packer portal load error:',
-
-        loadError
-
-      )
-
-
-
+    }).catch((loadError) => {
+      console.error('Delivery packer portal load error:', loadError)
       setPortalData(null)
-
       setSessionToken('')
-
-
-
-      try {
-
-        localStorage.removeItem(
-
-          storageKey
-
-        )
-
-      } catch {
-
-        // Ignore.
-
-      }
-
-
-
-      setError(
-
-        loadError?.message ||
-
-          'Your Packer Portal session expired. Please sign in again.'
-
-      )
-
-    } finally {
-
-      setRefreshing(false)
-
-    }
-
+      try { localStorage.removeItem(storageKey) } catch { /* Storage may be unavailable. */ }
+      setError(loadError?.message || 'Your Packer Portal session expired. Please sign in again.')
+    }).finally(() => setRefreshing(false))
   }
 
-
+  const refreshPortal = async () => {
+    setRefreshing(true)
+    await loadPortal()
+  }
 
   useEffect(() => {
 
@@ -527,13 +397,7 @@ export default function DeliveryPackerPortal({
 
     () =>
 
-      loadPortal(
-
-        '',
-
-        false
-
-      ),
+      loadPortal(),
 
     Boolean(sessionToken),
 
@@ -1127,13 +991,7 @@ export default function DeliveryPackerPortal({
 
 
 
-        await loadPortal(
-
-          '',
-
-          true
-
-        )
+        await refreshPortal()
 
 
 
@@ -1869,13 +1727,7 @@ export default function DeliveryPackerPortal({
 
 
 
-        await loadPortal(
-
-          '',
-
-          true
-
-        )
+        await refreshPortal()
 
       } catch (
 
@@ -3838,13 +3690,7 @@ export default function DeliveryPackerPortal({
 
               onClick={() =>
 
-                loadPortal(
-
-                  '',
-
-                  true
-
-                )
+                refreshPortal()
 
               }
 

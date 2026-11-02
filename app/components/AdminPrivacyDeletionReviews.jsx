@@ -74,18 +74,12 @@ export default function AdminPrivacyDeletionReviews() {
   const [preflightBusy, setPreflightBusy] = useState('')
   const [preflightByRequest, setPreflightByRequest] = useState({})
 
-  const loadRequests = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const data = await adminFetch(`/api/admin/privacy-deletions?status=${encodeURIComponent(status)}&page=${page}`)
-      setResult(data)
-    } catch (err) {
-      setError(err?.message || 'Unable to load requests.')
-    } finally {
-      setLoading(false)
-    }
-  }, [status, page])
+  const loadRequests = useCallback(() =>
+    adminFetch(`/api/admin/privacy-deletions?status=${encodeURIComponent(status)}&page=${page}`)
+      .then(data => { setResult(data); setError('') })
+      .catch(err => setError(err?.message || 'Unable to load requests.'))
+      .finally(() => setLoading(false))
+  , [status, page])
 
   useEffect(() => { loadRequests() }, [loadRequests])
 
@@ -119,6 +113,7 @@ export default function AdminPrivacyDeletionReviews() {
       setChoice(null)
       setNote('')
       setConfirmText('')
+      setLoading(true)
       await loadRequests()
     } catch (err) {
       setError(err?.message || 'Unable to save this review.')
@@ -205,12 +200,12 @@ export default function AdminPrivacyDeletionReviews() {
         <select
           id="privacy-deletion-filter"
           value={status}
-          onChange={event => { setStatus(event.target.value); setPage(0); setChoice(null); setHistoryId(null) }}
+          onChange={event => { setLoading(true); setError(''); setStatus(event.target.value); setPage(0); setChoice(null); setHistoryId(null) }}
           className="min-h-11 rounded-xl border border-neutral-700 bg-neutral-900 px-3 text-sm text-white"
         >
           {STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
-        <button type="button" onClick={loadRequests} disabled={loading || saving}
+        <button type="button" onClick={() => { setLoading(true); setError(''); void loadRequests() }} disabled={loading || saving}
           className="min-h-11 rounded-xl border border-neutral-700 bg-neutral-900 px-4 text-xs font-bold text-neutral-100 disabled:opacity-50">
           {loading ? 'Loading…' : 'Refresh'}
         </button>
@@ -360,10 +355,10 @@ export default function AdminPrivacyDeletionReviews() {
       </div>}
 
       <div className="flex items-center justify-between gap-3">
-        <button type="button" onClick={() => { setPage(value => Math.max(0, value - 1)); setChoice(null) }} disabled={page === 0 || loading}
+        <button type="button" onClick={() => { setLoading(true); setError(''); setPage(value => Math.max(0, value - 1)); setChoice(null) }} disabled={page === 0 || loading}
           className="min-h-10 rounded-xl border border-neutral-700 px-4 text-xs font-bold text-neutral-200 disabled:opacity-30">Previous</button>
         <span className="text-xs text-neutral-400">Page {page + 1} of {totalPages}</span>
-        <button type="button" onClick={() => { setPage(value => value + 1); setChoice(null) }} disabled={page + 1 >= totalPages || loading}
+        <button type="button" onClick={() => { setLoading(true); setError(''); setPage(value => value + 1); setChoice(null) }} disabled={page + 1 >= totalPages || loading}
           className="min-h-10 rounded-xl border border-neutral-700 px-4 text-xs font-bold text-neutral-200 disabled:opacity-30">Next</button>
       </div>
     </section>

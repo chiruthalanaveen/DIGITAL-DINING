@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DDAppInstall from '@/app/components/DDAppInstall'
@@ -66,35 +67,48 @@ function Icon({ name, size = 21 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] || paths.bag}</svg>
 }
 
+function subscribeHydration() { return () => {} }
+function browserSnapshot() { return true }
+function serverSnapshot() { return false }
+
+function savedDestination() {
+  let lastStore = '', location = null
+  try {
+    const last = sessionStorage.getItem(LAST_STORE_KEY) || ''
+    if (STORE_CODE.test(last)) lastStore = last
+    const saved = JSON.parse(sessionStorage.getItem(DESTINATION_KEY) || 'null')
+    if (validCoords(saved?.latitude, saved?.longitude)) {
+      location = { latitude: saved.latitude, longitude: saved.longitude, source: saved.source || 'saved' }
+    }
+  } catch { /* Corrupt browser storage is not authentication. */ }
+  return { lastStore, location }
+}
+
 export default function DDDeliveryAppPage() {
+  const browserReady = useSyncExternalStore(subscribeHydration, browserSnapshot, serverSnapshot)
+  return <DDDeliveryContent key={browserReady ? 'browser' : 'server'} restoreSaved={browserReady} />
+}
+
+function DDDeliveryContent({ restoreSaved }) {
   const router = useRouter()
-  const [coords, setCoords] = useState(null)
+  const [initial] = useState(() => restoreSaved ? savedDestination() : { lastStore: '', location: null })
+  const [coords, setCoords] = useState(initial.location)
   const [manual, setManual] = useState(false)
-  const [latInput, setLatInput] = useState('')
-  const [lngInput, setLngInput] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [latInput, setLatInput] = useState(initial.location ? String(initial.location.latitude) : '')
+  const [lngInput, setLngInput] = useState(initial.location ? String(initial.location.longitude) : '')
+  const [busy, setBusy] = useState(Boolean(initial.location))
   const [error, setError] = useState('')
   const [stores, setStores] = useState([])
   const [searched, setSearched] = useState(false)
   const [search, setSearch] = useState('')
-  const [lastStore, setLastStore] = useState('')
+  const [lastStore, setLastStore] = useState(initial.lastStore)
   const discoveryId = useRef(0)
 
-  const discover = useCallback(async (position, autoOpen = false) => {
-    if (!validCoords(position?.latitude, position?.longitude)) {
-      setError('Choose a valid delivery location.')
-      return
-    }
+  const loadStores = useCallback((position, autoOpen = false) => {
     const requestId = ++discoveryId.current
-    setCoords(position)
-    setBusy(true)
-    setError('')
-    setSearched(false)
-    setStores([])
-    try {
-      const { data, error: discoverError } = await supabase.rpc('get_nearby_delivery_stores', {
+    return supabase.rpc('get_nearby_delivery_stores', {
         p_latitude: Number(position.latitude), p_longitude: Number(position.longitude),
-      })
+      }).then(async ({ data, error: discoverError }) => {
       if (discoverError) throw discoverError
       if (data?.success !== true) throw new Error(data?.message || 'Could not find stores for this location.')
       const nearby = (Array.isArray(data.stores) ? data.stores : [])
@@ -121,25 +135,30 @@ export default function DDDeliveryAppPage() {
         sessionStorage.setItem(LAST_STORE_KEY, verified[0].code)
         router.push(`/delivery/${encodeURIComponent(verified[0].code)}`)
       }
-    } catch (e) {
+    }).catch(e => {
       if (requestId === discoveryId.current) setError(e?.message || 'Delivery stores could not be loaded.')
-    } finally {
+    }).finally(() => {
       if (requestId === discoveryId.current) setBusy(false)
-    }
+    })
   }, [router])
 
   useEffect(() => {
-    try {
-      const last = sessionStorage.getItem(LAST_STORE_KEY) || ''
-      if (STORE_CODE.test(last)) setLastStore(last)
-      const saved = JSON.parse(sessionStorage.getItem(DESTINATION_KEY) || 'null')
-      if (validCoords(saved?.latitude, saved?.longitude)) {
-        setLatInput(String(saved.latitude))
-        setLngInput(String(saved.longitude))
-        void discover({ latitude: saved.latitude, longitude: saved.longitude, source: saved.source || 'saved' })
-      }
-    } catch { /* Corrupt browser storage is not authentication. */ }
-  }, [discover])
+    if (initial.location) void loadStores(initial.location)
+    return () => { discoveryId.current += 1 }
+  }, [initial.location, loadStores])
+
+  function discover(position, autoOpen = false) {
+    if (!validCoords(position?.latitude, position?.longitude)) {
+      setError('Choose a valid delivery location.')
+      return
+    }
+    setCoords(position)
+    setBusy(true)
+    setError('')
+    setSearched(false)
+    setStores([])
+    void loadStores(position, autoOpen)
+  }
 
   function setDeliveryPoint(latitude, longitude, source = 'manual', accuracy = null) {
     if (!validCoords(latitude, longitude)) {
@@ -178,35 +197,35 @@ export default function DDDeliveryAppPage() {
   return <div className="ddp">
     <header className="ddp-topbar">
       <div className="ddp-topinner">
-        <a href="/dd-delivery" className="ddp-brand" aria-label="DD Delivery home"><span className="ddp-logo">dd<span>.</span></span><span className="ddp-brand-title">delivery<small>by Digital Dine-In</small></span></a>
-        <div className="ddp-current-location"><span className="ddp-location-icon"><Icon name="pin" size={18}/></span><span><small>DELIVERING TO</small><strong>{coords ? `${Number(coords.latitude).toFixed(4)}, ${Number(coords.longitude).toFixed(4)}` : 'Choose your location'}</strong></span><a href="/delivery" aria-label="Change delivery address">Change</a></div>
-        <div className="ddp-header-actions"><DDAppInstall swPath="/dd-delivery-sw.js" swScope="/dd-delivery"/><a href="/delivery/login?next=%2Fdelivery" className="ddp-avatar" aria-label="Sign in"><Icon name="user" size={21}/></a></div>
+        <Link href="/dd-delivery" className="ddp-brand" aria-label="DD Delivery home"><span className="ddp-logo">dd<span>.</span></span><span className="ddp-brand-title">delivery<small>by Digital Dine-In</small></span></Link>
+        <div className="ddp-current-location"><span className="ddp-location-icon"><Icon name="pin" size={18}/></span><span><small>DELIVERING TO</small><strong>{coords ? `${Number(coords.latitude).toFixed(4)}, ${Number(coords.longitude).toFixed(4)}` : 'Choose your location'}</strong></span><Link href="/delivery" aria-label="Change delivery address">Change</Link></div>
+        <div className="ddp-header-actions"><DDAppInstall swPath="/dd-delivery-sw.js" swScope="/dd-delivery"/><Link href="/delivery/login?next=%2Fdelivery" className="ddp-avatar" aria-label="Sign in"><Icon name="user" size={21}/></Link></div>
       </div>
     </header>
 
     <main className="ddp-main">
       <div className="ddp-hello"><span className="ddp-eyebrow"><Icon name="sparkle" size={14}/> YOUR LOCAL MARKETPLACE</span><h1>Everyday essentials,<br/><span>delivered with care.</span></h1><p>Good food, fresh produce and the little things you need — all from nearby stores.</p></div>
       <section className="ddp-hero" aria-label="Explore delivery">
-        <div className="ddp-hero-content"><span className="ddp-hero-pill">✦ FRESH PICKS • LOCAL STORES</span><h2>Good things<br/>are coming <em>your way.</em></h2><p>From the first craving to the last-minute grocery run.</p><a className="ddp-primary-btn" href="/delivery">Explore stores <Icon name="arrow" size={19}/></a></div>
+        <div className="ddp-hero-content"><span className="ddp-hero-pill">✦ FRESH PICKS • LOCAL STORES</span><h2>Good things<br/>are coming <em>your way.</em></h2><p>From the first craving to the last-minute grocery run.</p><Link className="ddp-primary-btn" href="/delivery">Explore stores <Icon name="arrow" size={19}/></Link></div>
         <div className="ddp-hero-art" aria-hidden="true"><div className="ddp-hero-disc"/><span className="ddp-hero-veg v1">🥑</span><span className="ddp-hero-veg v2">🥬</span><span className="ddp-hero-veg v3">🥕</span><span className="ddp-hero-veg v4">🍊</span><div className="ddp-hero-caption">Made for your everyday <span>✳</span></div></div>
       </section>
 
-      <section className="ddp-section ddp-categories" aria-label="Shopping categories"><div className="ddp-section-head"><div><span className="ddp-kicker">PICK YOUR FAVOURITES</span><h2>What are you looking for?</h2></div><a href="/delivery" className="ddp-subtle-link">See stores <Icon name="arrow" size={16}/></a></div><div className="ddp-category-grid">{CATEGORIES.map((category) => <a key={category.name} className={`ddp-category ${category.color}`} href="/delivery"><span aria-hidden="true">{category.icon}</span><strong>{category.name}</strong><small>{category.title}</small></a>)}</div></section>
+      <section className="ddp-section ddp-categories" aria-label="Shopping categories"><div className="ddp-section-head"><div><span className="ddp-kicker">PICK YOUR FAVOURITES</span><h2>What are you looking for?</h2></div><Link href="/delivery" className="ddp-subtle-link">See stores <Icon name="arrow" size={16}/></Link></div><div className="ddp-category-grid">{CATEGORIES.map((category) => <Link key={category.name} className={`ddp-category ${category.color}`} href="/delivery"><span aria-hidden="true">{category.icon}</span><strong>{category.name}</strong><small>{category.title}</small></Link>)}</div></section>
 
       <section className="ddp-section ddp-discovery" aria-label="Nearby delivery stores">
         <div className="ddp-section-head"><div><span className="ddp-kicker">RIGHT AROUND THE CORNER</span><h2>Stores near you</h2></div><button type="button" className="ddp-refetch" onClick={() => coords && discover(coords)} disabled={!coords || busy}><Icon name="refresh" size={17}/> Refresh</button></div>
-        <div className="ddp-address-bar"><div className="ddp-address-heading"><span className="ddp-address-pin"><Icon name="pin"/></span><span><strong>{coords ? 'Delivery location selected' : 'Where should we deliver?'}</strong><small>{coords ? `GPS pin · ${Number(coords.latitude).toFixed(5)}, ${Number(coords.longitude).toFixed(5)}` : 'Select a destination to find available stores'}</small></span></div><div className="ddp-address-actions"><button type="button" onClick={useGps} disabled={busy}><Icon name="gps" size={17}/> Use GPS</button><a href="/delivery">Choose address <Icon name="chevron" size={16}/></a></div></div>
+        <div className="ddp-address-bar"><div className="ddp-address-heading"><span className="ddp-address-pin"><Icon name="pin"/></span><span><strong>{coords ? 'Delivery location selected' : 'Where should we deliver?'}</strong><small>{coords ? `GPS pin · ${Number(coords.latitude).toFixed(5)}, ${Number(coords.longitude).toFixed(5)}` : 'Select a destination to find available stores'}</small></span></div><div className="ddp-address-actions"><button type="button" onClick={useGps} disabled={busy}><Icon name="gps" size={17}/> Use GPS</button><Link href="/delivery">Choose address <Icon name="chevron" size={16}/></Link></div></div>
         <div className="ddp-location-details"><button type="button" className="ddp-coordinate-toggle" onClick={() => setManual(v => !v)}>{manual ? 'Hide manual coordinates' : 'Testing? Enter coordinates manually'}</button>{manual && <form onSubmit={(e) => { e.preventDefault(); setDeliveryPoint(latInput, lngInput) }} className="ddp-coordinate-form"><label>Latitude<input value={latInput} onChange={e => setLatInput(e.target.value)} inputMode="decimal" placeholder="Latitude" required/></label><label>Longitude<input value={lngInput} onChange={e => setLngInput(e.target.value)} inputMode="decimal" placeholder="Longitude" required/></label><button type="submit">Find stores</button></form>}</div>
         {error && <p className="ddp-error" role="alert">{error}</p>}
         {busy && <div className="ddp-empty"><span className="ddp-loader"/><h3>Checking available stores…</h3><p>Verifying delivery coverage, wallet eligibility and plans.</p></div>}
-        {!busy && !searched && !error && <div className="ddp-empty"><span className="ddp-empty-illustration">📍</span><h3>Your neighbourhood, on demand.</h3><p>Use GPS or choose an address to explore delivery stores near you.</p><a className="ddp-small-primary" href="/delivery">Select delivery address <Icon name="arrow" size={16}/></a></div>}
-        {!busy && searched && stores.length === 0 && <div className="ddp-empty"><span className="ddp-empty-illustration">🏡</span><h3>No eligible stores at this location</h3><p>Try another destination. Stores must be open and pass delivery plan and wallet checks.</p><a className="ddp-small-primary" href="/delivery">Change address <Icon name="arrow" size={16}/></a></div>}
+        {!busy && !searched && !error && <div className="ddp-empty"><span className="ddp-empty-illustration">📍</span><h3>Your neighbourhood, on demand.</h3><p>Use GPS or choose an address to explore delivery stores near you.</p><Link className="ddp-small-primary" href="/delivery">Select delivery address <Icon name="arrow" size={16}/></Link></div>}
+        {!busy && searched && stores.length === 0 && <div className="ddp-empty"><span className="ddp-empty-illustration">🏡</span><h3>No eligible stores at this location</h3><p>Try another destination. Stores must be open and pass delivery plan and wallet checks.</p><Link className="ddp-small-primary" href="/delivery">Change address <Icon name="arrow" size={16}/></Link></div>}
         {!busy && stores.length > 0 && <><div className="ddp-store-tools"><p><strong>{stores.length} store{stores.length !== 1 ? 's' : ''}</strong> delivering to your location</p><label className="ddp-store-search"><Icon name="search" size={18}/><input aria-label="Search nearby stores" placeholder="Search stores" value={search} onChange={e => setSearch(e.target.value)}/></label></div><div className="ddp-stores">{shown.map(store => <button type="button" key={`${store.id}:${store.code}`} className="ddp-store" onClick={() => visitStore(store.code)}><span className="ddp-store-image">{/^https:\/\//i.test(store.banner) ? <img src={store.banner} alt="" onError={e => { e.currentTarget.style.display = 'none' }}/> : <span>🛍️</span>}</span><span className="ddp-store-desc"><strong>{store.name}</strong><small><span className="ddp-open-dot"/> Open for delivery</small><span className="ddp-distance"><Icon name="pin" size={14}/> {formatDistance(store.distance)}</span></span><span className="ddp-go"><Icon name="arrow" size={20}/></span></button>)}</div>{shown.length === 0 && <p className="ddp-filter-empty">No stores match that search.</p>}</>}
       </section>
-      <section className="ddp-promise"><span className="ddp-promise-icon">✳</span><div><strong>Built around your neighbourhood.</strong><p>Order securely using the existing Digital Dine-In checkout, with live tracking and support when you need it.</p></div><a href="/delivery">Start shopping <Icon name="arrow" size={16}/></a></section>
+      <section className="ddp-promise"><span className="ddp-promise-icon">✳</span><div><strong>Built around your neighbourhood.</strong><p>Order securely using the existing Digital Dine-In checkout, with live tracking and support when you need it.</p></div><Link href="/delivery">Start shopping <Icon name="arrow" size={16}/></Link></section>
     </main>
 
-    <nav className="ddp-bottom-nav" aria-label="Delivery app navigation"><a className="active" href="/dd-delivery"><Icon name="home"/><span>Home</span></a><a href="/delivery"><Icon name="bag"/><span>Explore</span></a><a href={orderTarget}><Icon name="clock"/><span>Orders</span></a><a href="/delivery/login?next=%2Fdelivery"><Icon name="user"/><span>Account</span></a></nav>
+    <nav className="ddp-bottom-nav" aria-label="Delivery app navigation"><Link className="active" href="/dd-delivery"><Icon name="home"/><span>Home</span></Link><Link href="/delivery"><Icon name="bag"/><span>Explore</span></Link><Link href={orderTarget}><Icon name="clock"/><span>Orders</span></Link><Link href="/delivery/login?next=%2Fdelivery"><Icon name="user"/><span>Account</span></Link></nav>
     <footer className="ddp-footer">DD Delivery · Powered by Digital Dine-In</footer>
   </div>
 }

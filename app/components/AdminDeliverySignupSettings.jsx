@@ -4,19 +4,19 @@ const modeLabel={otp:'SMS OTP + Mobile PIN',pin_question:'Mobile PIN + Security 
 export default function AdminDeliverySignupSettings(){
  const [data,setData]=useState(null)
  const [selection,setSelection]=useState('otp')
- const [busy,setBusy]=useState(false)
+ const [busy,setBusy]=useState(true)
  const [error,setError]=useState('')
  const [notice,setNotice]=useState('')
- const load=useCallback(async()=>{
-  setBusy(true);setError('')
-  try{
-   const response=await fetch('/api/admin/delivery-signup-settings',{cache:'no-store',credentials:'same-origin'})
-   const result=await response.json().catch(()=>({}))
-   if(!response.ok||!result.success)throw new Error(result?.message||'Unable to load settings.')
-   setData(result);setSelection(result.signupMode)
-  }catch(e){setError(e?.message||'Unable to load settings.')}
-  finally{setBusy(false)}
- },[])
+ const load=useCallback(()=>
+  fetch('/api/admin/delivery-signup-settings',{cache:'no-store',credentials:'same-origin'})
+   .then(async response=>{
+    const result=await response.json().catch(()=>({}))
+    if(!response.ok||!result.success)throw new Error(result?.message||'Unable to load settings.')
+    setData(result);setSelection(result.signupMode);setError('')
+   })
+   .catch(e=>setError(e?.message||'Unable to load settings.'))
+   .finally(()=>setBusy(false))
+ ,[])
  useEffect(()=>{void load()},[load])
  const save=async()=>{
   if(busy||!data||selection===data.signupMode)return
@@ -57,7 +57,7 @@ export default function AdminDeliverySignupSettings(){
    <div className="flex flex-wrap gap-2">
     <button type="button" disabled={busy||!data||selection===data.signupMode} onClick={save}
       className="rounded-xl bg-orange-500 px-5 py-3 text-sm font-black text-white disabled:opacity-40">{busy?'Working...':'Save signup method'}</button>
-    <button type="button" disabled={busy} onClick={()=>void load()}
+    <button type="button" disabled={busy} onClick={()=>{setBusy(true);setError('');void load()}}
       className="rounded-xl border border-neutral-700 px-5 py-3 text-sm font-black disabled:opacity-40">Refresh</button>
    </div>
    <div>

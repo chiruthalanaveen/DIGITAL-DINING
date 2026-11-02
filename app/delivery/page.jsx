@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DeliverySavedAddressPicker from '@/app/components/DeliverySavedAddressPicker'
@@ -188,6 +188,21 @@ function storePicture(store) {
   return /^https:\/\//i.test(uri) ? uri : ''
 }
 
+function subscribeLastStore(callback) {
+  window.addEventListener('storage', callback)
+  window.addEventListener('digitaldine:last-delivery-store', callback)
+  return () => {
+    window.removeEventListener('storage', callback)
+    window.removeEventListener('digitaldine:last-delivery-store', callback)
+  }
+}
+function readLastStoreCode() {
+  try {
+    const stored = sessionStorage.getItem('dd_delivery_last_store_code_v1') || localStorage.getItem('digitaldine_delivery_last_store_code') || ''
+    return VALID_STORE_CODE.test(stored) ? stored : ''
+  } catch { return '' }
+}
+
 function DeliveryCustomerHomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -218,14 +233,7 @@ function DeliveryCustomerHomeContent() {
   const [storeSearch, setStoreSearch] = useState('')
   const [accountLabel, setAccountLabel] = useState('Guest')
   const [categoryChoice, setCategoryChoice] = useState('')
-  const [lastStoreCode, setLastStoreCode] = useState('')
-
-  useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem('dd_delivery_last_store_code_v1') || localStorage.getItem('digitaldine_delivery_last_store_code') || ''
-      if (VALID_STORE_CODE.test(stored)) setLastStoreCode(stored)
-    } catch { /* Browser storage is optional. */ }
-  }, [])
+  const lastStoreCode = useSyncExternalStore(subscribeLastStore, readLastStoreCode, () => '')
 
   useEffect(() => {
     let active = true
@@ -296,6 +304,7 @@ function DeliveryCustomerHomeContent() {
     try {
       sessionStorage.setItem('dd_delivery_last_store_code_v1', code)
       localStorage.setItem('digitaldine_delivery_last_store_code', code)
+      window.dispatchEvent(new Event('digitaldine:last-delivery-store'))
     } catch { /* optional */ }
     hasVisitedStoreRef.current = true
     // Blinkit-like in-app navigation: /delivery stays mounted; only the
@@ -444,16 +453,17 @@ function DeliveryCustomerHomeContent() {
     // Avoid invalidating in-flight nearby-store requests on GPS state changes.
   }, [detectCurrentGps, inlineStoreCode, initialAddressResolved])
 
-  const previousEmbeddedStoreRef = useRef(inlineStoreCode)
-  useEffect(() => {
-    const previous = previousEmbeddedStoreRef.current
-    previousEmbeddedStoreRef.current = inlineStoreCode
-    if (previous && !inlineStoreCode) {
-      hasVisitedStoreRef.current = true
+  const [previousEmbeddedStore, setPreviousEmbeddedStore] = useState(inlineStoreCode)
+  if (previousEmbeddedStore !== inlineStoreCode) {
+    setPreviousEmbeddedStore(inlineStoreCode)
+    if (previousEmbeddedStore && !inlineStoreCode) {
       setOpeningStore('')
       if (stores.length) setStage('ready')
     }
-  }, [inlineStoreCode, stores.length])
+  }
+  useEffect(() => {
+    if (inlineStoreCode) hasVisitedStoreRef.current = true
+  }, [inlineStoreCode])
 
   const openMap = () => {
     // If permission is denied, the map can still be used for manual selection.

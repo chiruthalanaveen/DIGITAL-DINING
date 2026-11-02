@@ -2,7 +2,7 @@
 
 
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
 
@@ -126,19 +126,9 @@ export default function ResortManagement({ restaurant, allowPaymentSettings = tr
 
 
 
-  const load = async () => {
-
+  const requestResort = useCallback(async (isCurrent = () => true) => {
     if (!restaurantId) return
-
-
-
-    setLoading(true)
-
-
-
-    try {
-
-      const [p, t, r, b] = await Promise.all([
+    const fetchResponse = async () => (Promise.all([
 
         supabase
 
@@ -182,7 +172,10 @@ export default function ResortManagement({ restaurant, allowPaymentSettings = tr
 
           .limit(100),
 
-      ])
+      ]))
+      return fetchResponse().then(async ([p, t, r, b]) => {
+        if (!isCurrent()) return
+
 
 
 
@@ -236,43 +229,48 @@ export default function ResortManagement({ restaurant, allowPaymentSettings = tr
 
       }
 
-    } catch (error) {
+
+      }).catch((error) => {
+        if (!isCurrent()) return
+
 
       console.error('Resort load error:', error)
 
       appNotice(`Unable to load Resort Management: ${error.message}`)
 
-    } finally {
+    }).finally(() => {
+        if (!isCurrent()) return
+
 
       setLoading(false)
 
-    }
-
-  }
-
-
-
-  useEffect(() => {
-
-    load()
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
+    })
   }, [restaurantId])
 
+  const load = useCallback(() => {
+    setLoading(true)
+    return requestResort()
+  }, [requestResort])
 
+  const [previousRequest, setPreviousRequest] = useState(() => requestResort)
+  if (previousRequest !== requestResort) {
+    setPreviousRequest(() => requestResort)
+    setLoading(true)
+  }
 
   useEffect(() => {
+    let active = true
+    const isCurrent = () => active
 
-    if (!allowPaymentSettings && tab === 'payments') {
+    void requestResort(isCurrent)
 
-      setTab('overview')
+    return () => { active = false }
+  }, [requestResort])
 
-    }
-
-  }, [allowPaymentSettings, tab])
-
-
+  // Reset a now-forbidden tab before committing its children.
+  if (!allowPaymentSettings && tab === 'payments') {
+    setTab('overview')
+  }
 
   const stats = useMemo(
 

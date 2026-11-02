@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 
 const STORAGE_KEY = 'digitaldining-theme'
 
@@ -11,26 +11,34 @@ function applyTheme(theme) {
   root.style.colorScheme = theme
 }
 
+function readTheme() {
+  let saved
+  try { saved = window.localStorage.getItem(STORAGE_KEY) } catch { /* Browser storage may be disabled. */ }
+  if (saved === 'light' || saved === 'dark') return saved
+  return window.matchMedia?.('(prefers-color-scheme: light)')?.matches ? 'light' : 'dark'
+}
+
+function subscribeTheme(listener) {
+  const media = window.matchMedia?.('(prefers-color-scheme: light)')
+  window.addEventListener('storage', listener)
+  media?.addEventListener?.('change', listener)
+  return () => {
+    window.removeEventListener('storage', listener)
+    media?.removeEventListener?.('change', listener)
+  }
+}
+
+function serverTheme() { return null }
+
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState('dark')
-  const [ready, setReady] = useState(false)
+  const preferredTheme = useSyncExternalStore(subscribeTheme, readTheme, serverTheme)
+  const [selectedTheme, setTheme] = useState(null)
+  const theme = selectedTheme || preferredTheme || 'dark'
+  const ready = preferredTheme !== null
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY)
-
-    const initial =
-      saved === 'light' || saved === 'dark'
-        ? saved
-        : window.matchMedia('(prefers-color-scheme: light)').matches
-          ? 'light'
-          : 'dark'
-
-    // Apply directly to <html> before updating React state.
-    // This keeps the visual switch immediate.
-    applyTheme(initial)
-    setTheme(initial)
-    setReady(true)
-  }, [])
+    if (ready) applyTheme(theme)
+  }, [ready, theme])
 
   function toggleTheme() {
     const next = theme === 'light' ? 'dark' : 'light'

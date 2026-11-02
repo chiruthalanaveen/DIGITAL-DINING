@@ -4,6 +4,7 @@ import {
   useEffect,
   useState,
 } from 'react'
+import { useStandaloneMode } from '@/lib/useStandaloneMode'
 
 import {
   appNotice,
@@ -19,9 +20,10 @@ export default function InstallAppButton({
   ] = useState(null)
 
   const [
-    installed,
+    installedByEvent,
     setInstalled,
   ] = useState(false)
+  const installed = useStandaloneMode() || installedByEvent
 
   const [
     supported,
@@ -34,17 +36,6 @@ export default function InstallAppButton({
       'undefined'
     ) {
       return
-    }
-
-    const standalone =
-      window.matchMedia(
-        '(display-mode: standalone)'
-      ).matches ||
-      window.navigator
-        .standalone === true
-
-    if (standalone) {
-      setInstalled(true)
     }
 
     const handleInstallPrompt = (

@@ -412,6 +412,8 @@ export default function DeliveryManagement({
   planCode = '',
 }) {
   const restaurantId = restaurant?.id
+  const restaurantName = restaurant?.name
+  const restaurantPhone = restaurant?.phone
   const deliveryOnly =
     String(planCode).toLowerCase() === 'delivery'
 
@@ -810,30 +812,10 @@ export default function DeliveryManagement({
     [restaurantId]
   )
 
-  const loadDelivery = useCallback(
-    async (
-      quiet = false,
-      announceNew = false
-    ) => {
+  const requestDelivery = useCallback(
+    async (announceNew = false, isCurrent = () => true) => {
       if (!restaurantId) return
-
-      if (quiet) {
-        setRefreshing(true)
-      } else {
-        setLoading(true)
-      }
-
-      setMessage('')
-
-      try {
-        const [
-          settingsResult,
-          ordersResult,
-          driversResult,
-          packersResult,
-          menuResult,
-          offersResult,
-        ] = await Promise.all([
+      const fetchResponse = async () => (Promise.all([
           supabase
             .from('delivery_settings')
             .select('*')
@@ -917,7 +899,17 @@ export default function DeliveryManagement({
             .order('created_at', {
               ascending: false,
             }),
-        ])
+        ]))
+      return fetchResponse().then(async ([
+          settingsResult,
+          ordersResult,
+          driversResult,
+          packersResult,
+          menuResult,
+          offersResult,
+        ]) => {
+        if (!isCurrent()) return
+
 
         const failures = [
           settingsResult.error,
@@ -944,9 +936,9 @@ export default function DeliveryManagement({
             .insert({
               restaurant_id: restaurantId,
               store_name:
-                restaurant?.name || '',
+                restaurantName || '',
               support_phone:
-                restaurant?.phone || '',
+                restaurantPhone || '',
             })
             .select('*')
             .single()
@@ -1009,7 +1001,10 @@ export default function DeliveryManagement({
         )
 
         await loadDeliveryProofs()
-      } catch (error) {
+
+      }).catch((error) => {
+        if (!isCurrent()) return
+
         console.error(
           'Delivery dashboard load error:',
           error
@@ -1019,23 +1014,47 @@ export default function DeliveryManagement({
           error?.message ||
             'Unable to load Delivery Management.'
         )
-      } finally {
+      }).finally(() => {
+        if (!isCurrent()) return
+
         setLoading(false)
         setRefreshing(false)
-      }
+      })
     },
     [
       restaurantId,
-      restaurant?.name,
-      restaurant?.phone,
+      restaurantName,
+      restaurantPhone,
       inspectNewOrders,
       loadDeliveryProofs,
     ]
   )
 
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadDelivery = useCallback((quiet = false, announceNew = false) => {
+    if (!restaurantId) return
+    if (quiet) setRefreshing(true)
+    else setLoading(true)
+    setMessage('')
+    return requestDelivery(announceNew)
+  }, [restaurantId, requestDelivery])
+
+  const requestContext = [restaurantId, restaurantName, restaurantPhone, alarmEnabled]
+  const [previousRequestDelivery, setPreviousRequestDelivery] = useState(requestContext)
+  if (previousRequestDelivery.some((value, index) => value !== requestContext[index])) {
+    setPreviousRequestDelivery(requestContext)
+    setLoading(true)
+    setMessage('')
+  }
+
   useEffect(() => {
-    loadDelivery()
-  }, [loadDelivery])
+    let active = true
+    const isCurrent = () => active
+
+    requestDelivery(false, isCurrent)
+
+    return () => { active = false }
+  }, [requestDelivery])
 
   const refreshOrdersOnly = useCallback(
     async (announceNew = true) => {
@@ -1269,25 +1288,47 @@ export default function DeliveryManagement({
     ]
   )
 
-  const loadInventoryReport = useCallback(
-    async (quiet = false) => {
-      if (!quiet) setInventoryReportLoading(true)
-      setInventoryReportError('')
+  const requestInventoryReport = useCallback(
+    async (isCurrent = () => true) => {
+      const fetchResponse = async () => (getOwnerInventoryReport(''))
+      return fetchResponse().then(async (data) => {
+        if (!isCurrent()) return
 
-      try {
-        const data = await getOwnerInventoryReport('')
         setInventoryReport(data)
-      } catch (reportError) {
+
+      }).catch((reportError) => {
+        if (!isCurrent()) return
+
         console.error('Owner inventory report error:', reportError)
         setInventoryReportError(
           reportError?.message || 'Unable to load inventory report.'
         )
-      } finally {
+      }).finally(() => {
+        if (!isCurrent()) return
+
         setInventoryReportLoading(false)
-      }
+      })
     },
     [getOwnerInventoryReport]
   )
+
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadInventoryReport = useCallback((quiet = false) => {
+    if (!quiet) setInventoryReportLoading(true)
+    setInventoryReportError('')
+    return requestInventoryReport()
+  }, [requestInventoryReport])
+
+  const [requestInventoryReportContext, setRequestInventoryReportContext] = useState(() => ({
+    request: requestInventoryReport, active: tab === 'inventory',
+  }))
+  if (requestInventoryReportContext.request !== requestInventoryReport || requestInventoryReportContext.active !== (tab === 'inventory')) {
+    setRequestInventoryReportContext({ request: requestInventoryReport, active: tab === 'inventory' })
+    if (tab === 'inventory') {
+      setInventoryReportLoading(true)
+      setInventoryReportError('')
+    }
+  }
 
   const loadInventoryHistory = useCallback(
     async (menuItemId) => {
@@ -1331,9 +1372,14 @@ export default function DeliveryManagement({
   ])
 
   useEffect(() => {
+    let active = true
+    const isCurrent = () => active
+
     if (tab !== 'inventory') return
-    loadInventoryReport(false)
-  }, [tab, loadInventoryReport])
+    requestInventoryReport(isCurrent)
+
+    return () => { active = false }
+  }, [tab, requestInventoryReport])
 
   const inventoryReportItemsById = useMemo(() => {
     return new Map(
@@ -4082,17 +4128,16 @@ export default function DeliveryManagement({
     )
 
 
-  const loadCodReconciliation = useCallback(
-    async (quiet = false) => {
+  const requestCodReconciliation = useCallback(
+    async (isCurrent = () => true) => {
       if (!restaurantId) return
-      if (!quiet) setCodLoading(true)
-      setCodError('')
-
-      try {
-        const { data, error } = await supabase.rpc(
+      const fetchResponse = async () => (supabase.rpc(
           'owner_delivery_get_cod_reconciliation',
           { p_restaurant_id: restaurantId }
-        )
+        ))
+      return fetchResponse().then(async ({ data, error }) => {
+        if (!isCurrent()) return
+
 
         if (error) throw error
         if (!data?.success) {
@@ -4100,17 +4145,41 @@ export default function DeliveryManagement({
         }
 
         setCodReport(data)
-      } catch (codLoadError) {
+
+      }).catch((codLoadError) => {
+        if (!isCurrent()) return
+
         console.error('Owner COD reconciliation error:', codLoadError)
         setCodError(
           codLoadError?.message || 'Unable to load COD reconciliation.'
         )
-      } finally {
+      }).finally(() => {
+        if (!isCurrent()) return
+
         setCodLoading(false)
-      }
+      })
     },
     [restaurantId]
   )
+
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadCodReconciliation = useCallback((quiet = false) => {
+    if (!restaurantId) return
+    if (!quiet) setCodLoading(true)
+    setCodError('')
+    return requestCodReconciliation()
+  }, [restaurantId, requestCodReconciliation])
+
+  const [requestCodReconciliationContext, setRequestCodReconciliationContext] = useState(() => ({
+    request: requestCodReconciliation, active: tab === 'cod',
+  }))
+  if (requestCodReconciliationContext.request !== requestCodReconciliation || requestCodReconciliationContext.active !== (tab === 'cod')) {
+    setRequestCodReconciliationContext({ request: requestCodReconciliation, active: tab === 'cod' })
+    if (tab === 'cod') {
+      setCodLoading(true)
+      setCodError('')
+    }
+  }
 
   const reviewCodSettlement = async (settlement, decision) => {
     if (!restaurantId || !settlement?.id || codReviewId) return
@@ -4174,25 +4243,29 @@ export default function DeliveryManagement({
   }
 
   useEffect(() => {
+    let active = true
+    const isCurrent = () => active
+
     if (tab !== 'cod') return
-    loadCodReconciliation(false)
-  }, [tab, loadCodReconciliation])
+    requestCodReconciliation(isCurrent)
+
+    return () => { active = false }
+  }, [tab, requestCodReconciliation])
 
 
-  const loadAfterSales = useCallback(
-    async (quiet = false) => {
+  const requestAfterSales = useCallback(
+    async (isCurrent = () => true) => {
       if (!restaurantId) return
-      if (!quiet) setAfterSalesLoading(true)
-      setAfterSalesError('')
-
-      try {
-        const { data, error } = await supabase.rpc(
+      const fetchResponse = async () => (supabase.rpc(
           'owner_delivery_get_after_sales',
           {
             p_restaurant_id: restaurantId,
             p_case_id: null,
           }
-        )
+        ))
+      return fetchResponse().then(async ({ data, error }) => {
+        if (!isCurrent()) return
+
 
         if (error) throw error
         if (!data?.success) {
@@ -4202,17 +4275,41 @@ export default function DeliveryManagement({
         }
 
         setAfterSalesReport(data)
-      } catch (loadError) {
+
+      }).catch((loadError) => {
+        if (!isCurrent()) return
+
         console.error('Owner after-sales load error:', loadError)
         setAfterSalesError(
           loadError?.message || 'Unable to load after-sales cases.'
         )
-      } finally {
+      }).finally(() => {
+        if (!isCurrent()) return
+
         setAfterSalesLoading(false)
-      }
+      })
     },
     [restaurantId]
   )
+
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadAfterSales = useCallback((quiet = false) => {
+    if (!restaurantId) return
+    if (!quiet) setAfterSalesLoading(true)
+    setAfterSalesError('')
+    return requestAfterSales()
+  }, [restaurantId, requestAfterSales])
+
+  const [requestAfterSalesContext, setRequestAfterSalesContext] = useState(() => ({
+    request: requestAfterSales, active: tab === 'after_sales',
+  }))
+  if (requestAfterSalesContext.request !== requestAfterSales || requestAfterSalesContext.active !== (tab === 'after_sales')) {
+    setRequestAfterSalesContext({ request: requestAfterSales, active: tab === 'after_sales' })
+    if (tab === 'after_sales') {
+      setAfterSalesLoading(true)
+      setAfterSalesError('')
+    }
+  }
 
   const resetAfterSalesCreate = useCallback(() => {
     setAfterSalesCreateOrderId('')
@@ -4707,9 +4804,14 @@ export default function DeliveryManagement({
   }
 
   useEffect(() => {
+    let active = true
+    const isCurrent = () => active
+
     if (tab !== 'after_sales') return
-    loadAfterSales(false)
-  }, [tab, loadAfterSales])
+    requestAfterSales(isCurrent)
+
+    return () => { active = false }
+  }, [tab, requestAfterSales])
 
   const tabs = [
     ['overview', 'Overview'],
@@ -6279,7 +6381,7 @@ export default function DeliveryManagement({
                   Driver cash due & handovers
                 </h3>
                 <p className="mt-2 max-w-2xl text-xs leading-5 text-neutral-400">
-                  Approve a handover only after the physical cash is received. Approved cash is automatically allocated to the driver's oldest unsettled COD orders.
+                  Approve a handover only after the physical cash is received. Approved cash is automatically allocated to the driver&apos;s oldest unsettled COD orders.
                 </p>
               </div>
 
@@ -6726,7 +6828,7 @@ export default function DeliveryManagement({
                 >
                   Open Driver Portal
 
-    
+
                 </a>
               </div>
             )}

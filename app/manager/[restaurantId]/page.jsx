@@ -1,6 +1,6 @@
 'use client'
 import PortalShell from '@/app/components/PortalShell'
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
@@ -10,6 +10,15 @@ import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 import { appConfirm, appNotice } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
+
+function subscribeModuleLink(onChange) {
+  window.addEventListener('popstate', onChange)
+  return () => window.removeEventListener('popstate', onChange)
+}
+
+function readModuleLink() {
+  return String(new URLSearchParams(window.location.search).get('module') || '').trim().toLowerCase()
+}
 
 const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
 
@@ -1067,7 +1076,7 @@ export default function RestaurantManagerDashboard({ params }) {
   const [authenticated, setAuthenticated] = useState(false)
   const [manager, setManager] = useState(null)
   const [entryLoading, setEntryLoading] = useState(false)
-  const authenticatedOnceRef = useRef(false)
+  const [entryAuthenticated, setEntryAuthenticated] = useState(false)
 
   // Manager Profile
   const [profileOpen, setProfileOpen] = useState(false)
@@ -1100,7 +1109,8 @@ export default function RestaurantManagerDashboard({ params }) {
   const [restaurantTables, setRestaurantTables] = useState([])
   const [staffList, setStaffList] = useState([])
   const [activeTab, setActiveTab] = useState('settlements')
-  const [dashboardMode, setDashboardMode] = useState('restaurant')
+  const [chosenDashboardMode, setDashboardMode] = useState(null)
+  const linkedDashboardMode = useSyncExternalStore(subscribeModuleLink, readModuleLink, () => '')
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState('')
 
@@ -1600,69 +1610,16 @@ export default function RestaurantManagerDashboard({ params }) {
     Number(hasResortAccess) +
     Number(deliveryModuleEnabled)
 
-  // Delivery-only Managers should open directly into Delivery.
-  useEffect(() => {
-    if (!restaurant) return
-
-    const allowedModes = []
-
-    if (restaurantModuleEnabled) {
-      allowedModes.push('restaurant')
-    }
-
-    if (hasResortAccess) {
-      allowedModes.push('resort')
-    }
-
-    if (deliveryModuleEnabled) {
-      allowedModes.push('delivery')
-    }
-
-    if (
-      allowedModes.length > 0 &&
-      !allowedModes.includes(dashboardMode)
-    ) {
-      setDashboardMode(allowedModes[0])
-    }
-  }, [
-    restaurant,
-    dashboardMode,
-    restaurantModuleEnabled,
-    hasResortAccess,
-    deliveryModuleEnabled,
-  ])
-
-  // Native push notification tap / deep-link support.
-  useEffect(() => {
-    const requestedModule = String(
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('module') || ''
-        : ''
-    )
-      .trim()
-      .toLowerCase()
-
-    if (
-      requestedModule === 'delivery' &&
-      deliveryModuleEnabled
-    ) {
-      setDashboardMode('delivery')
-    } else if (
-      requestedModule === 'resort' &&
-      hasResortAccess
-    ) {
-      setDashboardMode('resort')
-    } else if (
-      requestedModule === 'restaurant' &&
-      restaurantModuleEnabled
-    ) {
-      setDashboardMode('restaurant')
-    }
-  }, [
-restaurantModuleEnabled,
-    hasResortAccess,
-    deliveryModuleEnabled,
-  ])
+  // Derive the permitted view in this render, avoiding a stale unauthorized tab.
+  const allowedModes = [
+    restaurantModuleEnabled && 'restaurant',
+    hasResortAccess && 'resort',
+    deliveryModuleEnabled && 'delivery',
+  ].filter(Boolean)
+  const requestedDashboardMode = chosenDashboardMode ?? (linkedDashboardMode || 'restaurant')
+  const dashboardMode = allowedModes.includes(requestedDashboardMode)
+    ? requestedDashboardMode
+    : allowedModes[0] || 'restaurant'
 
   const getItemOrderCount = useCallback((item) => {
     return orders.reduce((total, order) => {
@@ -2187,22 +2144,15 @@ restaurantModuleEnabled,
     setProfileOpen(false)
   }
 
+  // Restart the entry presentation only when authentication changes.
+  if (entryAuthenticated !== authenticated) {
+    setEntryAuthenticated(authenticated)
+    setEntryLoading(authenticated)
+  }
+
   useEffect(() => {
-    if (!authenticated) {
-      authenticatedOnceRef.current = false
-      setEntryLoading(false)
-      return undefined
-    }
-
-    if (authenticatedOnceRef.current) return undefined
-
-    authenticatedOnceRef.current = true
-    setEntryLoading(true)
-
-    const timer = window.setTimeout(() => {
-      setEntryLoading(false)
-    }, 4000)
-
+    if (!authenticated) return undefined
+    const timer = window.setTimeout(() => setEntryLoading(false), 4000)
     return () => window.clearTimeout(timer)
   }, [authenticated])
 

@@ -8,32 +8,42 @@ export default function DeliveryCustomerReturnsControl({role,restaurantId='',res
  const [stores,setStores]=useState([])
  const [selectedId,setSelectedId]=useState(restaurantId)
  const [enabled,setEnabled]=useState(false)
- const [loading,setLoading]=useState(true)
+ const [requestLoading,setLoading]=useState(true)
+ const [loadedRequestKey,setLoadedRequestKey]=useState('')
+ const requestKey=`${role}:${restaurantCode}:${selectedId}`
+ const loading=requestLoading||loadedRequestKey!==requestKey
  const [saving,setSaving]=useState(false)
  const [message,setMessage]=useState('')
  const [error,setError]=useState('')
- const load=useCallback(async()=>{
-  setLoading(true);setError('')
-  try{
+ const load=useCallback(()=>{
+  // Commit state only when the external policy request completes.
+  const request=role==='admin'
+   ? fetch('/api/admin/delivery-returns-policy',{cache:'no-store',credentials:'same-origin'})
+      .then(async response=>{
+       const body=await response.json().catch(()=>({}))
+       if(!response.ok||!body.success)throw new Error(body.message||'Admin authorization is required.')
+       return body
+      })
+   : !restaurantCode
+    ? Promise.reject(new Error('Store code is required.'))
+    : supabase.rpc('get_public_delivery_customer_returns',{p_restaurant_code:restaurantCode})
+       .then(({data,error:rpcError})=>{
+        if(rpcError)throw rpcError
+        if(!data?.success)throw new Error(data?.message||'Store returns settings unavailable.')
+        return data
+       })
+  return request.then(body=>{
+   setError('')
    if(role==='admin'){
-    const response=await fetch('/api/admin/delivery-returns-policy',{cache:'no-store',credentials:'same-origin'})
-    const body=await response.json().catch(()=>({}))
-    if(!response.ok||!body.success)throw new Error(body.message||'Admin authorization is required.')
     const rows=Array.isArray(body.stores)?body.stores:[]
     setStores(rows)
     const selected=rows.some(s=>s.id===selectedId)?selectedId:(rows[0]?.id||'')
     setSelectedId(selected)
     setEnabled(rows.find(s=>s.id===selected)?.returnsEnabled===true)
-   }else{
-    if(!restaurantCode)throw new Error('Store code is required.')
-    const {data,error:rpcError}=await supabase.rpc('get_public_delivery_customer_returns',{p_restaurant_code:restaurantCode})
-    if(rpcError)throw rpcError
-    if(!data?.success)throw new Error(data?.message||'Store returns settings unavailable.')
-    setEnabled(data.returnsEnabled===true)
-   }
-  }catch(e){setError(e?.message||'Unable to load returns setting.')}
-  finally{setLoading(false)}
- },[role,restaurantCode,selectedId])
+   }else setEnabled(body.returnsEnabled===true)
+  }).catch(e=>setError(e?.message||'Unable to load returns setting.'))
+    .finally(()=>{setLoadedRequestKey(requestKey);setLoading(false)})
+ },[role,restaurantCode,selectedId,requestKey])
  useEffect(()=>{void load()},[load])
  const save=async()=>{
   if(loading||saving)return
@@ -78,7 +88,7 @@ export default function DeliveryCustomerReturnsControl({role,restaurantId='',res
   <p className="mt-1 text-xs text-neutral-600">Allow customers to request returns, replacements and refunds from delivered orders in My Orders. Turning this off does not delete existing requests or stop staff resolving them.</p>
   {role==='admin'&&<label className="mt-4 block text-xs font-bold">Delivery store
    <select className="mt-1 w-full rounded-xl border border-neutral-300 p-3 text-sm" value={selectedId}
-    onChange={e=>{const id=e.target.value;setSelectedId(id);setEnabled(stores.find(s=>s.id===id)?.returnsEnabled===true);setMessage('')}}>
+    onChange={e=>{const id=e.target.value;setLoading(true);setError('');setSelectedId(id);setEnabled(stores.find(s=>s.id===id)?.returnsEnabled===true);setMessage('')}}>
     {stores.map(s=><option key={s.id} value={s.id}>{s.name} ({s.restaurant_code})</option>)}
    </select>
   </label>}

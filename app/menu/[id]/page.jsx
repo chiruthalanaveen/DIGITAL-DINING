@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef, useSyncExternalStore } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { appNotice } from '@/lib/appDialog'
@@ -8,28 +8,25 @@ import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
 // Restaurant logo used throughout the QR menu.
 function RestaurantLogo({ restaurant, className = '', imageClassName = 'w-full h-full object-contain' }) {
-  const [imageError, setImageError] = useState(false)
   const logoUrl = restaurant?.logo_url || ''
+  return <RestaurantLogoImage key={logoUrl} logoUrl={logoUrl} name={restaurant?.name} className={className} imageClassName={imageClassName} />
+}
 
-  useEffect(() => {
-    setImageError(false)
-  }, [logoUrl])
-
+function RestaurantLogoImage({ logoUrl, name, className, imageClassName }) {
+  const [imageError, setImageError] = useState(false)
   return (
     <div className={`overflow-hidden flex items-center justify-center ${className}`}>
       {logoUrl && !imageError ? (
         <img
           src={logoUrl}
-          alt={`${restaurant?.name || 'Restaurant'} logo`}
+          alt={`${name || 'Restaurant'} logo`}
           className={`${imageClassName} opacity-100 mix-blend-normal`}
           style={{ opacity: 1 }}
           decoding="async"
           onError={() => setImageError(true)}
         />
       ) : (
-        <span className="text-2xl" aria-label="Restaurant logo placeholder">
-          🍽️
-        </span>
+        <span className="text-2xl" aria-label="Restaurant logo placeholder">🍽️</span>
       )}
     </div>
   )
@@ -81,24 +78,21 @@ function preloadQrImage(value) {
   })
 }
 
-function MenuFoodImage({
-  src,
+function MenuFoodImage(props) {
+  const imageSrc = getMenuImageUrl(props.src)
+  return <MenuFoodImageContent key={imageSrc} {...props} imageSrc={imageSrc} />
+}
+
+function MenuFoodImageContent({
+  imageSrc,
   alt,
   className = 'h-full w-full object-cover',
   fallback = '🍽️',
   priority = false
 }) {
-  const imageSrc = getMenuImageUrl(src)
-
-  const [loaded, setLoaded] = useState(
-    () => Boolean(imageSrc && qrImageCache.has(imageSrc))
-  )
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    setLoaded(Boolean(imageSrc && qrImageCache.has(imageSrc)))
-    setFailed(false)
-  }, [imageSrc])
+  const [imageResult, setImageResult] = useState({ src: '', loaded: false, failed: false })
+  const loaded = (imageResult.src === imageSrc && imageResult.loaded) || Boolean(imageSrc && qrImageCache.has(imageSrc))
+  const failed = imageResult.src === imageSrc && imageResult.failed
 
   if (!imageSrc || failed) {
     return (
@@ -129,27 +123,36 @@ function MenuFoodImage({
         }`}
         onLoad={() => {
           qrImageCache.add(imageSrc)
-          setLoaded(true)
-          setFailed(false)
+          setImageResult({ src: imageSrc, loaded: true, failed: false })
         }}
         onError={() => {
           console.warn('[QR MENU] Food image failed to load:', imageSrc)
-          setFailed(true)
+          setImageResult({ src: imageSrc, loaded: false, failed: true })
         }}
       />
     </div>
   )
 }
 
-export default function CustomerMenuPage() {
-  useMobileViewportLock()
-  const params = useParams()
-  const searchParams = useSearchParams()
+function subscribePendingQr(callback) {
+  window.addEventListener('storage', callback)
+  return () => window.removeEventListener('storage', callback)
+}
+function readPendingQr(restaurantId) {
+  try { return window.sessionStorage.getItem(`digitaldine_pending_qr_payment_${restaurantId}`) || '' }
+  catch { return '' }
+}
+const serverPendingQr = () => ''
 
-  // Normalize the QR restaurant id so it works consistently on every device/browser.
-  const restaurantId = String(
-    params?.id ?? params?.restaurantId ?? ''
-  ).trim()
+export default function CustomerMenuPage() {
+  const params = useParams()
+  const restaurantId = String(params?.id ?? params?.restaurantId ?? '').trim()
+  return <CustomerMenuContent key={restaurantId} restaurantId={restaurantId} />
+}
+
+function CustomerMenuContent({ restaurantId }) {
+  useMobileViewportLock()
+  const searchParams = useSearchParams()
   const tableNumber = searchParams.get('table') || '1'
 
   const [restaurant, setRestaurant] = useState(null)
@@ -161,14 +164,14 @@ export default function CustomerMenuPage() {
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [filterType, setFilterType] = useState('all')
 
-  const [orderType, setOrderType] = useState('dine-in')
+  const [selectedOrderType, setOrderType] = useState('dine-in')
 
   const [loading, setLoading] = useState(true)
 
   // Super Admin entitlement gate.
   // null = still checking, true = allowed, false = blocked.
-  const [qrAccessAllowed, setQrAccessAllowed] = useState(null)
-  const [qrAccessMessage, setQrAccessMessage] = useState('')
+  const [qrAccessAllowed, setQrAccessAllowed] = useState(restaurantId ? null : false)
+  const [qrAccessMessage, setQrAccessMessage] = useState(restaurantId ? '' : 'Restaurant ID is missing. Please scan a valid QR code.')
 
   // Individual Super Admin feature entitlements.
   // Defaults remain enabled so an entitlement API outage does not break
@@ -199,11 +202,21 @@ export default function CustomerMenuPage() {
   // After guest verification, hold the menu behind a mobile loading screen
   // until every configured menu image loads successfully or 45 seconds elapse.
   const [showImageLoadingGate, setShowImageLoadingGate] = useState(false)
-  const [imageLoadingProgress, setImageLoadingProgress] = useState({
-    loaded: 0,
-    total: 0
-  })
+  const [imageProgress, setImageLoadingProgress] = useState({ loaded: 0, total: 0, batch: '' })
   const [imageLoadingSeconds, setImageLoadingSeconds] = useState(0)
+  const imageBatch = JSON.stringify([...new Set([
+    ...dailyOffers.map(offer => String(offer?.image_url || '').trim()),
+    ...menuItems.map(item => String(item?.image_url || '').trim()),
+  ].filter(Boolean))])
+  const [previousImageBatch, setPreviousImageBatch] = useState(imageBatch)
+  if (previousImageBatch !== imageBatch) {
+    setPreviousImageBatch(imageBatch)
+    setImageLoadingSeconds(0)
+  }
+  const imageLoadingProgress = {
+    loaded: imageProgress.batch === imageBatch ? imageProgress.loaded : 0,
+    total: JSON.parse(imageBatch).length,
+  }
 
   // Keep the latest mobile number available to realtime callbacks without
   // recreating the Supabase channel on every digit typed into the form.
@@ -228,7 +241,21 @@ export default function CustomerMenuPage() {
   // A payment may be captured before the restaurant order is fully recorded.
   // Keep its verification details through page reloads so guests can retry
   // confirmation WITHOUT paying a second time.
-  const [pendingQrVerification, setPendingQrVerification] = useState(null)
+  const storedPendingQr = useSyncExternalStore(
+    subscribePendingQr,
+    () => readPendingQr(restaurantId),
+    serverPendingQr
+  )
+  const restoredPendingQr = useMemo(() => {
+    try {
+      const saved = storedPendingQr ? JSON.parse(storedPendingQr) : null
+      return saved?.intentId && saved?.razorpay_payment_id && saved?.razorpay_signature ? saved : null
+    } catch { return null }
+  }, [storedPendingQr])
+  const [pendingQrOverride, setPendingQrOverride] = useState(null)
+  const pendingQrVerification = pendingQrOverride ? pendingQrOverride.value : restoredPendingQr
+  const setPendingQrVerification = (value) => setPendingQrOverride({ value })
+
 
   // ERP-controlled platform fee for dine-in / takeaway. The owner can only
   // choose customer-paid ON/OFF. A separate rollout flag starts OFF.
@@ -291,7 +318,7 @@ export default function CustomerMenuPage() {
     return () => { active = false }
   }, [restaurantId])
 
-  const [paymentMethod, setPaymentMethod] = useState('online')
+  const [selectedPaymentMethod, setPaymentMethod] = useState('online')
 
   const [confirmedBillSummary, setConfirmedBillSummary] = useState({
     subtotal: 0,
@@ -408,31 +435,17 @@ export default function CustomerMenuPage() {
   const restaurantNotificationsEnabled =
     tenantFeatures.restaurant_notifications_enabled !== false
 
-  useEffect(() => {
-    if (orderType === 'dine-in' && !dineInEnabled && takeawayEnabled) {
-      setOrderType('parcel')
-      return
-    }
+  const orderType = selectedOrderType === 'dine-in' && !dineInEnabled && takeawayEnabled
+    ? 'parcel'
+    : selectedOrderType === 'parcel' && !takeawayEnabled && dineInEnabled
+      ? 'dine-in'
+      : selectedOrderType
 
-    if (orderType === 'parcel' && !takeawayEnabled && dineInEnabled) {
-      setOrderType('dine-in')
-    }
-  }, [dineInEnabled, takeawayEnabled, orderType])
-
-  useEffect(() => {
-    if (paymentMethod === 'counter' && !counterPaymentEnabled) {
-      setPaymentMethod('online')
-      return
-    }
-
-    if (paymentMethod === 'online' && !razorpayEnabled && counterPaymentEnabled) {
-      setPaymentMethod('counter')
-    }
-  }, [
-    counterPaymentEnabled,
-    razorpayEnabled,
-    paymentMethod
-  ])
+  const paymentMethod = selectedPaymentMethod === 'counter' && !counterPaymentEnabled
+    ? 'online'
+    : selectedPaymentMethod === 'online' && !razorpayEnabled && counterPaymentEnabled
+      ? 'counter'
+      : selectedPaymentMethod
 
   /*
    * SUPER ADMIN RESTAURANT / QR MENU ACCESS
@@ -440,21 +453,12 @@ export default function CustomerMenuPage() {
    * This is intentionally checked through our Next.js server API instead of
    * reading tenant_feature_controls directly from the anonymous browser.
    */
-  const fetchQrAccess = async () => {
-    if (!restaurantId) {
-      setQrAccessAllowed(false)
-      setQrAccessMessage('Restaurant ID is missing. Please scan a valid QR code.')
-      return false
-    }
-
-    // STEP 15B: Same platform wallet applies to RESTAURANT QR and DELIVERY.
-    // This check fails closed on an RPC/network error: no unpaid wallet can
-    // take an order even when the feature-entitlements API is temporarily down.
-    try {
-      const { data: walletAllowed, error: walletError } = await supabase.rpc(
+  const fetchQrAccess = () => {
+    if (!restaurantId) return false
+    return supabase.rpc(
         'digital_dine_wallet_is_orderable',
         { p_restaurant_id: restaurantId }
-      )
+      ).then(async ({ data: walletAllowed, error: walletError }) => {
       if (walletError) throw walletError
       if (walletAllowed !== true) {
         const message = 'This restaurant is temporarily not accepting new orders. Please contact the restaurant staff.'
@@ -462,12 +466,6 @@ export default function CustomerMenuPage() {
         setQrAccessMessage(message)
         return false
       }
-    } catch (walletError) {
-      console.error('[QR MENU] Wallet availability check failed:', walletError)
-      setQrAccessAllowed(false)
-      setQrAccessMessage('Unable to verify restaurant order availability. Please try again shortly.')
-      return false
-    }
 
     try {
       const response = await fetch(
@@ -565,6 +563,13 @@ export default function CustomerMenuPage() {
       setQrAccessMessage('')
       return true
     }
+
+    }).catch((walletError) => {
+      console.error('[QR MENU] Wallet availability check failed:', walletError)
+      setQrAccessAllowed(false)
+      setQrAccessMessage('Unable to verify restaurant order availability. Please try again shortly.')
+      return false
+    })
   }
 
   /*
@@ -574,16 +579,9 @@ export default function CustomerMenuPage() {
    * Supabase session or direct table RLS policies for the public menu.
    * The public RPC returns only the fields that the QR menu needs.
    */
-  const fetchMenu = async () => {
-    if (!restaurantId) {
-      setRestaurant(null)
-      setMenuItems([])
-      setDailyOffers([])
-      setLoading(false)
-      return
-    }
-
-    const accessAllowed = await fetchQrAccess()
+  const fetchMenu = () => {
+    if (!restaurantId) return
+    return fetchQrAccess().then(async (accessAllowed) => {
 
     if (!accessAllowed) {
       setRestaurant(null)
@@ -655,6 +653,8 @@ export default function CustomerMenuPage() {
     } finally {
       setLoading(false)
     }
+
+    })
   }
 
   useEffect(() => {
@@ -1153,12 +1153,6 @@ export default function CustomerMenuPage() {
 
     const totalImages = uniqueUrls.length
 
-    setImageLoadingProgress({
-      loaded: 0,
-      total: totalImages
-    })
-    setImageLoadingSeconds(0)
-
     const finishGate = () => {
       if (cancelled || finished) return
       finished = true
@@ -1198,7 +1192,8 @@ export default function CustomerMenuPage() {
 
       setImageLoadingProgress({
         loaded: successfulLoads,
-        total: totalImages
+        total: totalImages,
+        batch: imageBatch
       })
 
       // The requested behavior: as soon as every image succeeds,
@@ -1220,6 +1215,7 @@ export default function CustomerMenuPage() {
   }, [
     isVerified,
     showImageLoadingGate,
+    imageBatch,
     menuItems,
     dailyOffers
   ])
@@ -1480,19 +1476,6 @@ export default function CustomerMenuPage() {
     }
   }
 
-  // Recover verification details if checkout finished but the tab reloaded.
-  useEffect(() => {
-    if (!restaurantId || typeof window === 'undefined') return
-    try {
-      const raw = window.sessionStorage.getItem(`digitaldine_pending_qr_payment_${restaurantId}`)
-      const saved = raw ? JSON.parse(raw) : null
-      if (saved?.intentId && saved?.razorpay_payment_id && saved?.razorpay_signature) {
-        setPendingQrVerification(saved)
-      }
-    } catch (error) {
-      console.error('[QR MENU] Unable to restore pending verification:', error)
-    }
-  }, [restaurantId])
 
   const verifyQrPaymentAttempt = async attempt => {
     if (!attempt?.intentId || !attempt?.razorpay_payment_id) return
@@ -1765,7 +1748,7 @@ export default function CustomerMenuPage() {
     </div>
   ) : null
 
-  if (loading) {
+  if (loading && restaurantId) {
     return (
       <main className="flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-[#f7f6f2] px-6 text-neutral-900">
         <div className="text-center">

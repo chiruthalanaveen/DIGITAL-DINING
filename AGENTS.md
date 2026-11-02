@@ -39,6 +39,21 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
+### Current repository lint cleanup — 2 November 2026
+
+The user explicitly requested fixing all 169 inherited lint errors before
+continuing release work. This expands the source scope to the affected legacy
+restaurant, staff, delivery, resort, wallet/settings and shared UI files. Keep
+the existing behavior, contracts and permissions; fix source patterns rather
+than disabling rules or adding scheduling tricks. Continue on the current
+guarded feature branch and keep all PRs unmerged.
+
+No SQL migration required. Do not change hosted data, policies, cron jobs,
+payment configuration or the pending subscription migration/rollout flag.
+Publication target approval remains unanswered; the conditional request to
+continue once requirements are complete does not approve production release.
+See `docs/upgrade/lint-cleanup-report.md` for current results and limitations.
+
 ### Current address fix and Vercel publication request — 2 November 2026
 
 The user requested the next work and Vercel publication. Prepare a manual Preview

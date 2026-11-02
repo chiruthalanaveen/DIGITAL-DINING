@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, useSyncExternalStore, type ReactNode } from 'react'
 import InstallAppButton from '@/app/components/InstallAppButton'
 
 const CONTACT_EMAIL = 'digitaldining077@gmail.com'
@@ -74,19 +74,26 @@ function CheckItem({ children, light = false }: { children: ReactNode; light?: b
   )
 }
 
-export default function LandingPage() {
-  const [privacyReady, setPrivacyReady] = useState(false)
-  const [showPrivacyNotice, setShowPrivacyNotice] = useState(false)
+function subscribePrivacy(callback: () => void) {
+  window.addEventListener('storage', callback)
+  return () => window.removeEventListener('storage', callback)
+}
 
-  useEffect(() => {
-    try {
-      const accepted = localStorage.getItem('digitaldining_privacy_accepted')
-      if (!accepted) setShowPrivacyNotice(true)
-    } catch {
-      // Ignore unavailable localStorage.
-    }
-    setPrivacyReady(true)
-  }, [])
+function readPrivacyAccepted(): boolean | null {
+  try {
+    return Boolean(window.localStorage.getItem('digitaldining_privacy_accepted'))
+  } catch {
+    // Preserve the existing behavior when browser storage is unavailable.
+    return true
+  }
+}
+
+const serverPrivacyAccepted = () => null
+
+export default function LandingPage() {
+  const privacyAccepted = useSyncExternalStore(subscribePrivacy, readPrivacyAccepted, serverPrivacyAccepted)
+  const [privacyDismissed, setPrivacyDismissed] = useState(false)
+  const showPrivacyNotice = privacyAccepted === false && !privacyDismissed
 
   const acceptPrivacy = () => {
     try {
@@ -94,7 +101,7 @@ export default function LandingPage() {
     } catch {
       // Ignore unavailable localStorage.
     }
-    setShowPrivacyNotice(false)
+    setPrivacyDismissed(true)
   }
 
   return (
@@ -408,7 +415,7 @@ export default function LandingPage() {
       </div>
 
       {/* Privacy notice */}
-      {privacyReady && showPrivacyNotice ? (
+      {showPrivacyNotice ? (
         <div className="fixed inset-x-3 bottom-3 z-[9999] mx-auto max-w-md">
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-2xl">
             <div className="flex items-start gap-3">

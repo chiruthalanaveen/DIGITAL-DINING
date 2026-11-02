@@ -120,6 +120,8 @@ function cleanQty(value, max) {
 
 
 
+const EMPTY_DRIVERS = []
+
 export default function DeliveryManagerSupportChat({
 
   restaurantId,
@@ -134,7 +136,7 @@ export default function DeliveryManagerSupportChat({
 
   password,
 
-  drivers = [],
+  drivers = EMPTY_DRIVERS,
 
   onOpenAfterSales,
 
@@ -414,33 +416,9 @@ export default function DeliveryManagerSupportChat({
 
 
 
-  const loadSupport =
-
-    useCallback(
-
-      async (
-
-        silent = false
-
-      ) => {
-
-        if (!silent) {
-
-          setLoading(true)
-
-        }
-
-
-
-        setError('')
-
-
-
-        try {
-
-          const data =
-
-            await managerRpc(
+  const requestSupport = useCallback(
+    async (silent = false, isCurrent = () => true) => {
+      const fetchResponse = async () => (managerRpc(
 
               'manager_delivery_get_support_session',
 
@@ -462,7 +440,10 @@ export default function DeliveryManagerSupportChat({
 
               }
 
-            )
+            ))
+      return fetchResponse().then(async (data) => {
+        if (!isCurrent()) return
+
 
 
 
@@ -530,7 +511,10 @@ export default function DeliveryManagerSupportChat({
 
           )
 
-        } catch (loadError) {
+
+      }).catch((loadError) => {
+        if (!isCurrent()) return
+
 
           console.error(
 
@@ -554,7 +538,9 @@ export default function DeliveryManagerSupportChat({
 
           }
 
-        } finally {
+        }).finally(() => {
+        if (!isCurrent()) return
+
 
           if (!silent) {
 
@@ -562,7 +548,7 @@ export default function DeliveryManagerSupportChat({
 
           }
 
-        }
+        })
 
       },
 
@@ -572,9 +558,26 @@ export default function DeliveryManagerSupportChat({
 
 
 
-  useEffect(() => {
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadSupport = useCallback((silent = false) => {
+    if (!silent) setLoading(true)
+    setError('')
+    return requestSupport(silent)
+  }, [requestSupport])
 
-    loadSupport(false)
+  const [previousRequestSupport, setPreviousRequestSupport] = useState(() => requestSupport)
+  if (previousRequestSupport !== requestSupport) {
+    setPreviousRequestSupport(() => requestSupport)
+    setLoading(true)
+    setError('')
+  }
+
+  useEffect(() => {
+    let active = true
+    const isCurrent = () => active
+
+
+    requestSupport(false, isCurrent)
 
 
 
@@ -606,13 +609,13 @@ export default function DeliveryManagerSupportChat({
 
     return () =>
 
-      window.clearInterval(
+      { active = false; window.clearInterval(
 
         timer
 
-      )
+      ) }
 
-  }, [loadSupport])
+  }, [requestSupport, loadSupport])
 
 
 
@@ -638,16 +641,15 @@ export default function DeliveryManagerSupportChat({
 
 
 
-  useEffect(() => {
+  const [decisionSource, setDecisionSource] = useState(() => ({
+    threadId: selected?.id,
+    drivers: activeDrivers,
+  }))
 
-    if (!selected) {
-
-      return
-
-    }
-
-
-
+  // A newly selected thread/driver list resets its draft before children render.
+  if (decisionSource.threadId !== selected?.id || decisionSource.drivers !== activeDrivers) {
+    setDecisionSource({ threadId: selected?.id, drivers: activeDrivers })
+    if (selected) {
     const initial = {}
 
 
@@ -736,15 +738,8 @@ export default function DeliveryManagerSupportChat({
 
     )
 
-  }, [
-
-    selected?.id,
-
-    activeDrivers,
-
-  ])
-
-
+    }
+  }
 
   const sendReply =
 

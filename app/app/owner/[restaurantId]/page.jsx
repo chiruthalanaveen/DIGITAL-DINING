@@ -1,7 +1,7 @@
 'use client'
 import PortalShell from '@/app/components/PortalShell'
 import ThemeToggle from '@/app/components/ThemeToggle'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useSyncExternalStore } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
@@ -79,9 +79,53 @@ const DEFAULT_MOBILE_EXPERIENCE = {
   sound: true,
 }
 
+function readMobileExperience() {
+  if (typeof window === 'undefined') return DEFAULT_MOBILE_EXPERIENCE
+  try {
+    const value = JSON.parse(window.localStorage.getItem(MOBILE_EXPERIENCE_KEY) || '{}')
+    return {
+      ...DEFAULT_MOBILE_EXPERIENCE,
+      ...(value && typeof value === 'object' ? value : {}),
+    }
+  } catch {
+    return DEFAULT_MOBILE_EXPERIENCE
+  }
+}
+
+function MobileExperienceToggle({ value, onChange, label, darkMode, accent }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-label={label}
+      aria-checked={Boolean(value)}
+      onClick={() => onChange(!value)}
+      className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${
+        value ? 'border-transparent' : darkMode ? 'border-white/10 bg-neutral-800' : 'border-neutral-300 bg-neutral-200'
+      }`}
+      style={value ? { backgroundColor: accent } : undefined}
+    >
+      <span
+        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+          value ? 'translate-x-[23px]' : 'translate-x-[3px]'
+        }`}
+      />
+    </button>
+  )
+}
+
 function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
-  const [saved, setSaved] = useState(DEFAULT_MOBILE_EXPERIENCE)
-  const [draft, setDraft] = useState(DEFAULT_MOBILE_EXPERIENCE)
+  // This settings sheet is initially closed, so browser-only preferences do
+  // not alter server HTML. Read once when its state is created, not in an effect.
+  const [saved, setSaved] = useState(readMobileExperience)
+  const [draft, setDraft] = useState(readMobileExperience)
+  const [previousOpen, setPreviousOpen] = useState(open)
+
+  // Reset the editing session when it opens, before rendering its controls.
+  if (previousOpen !== open) {
+    setPreviousOpen(open)
+    if (open) setDraft(saved)
+  }
 
   const themeOptions = [
     { id: 'orange', label: 'Orange', color: '#f97316' },
@@ -106,29 +150,13 @@ function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
   }
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const parsed = JSON.parse(localStorage.getItem(MOBILE_EXPERIENCE_KEY) || '{}')
-      const next = normalize(parsed)
-      setSaved(next)
-      setDraft(next)
-      applyExperience(next)
-    } catch {
-      applyExperience(DEFAULT_MOBILE_EXPERIENCE)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!open) return
-    setDraft(saved)
-  }, [open, saved])
+    applyExperience(saved)
+  }, [saved])
 
   const setPreview = (patch) => {
-    setDraft((current) => {
-      const next = { ...current, ...patch }
-      applyExperience(next)
-      return next
-    })
+    const next = { ...draft, ...patch }
+    setDraft(next)
+    applyExperience(next)
   }
 
   const closeWithoutSaving = () => {
@@ -155,26 +183,6 @@ function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
   const surface = draft.darkMode ? 'bg-[#151515] border-white/10 text-white' : 'bg-white border-neutral-200 text-neutral-950'
   const page = draft.darkMode ? 'bg-[#0d0d0e] text-white' : 'bg-[#f5f5f4] text-neutral-950'
   const muted = draft.darkMode ? 'text-neutral-400' : 'text-neutral-500'
-
-  const Toggle = ({ value, onChange, label }) => (
-    <button
-      type="button"
-      role="switch"
-      aria-label={label}
-      aria-checked={Boolean(value)}
-      onClick={() => onChange(!value)}
-      className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${
-        value ? 'border-transparent' : draft.darkMode ? 'border-white/10 bg-neutral-800' : 'border-neutral-300 bg-neutral-200'
-      }`}
-      style={value ? { backgroundColor: accent } : undefined}
-    >
-      <span
-        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-          value ? 'translate-x-[23px]' : 'translate-x-[3px]'
-        }`}
-      />
-    </button>
-  )
 
   return (
     <div className={`fixed inset-0 z-[120] ${page}`}>
@@ -223,7 +231,7 @@ function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
                     <p className={`mt-0.5 text-[10px] ${muted}`}>Use a darker app surface.</p>
                   </div>
                 </div>
-                <Toggle value={draft.darkMode} onChange={(value) => setPreview({ darkMode: value })} label="Dark mode" />
+                <MobileExperienceToggle darkMode={draft.darkMode} accent={accent} value={draft.darkMode} onChange={(value) => setPreview({ darkMode: value })} label="Dark mode" />
               </div>
 
               <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
@@ -263,7 +271,7 @@ function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
                   </div>
                   <div>
                     <p className="text-[13px] font-semibold">Text size</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Adjust the app's reading size.</p>
+                    <p className={`mt-0.5 text-[10px] ${muted}`}>Adjust the app&#39;s reading size.</p>
                   </div>
                 </div>
                 <div className={`mt-4 grid grid-cols-3 rounded-xl p-1 ${draft.darkMode ? 'bg-neutral-900' : 'bg-neutral-100'}`}>
@@ -337,7 +345,7 @@ function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
                       <p className={`mt-0.5 truncate text-[10px] ${muted}`}>{subtitle}</p>
                     </div>
                   </div>
-                  <Toggle value={draft[key]} onChange={(value) => setPreview({ [key]: value })} label={title} />
+                  <MobileExperienceToggle darkMode={draft.darkMode} accent={accent} value={draft[key]} onChange={(value) => setPreview({ [key]: value })} label={title} />
                 </div>
               ))}
             </div>
@@ -1611,8 +1619,10 @@ function OwnerTableQrSheet({
   onClose,
 }) {
   const [tableNumber, setTableNumber] = useState(1)
-  const [registeredTables, setRegisteredTables] = useState([])
-  const [loadingTables, setLoadingTables] = useState(true)
+  const [registeredTableRows, setRegisteredTables] = useState([])
+  const [tablesPending, setLoadingTables] = useState(true)
+  const registeredTables = restaurantId ? registeredTableRows : []
+  const loadingTables = Boolean(restaurantId) && tablesPending
   const [registering, setRegistering] = useState(false)
   const [downloading, setDownloading] = useState(false)
 
@@ -1653,45 +1663,23 @@ function OwnerTableQrSheet({
         )}`
       : ''
 
-  const loadRegisteredTables = async () => {
-    if (!restaurantId) {
-      setRegisteredTables([])
-      setLoadingTables(false)
-      return []
-    }
+  const loadRegisteredTables = () => {
+    if (!restaurantId) return Promise.resolve([])
 
-    try {
-      const { data, error } = await supabase.rpc(
-        'get_owner_registered_tables',
-        {
-          p_restaurant_id: String(restaurantId),
-        }
-      )
-
+    return supabase.rpc('get_owner_registered_tables', {
+      p_restaurant_id: String(restaurantId),
+    }).then(({ data, error }) => {
       if (error) throw error
-
-      const rows = Array.isArray(data)
-        ? data
-        : []
-
+      const rows = Array.isArray(data) ? data : []
       setRegisteredTables(rows)
       return rows
-    } catch (error) {
-      console.error(
-        '[OWNER MOBILE QR] Load tables error:',
-        error
-      )
-
-      appNotice(
-        `Unable to load registered tables: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-
+    }).catch((error) => {
+      console.error('[OWNER MOBILE QR] Load tables error:', error)
+      appNotice(`Unable to load registered tables: ${error?.message || 'Please try again.'}`)
       return []
-    } finally {
+    }).finally(() => {
       setLoadingTables(false)
-    }
+    })
   }
 
   useEffect(() => {
@@ -2262,7 +2250,7 @@ function MobileOwnerOrderHistory({ restaurantId, formatCurrency }) {
   return (
     <section className="dd-mobile-history mt-6 rounded-3xl border border-neutral-200 bg-white p-4">
       <div className="flex items-center gap-2"><AppIcon name="clock" className="h-5 w-5 text-orange-500" /><h3 className="text-sm font-extrabold text-neutral-900">Search order history</h3></div>
-      <p className="mt-1 text-[11px] leading-5 text-neutral-500">Look up orders from any earlier date. Results are loaded directly with your restaurant's access policies.</p>
+      <p className="mt-1 text-[11px] leading-5 text-neutral-500">Look up orders from any earlier date. Results are loaded directly with your restaurant&#39;s access policies.</p>
       <form onSubmit={lookup} className="mt-3 flex items-end gap-2">
         <label className="min-w-0 flex-1 text-[11px] font-semibold text-neutral-500">Order date
           <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900" />
@@ -2276,6 +2264,21 @@ function MobileOwnerOrderHistory({ restaurantId, formatCurrency }) {
       </div>{rows.length > limit && <button type="button" onClick={() => setLimit((n) => n + 20)} className="mt-3 min-h-11 w-full rounded-xl border border-neutral-200 text-xs font-bold text-neutral-800">Load more</button>}</div>}
     </section>
   )
+}
+
+// The URL is an external browser store. Keep the server snapshot stable while
+// allowing native deep links and browser Back/Forward to select a module.
+function subscribeDashboardLocation(onChange) {
+  window.addEventListener('popstate', onChange)
+  return () => window.removeEventListener('popstate', onChange)
+}
+
+function dashboardLocationSnapshot() {
+  return window.location.search
+}
+
+function serverDashboardLocationSnapshot() {
+  return ''
 }
 
 export default function RestaurantDashboard() {
@@ -2294,7 +2297,11 @@ export default function RestaurantDashboard() {
   const [approvalStatus, setApprovalStatus] = useState('checking')
   const [approvalRestaurantName, setApprovalRestaurantName] = useState('')
   const [entryLoaderDone, setEntryLoaderDone] = useState(false)
-  const entryLoaderStartedAtRef = useRef(Date.now())
+  const entryLoaderStartedAtRef = useRef(null)
+
+  useEffect(() => {
+    entryLoaderStartedAtRef.current = Date.now()
+  }, [])
 
   // Owner Profile
   const [profileOpen, setProfileOpen] = useState(false)
@@ -2306,13 +2313,15 @@ export default function RestaurantDashboard() {
   const [dailyOffers, setDailyOffers] = useState([])
   const [orders, setOrders] = useState([])
   // Reports must not display a silent ₹0 when secured order loading fails.
-  const [ordersLoadError, setOrdersLoadError] = useState('')
-  const [ordersHaveLoaded, setOrdersHaveLoaded] = useState(false)
+  const [ordersLoadStatus, setOrdersLoadStatus] = useState({ scope: null, loaded: false, error: '' })
   const [ordersLastSynced, setOrdersLastSynced] = useState(null)
   const [ordersRefreshTick, setOrdersRefreshTick] = useState(0)
   const [restaurantTables, setRestaurantTables] = useState([])
   const [activeTab, setActiveTab] = useState('owner-home')
-  const [dashboardMode, setDashboardMode] = useState('restaurant')
+  const [selectedDashboardMode, setDashboardMode] = useState(null)
+  const locationSearch = useSyncExternalStore(
+    subscribeDashboardLocation, dashboardLocationSnapshot, serverDashboardLocationSnapshot
+  )
   const [isStoreOpen, setIsStoreOpen] = useState(true)
   const [savingStoreStatus, setSavingStoreStatus] = useState(false)
   const [mobileOwnerMenuOpen, setMobileOwnerMenuOpen] = useState(false)
@@ -2417,7 +2426,11 @@ export default function RestaurantDashboard() {
   const [kitchenAlarmVolume, setKitchenAlarmVolume] = useState(1)
   const [waiterAlarmVolume, setWaiterAlarmVolume] = useState(1)
   const [savingAlarmSettings, setSavingAlarmSettings] = useState(false)
-  const [previewAudio, setPreviewAudio] = useState(null)
+  const previewAudioRef = useRef(null)
+
+  useEffect(() => () => {
+    previewAudioRef.current?.pause()
+  }, [])
 
   // Prevent the 2-second dashboard refresh from overwriting alarm choices
   // while the owner is editing them.
@@ -2553,70 +2566,28 @@ export default function RestaurantDashboard() {
     Number(resortModuleEnabled) +
     Number(deliveryModuleEnabled)
 
-  // Delivery-only accounts must open directly into Delivery.
-  // Combined subscriptions keep the user's current module when it is valid.
-  useEffect(() => {
-    if (!restaurant) return
+  // Derive the usable module without an effect that briefly renders an
+  // unavailable module. A manual selection takes precedence over the deep link.
+  const allowedDashboardModes = [
+    restaurantModuleEnabled && 'restaurant',
+    resortModuleEnabled && 'resort',
+    deliveryModuleEnabled && 'delivery',
+  ].filter(Boolean)
+  const requestedModule = String(new URLSearchParams(locationSearch).get('module') || '')
+    .trim()
+    .toLowerCase()
+  const desiredDashboardMode = selectedDashboardMode || requestedModule || 'restaurant'
+  const dashboardMode = allowedDashboardModes.includes(desiredDashboardMode)
+    ? desiredDashboardMode
+    : allowedDashboardModes[0] || 'restaurant'
 
-    const allowedModes = []
-
-    if (restaurantModuleEnabled) {
-      allowedModes.push('restaurant')
-    }
-
-    if (resortModuleEnabled) {
-      allowedModes.push('resort')
-    }
-
-    if (deliveryModuleEnabled) {
-      allowedModes.push('delivery')
-    }
-
-    if (
-      allowedModes.length > 0 &&
-      !allowedModes.includes(dashboardMode)
-    ) {
-      setDashboardMode(allowedModes[0])
-    }
-  }, [
-    restaurant,
-    dashboardMode,
-    restaurantModuleEnabled,
-    resortModuleEnabled,
-    deliveryModuleEnabled,
+  // A new authenticated scope or explicit refresh is loading immediately, while
+  // failed background polls retain the last successful history for that scope.
+  const ordersRequestScope = JSON.stringify([
+    authChecked, approvalStatus, restaurantId, hasRealtimeOrderAlarm, ordersRefreshTick,
   ])
-
-  // Native push/deep-link support.
-  useEffect(() => {
-    const requestedModule = String(
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('module') || ''
-        : ''
-    )
-      .trim()
-      .toLowerCase()
-
-    if (
-      requestedModule === 'delivery' &&
-      deliveryModuleEnabled
-    ) {
-      setDashboardMode('delivery')
-    } else if (
-      requestedModule === 'resort' &&
-      resortModuleEnabled
-    ) {
-      setDashboardMode('resort')
-    } else if (
-      requestedModule === 'restaurant' &&
-      restaurantModuleEnabled
-    ) {
-      setDashboardMode('restaurant')
-    }
-  }, [
-restaurantModuleEnabled,
-    resortModuleEnabled,
-    deliveryModuleEnabled,
-  ])
+  const ordersHaveLoaded = ordersLoadStatus.scope === ordersRequestScope && ordersLoadStatus.loaded
+  const ordersLoadError = ordersLoadStatus.scope === ordersRequestScope ? ordersLoadStatus.error : ''
 
   // SECURITY: The restaurant ID in the URL is not authentication.
   // The authenticated Supabase user must own the dashboard being opened.
@@ -2920,9 +2891,6 @@ if (staffError) {
 
     let cancelled = false
     let busy = false
-    setOrdersHaveLoaded(false)
-    setOrdersLoadError('')
-
     const refreshOrders = async () => {
       if (busy || cancelled) return
       busy = true
@@ -2940,13 +2908,16 @@ if (staffError) {
         }
         prevOrdersLengthRef.current = orderData.length
         setOrders(orderData)
-        setOrdersHaveLoaded(true)
-        setOrdersLoadError('')
+        setOrdersLoadStatus({ scope: ordersRequestScope, loaded: true, error: '' })
         setOrdersLastSynced(new Date())
       } catch (error) {
         if (!cancelled) {
           console.error('[OWNER ORDER REPORTS LOAD ERROR]', error)
-          setOrdersLoadError(error?.message || 'Unable to fetch secure order history.')
+          setOrdersLoadStatus((current) => ({
+            scope: ordersRequestScope,
+            loaded: current.scope === ordersRequestScope && current.loaded,
+            error: error?.message || 'Unable to fetch secure order history.',
+          }))
           // Keep the previous successful orders rather than presenting errors as ₹0.
         }
       } finally {
@@ -2960,7 +2931,7 @@ if (staffError) {
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [authChecked, approvalStatus, restaurantId, hasRealtimeOrderAlarm, ordersRefreshTick])
+  }, [authChecked, approvalStatus, restaurantId, hasRealtimeOrderAlarm, ordersRequestScope])
 
   const configuredTableNumbers = [...new Set(
     restaurantTables
@@ -4415,15 +4386,15 @@ if (staffError) {
 
   const handlePreviewAlarm = (src, volume = 1) => {
     try {
-      if (previewAudio) {
-        previewAudio.pause()
-        previewAudio.currentTime = 0
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause()
+        previewAudioRef.current.currentTime = 0
       }
 
       const audio = new Audio(src)
       audio.volume = Math.min(1, Math.max(0, Number(volume) || 0))
       audio.play().catch((error) => console.error('Preview audio blocked:', error))
-      setPreviewAudio(audio)
+      previewAudioRef.current = audio
     } catch (error) {
       console.error('Alarm preview error:', error)
     }
@@ -7122,7 +7093,7 @@ if (staffError) {
               </h2>
               <p className="text-xs text-neutral-400 mt-2 max-w-3xl leading-relaxed">
                 Generate and share separate login QR codes for your Manager, Kitchen,
-                and Waiter pages. The QR code contains only this restaurant's URL.
+                and Waiter pages. The QR code contains only this restaurant&#39;s URL.
                 Staff must enter their own credentials, and the Kitchen and Waiter
                 pages verify the restaurant and role before showing data.
               </p>
@@ -7512,7 +7483,7 @@ if (staffError) {
                     Orders & Bills
                   </h2>
                   <p className="text-xs text-neutral-400 mt-1">
-                    Generate a printable bill using the order's original date and time.
+                    Generate a printable bill using the order&#39;s original date and time.
                   </p>
                 </div>
 
@@ -7960,7 +7931,7 @@ if (staffError) {
               </form>
             </div>
             <div className="lg:col-span-2 space-y-4">
-              <div className="bg-gradient-to-r from-red-600 via-orange-500 to-amber-400 p-6 rounded-3xl shadow-xl"><p className="text-[10px] uppercase tracking-widest font-black text-white/80">Customer Preview</p><h3 className="text-2xl font-black text-white mt-1">🔥 Offers of the Day</h3><p className="text-xs text-white/80 mt-1">Only active offers with today's date are advertised on the QR menu.</p></div>
+              <div className="bg-gradient-to-r from-red-600 via-orange-500 to-amber-400 p-6 rounded-3xl shadow-xl"><p className="text-[10px] uppercase tracking-widest font-black text-white/80">Customer Preview</p><h3 className="text-2xl font-black text-white mt-1">🔥 Offers of the Day</h3><p className="text-xs text-white/80 mt-1">Only active offers with today&#39;s date are advertised on the QR menu.</p></div>
               <div className="bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden"><div className="p-5 border-b border-neutral-800 flex items-center justify-between"><div><h3 className="font-black text-white">Your Offers</h3><p className="text-[10px] text-neutral-500 mt-1">Manage everything shown in the QR menu advertising area.</p></div><span className="text-xs font-black text-orange-400">{dailyOffers.length} total</span></div>
                 {dailyOffers.length === 0 ? <div className="p-12 text-center"><div className="text-5xl">🎁</div><p className="text-white font-bold mt-3">No offers yet</p><p className="text-xs text-neutral-500 mt-1">Create an offer from the form to advertise it to QR customers.</p></div> : <div className="p-4 space-y-3">{dailyOffers.map((offer) => <div key={offer.id} className="bg-neutral-950 border border-neutral-800 rounded-2xl p-3 flex gap-3 items-center"><div className="w-20 h-20 rounded-xl overflow-hidden bg-neutral-900 shrink-0">{offer.image_url ? <img src={offer.image_url} alt={offer.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl">🎁</div>}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2 flex-wrap"><h4 className="font-black text-white text-sm">{offer.title}</h4><span className={`text-[9px] font-black px-2 py-1 rounded-full ${offer.is_active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-neutral-800 text-neutral-500'}`}>{offer.is_active ? 'ACTIVE' : 'HIDDEN'}</span></div><p className="text-[10px] text-neutral-500 mt-1">{offer.offer_date}{offer.discount_text ? ` • ${offer.discount_text}` : ''}</p><div className="flex items-center gap-2 mt-1">{offer.original_price != null && <span className="text-[10px] text-neutral-600 line-through">₹{Number(offer.original_price).toFixed(2)}</span>}<span className="text-sm font-black text-orange-400">₹{Number(offer.offer_price).toFixed(2)}</span></div></div><div className="flex flex-col gap-2"><button type="button" onClick={() => startEditingOffer(offer)} className="bg-blue-500/10 text-blue-400 px-3 py-2 rounded-lg text-[10px] font-bold">Edit</button><button type="button" onClick={() => toggleOffer(offer)} className="bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-[10px] font-bold">{offer.is_active ? 'Hide' : 'Show'}</button><button type="button" onClick={() => deleteOffer(offer)} className="bg-red-500/10 text-red-400 px-3 py-2 rounded-lg text-[10px] font-bold">Delete</button></div></div>)}</div>}
               </div>
@@ -8184,7 +8155,7 @@ if (staffError) {
                 <div className="flex items-center justify-between bg-neutral-950 p-4 rounded-2xl border border-neutral-800">
                   <div>
                     <p className="text-xs font-bold text-white">
-                      Enable "Pay at Counter"
+                      Enable &quot;Pay at Counter&quot;
                     </p>
 
                     <p className="text-[10px] text-neutral-400">

@@ -1,5 +1,12 @@
 # Vercel publication status — 2 November 2026
 
+The subsequent [repository lint cleanup](lint-cleanup-report.md) fixes all 169
+errors, with zero new warnings. Its 182 individual unit tests and direct type
+check pass, but the current build/full browser checks are blocked by execution
+permissions. The earlier successful address-only build below is historical;
+it does not establish readiness for this broader change. No new deployment has
+been created. Keep SQL, paid-checkout and merge holds in place.
+
 The user requested Vercel publication and updated access twice. The final
 team-scoped token fixes the original denial: project, environment and deployment
 metadata now return HTTP 200. No token/secret value was printed, decrypted or

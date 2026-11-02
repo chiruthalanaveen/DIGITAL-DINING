@@ -248,6 +248,8 @@ export default function DeliveryManagement({
   planCode = '',
 }) {
   const restaurantId = restaurant?.id
+  const restaurantName = restaurant?.name
+  const restaurantPhone = restaurant?.phone
   const deliveryOnly =
     String(planCode).toLowerCase() === 'delivery'
 
@@ -620,30 +622,10 @@ export default function DeliveryManagement({
     [restaurantId]
   )
 
-  const loadDelivery = useCallback(
-    async (
-      quiet = false,
-      announceNew = false
-    ) => {
+  const requestDelivery = useCallback(
+    async (announceNew = false, isCurrent = () => true) => {
       if (!restaurantId) return
-
-      if (quiet) {
-        setRefreshing(true)
-      } else {
-        setLoading(true)
-      }
-
-      setMessage('')
-
-      try {
-        const [
-          settingsResult,
-          ordersResult,
-          driversResult,
-          packersResult,
-          menuResult,
-          offersResult,
-        ] = await Promise.all([
+      const fetchResponse = async () => (Promise.all([
           supabase
             .from('delivery_settings')
             .select('*')
@@ -727,7 +709,17 @@ export default function DeliveryManagement({
             .order('created_at', {
               ascending: false,
             }),
-        ])
+        ]))
+      return fetchResponse().then(async ([
+          settingsResult,
+          ordersResult,
+          driversResult,
+          packersResult,
+          menuResult,
+          offersResult,
+        ]) => {
+        if (!isCurrent()) return
+
 
         const failures = [
           settingsResult.error,
@@ -754,9 +746,9 @@ export default function DeliveryManagement({
             .insert({
               restaurant_id: restaurantId,
               store_name:
-                restaurant?.name || '',
+                restaurantName || '',
               support_phone:
-                restaurant?.phone || '',
+                restaurantPhone || '',
             })
             .select('*')
             .single()
@@ -819,7 +811,10 @@ export default function DeliveryManagement({
         )
 
         await loadDeliveryProofs()
-      } catch (error) {
+
+      }).catch((error) => {
+        if (!isCurrent()) return
+
         console.error(
           'Delivery dashboard load error:',
           error
@@ -829,23 +824,47 @@ export default function DeliveryManagement({
           error?.message ||
             'Unable to load Delivery Management.'
         )
-      } finally {
+      }).finally(() => {
+        if (!isCurrent()) return
+
         setLoading(false)
         setRefreshing(false)
-      }
+      })
     },
     [
       restaurantId,
-      restaurant?.name,
-      restaurant?.phone,
+      restaurantName,
+      restaurantPhone,
       inspectNewOrders,
       loadDeliveryProofs,
     ]
   )
 
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadDelivery = useCallback((quiet = false, announceNew = false) => {
+    if (!restaurantId) return
+    if (quiet) setRefreshing(true)
+    else setLoading(true)
+    setMessage('')
+    return requestDelivery(announceNew)
+  }, [restaurantId, requestDelivery])
+
+  const requestContext = [restaurantId, restaurantName, restaurantPhone, alarmEnabled]
+  const [previousRequestDelivery, setPreviousRequestDelivery] = useState(requestContext)
+  if (previousRequestDelivery.some((value, index) => value !== requestContext[index])) {
+    setPreviousRequestDelivery(requestContext)
+    setLoading(true)
+    setMessage('')
+  }
+
   useEffect(() => {
-    loadDelivery()
-  }, [loadDelivery])
+    let active = true
+    const isCurrent = () => active
+
+    requestDelivery(false, isCurrent)
+
+    return () => { active = false }
+  }, [requestDelivery])
 
   const refreshOrdersOnly = useCallback(
     async (announceNew = true) => {
@@ -5641,7 +5660,7 @@ export default function DeliveryManagement({
                 >
                   Open Driver Portal
 
-    
+
                 </a>
               </div>
             )}

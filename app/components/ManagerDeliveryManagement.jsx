@@ -1966,55 +1966,12 @@ export default function ManagerDeliveryManagement({
     announceManagerSupportAlerts,
   ])
 
-  const loadData = useCallback(
+  const requestData = useCallback(
+    async (isCurrent = () => true) => {
+      const fetchResponse = async () => (getData())
+      return fetchResponse().then(async ({ data, error: rpcError }) => {
+        if (!isCurrent()) return
 
-
-
-    async (quiet = false) => {
-
-
-
-      if (quiet) {
-
-
-
-        setRefreshing(true)
-
-
-
-      } else {
-
-
-
-        setLoading(true)
-
-
-
-      }
-
-
-
-
-
-
-
-      setError('')
-
-
-
-
-
-
-
-      try {
-
-
-
-        const { data, error: rpcError } =
-
-
-
-          await getData()
 
 
 
@@ -2154,7 +2111,10 @@ export default function ManagerDeliveryManagement({
 
 
 
-      } catch (loadError) {
+
+      }).catch((loadError) => {
+        if (!isCurrent()) return
+
 
 
 
@@ -2194,7 +2154,9 @@ export default function ManagerDeliveryManagement({
 
 
 
-      } finally {
+      }).finally(() => {
+        if (!isCurrent()) return
+
 
 
 
@@ -2206,7 +2168,7 @@ export default function ManagerDeliveryManagement({
 
 
 
-      }
+      })
 
 
 
@@ -2226,15 +2188,36 @@ export default function ManagerDeliveryManagement({
 
 
 
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadData = useCallback((quiet = false) => {
+    if (quiet) setRefreshing(true)
+    else setLoading(true)
+    setError('')
+    return requestData()
+  }, [requestData])
+
+  const requestContext = [restaurantId, restaurantCode, sessionToken, sessionMode, userId, password, alarmEnabled]
+  const [previousRequestData, setPreviousRequestData] = useState(requestContext)
+  if (previousRequestData.some((value, index) => value !== requestContext[index])) {
+    setPreviousRequestData(requestContext)
+    setLoading(true)
+    setError('')
+  }
+
   useEffect(() => {
+    let active = true
+    const isCurrent = () => active
 
 
 
-    loadData()
+
+    requestData(isCurrent)
 
 
 
-  }, [loadData])
+
+    return () => { active = false }
+  }, [requestData])
 
 
 
@@ -4431,25 +4414,47 @@ export default function ManagerDeliveryManagement({
     password,
   ])
 
-  const loadCodReconciliation = useCallback(
-    async (quiet = false) => {
-      if (!quiet) setCodLoading(true)
-      setCodError('')
+  const requestCodReconciliation = useCallback(
+    async (isCurrent = () => true) => {
+      const fetchResponse = async () => (getManagerCodReconciliation())
+      return fetchResponse().then(async (data) => {
+        if (!isCurrent()) return
 
-      try {
-        const data = await getManagerCodReconciliation()
         setCodReport(data)
-      } catch (codLoadError) {
+
+      }).catch((codLoadError) => {
+        if (!isCurrent()) return
+
         console.error('Manager COD reconciliation error:', codLoadError)
         setCodError(
           codLoadError?.message || 'Unable to load COD reconciliation.'
         )
-      } finally {
+      }).finally(() => {
+        if (!isCurrent()) return
+
         setCodLoading(false)
-      }
+      })
     },
     [getManagerCodReconciliation]
   )
+
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadCodReconciliation = useCallback((quiet = false) => {
+    if (!quiet) setCodLoading(true)
+    setCodError('')
+    return requestCodReconciliation()
+  }, [requestCodReconciliation])
+
+  const [requestCodReconciliationContext, setRequestCodReconciliationContext] = useState(() => ({
+    request: requestCodReconciliation, active: tab === 'cod',
+  }))
+  if (requestCodReconciliationContext.request !== requestCodReconciliation || requestCodReconciliationContext.active !== (tab === 'cod')) {
+    setRequestCodReconciliationContext({ request: requestCodReconciliation, active: tab === 'cod' })
+    if (tab === 'cod') {
+      setCodLoading(true)
+      setCodError('')
+    }
+  }
 
   const reviewCodSettlement = async (settlement, decision) => {
     if (!settlement?.id || codReviewId) return
@@ -4527,9 +4532,14 @@ export default function ManagerDeliveryManagement({
   }
 
   useEffect(() => {
+    let active = true
+    const isCurrent = () => active
+
     if (tab !== 'cod') return
-    loadCodReconciliation(false)
-  }, [tab, loadCodReconciliation])
+    requestCodReconciliation(isCurrent)
+
+    return () => { active = false }
+  }, [tab, requestCodReconciliation])
 
 
   const getManagerAfterSales = useCallback(
@@ -4578,25 +4588,47 @@ export default function ManagerDeliveryManagement({
     ]
   )
 
-  const loadAfterSales = useCallback(
-    async (quiet = false) => {
-      if (!quiet) setAfterSalesLoading(true)
-      setAfterSalesError('')
+  const requestAfterSales = useCallback(
+    async (isCurrent = () => true) => {
+      const fetchResponse = async () => (getManagerAfterSales(''))
+      return fetchResponse().then(async (data) => {
+        if (!isCurrent()) return
 
-      try {
-        const data = await getManagerAfterSales('')
         setAfterSalesReport(data)
-      } catch (loadError) {
+
+      }).catch((loadError) => {
+        if (!isCurrent()) return
+
         console.error('Manager after-sales load error:', loadError)
         setAfterSalesError(
           loadError?.message || 'Unable to load after-sales cases.'
         )
-      } finally {
+      }).finally(() => {
+        if (!isCurrent()) return
+
         setAfterSalesLoading(false)
-      }
+      })
     },
     [getManagerAfterSales]
   )
+
+  // Interactive refresh owns its immediate busy state; the Effect starts I/O only.
+  const loadAfterSales = useCallback((quiet = false) => {
+    if (!quiet) setAfterSalesLoading(true)
+    setAfterSalesError('')
+    return requestAfterSales()
+  }, [requestAfterSales])
+
+  const [requestAfterSalesContext, setRequestAfterSalesContext] = useState(() => ({
+    request: requestAfterSales, active: tab === 'after_sales',
+  }))
+  if (requestAfterSalesContext.request !== requestAfterSales || requestAfterSalesContext.active !== (tab === 'after_sales')) {
+    setRequestAfterSalesContext({ request: requestAfterSales, active: tab === 'after_sales' })
+    if (tab === 'after_sales') {
+      setAfterSalesLoading(true)
+      setAfterSalesError('')
+    }
+  }
 
   const resetAfterSalesCreate = useCallback(() => {
     setAfterSalesCreateOrderId('')
@@ -5270,9 +5302,14 @@ export default function ManagerDeliveryManagement({
   }
 
   useEffect(() => {
+    let active = true
+    const isCurrent = () => active
+
     if (tab !== 'after_sales') return
-    loadAfterSales(false)
-  }, [tab, loadAfterSales])
+    requestAfterSales(isCurrent)
+
+    return () => { active = false }
+  }, [tab, requestAfterSales])
 
   const tabs = [
 
@@ -5290,7 +5327,7 @@ export default function ManagerDeliveryManagement({
 
 
 
-    
+
     ['inventory', 'Inventory'],
 
     ['cod', `COD Cash (${Number(codReport?.summary?.pending_handover || 0) > 0 ? 'Pending' : 'Reconcile'})`],
@@ -7878,7 +7915,7 @@ export default function ManagerDeliveryManagement({
                   Driver cash due & handovers
                 </h3>
                 <p className="mt-2 max-w-2xl text-xs leading-5 text-neutral-400">
-                  Approve a handover only after the physical cash is received. Approved cash is automatically allocated to the driver's oldest unsettled COD orders.
+                  Approve a handover only after the physical cash is received. Approved cash is automatically allocated to the driver&apos;s oldest unsettled COD orders.
                 </p>
               </div>
 
@@ -8872,7 +8909,7 @@ export default function ManagerDeliveryManagement({
             <h3 className="text-lg font-black text-white">Custom Delivery Area</h3>
             <p className="mt-2 text-xs leading-5 text-neutral-400">
               Click on the map to select streets and neighbourhoods served by the store.
-              The saved polygon narrows the Owner's existing radius; it does not expand delivery coverage.
+              The saved polygon narrows the Owner&apos;s existing radius; it does not expand delivery coverage.
               Changes affect new orders only.
             </p>
           </section>

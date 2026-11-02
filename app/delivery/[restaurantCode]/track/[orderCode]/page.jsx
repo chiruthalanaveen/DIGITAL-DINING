@@ -4,10 +4,14 @@ import {
 
   use,
 
+  useCallback,
+
   useEffect,
 
 
   useState,
+
+  useSyncExternalStore,
 
 } from 'react'
 
@@ -174,6 +178,19 @@ function distanceKm(lat1, lng1, lat2, lng2) {
 
 }
 
+function subscribeTrackingIdentity(callback) {
+  window.addEventListener('storage', callback)
+  window.addEventListener('digitaldine:tracking-identity', callback)
+  return () => {
+    window.removeEventListener('storage', callback)
+    window.removeEventListener('digitaldine:tracking-identity', callback)
+  }
+}
+function readTrackingIdentity(key) {
+  try { return localStorage.getItem(key) || '' }
+  catch { return '' }
+}
+
 export default function DeliveryTrackingPage({
 
   params,
@@ -216,13 +233,14 @@ export default function DeliveryTrackingPage({
 
     ).trim()
 
-  const [mobile, setMobile] =
-
-    useState('')
-
-  const [inputMobile, setInputMobile] =
-
-    useState('')
+  const trackingIdentityKey = `digitaldining_delivery_mobile_${restaurantCode}_${orderCode}`
+  const savedMobile = useSyncExternalStore(subscribeTrackingIdentity, () => readTrackingIdentity(trackingIdentityKey), () => '')
+  const [mobileDraft, setMobileDraft] = useState(null)
+  const [inputMobileDraft, setInputMobileDraft] = useState(null)
+  const mobile = mobileDraft?.key === trackingIdentityKey ? mobileDraft.value : savedMobile
+  const inputMobile = inputMobileDraft?.key === trackingIdentityKey ? inputMobileDraft.value : savedMobile
+  const setMobile = useCallback(value => setMobileDraft({ key: trackingIdentityKey, value }), [trackingIdentityKey])
+  const setInputMobile = value => setInputMobileDraft({ key: trackingIdentityKey, value })
 
   const [order, setOrder] =
 
@@ -232,9 +250,8 @@ export default function DeliveryTrackingPage({
 
     useState([])
 
-  const [loading, setLoading] =
-
-    useState(false)
+  const [requestLoading, setLoading] = useState(false)
+  const [resolvedGuestRequest, setResolvedGuestRequest] = useState('')
 
   const [error, setError] =
 
@@ -243,6 +260,8 @@ export default function DeliveryTrackingPage({
   const [accountState, setAccountState] = useState('checking')
 
   const [accountError, setAccountError] = useState('')
+  const guestRequestKey = `${restaurantCode}:${orderCode}:${mobile}`
+  const loading = requestLoading || (accountState === 'guest' && mobile.length === 10 && resolvedGuestRequest !== guestRequestKey)
 
   // Server and first browser render both start without a clock value.
   // Update after mount; this prevents Date.now() from entering hydrated JSX.
@@ -363,31 +382,7 @@ export default function DeliveryTrackingPage({
 
 
 
-  useEffect(() => {
-
-    if (accountState !== 'guest') return
-
-    try {
-
-      const stored = localStorage.getItem(
-
-        `digitaldining_delivery_mobile_${restaurantCode}_${orderCode}`
-
-      )
-
-      if (stored) {
-
-        setMobile(stored)
-
-        setInputMobile(stored)
-
-      }
-
-    } catch { /* Ignore unavailable storage. */ }
-
-  }, [restaurantCode, orderCode, accountState])
-
-  const loadOrder = async (
+  const requestOrder = useCallback((
 
     mobileOverride = '',
 
@@ -421,48 +416,10 @@ export default function DeliveryTrackingPage({
 
     }
 
-    if (!quiet) {
-
-      setLoading(true)
-
-      setError('')
-
-    }
-
-    try {
-
-      /*
-
-       * First find all recent orders for this restaurant + mobile.
-
-       * This RPC already exists in the Delivery customer page.
-
-       */
-
-      const {
-
-        data: mobileData,
-
-        error: mobileRpcError,
-
-      } = await supabase.rpc(
-
-        'get_public_delivery_orders_by_mobile',
-
-        {
-
-          p_restaurant_code:
-
-            restaurantCode,
-
-          p_customer_mobile:
-
-            cleanMobile,
-
-        }
-
-      )
-
+    return supabase.rpc('get_public_delivery_orders_by_mobile', {
+      p_restaurant_code: restaurantCode, p_customer_mobile: cleanMobile,
+    }).then(async ({ data: mobileData, error: mobileRpcError }) => {
+      if (!quiet) setError('')
       if (mobileRpcError) {
 
         throw mobileRpcError
@@ -833,13 +790,15 @@ export default function DeliveryTrackingPage({
 
         )
 
+        window.dispatchEvent(new Event('digitaldine:tracking-identity'))
+
       } catch {
 
         // Ignore unavailable local storage.
 
       }
 
-    } catch (loadError) {
+    }).catch(loadError => {
 
       console.error(
 
@@ -861,25 +820,32 @@ export default function DeliveryTrackingPage({
 
       }
 
-    } finally {
+    }).finally(() => {
 
       if (!quiet) {
 
         setLoading(false)
+        setResolvedGuestRequest(`${restaurantCode}:${orderCode}:${cleanMobile}`)
 
       }
 
-    }
+    })
 
+  }, [mobile, restaurantCode, orderCode, setMobile])
+  const loadOrder = (mobileOverride = '', quiet = false) => {
+    if (String(mobileOverride || mobile || '').replace(/\D/g, '').slice(0, 10).length !== 10) return
+    if (!quiet) {
+      setLoading(true)
+      setError('')
+    }
+    return requestOrder(mobileOverride, quiet)
   }
 
   useEffect(() => {
 
     if (accountState !== 'guest' || mobile.length !== 10) return
 
-    loadOrder()
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void requestOrder()
 
   }, [
 
@@ -890,6 +856,8 @@ export default function DeliveryTrackingPage({
     orderCode,
 
     accountState,
+
+    requestOrder,
 
   ])
 

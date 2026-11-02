@@ -26,6 +26,7 @@ import {
 
 
 
+  useSyncExternalStore,
 } from 'react'
 
 
@@ -285,53 +286,20 @@ function DeliveryResultPanel({
 
 
 
-  useEffect(() => {
+  const previewUrlsRef = useRef([])
 
+  useEffect(() => () => {
+    previewUrlsRef.current.forEach((preview) => URL.revokeObjectURL(preview.url))
+  }, [])
 
-
-    const nextPreviews = files.map((file) => ({
-
-
-
-      name: file.name,
-
-
-
-      url: URL.createObjectURL(file),
-
-
-
-    }))
-
-
-
+  // Allocate/revoke browser resources in the file-selection event, not render.
+  const updateFiles = (selected) => {
+    previewUrlsRef.current.forEach((preview) => URL.revokeObjectURL(preview.url))
+    const nextPreviews = selected.map((file) => ({ name: file.name, url: URL.createObjectURL(file) }))
+    previewUrlsRef.current = nextPreviews
+    setFiles(selected)
     setPreviews(nextPreviews)
-
-
-
-    return () => {
-
-
-
-      nextPreviews.forEach((preview) => {
-
-
-
-        URL.revokeObjectURL(preview.url)
-
-
-
-      })
-
-
-
-    }
-
-
-
-  }, [files])
-
-
+  }
 
   const handleFiles = (event) => {
 
@@ -425,7 +393,7 @@ function DeliveryResultPanel({
 
 
 
-    setFiles(selected)
+    updateFiles(selected)
 
 
 
@@ -613,7 +581,7 @@ function DeliveryResultPanel({
 
 
 
-      setFiles([])
+      updateFiles([])
 
 
 
@@ -1241,6 +1209,32 @@ function DeliveryResultPanel({
 
 
 
+function subscribeStoredSession(onChange) {
+  window.addEventListener('storage', onChange)
+  return () => window.removeEventListener('storage', onChange)
+}
+
+function subscribeHydration() { return () => {} }
+
+function readStoredSession(storageKey) {
+  try { return localStorage.getItem(storageKey) || '' } catch { return '' }
+}
+
+// The server snapshot stays logged out; browser storage is read after hydration.
+function usePortalSession(storageKey) {
+  const savedToken = useSyncExternalStore(
+    subscribeStoredSession, () => readStoredSession(storageKey), () => ''
+  )
+  const hydrated = useSyncExternalStore(subscribeHydration, () => true, () => false)
+  const [override, setOverride] = useState(null)
+  const overrideMatches = override?.key === storageKey && override.savedToken === savedToken
+  // Never revive an in-memory token after a store switch or external logout.
+  if (override && !overrideMatches) setOverride(null)
+  const token = overrideMatches ? override.token : savedToken
+  const setToken = (nextToken) => setOverride({ key: storageKey, token: nextToken, savedToken: readStoredSession(storageKey) })
+  return [token, setToken, !hydrated]
+}
+
 export default function DeliveryDriverPortal({
 
 
@@ -1289,11 +1283,7 @@ export default function DeliveryDriverPortal({
 
 
 
-  const [sessionToken, setSessionToken] =
-
-
-
-    useState('')
+  const [sessionToken, setSessionToken, loading] = usePortalSession(storageKey)
 
 
 
@@ -1321,11 +1311,6 @@ export default function DeliveryDriverPortal({
 
 
 
-  const [loading, setLoading] =
-
-
-
-    useState(true)
 
 
 
@@ -1363,7 +1348,7 @@ export default function DeliveryDriverPortal({
 
   const [codData, setCodData] = useState(null)
 
-  const [codLoading, setCodLoading] = useState(false)
+  const [codLoading, setCodLoading] = useState(true)
 
   const [codSubmitting, setCodSubmitting] = useState(false)
 
@@ -1404,335 +1389,58 @@ export default function DeliveryDriverPortal({
 
 
 
-  useEffect(() => {
 
 
 
-    try {
 
-
-
-      const saved =
-
-
-
-        localStorage.getItem(storageKey)
-
-
-
-      if (saved) {
-
-
-
-        setSessionToken(saved)
-
-
-
-      }
-
-
-
-    } catch {
-
-
-
-      // Ignore unavailable local storage.
-
-
-
-    }
-
-
-
-    setLoading(false)
-
-
-
-  }, [storageKey])
-
-
-
-  const loadPortal = async (
-
-
-
-    tokenOverride = ''
-
-
-
-  ) => {
-
-
-
-    const token =
-
-
-
-      String(
-
-
-
-        tokenOverride ||
-
-
-
-          sessionToken ||
-
-
-
-          ''
-
-
-
-      ).trim()
-
-
-
-    if (!token) {
-
-
-
-      setPortalData(null)
-
-
-
-      return
-
-
-
-    }
-
-
-
-    try {
-
-
-
-      const {
-
-
-
-        data,
-
-
-
-        error: rpcError,
-
-
-
-      } = await supabase.rpc(
-
-
-
-        'get_delivery_driver_portal_data',
-
-
-
-        {
-
-
-
-          p_session_token: token,
-
-
-
-        }
-
-
-
-      )
-
-
-
-      if (rpcError) {
-
-
-
-        throw rpcError
-
-
-
-      }
-
-
-
-      if (!data?.success) {
-
-
-
-        throw new Error(
-
-
-
-          data?.message ||
-
-
-
-            'Driver session is invalid.'
-
-
-
-        )
-
-
-
-      }
-
-
-
-      setPortalData(data)
-
-
-
-      setError('')
-
-
-
-    } catch (loadError) {
-
-
-
-      console.error(
-
-
-
-        'Driver portal load error:',
-
-
-
-        loadError
-
-
-
-      )
-
-
-
-      setPortalData(null)
-
-
-
-      setSessionToken('')
-
-
-
-      try {
-
-
-
-        localStorage.removeItem(
-
-
-
-          storageKey
-
-
-
-        )
-
-
-
-      } catch {
-
-
-
-        // Ignore unavailable local storage.
-
-
-
-      }
-
-
-
-      setError(
-
-
-
-        loadError?.message ||
-
-
-
-          'Your Driver Portal session expired. Please sign in again.'
-
-
-
-      )
-
-
-
-    }
-
-
-
-  }
-
-
-
-  const loadCodSummary = async (tokenOverride = '', quiet = false) => {
-
+  const loadPortal = (tokenOverride = '') => {
     const token = String(tokenOverride || sessionToken || '').trim()
-
-
-
-    if (!token) {
-
-      setCodData(null)
-
-      return
-
-    }
-
-
-
-    if (!quiet) setCodLoading(true)
-
-    setCodError('')
-
-
-
-    try {
-
-      const { data, error: rpcError } = await supabase.rpc(
-
-        'delivery_driver_get_cod_summary',
-
-        { p_session_token: token }
-
-      )
-
-
-
+    if (!token) return
+    const requestPortal = async () => {
+      const { data, error: rpcError } = await supabase.rpc('get_delivery_driver_portal_data', {
+        p_session_token: token,
+      })
       if (rpcError) throw rpcError
-
-      if (!data?.success) {
-
-        throw new Error(data?.message || 'Unable to load COD cash summary.')
-
-      }
-
-
-
-      setCodData(data)
-
-    } catch (codLoadError) {
-
-      console.error('Driver COD summary error:', codLoadError)
-
-      setCodError(
-
-        codLoadError?.message || 'Unable to load COD cash summary.'
-
-      )
-
-    } finally {
-
-      setCodLoading(false)
-
+      if (!data?.success) throw new Error(data?.message || 'Driver session is invalid.')
+      return data
     }
-
+    return requestPortal().then((data) => {
+      setPortalData(data)
+      setError('')
+    }).catch((loadError) => {
+      console.error('Driver portal load error:', loadError)
+      setPortalData(null)
+      setSessionToken('')
+      try { localStorage.removeItem(storageKey) } catch { /* Storage may be unavailable. */ }
+      setError(loadError?.message || 'Your Driver Portal session expired. Please sign in again.')
+    })
   }
 
+  const loadCodSummary = (tokenOverride = '') => {
+    const token = String(tokenOverride || sessionToken || '').trim()
+    if (!token) return
+    const requestSummary = async () => {
+      const { data, error: rpcError } = await supabase.rpc('delivery_driver_get_cod_summary', {
+        p_session_token: token,
+      })
+      if (rpcError) throw rpcError
+      if (!data?.success) throw new Error(data?.message || 'Unable to load COD cash summary.')
+      return data
+    }
+    return requestSummary().then((data) => {
+      setCodError('')
+      setCodData(data)
+    }).catch((codLoadError) => {
+      console.error('Driver COD summary error:', codLoadError)
+      setCodError(codLoadError?.message || 'Unable to load COD cash summary.')
+    }).finally(() => setCodLoading(false))
+  }
 
+  const refreshCodSummary = async () => {
+    setCodLoading(true)
+    setCodError('')
+    await loadCodSummary()
+  }
 
   const submitCodSettlement = async (event) => {
 
@@ -2966,66 +2674,40 @@ export default function DeliveryDriverPortal({
 
 
 
-  useEffect(() => {
+  const gpsContext = `${sessionToken}|${liveTrackingOrderIdsKey}|${gpsRestartNonce}`
+  const [gpsSetupContext, setGpsSetupContext] = useState('')
+  const canTrackGps = typeof navigator !== 'undefined' && Boolean(navigator.geolocation)
 
-    if (
-      !sessionToken ||
-      liveTrackingOrderIds.length ===
-        0
-    ) {
-
+  // Adjust presentation with its tracking context before committing a stale status.
+  if (gpsSetupContext !== gpsContext) {
+    setGpsSetupContext(gpsContext)
+    if (!sessionToken || liveTrackingOrderIds.length === 0) {
       setGpsStatus('idle')
-
       setGpsMessage('')
-
       setGpsLastSentAt('')
-
       setGpsAccuracy(null)
-
-      gpsLastSentRef.current = 0
-
-      gpsLastCoordsRef.current = null
-
-      return
-
-    }
-
-
-
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-
+    } else if (!canTrackGps) {
       setGpsStatus('error')
-
-      setGpsMessage(
-
-        'Live GPS is not supported on this device/browser. Open the Driver Portal on a GPS-enabled phone.'
-
-      )
-
-      return
-
+      setGpsMessage('Live GPS is not supported on this device/browser. Open the Driver Portal on a GPS-enabled phone.')
+    } else {
+      setGpsStatus('requesting')
+      setGpsMessage('Allow precise location access to share your live delivery position.')
     }
+  }
 
-
+  useEffect(() => {
+    if (!sessionToken || liveTrackingOrderIds.length === 0) {
+      gpsLastSentRef.current = 0
+      gpsLastCoordsRef.current = null
+      return
+    }
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return
 
     const token = sessionToken
-
-    const orderIds =
-      [...liveTrackingOrderIds]
-
+    const orderIds = [...liveTrackingOrderIds]
     let disposed = false
-
-
-
     gpsLastSentRef.current = 0
-
     gpsLastCoordsRef.current = null
-
-    setGpsStatus('requesting')
-
-    setGpsMessage('Allow precise location access to share your live delivery position.')
-
-
 
     const sendPosition = async (position) => {
 
@@ -4652,10 +4334,7 @@ export default function DeliveryDriverPortal({
             <button
               type="button"
               onClick={() =>
-                loadCodSummary(
-                  '',
-                  false
-                )
+                refreshCodSummary()
               }
               disabled={
                 codLoading
@@ -5410,7 +5089,7 @@ export default function DeliveryDriverPortal({
                       </p>
 
                       <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-neutral-400">
-                        Start Delivery from Assigned Deliveries. When this portal begins sharing the Delivery Boy's GPS location for that order, it will appear here automatically.
+                        Start Delivery from Assigned Deliveries. When this portal begins sharing the Delivery Boy&apos;s GPS location for that order, it will appear here automatically.
                       </p>
                     </div>
                   )}
@@ -5468,7 +5147,7 @@ export default function DeliveryDriverPortal({
                         .length && (
                         <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-8 text-center">
                           <p className="text-xs font-black text-neutral-700">
-                            You're all caught up.
+                            You&apos;re all caught up.
                           </p>
 
                           <p className="mt-1 text-[10px] text-neutral-400">
@@ -5884,7 +5563,7 @@ export default function DeliveryDriverPortal({
                     </h3>
 
                     <p className="mt-2 text-xs leading-5 text-neutral-500">
-                      For assignment, payment, customer or delivery workflow problems, contact your Manager/Owner from the store's normal communication channel.
+                      For assignment, payment, customer or delivery workflow problems, contact your Manager/Owner from the store&apos;s normal communication channel.
                     </p>
 
                     <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[10px] text-neutral-500">
