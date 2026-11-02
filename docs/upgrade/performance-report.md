@@ -1,5 +1,10 @@
 # Phase 0 performance report
 
+The [current subscription increment](subscription-ledger-report.md) prioritizes
+durable correctness, not speed. Its RPCs bound lock waits to five seconds; this
+is not a measured p95 or whole-request deadline. No mutation-speed or field
+performance target is claimed by the newer work.
+
 1 November 2026. Branch: `feature/phase0-account-payment-guards`.
 
 The first increment fixes owner-account admission and payment-state correctness.

@@ -39,6 +39,32 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
+### Current durable subscription increment — 1–2 November 2026
+
+Continue Phase 0 on `feature/phase0-subscription-ledger`, based on PR #4's
+`727be8e`; keep PR #4 and commerce PR #3 draft and unmerged. The new additive
+`supabase/migrations/20261101123000_subscription_payment_ledger.sql` is prepared
+for review only and has NOT been applied to any hosted project. It adds private
+checkout intents and immutable activation receipts, with service-only RPCs.
+Do not reapply the commerce foundation, run db push, repair migration history,
+query production or execute this new migration on a hosted target without
+separate explicit approval.
+
+`SUBSCRIPTION_PAID_CHECKOUT_ENABLED` is server-only and disabled unless exactly
+`true`. Do not enable it or alter hosted configuration automatically. Missing
+RPCs must fail closed; never restore the old direct paid activation fallback.
+Historical unregistered captured orders require reconciliation, not an empty
+ledger backfill or a second payment. Preserve receipt history during rollback
+or recovery. The new SQL has no legacy/Auth foreign keys or existing-row DML.
+
+Use isolated loopback `subscription_test` fixtures only. Docker Hub official
+Supabase image discovery was blocked by a proxy CONNECT 403; PostgreSQL 18.4
+tests do not prove Supabase 17 or hosted Auth/provider compatibility. The new
+branch also has an automatic-deployment guard. All deployment, main/PR merge,
+production SQL/configuration, live-payment and real-fixture holds remain.
+See `docs/upgrade/subscription-ledger-review.md`, `subscription-ledger-report.md`
+and `subscription-ledger-installation.md` for current scope and evidence.
+
 ### Current platform Phase 0 — 1 November 2026
 
 The new master upgrade request supersedes the previous storefront-only source

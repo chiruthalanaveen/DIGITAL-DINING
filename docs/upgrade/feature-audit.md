@@ -1,5 +1,11 @@
 # Phase 0 feature audit
 
+Current follow-up, 2 November 2026: the
+[durable subscription increment](subscription-ledger-report.md) adds a review-only
+migration and a disabled-by-default paid flow. The inventory below records the
+earlier `4ac1e12` audit; do not treat its old replay finding as proof the new flow
+has been installed or that the production issue is resolved.
+
 Audit date: 1 November 2026. Source snapshot: `4ac1e12`, the existing
 `feature/client-websites-phase1` branch and draft
 [PR #3](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3). This master

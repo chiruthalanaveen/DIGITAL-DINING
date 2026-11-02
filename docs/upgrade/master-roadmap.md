@@ -1,5 +1,9 @@
 # Dependency-aware platform upgrade roadmap
 
+Current Phase 0 follow-up: [durable subscription activation](subscription-ledger-report.md)
+is being verified on a separate stacked branch. Its migration/flag are held for
+review; later phases and production actions remain gated as described below.
+
 1 November 2026. Start from the existing application and draft commerce PR #3;
 do not rebuild modules or collect this entire roadmap into one large release.
 See [feature-audit.md](feature-audit.md) for source findings and the distinction
