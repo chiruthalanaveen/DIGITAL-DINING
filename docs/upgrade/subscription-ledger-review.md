@@ -96,6 +96,13 @@ does not contact Razorpay or independently prove capture.
 - `reject_receipt_change`: BEFORE UPDATE OR DELETE, per receipt row.
 - `reject_receipt_truncate`: BEFORE TRUNCATE, per statement.
 
+PostgreSQL also creates its internal referential-integrity triggers for the one
+receipt-to-intent foreign key. They enforce child INSERT/UPDATE references and
+parent UPDATE/DELETE restrictions using existing PostgreSQL RI functions. Both
+ends are new private tables; no internal FK trigger is added to a legacy/Auth
+table. The reported two-trigger count means explicit user-defined triggers and
+excludes those automatically managed internal triggers.
+
 RLS is enabled on both new tables. **No new RLS policy is created.** No PUBLIC,
 anonymous, authenticated or service-role schema/table access is granted. The
 installer owns tables/functions and retains normal owner bypass; FORCE RLS is
@@ -114,7 +121,7 @@ grants and verify a complete installation rollback.
 The migration is one transaction. Its preflight only reads catalog metadata to
 check the existing restaurant column types, unique ID and required service role.
 Installation creates one schema, two tables/24 columns, six functions, two
-triggers and five backing indexes. It performs **no existing-business-row DML**,
+user-defined triggers and five backing indexes. It performs **no existing-business-row DML**,
 ownership backfill, history import, RLS replacement, wallet adjustment, cron,
 storage, payment-provider operation or commerce-foundation replay. A collision
 or reapplication fails and rolls back; it is not an upsert-style migration.

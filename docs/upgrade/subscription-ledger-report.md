@@ -64,7 +64,7 @@ reconciliation after the restore cutoff. No backup or recovery test is claimed.
 | `npm test` | **PASS: 142/142**, zero failures, synthetic development credentials. |
 | Focused actual payment-handler tests | **PASS: 49/49**, a subset of the unit total. Provider/database effects are strictly simulated. |
 | New subscription migration/database suite | **PASS: 66 PostgreSQL assertions**, final run `database-final2`, PostgreSQL 18.4 with representative legacy fixtures. |
-| Migration objects observed | Two tables, 24 columns, six functions, two triggers, five indexes, zero policies. PostgreSQL 18 catalogs also expose NOT NULL constraints; do not compare that total directly to PostgreSQL 17. |
+| Migration objects observed | Two tables, 24 columns, six functions, two user-defined triggers, five indexes, zero policies. Internal foreign-key triggers are automatic; PostgreSQL 18 catalogs also expose NOT NULL constraints. Do not compare that constraint total directly to PostgreSQL 17. |
 | Fresh `npm run build` | **PASS**, compiled with synthetic loopback settings inside the subscription browser command. |
 | Subscription UI | **PASS: 16 cases/screenshots**, fresh/replayed/authorized/disabled scenarios at 360/390/768/1440 px, zero recorded page errors or horizontal document overflow. Payment HTTP responses/widget are completely simulated. |
 | Retained commerce SQL/API/browser | **PASS**, final run `commerce-final`: 88 PostgreSQL assertions plus the complete retained API/browser suite; 118 additional screenshots and zero recorded page errors/overflow. Ordinary console errors are not collected by that suite. |
