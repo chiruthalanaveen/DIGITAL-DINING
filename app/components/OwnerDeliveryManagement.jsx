@@ -9,6 +9,8 @@ import {
 } from 'react'
 import { supabase } from '@/lib/supabase'
 import PaymentGatewayConfigCard from '@/app/components/PaymentGatewayConfigCard'
+import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
+import OwnerSupportChat from '@/app/components/OwnerSupportChat'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 import DeliveryServiceAreaEditor from '@/app/components/DeliveryServiceAreaEditor'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
@@ -410,12 +412,18 @@ function afterSalesIsClosed(value) {
 export default function DeliveryManagement({
   restaurant,
   planCode = '',
+  onTabChange,
 }) {
   const restaurantId = restaurant?.id
   const deliveryOnly =
     String(planCode).toLowerCase() === 'delivery'
 
   const [tab, setTab] = useState('overview')
+  // Let the parent hide unrelated workspace sections on focused settings/wallet pages.
+  useEffect(() => {
+    if (typeof onTabChange === 'function') onTabChange(tab)
+  }, [tab, onTabChange])
+
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -4745,12 +4753,22 @@ export default function DeliveryManagement({
       'packers',
       `Packers (${packers.length})`,
     ],
-    ['settings', 'Settings'],
-    ['service_area', 'Delivery Area'],
-    ['billing', 'Billing'],
-    ['payments', 'Payments'],
+    ['wallet', 'Delivery Wallet'],
+    ['settings-home', 'Settings'],
+    ['support-chat', '💬 Support Chat'],
     ['website', 'Ordering Website'],
   ]
+
+  // Only one settings destination is rendered at a time; no settings form is destroyed.
+  const settingsPages = [
+    { id: 'settings', title: 'Store & Delivery Settings', icon: '⚙️', description: 'Store identity, fees, handling charges, GST, radius and driver assignment' },
+    { id: 'payments', title: 'Razorpay & Payment Settings', icon: '💳', description: 'Secure Razorpay setup, online payments and Cash on Delivery' },
+    { id: 'billing', title: 'Bill Settings', icon: '🧾', description: 'GSTIN, business identity, signature and invoice footer' },
+    { id: 'service_area', title: 'Delivery Area Settings', icon: '📍', description: 'Draw and manage your custom delivery coverage area' },
+  ]
+  const focusedSetting = settingsPages.find((item) => item.id === tab)
+  const showFocusedView = Boolean(focusedSetting) || tab === 'wallet' || tab === 'support-chat'
+
 
   if (loading) {
     return (
@@ -4765,7 +4783,7 @@ export default function DeliveryManagement({
 
   return (
     <section className="space-y-5">
-      <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6">
+      {!showFocusedView && <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
@@ -4828,7 +4846,7 @@ export default function DeliveryManagement({
             </button>
           </div>
         </div>
-      </div>
+      </div>}
 
       {message && (
         <div className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-bold text-neutral-200">
@@ -4836,26 +4854,95 @@ export default function DeliveryManagement({
         </div>
       )}
 
-      <nav className="flex gap-2 overflow-x-auto border-b border-neutral-800 pb-3">
-        {tabs.map(
-          ([id, label]) => (
+      {!focusedSetting && (
+        <nav className="dd-dashboard-sidebar flex gap-2 overflow-x-auto border-b border-neutral-800 pb-3" aria-label="Delivery owner sidebar">
+          {tabs.map(([id, label]) => (
             <button
               key={id}
               type="button"
-              onClick={() =>
-                setTab(id)
-              }
-              className={`whitespace-nowrap rounded-xl border px-4 py-2.5 text-xs font-black ${
+              onClick={() => setTab(id)}
+              className={`whitespace-nowrap rounded-xl border px-4 py-2.5 text-xs font-black transition-colors ${
                 tab === id
-                  ? 'border-emerald-500 bg-emerald-500 text-white'
-                  : 'border-neutral-800 bg-neutral-900 text-neutral-400'
+                  ? 'border-orange-500 bg-orange-500 text-white'
+                  : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-orange-500/50 hover:text-white'
               }`}
             >
-              {label}
+              <span className="block">{id === 'wallet' ? '💳 Delivery Wallet' : label}</span>
+              {id === 'wallet' && <span className="mt-1 block whitespace-normal text-[9px] font-semibold normal-case opacity-80">Owner Wallet &amp; Platform Fees</span>}
             </button>
-          )
-        )}
-      </nav>
+          ))}
+        </nav>
+      )}
+
+      {focusedSetting && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-orange-400">Delivery Settings</p>
+            <h3 className="mt-1 text-lg font-black text-white">{focusedSetting.title}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTab('settings-home')}
+            className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white hover:bg-neutral-700"
+          >
+            ← All Settings
+          </button>
+        </div>
+      )}
+
+      {tab === 'settings-home' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-orange-400">Delivery Settings</p>
+              <h3 className="mt-1 text-lg font-black text-white">Choose a Setting</h3>
+            </div>
+            <button type="button" onClick={() => setTab('overview')} className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white hover:bg-neutral-700">
+              ← Overview
+            </button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {settingsPages.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className="flex items-center gap-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-5 text-left transition hover:border-orange-500/60 hover:bg-neutral-800"
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-neutral-800 text-2xl">{item.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-black text-white">{item.title}</span>
+                  <span className="mt-1 block text-xs text-neutral-400">{item.description}</span>
+                </span>
+                <span className="text-orange-400">→</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === 'support-chat' && (
+        <OwnerSupportChat restaurantId={restaurantId} />
+      )}
+
+      {tab === 'wallet' && (
+        <section className="space-y-4" aria-label="Owner Wallet & Platform Fees">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-orange-400">Delivery Wallet</p>
+              <h3 className="mt-1 text-lg font-black text-white">Owner Wallet &amp; Platform Fees</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTab('overview')}
+              className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white hover:bg-neutral-700"
+            >
+              ← Back to Overview
+            </button>
+          </div>
+          <OwnerDeliveryWallet restaurantId={restaurantId} />
+        </section>
+      )}
 
       {tab === 'overview' && (
         <div className="space-y-4">

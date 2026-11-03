@@ -596,7 +596,14 @@ export default function DeliveryStoreExperience({
       if (rpcError) throw rpcError
 
       if (!data?.success) {
-        throw new Error(data?.message || 'Delivery store is unavailable.')
+        // Normal business-state denial, not a JavaScript exception.
+        // If eligibility is revoked while browsing, discard the stale menu.
+        setStoreData(null)
+        setPlatformFeeQuote({ loaded: false, customerAmount: 0 })
+        setError(
+          String(data?.message || 'This Delivery store is currently unavailable.')
+        )
+        return
       }
 
       let coverageData = {}
@@ -643,6 +650,7 @@ export default function DeliveryStoreExperience({
         ...data,
         coverage: coverageData,
       })
+      setError('')
 
       if (!quiet) {
         if (data?.settings?.cod_enabled) {
