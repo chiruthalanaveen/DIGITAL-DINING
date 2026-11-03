@@ -118,6 +118,171 @@ function PackerIcon({ name, className = 'h-5 w-5' }) {
   )
 }
 
+
+// Read-only packed order details. No status changes are sent from this dialog.
+function PackerOrderDetailsDialog({ order, onClose }) {
+  const detailsRef = useRef(null)
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose()
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    detailsRef.current?.focus()
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [onClose])
+
+  const items = Array.isArray(order?.items) ? order.items : []
+  const packing = order?.packing && typeof order.packing === 'object'
+    ? order.packing
+    : null
+  const packableUnits = items.reduce((total, item) =>
+    total + Number(item.quantity || item.qty || 1), 0)
+  const status = String(order.order_status || '')
+  const address = [
+    order.address_line1,
+    order.address_line2,
+    order.landmark,
+    order.city,
+    order.state,
+    order.pincode,
+  ].filter(Boolean).join(', ')
+  const latitude = order.latitude == null || order.latitude === ''
+    ? NaN : Number(order.latitude)
+  const longitude = order.longitude == null || order.longitude === ''
+    ? NaN : Number(order.longitude)
+  const pinAvailable = Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+  const mapQuery = pinAvailable ? `${latitude},${longitude}` : address
+  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
+  const detailRow = (label, value) => (
+    <div className="flex flex-wrap justify-between gap-2 border-b border-slate-100 py-2.5 last:border-b-0">
+      <span className="text-xs font-semibold text-slate-500">{label}</span>
+      <span className="max-w-full break-words text-right text-xs font-bold text-slate-800">{value || '—'}</span>
+    </div>
+  )
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-end justify-center bg-[#081523]/80 px-0 pt-8 backdrop-blur-sm sm:items-center sm:p-5"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section
+        ref={detailsRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="packer-order-detail-title"
+        className="flex max-h-[96dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl outline-none sm:max-h-[92dvh] sm:rounded-[28px]"
+      >
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 bg-white px-5 py-4 sm:px-6">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-extrabold text-emerald-700">
+              <PackerIcon name="check" className="h-3.5 w-3.5" />
+              {labelStatus(status) || 'Order'}
+            </div>
+            <h2 id="packer-order-detail-title" className="text-xl font-black text-[#12253c] sm:text-2xl">
+              Order #{order.order_code || order.order_number || 'Details'}
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">Full order details · Read-only for packer</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close order details"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200"
+          >
+            <PackerIcon name="close" className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain bg-[#f6f8fb] p-4 sm:p-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Units</p>
+              <p className="mt-1 text-xl font-black text-[#12253c]">{packableUnits}</p>
+            </div>
+            <div className="rounded-2xl bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Payment</p>
+              <p className="mt-1 text-sm font-black text-[#12253c]">{String(order.payment_method || '').toLowerCase() === 'cod' ? 'Cash on Delivery' : 'Online'}</p>
+            </div>
+            <div className="col-span-2 rounded-2xl bg-white p-4 shadow-sm sm:col-span-1">
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Order total</p>
+              <p className="mt-1 text-xl font-black text-[#12253c]">{money(order.total_amount)}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-2 flex items-center gap-2"><PackerIcon name="user" className="h-4 w-4 text-emerald-600"/><h3 className="text-sm font-black text-[#12253c]">Customer</h3></div>
+            {detailRow('Name', order.customer_name)}
+            {detailRow('Mobile', order.customer_mobile)}
+            {order.alternate_mobile && detailRow('Alternate mobile', order.alternate_mobile)}
+            {detailRow('Placed', formatDate(order.created_at))}
+            {detailRow('Last updated', formatDate(order.updated_at))}
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 text-sm font-black text-[#12253c]"><PackerIcon name="box" className="h-4 w-4 text-emerald-600"/> Items packed</h3>
+              <span className="text-xs font-extrabold text-slate-500">{items.length} products</span>
+            </div>
+            <div className="space-y-3">
+              {items.map((item, index) => {
+                const qty = Number(item.quantity || item.qty || 1)
+                const lineTotal = item.line_total ?? qty * Number(item.price || 0)
+                return <div key={item.id || index} className="flex items-start justify-between gap-3 rounded-xl bg-[#f6f8fb] p-3">
+                  <div className="min-w-0"><p className="text-sm font-bold text-[#12253c]">{item.name || 'Item'}</p><p className="mt-1 text-xs font-semibold text-slate-500">Quantity: {qty}</p></div>
+                  <span className="shrink-0 text-sm font-black text-[#12253c]">{money(lineTotal)}</span>
+                </div>
+              })}
+              {items.length === 0 && <p className="text-xs text-slate-500">No product details available.</p>}
+            </div>
+            {packing && <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
+              <div className="flex items-center gap-2"><PackerIcon name="scan" className="h-4 w-4"/>{packing.requires_scan ? `Barcode verified: ${Number(packing.scanned_total || 0)}/${Number(packing.required_total || 0)} units` : 'No barcode verification required'}</div>
+              {packing.requires_scan && !packing.ready_to_pack && <p className="mt-2 text-amber-700">Current scan progress is not complete.</p>}
+            </div>}
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
+            <h3 className="flex items-center gap-2 text-sm font-black text-[#12253c]"><PackerIcon name="pin" className="h-4 w-4 text-emerald-600"/> Delivery address</h3>
+            <p className="mt-3 break-words text-sm leading-6 text-slate-700">{address || 'No delivery address supplied'}</p>
+            {mapQuery && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2.5 text-xs font-bold text-sky-700 hover:bg-sky-100"><PackerIcon name="pin" className="h-4 w-4"/> Open location</a>}
+            {order.customer_note && <div className="mt-4 rounded-xl bg-amber-50 p-3"><p className="text-[10px] font-extrabold uppercase tracking-widest text-amber-700">Customer note</p><p className="mt-2 whitespace-pre-wrap break-words text-sm text-amber-900">{order.customer_note}</p></div>}
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
+            <h3 className="flex items-center gap-2 text-sm font-black text-[#12253c]"><PackerIcon name="truck" className="h-4 w-4 text-emerald-600"/> Driver handoff</h3>
+            {detailRow('Driver', order.driver_name || 'Waiting for driver assignment')}
+            {order.driver_mobile && detailRow('Driver mobile', order.driver_mobile)}
+            {detailRow('Payment status', labelStatus(order.payment_status))}
+            {detailRow('Order status', labelStatus(status))}
+            <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-3 text-xs font-semibold leading-5 text-emerald-800">
+              Packing complete does not start delivery. Only the driver can accept the handoff and start delivery.
+            </div>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-6">
+          <button type="button" onClick={onClose} className="h-12 w-full rounded-xl bg-[#12253c] text-sm font-extrabold text-white hover:bg-[#213a57]">
+            Back to Packed Orders
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 export default function DeliveryPackerPortal({
 
   params,
@@ -323,10 +488,13 @@ export default function DeliveryPackerPortal({
     useRef(false)
 
   // View-only state: existing auth, barcode and status RPCs are unchanged.
-  const [activeStage, setActiveStage] = useState('overview')
+  // Incoming and in-progress orders are the packer's default work queue.
+  const [activeStage, setActiveStage] = useState('active')
   const [ordersMenuOpen, setOrdersMenuOpen] = useState(false)
   const [orderSearch, setOrderSearch] = useState('')
   const [detailsOpen, setDetailsOpen] = useState({})
+  const [selectedOrderId, setSelectedOrderId] = useState('')
+  const [selectedOrderSnapshot, setSelectedOrderSnapshot] = useState(null)
 
 
 
@@ -491,6 +659,8 @@ export default function DeliveryPackerPortal({
 
 
       setPortalData(null)
+      setSelectedOrderId('')
+      setSelectedOrderSnapshot(null)
 
       setSessionToken('')
 
@@ -871,6 +1041,8 @@ export default function DeliveryPackerPortal({
 
 
       setCameraOrderId('')
+      setSelectedOrderId('')
+      setSelectedOrderSnapshot(null)
 
       setCameraError('')
 
@@ -1916,6 +2088,29 @@ export default function DeliveryPackerPortal({
 
         )
 
+        // After a successful status change, show the next correct queue.
+        // Keep backend authorization and barcode checks unchanged.
+        if (nextStatus === 'confirmed') {
+          setActiveStage('confirmed')
+          setOrdersMenuOpen(true)
+          setOrderSearch('')
+        }
+
+        if (nextStatus === 'packed') {
+          setActiveStage('packed')
+          setOrdersMenuOpen(true)
+          setOrderSearch('')
+          setDetailsOpen((current) => ({ ...current, [order.id]: true }))
+          // A temporary in-memory snapshot lets the confirmation dialog
+          // open even if the live refresh returns a moment later.
+          setSelectedOrderSnapshot({
+            ...order,
+            order_status: 'packed',
+            updated_at: new Date().toISOString(),
+          })
+          setSelectedOrderId(order.id)
+        }
+
       } catch (
 
         updateError
@@ -1979,6 +2174,19 @@ export default function DeliveryPackerPortal({
       : []
 
 
+
+  // Live backend data takes precedence over the just-packed in-memory snapshot.
+  const selectedOrder = selectedOrderId
+    ? orders.find((order) => String(order.id) === String(selectedOrderId)) ||
+      (String(selectedOrderSnapshot?.id || '') === String(selectedOrderId)
+        ? selectedOrderSnapshot
+        : null)
+    : null
+
+  const closeOrderDetails = () => {
+    setSelectedOrderId('')
+    setSelectedOrderSnapshot(null)
+  }
 
   const sections =
 
@@ -2189,7 +2397,7 @@ export default function DeliveryPackerPortal({
     { key: 'active', label: 'Active Orders', icon: 'clock', count: activeOrders.length },
     { key: 'received', label: 'New Orders', icon: 'inbox', count: sections.received.length },
     { key: 'confirmed', label: 'Packing Now', icon: 'scan', count: sections.confirmed.length },
-    { key: 'packed', label: 'Ready to Dispatch', icon: 'check', count: sections.packed.length },
+    { key: 'packed', label: 'Packed Orders', icon: 'check', count: sections.packed.length },
     { key: 'out_for_delivery', label: 'Out for Delivery', icon: 'truck', count: sections.out_for_delivery.length },
   ]
 
@@ -2305,6 +2513,20 @@ export default function DeliveryPackerPortal({
                   </div>
 
                   <div className="mt-auto pt-4">
+                    {(isPacked || isOut) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedOrderSnapshot(null)
+                          setSelectedOrderId(order.id)
+                        }}
+                        className="mb-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-extrabold text-emerald-800 transition hover:bg-emerald-100"
+                      >
+                        <PackerIcon name="box" className="h-4 w-4" />
+                        View Full Order Details
+                        <PackerIcon name="right" className="h-4 w-4" />
+                      </button>
+                    )}
                     {isReceived && <button type="button" disabled={busy} onClick={()=>updateStatus(order,'confirmed')} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#162a43] px-4 text-sm font-extrabold text-white shadow-md shadow-slate-900/10 transition hover:bg-[#233e5e] active:scale-[0.99] disabled:opacity-50">{busy?'Updating…':'Start Packing'}{!busy && <PackerIcon name="arrow" className="h-4 w-4"/>}</button>}
                     {isWorking && <button type="button" disabled={busy || scanBusy || !readyToPack} onClick={()=>updateStatus(order,'packed')} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-extrabold text-white shadow-md shadow-emerald-500/15 transition hover:bg-emerald-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"><PackerIcon name="check" className="h-4 w-4"/>{busy ? 'Updating…' : !hasPackingData ? 'Checking packing requirements…' : missingBarcodeCount > 0 ? 'Barcode setup required' : requiresScan && !readyToPack ? `Scan ${remainingTotal} more ${remainingTotal === 1?'unit':'units'}` : 'Mark Packed'}</button>}
                     {isPacked && <div className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-bold leading-5 text-emerald-800"><PackerIcon name="check" className="h-4 w-4 shrink-0"/><div>{order.driver_id ? 'Packed · Waiting for driver to start delivery' : 'Packed · Waiting for driver assignment'}<p className="mt-1 font-normal text-emerald-700">Only the assigned driver can acknowledge and start delivery.</p></div></div>}
@@ -2362,11 +2584,33 @@ export default function DeliveryPackerPortal({
           <div className="mx-auto max-w-[1480px] space-y-6 px-4 py-6 pb-[calc(3rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-9 lg:py-8">
             <div className="relative overflow-hidden rounded-[26px] bg-[#13273f] px-5 py-6 text-white sm:px-7 sm:py-7"><div className="pointer-events-none absolute -right-12 -top-24 h-72 w-72 rounded-full bg-emerald-400/10 blur-2xl"/><div className="pointer-events-none absolute bottom-0 right-16 h-28 w-28 rounded-full border-[28px] border-white/[0.04]"/><div className="relative"><div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-emerald-300"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"/> Live fulfilment</div><div className="mt-4 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-black tracking-tight sm:text-[30px]">Good to see you, {packerName.split(' ')[0]}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Keep every order accurate and on time. Pick an order, verify the items and get it ready for the driver.</p></div><button type="button" onClick={() => selectView('active')} aria-label={`Open Active Orders, ${activeOrders.length} orders`} className="group flex shrink-0 items-center gap-3 rounded-2xl border border-emerald-400/25 bg-white/5 px-4 py-3 text-left transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300"><PackerIcon name="box" className="h-5 w-5"/></div><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Open active orders</p><p className="text-2xl font-black tabular-nums">{activeOrders.length}</p></div><PackerIcon name="right" className="h-4 w-4 text-emerald-300 transition group-hover:translate-x-1"/></button></div></div></div>
 
+            {/* One-tap access to incoming work and packed order details. */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => selectView('active')}
+                className={`flex items-center gap-3 rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${activeStage === 'active' ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'}`}
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700"><PackerIcon name="inbox" className="h-6 w-6" /></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-black text-[#12253c]">Incoming & Active Packing</span><span className="mt-1 block text-xs font-semibold text-slate-500">{sections.received.length} incoming · {sections.confirmed.length} being packed</span></span>
+                <PackerIcon name="right" className="h-5 w-5 text-slate-500" />
+              </button>
+              <button
+                type="button"
+                onClick={() => selectView('packed')}
+                className={`flex items-center gap-3 rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${activeStage === 'packed' ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'}`}
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><PackerIcon name="check" className="h-6 w-6" /></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-black text-[#12253c]">Packed Orders & Details</span><span className="mt-1 block text-xs font-semibold text-slate-500">{sections.packed.length} packed orders · View details</span></span>
+                <PackerIcon name="right" className="h-5 w-5 text-slate-500" />
+              </button>
+            </div>
+
             {/* Queue overview cards */}
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[
               {key:'received',name:'New orders',detail:'Waiting to start',count:sections.received.length,icon:'inbox',accent:'text-amber-600',background:'bg-amber-50'},
               {key:'confirmed',name:'Packing now',detail:'Being prepared',count:sections.confirmed.length,icon:'scan',accent:'text-sky-600',background:'bg-sky-50'},
-              {key:'packed',name:'Ready to dispatch',detail:'Waiting for driver',count:sections.packed.length,icon:'check',accent:'text-emerald-600',background:'bg-emerald-50'},
+              {key:'packed',name:'Packed orders',detail:'View order details',count:sections.packed.length,icon:'check',accent:'text-emerald-600',background:'bg-emerald-50'},
               {key:'out_for_delivery',name:'On the road',detail:'With delivery staff',count:sections.out_for_delivery.length,icon:'truck',accent:'text-violet-600',background:'bg-violet-50'},
             ].map((tile)=><button key={tile.key} type="button" onClick={()=>selectView(tile.key)} className={`rounded-[22px] border bg-white p-4 text-left shadow-[0_4px_20px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${activeStage===tile.key?'border-emerald-400 ring-2 ring-emerald-400/10':'border-slate-200'}`}><div className="flex items-start justify-between gap-2"><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tile.background} ${tile.accent}`}><PackerIcon name={tile.icon} className="h-5 w-5"/></div><span className="text-2xl font-black tracking-tight tabular-nums text-[#12253c] sm:text-3xl">{tile.count}</span></div><p className="mt-4 text-xs font-extrabold text-[#12253c] sm:text-sm">{tile.name}</p><p className="mt-1 text-[11px] text-slate-500">{tile.detail}</p></button>)}</div>
 
@@ -2385,18 +2629,21 @@ export default function DeliveryPackerPortal({
                 <>
                   {renderOrders('received', 'New Orders', 'Awaiting your attention', sections.received)}
                   {renderOrders('confirmed', 'Packing Now', 'In progress', sections.confirmed)}
-                  {renderOrders('packed', 'Ready to Dispatch', 'Packed and verified', sections.packed)}
+                  {renderOrders('packed', 'Packed Orders', 'Open an order to view its full details; driver handoff remains separate', sections.packed)}
                   {renderOrders('out_for_delivery', 'Out for Delivery', 'Driver handoff complete', sections.out_for_delivery)}
                   {otherOrders.length > 0 && renderOrders('other', 'Other Orders', 'Other statuses returned by your store', otherOrders)}
                 </>
               ) : activeStage === 'active' ? (
-                renderOrders('active', 'Active Orders', 'Received orders and orders being packed', activeOrders)
+                <>
+                  {renderOrders('received', 'Incoming Orders', 'New customer orders waiting for the packer', sections.received)}
+                  {renderOrders('confirmed', 'Packing in Progress', 'Orders currently being prepared', sections.confirmed)}
+                </>
               ) : activeStage === 'received' ? (
                 renderOrders('received', 'New Orders', 'Awaiting your attention', sections.received)
               ) : activeStage === 'confirmed' ? (
                 renderOrders('confirmed', 'Packing Now', 'In progress', sections.confirmed)
               ) : activeStage === 'packed' ? (
-                renderOrders('packed', 'Ready to Dispatch', 'Packed and verified', sections.packed)
+                renderOrders('packed', 'Packed Orders', 'View completed packing details', sections.packed)
               ) : (
                 renderOrders('out_for_delivery', 'Out for Delivery', 'Driver handoff complete', sections.out_for_delivery)
               )}
@@ -2405,6 +2652,13 @@ export default function DeliveryPackerPortal({
           </div>
         </div>
       </div>
+
+      {selectedOrder && (
+        <PackerOrderDetailsDialog
+          order={selectedOrder}
+          onClose={closeOrderDetails}
+        />
+      )}
 
       {/* Barcode camera modal: same native scanner and one-scan-per-open behavior. */}
       {cameraOrderId && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#07121f]/85 p-0 backdrop-blur-sm sm:items-center sm:p-5"><section role="dialog" aria-modal="true" aria-label="Scan product barcode" className="w-full max-w-md overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:rounded-[28px]"><div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4"><div><p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600">Product verification</p><h3 className="mt-1 text-lg font-black text-[#12253c]">Scan one barcode</h3></div><button type="button" aria-label="Close barcode scanner" onClick={closeCameraScanner} className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><PackerIcon name="close" className="h-5 w-5"/></button></div><div className="px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5"><div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-[#0b1523]"><video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover"/><div className="pointer-events-none absolute inset-0 flex items-center justify-center"><div className="h-[42%] w-[78%] rounded-xl border-2 border-emerald-400 shadow-[0_0_0_999px_rgba(0,0,0,0.32)]"/><div className="absolute h-[2px] w-[65%] bg-emerald-400/80 shadow-[0_0_15px_rgba(52,211,153,0.5)]"/></div>{cameraStarting && <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm font-bold text-white">Opening camera…</div>}</div>{cameraError?<div role="alert" className="mt-3 flex gap-2 rounded-xl bg-amber-50 px-3 py-3 text-xs font-semibold leading-5 text-amber-800"><PackerIcon name="alert" className="h-4 w-4 shrink-0"/>{cameraError}</div>:<p className="mt-4 text-center text-xs leading-5 text-slate-500">Place one product barcode inside the frame. For accuracy, each camera session verifies only one unit.</p>}<button type="button" onClick={closeCameraScanner} className="mt-5 h-12 w-full rounded-xl border border-slate-200 bg-slate-50 text-sm font-extrabold text-slate-700">Cancel scanning</button></div></section></div>}

@@ -289,10 +289,16 @@ function MobileMoreMenu({ setView, onLogout, restaurantName, driverName }) {
 function CurrentStopCard({ order, onNavigate, onStart, onCompleteStop, updating }) {
   if (!order) {
     return (
-      <div className="rounded-2xl border border-dashed border-neutral-300 bg-white px-5 py-14 text-center">
-        <div className="text-4xl">◎</div>
-        <p className="mt-3 text-base font-black text-neutral-800">No active delivery</p>
-        <p className="mt-1 text-sm text-neutral-500">Assigned orders will appear here.</p>
+      <div className="rounded-3xl border border-dashed border-neutral-200 bg-white px-5 py-10 text-center shadow-sm">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-sky-50 text-3xl" aria-hidden="true">🚚</div>
+        <h3 className="mt-4 text-lg font-black text-neutral-900">No active delivery</h3>
+        <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-neutral-500">
+          You're all caught up. New assigned orders will appear here automatically.
+        </p>
+        <div className="mx-auto mt-5 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+          Waiting for assignments
+        </div>
       </div>
     )
   }
@@ -2051,28 +2057,56 @@ export default function DeliveryDriverPortal({ params }) {
       />
 
       {/* MOBILE LAYOUT */}
-      <div className="min-h-[100dvh] bg-[#f5f6f8] px-3 pb-44 pt-4 lg:hidden">
-        <header className="mb-4 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-base font-black text-neutral-900">
-              {restaurant.name || 'Delivery'}
-            </p>
-            <p className="text-xs font-black uppercase tracking-wider text-emerald-600">
-              Driver Portal
-            </p>
+      <div
+        className="min-h-[100dvh] min-w-0 bg-[#f5f6f8] px-3 lg:hidden"
+        style={{
+          // Keep the header below iPhone Dynamic Island / an ongoing call.
+          // A real safe area is used, not a hard-coded iPhone screen size.
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 7.5rem)',
+        }}
+      >
+        <header className="mb-4 rounded-[24px] border border-neutral-200 bg-white px-4 py-3 shadow-sm">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-xl" aria-hidden="true">
+              🚚
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-base font-black leading-6 text-neutral-900">
+                {restaurant.name || 'Delivery'}
+              </p>
+              <p className="truncate text-[10px] font-extrabold uppercase tracking-[0.16em] text-emerald-700">
+                Driver Portal
+              </p>
+            </div>
+            <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1.5 text-[10px] font-bold text-emerald-700 min-[390px]:inline-flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+              On shift
+            </span>
           </div>
 
-          <button
-            type="button"
-            onClick={driverAlarmEnabled ? disableDriverAlarm : enableDriverAlarm}
-            className={`min-h-[44px] shrink-0 rounded-xl px-4 text-sm font-black ${
-              driverAlarmEnabled
-                ? 'bg-emerald-600 text-white'
-                : 'border border-neutral-300 bg-white text-neutral-700'
-            }`}
-          >
-            {driverAlarmEnabled ? '🔔 Alarm On' : '🔕 Alarm'}
-          </button>
+          <div className="mt-3 flex min-w-0 items-center justify-between gap-2 border-t border-neutral-100 pt-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-600">
+                Delivery alerts
+              </p>
+              <p className="truncate text-[11px] text-neutral-500">
+                {driverAlarmEnabled ? 'Alarm enabled' : 'Enable alerts for new trips'}
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-pressed={driverAlarmEnabled}
+              onClick={driverAlarmEnabled ? disableDriverAlarm : enableDriverAlarm}
+              className={`min-h-[44px] max-w-[52%] shrink-0 whitespace-nowrap rounded-xl px-3 text-xs font-black transition active:scale-[0.98] ${
+                driverAlarmEnabled
+                  ? 'bg-emerald-600 text-white'
+                  : 'border border-neutral-300 bg-neutral-50 text-neutral-800'
+              }`}
+            >
+              {driverAlarmEnabled ? '🔔 Alarm On' : '🔕 Enable Alarm'}
+            </button>
+          </div>
         </header>
 
         {waitingToStartOrders.length > 0 && (
