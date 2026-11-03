@@ -120,7 +120,8 @@ All styling additions are separate files.
 | `COMMERCE_BROWSER_USE_EXPANSION=1 COMMERCE_BROWSER_SKIP_BUILD=1 node tests/commerce.browser.mjs` | PASS | Original suite recreates the guarded local expanded database, then validates PKCE confirmation/recovery, onboarding/Admin approval, products/media/stock, COD, retry/restock, account/tenant isolation and mobile layouts. Evidence: `original-browser-release.log`, `original-browser/`. |
 | `COMMERCE_BROWSER_SKIP_DB=1 COMMERCE_BROWSER_SKIP_BUILD=1 node tests/commerce-expansion.browser.mjs` | PASS — 8 groups, 72 screenshots | Five templates/JSON-LD, gallery/variants/coverage/coupon checkout, lost-response/reload recovery, customer tools/privacy, actual owner gallery save/analytics panels and signed Admin controls at 360/390/768/1440. Evidence: `browser-release/expansion-browser-results.json`, `expansion-browser-release.log`. |
 
-Use the final handoff’s manifest for exact changed files, full JS/JSX TXT copies,
+Use [the exact 95-file manifest](expansion-changes.md) for changed files and the
+downloadable review package for full JS/JSX/MJS/TS/TSX TXT copies,
 SQL, styles, tests, screenshots and command logs. Do not publish customer data or
 credentials in those artifacts. A green file-wrapper result under restricted
 child-process execution is not counted as the actual Node test cases above.
@@ -163,8 +164,11 @@ abandonment/recovery workflow remain operational risks before activation.
 
 ## URLs, release state and remaining gates
 
-Source branch: `feature/commerce-expansion`; automatic Git deployment is
-disabled for it. This report does not claim a new PR URL before one exists.
+Source branch: `feature/commerce-expansion`, pushed for review in draft
+[PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7), stacked on
+draft PR #6 and the unmerged #3/#4/#5 chain. Tested application commit:
+`6d38b8d`. Later report-only commits preserve the verified application source
+fingerprint. Automatic Git deployment is disabled for this branch.
 No Vercel Preview has been created for this expansion, and no staging-backed
 Preview URL is available. No network-blocked hosted check is relabelled as a pass.
 
