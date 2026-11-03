@@ -7,19 +7,18 @@ import {
   clearFailedLoginAttempts,
 } from '@/lib/login-security'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+// Construct the admin client only for actual login requests.
+// Next.js evaluates route modules during build/page-data collection. Creating
+// a client with empty credentials at module scope would crash that build.
+function createLoginAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-if (!supabaseUrl || !serviceRoleKey) {
-  console.error(
-    'Missing Supabase environment variables for login API.'
-  )
-}
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null
+  }
 
-const supabaseAdmin = createClient(
-  supabaseUrl || '',
-  serviceRoleKey || '',
-  {
+  return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
@@ -27,8 +26,8 @@ const supabaseAdmin = createClient(
         passkey: true,
       },
     },
-  }
-)
+  })
+}
 
 function getClientIp(request) {
   const forwardedFor = request.headers.get('x-forwarded-for')
@@ -58,14 +57,15 @@ export async function POST(request) {
   const ipAddress = getClientIp(request)
 
   try {
-    if (!supabaseUrl || !serviceRoleKey) {
+    const supabaseAdmin = createLoginAdminClient()
+    if (!supabaseAdmin) {
+      console.error('[LOGIN API] Required Supabase server configuration is missing.')
       return NextResponse.json(
         {
           success: false,
-          message:
-            'Server configuration error. Supabase service role key is missing.',
+          message: 'Login service is temporarily unavailable. Please contact support.',
         },
-        { status: 500 }
+        { status: 503, headers: { 'Cache-Control': 'no-store' } }
       )
     }
 
