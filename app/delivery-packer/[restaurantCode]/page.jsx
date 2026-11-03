@@ -85,6 +85,39 @@ function formatDate(value) {
 
 
 
+// Small local icon set; no external icon dependency or layout shift.
+function PackerIcon({ name, className = 'h-5 w-5' }) {
+  const paths = {
+    box: <><path d="m3 7 9-4 9 4-9 4-9-4Z"/><path d="M3 7v10l9 4 9-4V7M12 11v10"/></>,
+    grid: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
+    inbox: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 13h5l2 3h4l2-3h5"/></>,
+    scan: <><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3M6 12h12"/></>,
+    check: <><path d="m5 12 4 4L19 6"/></>,
+    truck: <><path d="M3 6h11v11H3zM14 10h4l3 3v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></>,
+    clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    refresh: <><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 12-3l2.5 1M4 17l2.5 1A7 7 0 0 0 18.5 15"/></>,
+    logout: <><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M14 16l4-4-4-4M9 12h9"/></>,
+    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></>,
+    search: <><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></>,
+    chevron: <path d="m6 9 6 6 6-6"/>,
+    right: <path d="m9 5 7 7-7 7"/>,
+    arrow: <><path d="M5 12h14m-6-6 6 6-6 6"/></>,
+    phone: <path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7.1 10a16 16 0 0 0 6.9 6.9l1.5-1.9a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.7 2Z"/>,
+    pin: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></>,
+    user: <><circle cx="12" cy="8" r="4"/><path d="M4 21c0-6 16-6 16 0"/></>,
+    shield: <><path d="m12 2 8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></>,
+    camera: <><path d="M4 7h4l2-3h4l2 3h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="4"/></>,
+    alert: <><path d="m12 3 10 18H2Z"/><path d="M12 9v5m0 3h.01"/></>,
+    close: <path d="M5 5 19 19M19 5 5 19"/>,
+    sparkle: <><path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8Z"/><path d="m19 18 .6 1.4L21 20l-1.4.6L19 22l-.6-1.4L17 20l1.4-.6Z"/></>,
+  }
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[name] || paths.box}
+    </svg>
+  )
+}
+
 export default function DeliveryPackerPortal({
 
   params,
@@ -288,6 +321,11 @@ export default function DeliveryPackerPortal({
   const cameraScanLockedRef =
 
     useRef(false)
+
+  // View-only state: existing auth, barcode and status RPCs are unchanged.
+  const [activeStage, setActiveStage] = useState('overview')
+  const [orderSearch, setOrderSearch] = useState('')
+  const [detailsOpen, setDetailsOpen] = useState({})
 
 
 
@@ -2052,2282 +2090,252 @@ export default function DeliveryPackerPortal({
     })
 
   /*
-
    * ---------------------------------------------------------
-
-   * LOADING
-
+   * MODERN PACKER WORKSPACE — presentation only
    * ---------------------------------------------------------
-
    */
-
-
 
   if (loading) {
-
     return (
-
-      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 px-3 py-6 text-white sm:px-4 sm:py-10">
-
-        <div className="mx-auto w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-center sm:p-8">
-
-          Loading Packer
-
-          Portal...
-
+      <main className="flex min-h-[100dvh] items-center justify-center bg-[#f5f7fa] px-5 text-slate-900">
+        <div className="w-full max-w-sm rounded-[30px] border border-slate-200 bg-white p-10 text-center shadow-[0_20px_65px_rgba(15,23,42,0.07)]">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+            <PackerIcon name="box" className="h-8 w-8" />
+          </div>
+          <div className="mx-auto mt-7 h-8 w-8 animate-spin rounded-full border-[3px] border-emerald-100 border-t-emerald-600" />
+          <h1 className="mt-5 text-lg font-extrabold">Preparing your workspace</h1>
+          <p className="mt-2 text-sm text-slate-500">Connecting securely to your pack station.</p>
         </div>
-
       </main>
-
     )
-
   }
 
-
-
-  /*
-
-   * ---------------------------------------------------------
-
-   * LOGIN PAGE
-
-   * ---------------------------------------------------------
-
-   */
-
-
-
-  if (
-
-    !sessionToken ||
-
-    !portalData
-
-  ) {
-
+  if (!sessionToken || !portalData) {
     return (
-
-      <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 px-3 py-6 text-neutral-100 sm:px-4 sm:py-10">
-
-        <div className="mx-auto w-full max-w-md">
-
-          <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl sm:p-6">
-
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/10 text-2xl">
-
-              📦
-
+      <main className="min-h-[100dvh] bg-[#f5f7fa] text-slate-900 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(430px,0.9fr)]">
+        <div className="relative hidden min-h-[100dvh] flex-col overflow-hidden bg-[#111d2e] p-12 text-white lg:flex xl:p-16">
+          <div className="absolute -right-32 -top-32 h-[420px] w-[420px] rounded-full bg-emerald-500/10 blur-3xl" />
+          <div className="absolute -bottom-40 -left-32 h-[460px] w-[460px] rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="relative z-10 flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400 text-[#0d1b28]"><PackerIcon name="box" className="h-7 w-7"/></span>
+            <div><p className="text-base font-black tracking-tight">Digital Dine-In</p><p className="text-xs font-medium text-slate-400">Fulfilment operations</p></div>
+          </div>
+          <div className="relative z-10 my-auto max-w-xl py-16">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-extrabold tracking-wide text-emerald-300"><span className="h-2 w-2 rounded-full bg-emerald-400"/> PACK STATION</div>
+            <h1 className="mt-7 text-5xl font-black leading-[1.1] tracking-[-0.05em] xl:text-6xl">Every order.<br/><span className="text-emerald-400">Packed right.</span></h1>
+            <p className="mt-6 max-w-md text-base leading-8 text-slate-400">One focused place to receive, verify, pack and hand off customer orders. Move fast without missing a single item.</p>
+            <div className="mt-10 grid max-w-lg grid-cols-3 gap-3">
+              {[['inbox','Receive'],['scan','Verify'],['truck','Dispatch']].map(([icon,name]) => (
+                <div key={name} className="rounded-2xl border border-white/10 bg-white/5 p-4"><PackerIcon name={icon} className="h-6 w-6 text-emerald-400"/><p className="mt-3 text-sm font-bold">{name}</p></div>
+              ))}
             </div>
-
-
-
-            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-violet-400">
-
-              Digital Dining
-
-            </p>
-
-
-
-            <h1 className="mt-1 text-2xl font-black text-white">
-
-              Delivery Packer
-
-              Login
-
-            </h1>
-
-
-
-            <p className="mt-2 text-sm leading-6 text-neutral-400">
-
-              Sign in using the
-
-              Packer User ID and
-
-              password given by
-
-              the owner.
-
-            </p>
-
-
-
-            <form
-
-              onSubmit={
-
-                handleLogin
-
-              }
-
-              className="mt-6 space-y-4"
-
-            >
-
-              <label className="block">
-
-                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
-
-                  Packer User ID
-
-                </span>
-
-
-
-                <input
-
-                  value={
-
-                    userId
-
-                  }
-
-                  onChange={(
-
-                    event
-
-                  ) =>
-
-                    setUserId(
-
-                      event.target
-
-                        .value
-
-                    )
-
-                  }
-
-                  autoComplete="username"
-
-                  placeholder="packer01"
-
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-violet-500"
-
-                />
-
-              </label>
-
-
-
-              <label className="block">
-
-                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
-
-                  Password
-
-                </span>
-
-
-
-                <input
-
-                  type="password"
-
-                  value={
-
-                    password
-
-                  }
-
-                  onChange={(
-
-                    event
-
-                  ) =>
-
-                    setPassword(
-
-                      event.target
-
-                        .value
-
-                    )
-
-                  }
-
-                  autoComplete="current-password"
-
-                  placeholder="••••••••"
-
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none focus:border-violet-500"
-
-                />
-
-              </label>
-
-
-
-              {error && (
-
-                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold leading-5 text-red-300">
-
-                  {error}
-
-                </div>
-
-              )}
-
-
-
-              <button
-
-                type="submit"
-
-                disabled={
-
-                  loggingIn
-
-                }
-
-                className="w-full rounded-xl bg-violet-600 px-5 py-4 text-sm font-black text-white disabled:opacity-50"
-
-              >
-
-                {loggingIn
-
-                  ? 'Signing In...'
-
-                  : 'Open Packer Portal'}
-
-              </button>
-
-            </form>
-
-          </section>
-
+          </div>
+          <p className="relative z-10 text-xs text-slate-500">Secure staff workspace · Digital Dine-In</p>
         </div>
 
+        <div className="flex min-h-[100dvh] items-center justify-center px-4 py-10 sm:px-8 lg:px-12">
+          <div className="w-full max-w-md">
+            <div className="mb-10 flex items-center gap-3 lg:hidden">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#132338] text-emerald-400"><PackerIcon name="box" className="h-6 w-6"/></span>
+              <div><p className="text-sm font-black">Digital Dine-In</p><p className="text-xs text-slate-500">Packer Portal</p></div>
+            </div>
+            <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-8 shadow-[0_24px_80px_rgba(15,23,42,0.07)] sm:px-9 sm:py-10">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><PackerIcon name="shield" className="h-7 w-7"/></div>
+              <p className="mt-7 text-xs font-extrabold uppercase tracking-[0.18em] text-emerald-600">Staff sign in</p>
+              <h2 className="mt-2 text-[30px] font-black leading-tight tracking-tight">Welcome back.</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-500">Sign in with the Packer User ID and password given by your store owner.</p>
+              <form onSubmit={handleLogin} className="mt-8 space-y-5">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-extrabold text-slate-700">Packer User ID</span>
+                  <input autoComplete="username" autoCapitalize="none" spellCheck={false} required value={userId} onChange={(event) => setUserId(event.target.value)} placeholder="e.g. packer01" className="h-13 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10" />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-xs font-extrabold text-slate-700">Password</span>
+                  <input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" className="h-13 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10" />
+                </label>
+                {error && <div role="alert" className="flex gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-semibold leading-5 text-red-700"><PackerIcon name="alert" className="mt-0.5 h-4 w-4 shrink-0"/>{error}</div>}
+                <button type="submit" disabled={loggingIn} className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#12253c] px-5 text-sm font-extrabold text-white shadow-lg shadow-slate-900/10 transition hover:bg-[#1c3756] active:scale-[0.99] disabled:cursor-wait disabled:opacity-60">
+                  {loggingIn ? 'Signing in…' : 'Open Pack Station'}
+                  {!loggingIn && <PackerIcon name="arrow" className="h-4 w-4"/>}
+                </button>
+              </form>
+              <p className="mt-7 flex items-center justify-center gap-2 text-center text-xs font-medium text-slate-400"><PackerIcon name="shield" className="h-4 w-4"/> Authorized packer access only</p>
+            </div>
+            <p className="mt-6 text-center text-xs text-slate-400">Store code: <span className="font-mono font-bold text-slate-500">{restaurantCode}</span></p>
+          </div>
+        </div>
       </main>
-
     )
-
   }
 
+  const packer = portalData.packer || {}
+  const restaurant = portalData.restaurant || {}
+  const packerName = String(packer.name || 'Team member')
+  const stages = [
+    { key: 'overview', label: 'Overview', icon: 'grid', count: orders.length },
+    { key: 'received', label: 'New orders', icon: 'inbox', count: sections.received.length },
+    { key: 'confirmed', label: 'Packing now', icon: 'scan', count: sections.confirmed.length },
+    { key: 'packed', label: 'Ready to dispatch', icon: 'check', count: sections.packed.length },
+    { key: 'out_for_delivery', label: 'Out for delivery', icon: 'truck', count: sections.out_for_delivery.length },
+  ]
 
+  const searchedOrders = (rows) => {
+    const term = orderSearch.trim().toLowerCase()
+    if (!term) return rows
+    return rows.filter((order) => [
+      order.order_code, order.customer_name, order.customer_mobile,
+      ...(Array.isArray(order.items) ? order.items.map((item) => item.name) : []),
+    ].some((value) => String(value || '').toLowerCase().includes(term)))
+  }
 
-  const packer =
-
-    portalData.packer || {}
-
-
-
-  const restaurant =
-
-    portalData.restaurant || {}
-
-
-
-  /*
-
-   * ---------------------------------------------------------
-
-   * ORDER SECTIONS
-
-   * ---------------------------------------------------------
-
-   */
-
-
-
-  const renderOrders = (
-
-    title,
-
-    subtitle,
-
-    rows
-
-  ) => (
-
-    <section>
-
-      <div className="mb-3 flex items-end justify-between gap-3">
-
-        <div>
-
-          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
-
-            {subtitle}
-
-          </p>
-
-
-
-          <h2 className="mt-1 text-lg font-black text-white">
-
-            {title}
-
-          </h2>
-
+  const renderOrders = (stageKey, title, subtitle, sourceRows) => {
+    const rows = searchedOrders(sourceRows)
+    return (
+      <section key={stageKey} className="min-w-0 scroll-mt-24">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${stageKey === 'received' ? 'bg-amber-500' : stageKey === 'confirmed' ? 'bg-sky-500' : stageKey === 'packed' ? 'bg-emerald-500' : 'bg-violet-500'}`}/><p className="text-[11px] font-extrabold uppercase tracking-widest text-slate-500">{subtitle}</p></div>
+            <h2 className="mt-1 text-xl font-black tracking-tight text-[#12253c]">{title}</h2>
+          </div>
+          <span className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-extrabold text-slate-600">{rows.length} {rows.length === 1 ? 'order' : 'orders'}</span>
         </div>
-
-
-
-        <span className="rounded-full bg-neutral-900 px-3 py-1.5 text-[10px] font-black text-neutral-400">
-
-          {rows.length}
-
-        </span>
-
-      </div>
-
-
-
-      <div className="space-y-3">
-
-        {rows.map(
-
-          (order) => {
-
-            const address = [
-
-              order.address_line1,
-
-              order.address_line2,
-
-              order.landmark,
-
-              order.city,
-
-              order.state,
-
-              order.pincode,
-
-            ]
-
-              .filter(
-
-                Boolean
-
-              )
-
-              .join(', ')
-
-
-
-            const hasLocation =
-
-              Number.isFinite(
-
-                Number(
-
-                  order.latitude
-
-                )
-
-              ) &&
-
-              Number.isFinite(
-
-                Number(
-
-                  order.longitude
-
-                )
-
-              )
-
-
-
-            const mapUrl =
-
-              hasLocation
-
-                ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-
-                    `${order.latitude},${order.longitude}`
-
-                  )}`
-
-                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-
-                    address
-
-                  )}`
-
-
-
-            const busy =
-
-              updatingOrderId ===
-
-              order.id
-
-
-
-            const status =
-
-              String(
-
-                order.order_status ||
-
-                  ''
-
-              )
-
-
-
-            const packing =
-
-              order?.packing ||
-
-              null
-
-
-
-            const hasPackingData =
-
-              Boolean(
-
-                packing &&
-
-                  typeof packing ===
-
-                    'object' &&
-
-                  'requires_scan' in
-
-                    packing
-
-              )
-
-
-
-            const requiresScan =
-
-              Boolean(
-
-                packing?.requires_scan
-
-              )
-
-
-
-            const readyToPack =
-
-              hasPackingData
-
-                ? Boolean(
-
-                    packing?.ready_to_pack
-
-                  )
-
-                : false
-
-
-
-            const requiredTotal =
-
-              Number(
-
-                packing?.required_total ||
-
-                  0
-
-              )
-
-
-
-            const scannedTotal =
-
-              Number(
-
-                packing?.scanned_total ||
-
-                  0
-
-              )
-
-
-
-            const remainingTotal =
-
-              Number(
-
-                packing?.remaining_total ||
-
-                  0
-
-              )
-
-
-
-            const missingBarcodeCount =
-
-              Number(
-
-                packing?.missing_barcode_count ||
-
-                  0
-
-              )
-
-
-
-            const packingItems =
-
-              Array.isArray(
-
-                packing?.items
-
-              )
-
-                ? packing.items
-
-                : []
-
-
-
-            const scanBusy =
-
-              scanningOrderId ===
-
-              order.id
-
-
-
-            const progressPercent =
-
-              requiredTotal > 0
-
-                ? Math.min(
-
-                    100,
-
-                    Math.round(
-
-                      (
-
-                        scannedTotal /
-
-                        requiredTotal
-
-                      ) * 100
-
-                    )
-
-                  )
-
-                : 100
-
-
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+          {rows.map((order) => {
+            const status = String(order.order_status || '')
+            const packing = order?.packing || null
+            const hasPackingData = Boolean(packing && typeof packing === 'object' && 'requires_scan' in packing)
+            const requiresScan = Boolean(packing?.requires_scan)
+            const readyToPack = hasPackingData ? Boolean(packing?.ready_to_pack) : false
+            const requiredTotal = Number(packing?.required_total || 0)
+            const scannedTotal = Number(packing?.scanned_total || 0)
+            const remainingTotal = Number(packing?.remaining_total || 0)
+            const missingBarcodeCount = Number(packing?.missing_barcode_count || 0)
+            const packingItems = Array.isArray(packing?.items) ? packing.items : []
+            const busy = updatingOrderId === order.id
+            const scanBusy = scanningOrderId === order.id
+            const progressPercent = requiredTotal > 0 ? Math.min(100, Math.round((scannedTotal / requiredTotal) * 100)) : 100
+            const canScan = ['confirmed', 'preparing'].includes(status) && !readyToPack && missingBarcodeCount === 0
+            const expanded = Boolean(detailsOpen[order.id])
+            const address = [order.address_line1, order.address_line2, order.landmark, order.city, order.state, order.pincode].filter(Boolean).join(', ')
+            const lat = order.latitude == null || order.latitude === '' ? NaN : Number(order.latitude)
+            const lng = order.longitude == null || order.longitude === '' ? NaN : Number(order.longitude)
+            const hasLocation = Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+            const mapQuery = hasLocation ? `${lat},${lng}` : address
+            const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
+            const orderItems = Array.isArray(order.items) ? order.items : []
+            const itemTotal = orderItems.reduce((sum, item) => sum + Number(item.quantity || item.qty || 1), 0)
+            const isReceived = status === 'received'
+            const isWorking = ['confirmed', 'preparing'].includes(status)
+            const isPacked = status === 'packed'
+            const isOut = status === 'out_for_delivery'
+            const badgeTone = isReceived ? 'bg-amber-50 text-amber-700 ring-amber-200' : isWorking ? 'bg-sky-50 text-sky-700 ring-sky-200' : isPacked ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-violet-50 text-violet-700 ring-violet-200'
 
             return (
-
-              <article
-
-                key={
-
-                  order.id
-
-                }
-
-                className="min-w-0 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5"
-
-              >
-
-                {/* ORDER STATUS */}
-
-
-
-                <div className="flex flex-wrap items-center gap-2">
-
-                  <span className="rounded-full bg-violet-500/10 px-2.5 py-1 font-mono text-[10px] font-black text-violet-300">
-
-                    {
-
-                      order.order_code
-
-                    }
-
-                  </span>
-
-
-
-                  <span className="rounded-full bg-orange-500/10 px-2.5 py-1 text-[10px] font-black text-orange-400">
-
-                    {labelStatus(
-
-                      status
-
-                    )}
-
-                  </span>
-
-
-
-                  <span className="rounded-full bg-neutral-800 px-2.5 py-1 text-[10px] font-black text-neutral-300">
-
-                    {order.payment_method ===
-
-                    'cod'
-
-                      ? `COD ${money(
-
-                          order.total_amount
-
-                        )}`
-
-                      : `Paid ${money(
-
-                          order.total_amount
-
-                        )}`}
-
-                  </span>
-
+              <article key={order.id} className="group flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_5px_28px_rgba(15,23,42,0.035)] transition hover:border-slate-300 hover:shadow-[0_16px_35px_rgba(15,23,42,0.075)]">
+                <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono text-[15px] font-black tracking-tight text-[#12253c]">#{order.order_code || 'ORDER'}</span>
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-extrabold ring-1 ${badgeTone}`}><span className="h-1.5 w-1.5 rounded-full bg-current"/>{labelStatus(status)}</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-slate-500">
+                    <span className="inline-flex items-center gap-1"><PackerIcon name="clock" className="h-3.5 w-3.5"/>{formatDate(order.created_at)}</span>
+                    <span className="inline-flex items-center gap-1"><PackerIcon name="box" className="h-3.5 w-3.5"/>{itemTotal} {itemTotal === 1 ? 'unit' : 'units'}</span>
+                    <span className="font-bold text-slate-700">{order.payment_method === 'cod' ? 'COD' : 'Prepaid'} · {money(order.total_amount)}</span>
+                  </div>
                 </div>
 
-
-
-                {/* CUSTOMER */}
-
-
-
-                <h3 className="mt-4 text-base font-black text-white">
-
-                  {
-
-                    order.customer_name
-
-                  }
-
-                </h3>
-
-
-
-                <p className="mt-1 text-xs text-neutral-400">
-
-                  {
-
-                    order.customer_mobile
-
-                  }
-
-
-
-                  {order.alternate_mobile
-
-                    ? ` · Alt ${order.alternate_mobile}`
-
-                    : ''}
-
-                </p>
-
-
-
-                {/* ORDER ITEMS */}
-
-
-
-                <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-
-                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
-
-                    Items to Pack
-
-                  </p>
-
-
-
-                  <div className="mt-2 space-y-2">
-
-                    {Array.isArray(
-
-                      order.items
-
-                    ) &&
-
-                      order.items.map(
-
-                        (
-
-                          item,
-
-                          index
-
-                        ) => (
-
-                          <div
-
-                            key={
-
-                              item.id ||
-
-                              index
-
-                            }
-
-                            className="flex items-start justify-between gap-3 text-xs"
-
-                          >
-
-                            <span className="text-neutral-200">
-
-                              {
-
-                                item.name
-
-                              }{' '}
-
-                              ×{' '}
-
-                              {Number(
-
-                                item.quantity ||
-
-                                  item.qty ||
-
-                                  1
-
-                              )}
-
-                            </span>
-
-
-
-                            <span className="font-black text-white">
-
-                              {money(
-
-                                item.line_total ??
-
-                                  Number(
-
-                                    item.price ||
-
-                                      0
-
-                                  ) *
-
-                                    Number(
-
-                                      item.quantity ||
-
-                                        item.qty ||
-
-                                        1
-
-                                    )
-
-                              )}
-
-                            </span>
-
-                          </div>
-
-                        )
-
-                      )}
-
+                <div className="flex flex-1 flex-col px-4 py-4 sm:px-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eef4fa] text-[#163a5a]"><PackerIcon name="user" className="h-5 w-5"/></div>
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-extrabold text-[#12253c]">{order.customer_name || 'Customer'}</p><p className="mt-0.5 truncate text-[11px] text-slate-500">{order.customer_mobile || 'Mobile not provided'}{order.alternate_mobile ? ` · Alt ${order.alternate_mobile}` : ''}</p></div>
+                    {order.customer_mobile && <a href={`tel:${order.customer_mobile}`} aria-label="Call customer" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"><PackerIcon name="phone" className="h-4 w-4"/></a>}
                   </div>
 
-                </div>
+                  <div className="mt-4 overflow-hidden rounded-2xl bg-[#f6f8fb] p-3.5 sm:p-4">
+                    <div className="flex items-center justify-between gap-2"><p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Packing checklist</p><span className="rounded-lg bg-white px-2 py-1 text-[10px] font-extrabold text-slate-600">{orderItems.length} products</span></div>
+                    <ul className="mt-3 space-y-2.5">
+                      {orderItems.map((item, index) => <li key={item.id || index} className="flex items-start gap-3 text-sm"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] font-black text-slate-700">{Number(item.quantity || item.qty || 1)}×</span><div className="min-w-0 flex-1"><p className="break-words font-semibold leading-6 text-slate-800">{item.name || 'Product'}</p></div><span className="shrink-0 pt-1 text-xs font-extrabold text-slate-600">{money(item.line_total ?? Number(item.price || 0) * Number(item.quantity || item.qty || 1))}</span></li>)}
+                      {!orderItems.length && <li className="text-xs text-slate-500">No item details available.</li>}
+                    </ul>
+                  </div>
 
-
-
-                {/* BARCODE PACKING VERIFICATION */}
-
-
-
-                {hasPackingData && (
-
-                  <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-
-                    <div className="flex items-start justify-between gap-3">
-
-                      <div>
-
-                        <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
-
-                          Barcode
-
-                          Verification
-
-                        </p>
-
-
-
-                        <p className="mt-1 text-sm font-black text-white">
-
-                          {requiresScan
-
-                            ? `${scannedTotal}/${requiredTotal} items scanned`
-
-                            : 'No barcode scan required'}
-
-                        </p>
-
-                      </div>
-
-
-
-                      <span
-
-                        className={`rounded-full px-2.5 py-1 text-[9px] font-black ${
-
-                          readyToPack
-
-                            ? 'bg-emerald-500/10 text-emerald-300'
-
-                            : 'bg-amber-500/10 text-amber-300'
-
-                        }`}
-
-                      >
-
-                        {readyToPack
-
-                          ? 'Ready'
-
-                          : 'Scanning'}
-
-                      </span>
-
+                  {hasPackingData && <div className="mt-4 rounded-2xl border border-slate-200 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div><p className="flex items-center gap-1.5 text-xs font-extrabold text-[#12253c]"><PackerIcon name="scan" className="h-4 w-4 text-emerald-600"/> Barcode verification</p><p className="mt-1 text-[11px] text-slate-500">{requiresScan ? `${scannedTotal} of ${requiredTotal} units verified` : 'Food-only · No barcode scan needed'}</p></div>
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ${readyToPack ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{readyToPack ? 'Ready' : 'Pending'}</span>
                     </div>
-
-
-
-                    {!requiresScan ? (
-
-                      <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-[10px] font-bold leading-5 text-emerald-300">
-
-                        ✓ Food-only
-
-                        order. Food
-
-                        items do not
-
-                        require barcode
-
-                        verification.
-
-                      </div>
-
-                    ) : (
-
-                      <>
-
-                        {/* PROGRESS BAR */}
-
-
-
-                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-800">
-
-                          <div
-
-                            className="h-full rounded-full bg-emerald-500 transition-all"
-
-                            style={{
-
-                              width:
-
-                                `${progressPercent}%`,
-
-                            }}
-
-                          />
-
-                        </div>
-
-
-
-                        {/* PRODUCTS */}
-
-
-
-                        <div className="mt-3 space-y-2">
-
-                          {packingItems.map(
-
-                            (
-
-                              scanItem
-
-                            ) => {
-
-                              const complete =
-
-                                Boolean(
-
-                                  scanItem?.complete
-
-                                )
-
-
-
-                              return (
-
-                                <div
-
-                                  key={
-
-                                    scanItem?.menu_item_id ||
-
-                                    scanItem?.name
-
-                                  }
-
-                                  className={`rounded-xl border px-3 py-3 ${
-
-                                    complete
-
-                                      ? 'border-emerald-500/20 bg-emerald-500/10'
-
-                                      : 'border-neutral-800 bg-neutral-900'
-
-                                  }`}
-
-                                >
-
-                                  <div className="flex items-center justify-between gap-3">
-
-                                    <div className="min-w-0">
-
-                                      <p className="truncate text-xs font-black text-white">
-
-                                        {scanItem?.name ||
-
-                                          'Packaged Product'}
-
-                                      </p>
-
-
-
-                                      <p className="mt-1 text-[9px] font-bold text-neutral-500">
-
-                                        {scanItem?.barcode
-
-                                          ? 'Barcode configured'
-
-                                          : 'Barcode missing'}
-
-                                      </p>
-
-                                    </div>
-
-
-
-                                    <div className="shrink-0 text-right">
-
-                                      <p
-
-                                        className={`text-sm font-black ${
-
-                                          complete
-
-                                            ? 'text-emerald-400'
-
-                                            : 'text-white'
-
-                                        }`}
-
-                                      >
-
-                                        {Number(
-
-                                          scanItem?.scanned_quantity ||
-
-                                            0
-
-                                        )}
-
-                                        /
-
-                                        {Number(
-
-                                          scanItem?.required_quantity ||
-
-                                            0
-
-                                        )}
-
-                                      </p>
-
-
-
-                                      <p className="mt-0.5 text-[8px] font-black uppercase text-neutral-600">
-
-                                        {complete
-
-                                          ? 'Verified'
-
-                                          : 'Required'}
-
-                                      </p>
-
-                                    </div>
-
-                                  </div>
-
-                                </div>
-
-                              )
-
-                            }
-
-                          )}
-
-                        </div>
-
-
-
-                        {/* MISSING BARCODE */}
-
-
-
-                        {missingBarcodeCount >
-
-                          0 && (
-
-                          <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-[10px] font-bold leading-5 text-red-300">
-
-                            {
-
-                              missingBarcodeCount
-
-                            }{' '}
-
-                            packaged
-
-                            product
-
-                            {missingBarcodeCount ===
-
-                            1
-
-                              ? ''
-
-                              : 's'}{' '}
-
-                            has no
-
-                            barcode
-
-                            configured.
-
-                            Ask the
-
-                            Manager to
-
-                            configure
-
-                            the barcode
-
-                            before
-
-                            packing.
-
-                          </div>
-
-                        )}
-
-
-
-                        {/* SCAN CONTROLS */}
-
-
-
-                        {[
-
-                          'confirmed',
-
-                          'preparing',
-
-                        ].includes(
-
-                          status
-
-                        ) &&
-
-                          !readyToPack &&
-
-                          missingBarcodeCount ===
-
-                            0 && (
-
-                            <div className="mt-4 space-y-2">
-
-                              <form
-
-                                onSubmit={async (
-
-                                  event
-
-                                ) => {
-
-                                  event.preventDefault()
-
-
-
-                                  await submitBarcode(
-
-                                    order.id,
-
-                                    barcodeInputs[
-
-                                      order
-
-                                        .id
-
-                                    ]
-
-                                  )
-
-                                }}
-
-                                className="flex gap-2"
-
-                              >
-
-                                <input
-
-                                  value={
-
-                                    barcodeInputs[
-
-                                      order
-
-                                        .id
-
-                                    ] ||
-
-                                    ''
-
-                                  }
-
-                                  onChange={(
-
-                                    event
-
-                                  ) =>
-
-                                    setBarcodeInputs(
-
-                                      (
-
-                                        current
-
-                                      ) => ({
-
-                                        ...current,
-
-
-
-                                        [order.id]:
-
-                                          event
-
-                                            .target
-
-                                            .value,
-
-                                      })
-
-                                    )
-
-                                  }
-
-                                  autoComplete="off"
-
-                                  inputMode="text"
-
-                                  placeholder="Scan / enter barcode"
-
-                                  className="min-w-0 flex-1 rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-xs text-white outline-none focus:border-violet-500"
-
-                                />
-
-
-
-                                <button
-
-                                  type="submit"
-
-                                  disabled={
-
-                                    scanBusy ||
-
-                                    !String(
-
-                                      barcodeInputs[
-
-                                        order
-
-                                          .id
-
-                                      ] ||
-
-                                        ''
-
-                                    ).trim()
-
-                                  }
-
-                                  className="shrink-0 rounded-xl bg-violet-600 px-4 py-3 text-[10px] font-black text-white disabled:opacity-40"
-
-                                >
-
-                                  {scanBusy
-
-                                    ? 'Checking...'
-
-                                    : 'Verify'}
-
-                                </button>
-
-                              </form>
-
-
-
-                              <button
-
-                                type="button"
-
-                                disabled={
-
-                                  scanBusy ||
-
-                                  Boolean(
-
-                                    cameraOrderId
-
-                                  )
-
-                                }
-
-                                onClick={() =>
-
-                                  openCameraScanner(
-
-                                    order.id
-
-                                  )
-
-                                }
-
-                                className="w-full rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-xs font-black text-violet-300 disabled:opacity-40"
-
-                              >
-
-                                📷 Scan
-
-                                Product with
-
-                                Camera
-
-                              </button>
-
-
-
-                              <p className="text-[9px] leading-4 text-neutral-600">
-
-                                Scan each
-
-                                physical
-
-                                packaged
-
-                                unit once.
-
-                                Remaining:{' '}
-
-                                {
-
-                                  remainingTotal
-
-                                }
-
-                                .
-
-                              </p>
-
-                            </div>
-
-                          )}
-
-
-
-                        {/* COMPLETED */}
-
-
-
-                        {readyToPack && (
-
-                          <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-[10px] font-black text-emerald-300">
-
-                            ✓ All
-
-                            required
-
-                            packaged
-
-                            products are
-
-                            verified.
-
-                            This order
-
-                            can be
-
-                            marked
-
-                            Packed.
-
-                          </div>
-
-                        )}
-
-                      </>
-
-                    )}
-
+                    {requiresScan && <><div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{width:`${progressPercent}%`}}/></div><p className="mt-1.5 text-right text-[10px] font-bold text-slate-500">{progressPercent}% complete</p></>}
+                    {requiresScan && packingItems.length > 0 && <div className="mt-3 space-y-2">{packingItems.map((item, i) => <div key={`${item.menu_item_id || item.name || i}`} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><div className="min-w-0"><p className="truncate text-[11px] font-bold text-slate-700">{item.name || 'Packaged product'}</p><p className="mt-0.5 text-[10px] text-slate-500">{item.barcode ? 'Barcode configured' : 'Missing barcode'}</p></div><span className={`shrink-0 rounded-lg px-2 py-1 font-mono text-[11px] font-black ${item.complete ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-700'}`}>{Number(item.scanned_quantity || 0)}/{Number(item.required_quantity || 0)}</span></div>)}</div>}
+                    {missingBarcodeCount > 0 && <div className="mt-3 flex gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-[11px] font-semibold leading-5 text-red-700"><PackerIcon name="alert" className="mt-0.5 h-4 w-4 shrink-0"/>{missingBarcodeCount} packaged {missingBarcodeCount === 1 ? 'product has' : 'products have'} no configured barcode. Ask the manager to configure it before marking this order Packed.</div>}
+                    {canScan && <div className="mt-4 space-y-2.5"><form onSubmit={async (event)=>{event.preventDefault(); await submitBarcode(order.id,barcodeInputs[order.id])}} className="flex min-w-0 gap-2"><input aria-label={`Barcode for order ${order.order_code || order.id}`} value={barcodeInputs[order.id] || ''} onChange={(event)=>setBarcodeInputs((current)=>({...current,[order.id]:event.target.value}))} autoComplete="off" inputMode="text" placeholder="Scan or enter barcode" className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"/><button type="submit" disabled={scanBusy || !String(barcodeInputs[order.id] || '').trim()} className="h-11 shrink-0 rounded-xl bg-[#14253c] px-4 text-xs font-extrabold text-white disabled:opacity-40">{scanBusy?'Checking…':'Verify'}</button></form><button type="button" disabled={scanBusy || Boolean(cameraOrderId)} onClick={()=>openCameraScanner(order.id)} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-40"><PackerIcon name="camera" className="h-4 w-4"/> Scan with camera</button><p className="text-[10px] leading-4 text-slate-400">Scan each physical packaged unit once. {remainingTotal} remaining.</p></div>}
+                    {readyToPack && <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2.5 text-[11px] font-bold text-emerald-700"><PackerIcon name="check" className="h-4 w-4"/> All required verification complete</div>}
+                  </div>}
+
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white">
+                    <button type="button" aria-expanded={expanded} onClick={()=>setDetailsOpen((current)=>({...current,[order.id]:!current[order.id]}))} className="flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left text-xs font-bold text-slate-700"><span className="flex items-center gap-2"><PackerIcon name="pin" className="h-4 w-4 text-slate-500"/> Delivery and driver details</span><PackerIcon name="chevron" className={`h-4 w-4 text-slate-400 transition-transform ${expanded?'rotate-180':''}`}/></button>
+                    {expanded && <div className="space-y-3 border-t border-slate-100 px-3.5 py-3 text-xs"><div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Delivery address</p><p className="mt-1 break-words leading-5 text-slate-700">{address || 'Address not provided'}</p>{hasLocation && <p className="mt-1 text-[10px] font-bold text-emerald-700">Location pin captured{order.location_accuracy_m ? ` · ±${Math.round(Number(order.location_accuracy_m))} m` : ''}</p>}</div><div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Assigned driver</p><p className="mt-1 font-bold text-slate-700">{order.driver_name || 'Waiting for driver assignment'}</p>{order.driver_mobile && <p className="mt-1 text-slate-500">{order.driver_mobile}</p>}</div><div className="flex flex-wrap gap-2">{order.customer_mobile && <a href={`tel:${order.customer_mobile}`} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 font-bold text-slate-700"><PackerIcon name="phone" className="h-3.5 w-3.5"/> Call customer</a>}{mapQuery && <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-3 py-2 font-bold text-sky-700"><PackerIcon name="pin" className="h-3.5 w-3.5"/> Open location</a>}</div></div>}
                   </div>
 
-                )}
-
-
-
-                {/* DELIVERY ADDRESS */}
-
-
-
-                <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-
-                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
-
-                    Delivery Address
-
-                  </p>
-
-
-
-                  <p className="mt-2 text-xs leading-5 text-neutral-300">
-
-                    {address}
-
-                  </p>
-
-
-
-                  {hasLocation && (
-
-                    <p className="mt-2 text-[10px] font-bold text-emerald-400">
-
-                      ✓ Customer live
-
-                      location
-
-                      captured
-
-                      {order.location_accuracy_m
-
-                        ? ` · ±${Math.round(
-
-                            Number(
-
-                              order.location_accuracy_m
-
-                            )
-
-                          )}m`
-
-                        : ''}
-
-                    </p>
-
-                  )}
-
-                </div>
-
-
-
-                {/* CUSTOMER ACTIONS */}
-
-
-
-                <div className="mt-3 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
-
-                  <a
-
-                    href={`tel:${order.customer_mobile}`}
-
-                    className="rounded-xl bg-neutral-800 px-4 py-3 text-center text-xs font-black text-white"
-
-                  >
-
-                    Call Customer
-
-                  </a>
-
-
-
-                  <a
-
-                    href={
-
-                      mapUrl
-
-                    }
-
-                    target="_blank"
-
-                    rel="noreferrer"
-
-                    className="rounded-xl bg-sky-600 px-4 py-3 text-center text-xs font-black text-white"
-
-                  >
-
-                    Open Location
-
-                  </a>
-
-                </div>
-
-
-
-                {/* DRIVER */}
-
-
-
-                <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-
-                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
-
-                    Assigned Driver
-
-                  </p>
-
-
-
-                  <p className="mt-1 text-xs font-bold text-white">
-
-                    {order.driver_name ||
-
-                      'Waiting for driver assignment'}
-
-                  </p>
-
-
-
-                  {order.driver_mobile && (
-
-                    <p className="mt-1 text-[10px] text-neutral-400">
-
-                      {
-
-                        order.driver_mobile
-
-                      }
-
-                    </p>
-
-                  )}
-
-                </div>
-
-
-
-                <p className="mt-4 text-[10px] text-neutral-600">
-
-                  Received{' '}
-
-                  {formatDate(
-
-                    order.created_at
-
-                  )}
-
-                </p>
-
-
-
-                {/* CONFIRM */}
-
-
-
-                {status ===
-
-                  'received' && (
-
-                  <button
-
-                    type="button"
-
-                    disabled={
-
-                      busy
-
-                    }
-
-                    onClick={() =>
-
-                      updateStatus(
-
-                        order,
-
-                        'confirmed'
-
-                      )
-
-                    }
-
-                    className="mt-4 w-full rounded-xl bg-violet-600 px-5 py-4 text-sm font-black text-white disabled:opacity-50"
-
-                  >
-
-                    {busy
-
-                      ? 'Updating...'
-
-                      : 'Start Packing'}
-
-                  </button>
-
-                )}
-
-
-
-                {/* PACK */}
-
-
-
-                {[
-
-                  'confirmed',
-
-                  'preparing',
-
-                ].includes(
-
-                  status
-
-                ) && (
-
-                  <button
-
-                    type="button"
-
-                    disabled={
-
-                      busy ||
-
-                      scanBusy ||
-
-                      !readyToPack
-
-                    }
-
-                    onClick={() =>
-
-                      updateStatus(
-
-                        order,
-
-                        'packed'
-
-                      )
-
-                    }
-
-                    className="mt-4 w-full rounded-xl bg-orange-500 px-5 py-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
-
-                  >
-
-                    {busy
-
-                      ? 'Updating...'
-
-                      : !hasPackingData
-
-                        ? 'Checking Packing Requirements...'
-
-                        : missingBarcodeCount >
-
-                            0
-
-                          ? 'Barcode Setup Required'
-
-                          : requiresScan &&
-
-                              !readyToPack
-
-                            ? `Scan ${remainingTotal} More Item${
-
-                                remainingTotal ===
-
-                                1
-
-                                  ? ''
-
-                                  : 's'
-
-                              }`
-
-                            : 'Mark Packed'}
-
-                  </button>
-
-                )}
-
-
-
-                {/* DRIVER STARTS DELIVERY — Packer cannot bypass Driver acknowledgement */}
-
-
-
-                {status ===
-
-                  'packed' && (
-
-                  <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-center">
-
-                    <p className="text-xs font-black text-emerald-300">
-
-                      {order.driver_id
-
-                        ? '✓ Packed · Waiting for Driver to Start Delivery'
-
-                        : '✓ Packed · Waiting for Driver Assignment'}
-
-                    </p>
-
-                    <p className="mt-1 text-[9px] leading-4 text-neutral-500">
-
-                      Only the Delivery Boy can press Start Delivery. The Driver alarm stays active until every assigned packed order is acknowledged.
-
-                    </p>
-
+                  <div className="mt-auto pt-4">
+                    {isReceived && <button type="button" disabled={busy} onClick={()=>updateStatus(order,'confirmed')} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#162a43] px-4 text-sm font-extrabold text-white shadow-md shadow-slate-900/10 transition hover:bg-[#233e5e] active:scale-[0.99] disabled:opacity-50">{busy?'Updating…':'Start Packing'}{!busy && <PackerIcon name="arrow" className="h-4 w-4"/>}</button>}
+                    {isWorking && <button type="button" disabled={busy || scanBusy || !readyToPack} onClick={()=>updateStatus(order,'packed')} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-extrabold text-white shadow-md shadow-emerald-500/15 transition hover:bg-emerald-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"><PackerIcon name="check" className="h-4 w-4"/>{busy ? 'Updating…' : !hasPackingData ? 'Checking packing requirements…' : missingBarcodeCount > 0 ? 'Barcode setup required' : requiresScan && !readyToPack ? `Scan ${remainingTotal} more ${remainingTotal === 1?'unit':'units'}` : 'Mark Packed'}</button>}
+                    {isPacked && <div className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-bold leading-5 text-emerald-800"><PackerIcon name="check" className="h-4 w-4 shrink-0"/><div>{order.driver_id ? 'Packed · Waiting for driver to start delivery' : 'Packed · Waiting for driver assignment'}<p className="mt-1 font-normal text-emerald-700">Only the assigned driver can acknowledge and start delivery.</p></div></div>}
+                    {isOut && <div className="flex gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-xs font-bold leading-5 text-violet-800"><PackerIcon name="truck" className="h-4 w-4 shrink-0"/><div>Out for delivery<p className="mt-1 font-normal text-violet-700">The driver completes delivery with proof.</p></div></div>}
                   </div>
-
-                )}
-
-
-
-                {/* DRIVER COMPLETES DELIVERY */}
-
-
-
-                {status ===
-
-                  'out_for_delivery' && (
-
-                  <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs font-bold text-emerald-300">
-
-                    Out for
-
-                    Delivery. Driver
-
-                    completes
-
-                    Delivered / Not
-
-                    Delivered with
-
-                    proof.
-
-                  </div>
-
-                )}
-
+                </div>
               </article>
-
             )
-
-          }
-
-        )}
-
-
-
-        {!rows.length && (
-
-          <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-12 text-center text-xs text-neutral-500">
-
-            No orders in this
-
-            stage.
-
-          </div>
-
-        )}
-
-      </div>
-
-    </section>
-
-  )
-
-
-
-  /*
-
-   * ---------------------------------------------------------
-
-   * MAIN PACKER PORTAL
-
-   * ---------------------------------------------------------
-
-   */
-
-
+          })}
+          {!rows.length && <div className="col-span-full flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white px-6 py-10 text-center"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><PackerIcon name={orderSearch?'search':'check'} className="h-6 w-6"/></div><p className="mt-4 text-sm font-extrabold text-[#12253c]">{orderSearch ? 'No matching orders' : 'All clear here'}</p><p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">{orderSearch ? 'Try searching another order number, customer or product.' : 'No orders in this stage right now. New orders will appear automatically.'}</p></div>}
+        </div>
+      </section>
+    )
+  }
 
   return (
+    <main className="min-h-[100dvh] overflow-x-hidden bg-[#f5f7fa] font-sans text-slate-900">
+      <div className="lg:flex lg:min-h-[100dvh]">
+        {/* Desktop sidebar */}
+        <aside className="hidden w-[252px] shrink-0 flex-col bg-[#122238] text-white lg:sticky lg:top-0 lg:flex lg:h-[100dvh]">
+          <div className="flex items-center gap-3 border-b border-white/10 px-6 py-7"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-400 text-[#122238]"><PackerIcon name="box" className="h-6 w-6"/></div><div><p className="text-sm font-black tracking-tight">Digital Dine-In</p><p className="mt-0.5 text-[11px] text-slate-400">Pack Station</p></div></div>
+          <div className="px-4 pt-7"><p className="px-3 text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-500">Workspace</p><nav className="mt-3 space-y-1">{stages.map((stage)=><button key={stage.key} type="button" onClick={()=>setActiveStage(stage.key)} aria-current={activeStage===stage.key?'page':undefined} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3.5 text-left text-sm font-bold transition ${activeStage===stage.key?'bg-emerald-400 text-[#10243a] shadow-md shadow-black/10':'text-slate-400 hover:bg-white/10 hover:text-white'}`}><PackerIcon name={stage.icon} className="h-4.5 w-4.5"/><span className="flex-1">{stage.label}</span><span className={`rounded-lg px-1.5 py-0.5 text-[11px] font-black ${activeStage===stage.key?'bg-[#10243a]/10':'bg-white/10'}`}>{stage.count}</span></button>)}</nav></div>
+          <div className="mx-4 mt-8 rounded-2xl border border-white/10 bg-white/5 p-4"><span className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-emerald-300"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400"/> Live updates</span><p className="mt-2 text-xs leading-5 text-slate-400">Your packing queue stays in sync with incoming delivery orders.</p></div>
+          <div className="mt-auto border-t border-white/10 p-4"><div className="flex items-center gap-3 rounded-xl bg-white/5 p-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300"><PackerIcon name="user" className="h-5 w-5"/></div><div className="min-w-0"><p className="truncate text-xs font-extrabold">{packerName}</p><p className="text-[11px] text-slate-400">Packer account</p></div></div><button type="button" onClick={logout} className="mt-3 flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left text-xs font-bold text-slate-400 transition hover:bg-white/10 hover:text-white"><PackerIcon name="logout" className="h-4 w-4"/> Sign out</button></div>
+        </aside>
 
-    <main className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-neutral-950 pb-[max(2.5rem,env(safe-area-inset-bottom))] text-neutral-100">
+        <div className="min-w-0 flex-1">
+          {/* Header */}
+          <header className="sticky top-0 z-30 border-b border-slate-200/90 bg-white/95 backdrop-blur-xl"><div className="mx-auto flex max-w-[1480px] flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6 lg:px-9"><div className="flex min-w-0 items-center gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#122238] text-emerald-400 lg:hidden"><PackerIcon name="box" className="h-5 w-5"/></div><div className="min-w-0"><p className="truncate text-sm font-black tracking-tight text-[#122238]">{restaurant.name || 'Delivery Pack Station'}</p><p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">Packer dashboard <span className="lg:hidden">· {packerName}</span></p></div></div><div className="flex items-center gap-2"><button type="button" onClick={packerAlarmEnabled?disablePackerAlarm:enablePackerAlarm} aria-pressed={packerAlarmEnabled} className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-[11px] font-extrabold transition ${packerAlarmEnabled?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}><PackerIcon name="bell" className="h-4 w-4"/><span className="hidden sm:inline">{packerAlarmEnabled?'Alarm on':'Enable alarm'}</span><span className="sm:hidden">{packerAlarmEnabled?'On':'Alarm'}</span></button><button type="button" disabled={refreshing} onClick={()=>loadPortal('',true)} aria-label="Refresh packing queue" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"><PackerIcon name="refresh" className={`h-4 w-4 ${refreshing?'animate-spin':''}`}/></button><button type="button" onClick={logout} className="flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-extrabold text-slate-600 transition hover:bg-slate-50 lg:hidden"><PackerIcon name="logout" className="h-4 w-4"/><span className="hidden min-[390px]:inline">Logout</span></button></div></div></header>
+          {/* Main */}
+          <div className="mx-auto max-w-[1480px] space-y-6 px-4 py-6 pb-[calc(3rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-9 lg:py-8">
+            <div className="relative overflow-hidden rounded-[26px] bg-[#13273f] px-5 py-6 text-white sm:px-7 sm:py-7"><div className="pointer-events-none absolute -right-12 -top-24 h-72 w-72 rounded-full bg-emerald-400/10 blur-2xl"/><div className="pointer-events-none absolute bottom-0 right-16 h-28 w-28 rounded-full border-[28px] border-white/[0.04]"/><div className="relative"><div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-emerald-300"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"/> Live fulfilment</div><div className="mt-4 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-black tracking-tight sm:text-[30px]">Good to see you, {packerName.split(' ')[0]}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Keep every order accurate and on time. Pick an order, verify the items and get it ready for the driver.</p></div><div className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300"><PackerIcon name="box" className="h-5 w-5"/></div><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Active orders</p><p className="text-2xl font-black tabular-nums">{sections.received.length + sections.confirmed.length}</p></div></div></div></div></div>
 
-      {/* HEADER */}
+            {/* Queue overview cards */}
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[
+              {key:'received',name:'New orders',detail:'Waiting to start',count:sections.received.length,icon:'inbox',accent:'text-amber-600',background:'bg-amber-50'},
+              {key:'confirmed',name:'Packing now',detail:'Being prepared',count:sections.confirmed.length,icon:'scan',accent:'text-sky-600',background:'bg-sky-50'},
+              {key:'packed',name:'Ready to dispatch',detail:'Waiting for driver',count:sections.packed.length,icon:'check',accent:'text-emerald-600',background:'bg-emerald-50'},
+              {key:'out_for_delivery',name:'On the road',detail:'With delivery staff',count:sections.out_for_delivery.length,icon:'truck',accent:'text-violet-600',background:'bg-violet-50'},
+            ].map((tile)=><button key={tile.key} type="button" onClick={()=>setActiveStage(tile.key)} className={`rounded-[22px] border bg-white p-4 text-left shadow-[0_4px_20px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${activeStage===tile.key?'border-emerald-400 ring-2 ring-emerald-400/10':'border-slate-200'}`}><div className="flex items-start justify-between gap-2"><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tile.background} ${tile.accent}`}><PackerIcon name={tile.icon} className="h-5 w-5"/></div><span className="text-2xl font-black tracking-tight tabular-nums text-[#12253c] sm:text-3xl">{tile.count}</span></div><p className="mt-4 text-xs font-extrabold text-[#12253c] sm:text-sm">{tile.name}</p><p className="mt-1 text-[11px] text-slate-500">{tile.detail}</p></button>)}</div>
 
+            {packerAlarmEnabled && <div className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 ${packerAlarmActive?'border-amber-200 bg-amber-50':'border-emerald-200 bg-emerald-50'}`}><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${packerAlarmActive?'bg-amber-100 text-amber-700':'bg-emerald-100 text-emerald-700'}`}><PackerIcon name="bell" className="h-4.5 w-4.5"/></div><div><p className={`text-xs font-black ${packerAlarmActive?'text-amber-800':'text-emerald-800'}`}>{packerAlarmActive?`${waitingToPackOrders.length} waiting ${waitingToPackOrders.length===1?'order needs':'orders need'} attention`:packingInProgressOrders.length>0?'Alarm paused while packing':'Packing alarm ready'}</p><p className="mt-1 text-[11px] leading-5 text-slate-600">{packerAlarmActive?'Start packing the next waiting order to silence the alarm.':packingInProgressOrders.length>0?'The alarm resumes if new orders are waiting after your active packing work.':'You will be notified when a new order needs packing.'}</p></div></div>}
 
+            {message && <div role="status" className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700"><PackerIcon name="check" className="h-4 w-4 shrink-0"/>{message}</div>}
+            {error && <div role="alert" className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700"><PackerIcon name="alert" className="h-4 w-4 shrink-0"/>{error}</div>}
 
-      <header className="sticky top-0 z-30 border-b border-neutral-800 bg-neutral-950/95 backdrop-blur">
+            {/* Queue navigation and search */}
+            <div className="space-y-4"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-600">Order management</p><h2 className="mt-1 text-[23px] font-black tracking-tight text-[#12253c]">Packing queue</h2></div><p className="inline-flex items-center gap-2 text-[11px] font-bold text-slate-500"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"/> Automatically updated</p></div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><nav aria-label="Packing queue stages" className="-mx-4 flex min-w-0 gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 lg:hidden">{stages.map((stage)=><button key={stage.key} type="button" onClick={()=>setActiveStage(stage.key)} aria-pressed={activeStage===stage.key} className={`flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-[11px] font-extrabold transition ${activeStage===stage.key?'border-[#12253c] bg-[#12253c] text-white':'border-slate-200 bg-white text-slate-600'}`}><PackerIcon name={stage.icon} className="h-4 w-4"/>{stage.label}<span className={`rounded-md px-1.5 py-0.5 text-[10px] ${activeStage===stage.key?'bg-white/20':'bg-slate-100'}`}>{stage.count}</span></button>)}</nav><label className="relative block w-full sm:max-w-xs"><PackerIcon name="search" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={orderSearch} onChange={(event)=>setOrderSearch(event.target.value)} type="search" aria-label="Search orders" placeholder="Search order, customer or product" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"/></label></div>
+            </div>
 
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-4">
-
-          <div className="min-w-0">
-
-            <p className="truncate text-sm font-black text-white">
-
-              {restaurant.name ||
-
-                'Delivery'}
-
-            </p>
-
-
-
-            <p className="mt-0.5 text-[10px] font-black uppercase tracking-wider text-violet-400">
-
-              Packer Portal ·{' '}
-
-              {packer.name}
-
-            </p>
-
+            <div className="space-y-9">{activeStage==='overview' ? <>{renderOrders('received','New orders','Awaiting your attention',sections.received)}{renderOrders('confirmed','Packing now','In progress',sections.confirmed)}{renderOrders('packed','Ready to dispatch','Packed and verified',sections.packed)}{renderOrders('out_for_delivery','Out for delivery','Driver handoff complete',sections.out_for_delivery)}</> : activeStage==='received' ? renderOrders('received','New orders','Awaiting your attention',sections.received) : activeStage==='confirmed' ? renderOrders('confirmed','Packing now','In progress',sections.confirmed) : activeStage==='packed' ? renderOrders('packed','Ready to dispatch','Packed and verified',sections.packed) : renderOrders('out_for_delivery','Out for delivery','Driver handoff complete',sections.out_for_delivery)}</div>
+            <p className="border-t border-slate-200 pt-5 text-center text-[11px] text-slate-400">Digital Dine-In · Pack Station · Accurate packing, every time</p>
           </div>
-
-
-
-          <div className="flex items-center gap-2">
-
-            <button
-              type="button"
-              onClick={
-                packerAlarmEnabled
-                  ? disablePackerAlarm
-                  : enablePackerAlarm
-              }
-              className={`rounded-xl px-3 py-2.5 text-[10px] font-black ${
-                packerAlarmEnabled
-                  ? 'bg-emerald-600 text-white'
-                  : 'border border-neutral-800 bg-neutral-900 text-neutral-300'
-              }`}
-            >
-              {packerAlarmEnabled
-                ? '🔔 Alarm ON'
-                : '🔕 Enable Alarm'}
-            </button>
-
-
-            <button
-
-              type="button"
-
-              onClick={() =>
-
-                loadPortal(
-
-                  '',
-
-                  true
-
-                )
-
-              }
-
-              disabled={
-
-                refreshing
-
-              }
-
-              className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2.5 text-[10px] font-black text-neutral-300 disabled:opacity-50"
-
-            >
-
-              {refreshing
-
-                ? 'Refreshing...'
-
-                : 'Refresh'}
-
-            </button>
-
-
-
-            <button
-
-              type="button"
-
-              onClick={
-
-                logout
-
-              }
-
-              className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2.5 text-[10px] font-black text-neutral-300"
-
-            >
-
-              Logout
-
-            </button>
-
-          </div>
-
         </div>
-
-      </header>
-
-
-
-      {/* CONTENT */}
-
-
-
-      <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-5">
-
-        {packerAlarmEnabled && (
-          <div
-            className={`rounded-2xl border px-4 py-3 ${
-              packerAlarmActive
-                ? 'border-red-500/30 bg-red-500/10'
-                : 'border-emerald-500/20 bg-emerald-500/10'
-            }`}
-          >
-            <p className={`text-[10px] font-black uppercase tracking-wider ${
-              packerAlarmActive
-                ? 'text-red-300'
-                : 'text-emerald-300'
-            }`}>
-              {packerAlarmActive
-                ? `🔔 Packing Alarm · ${waitingToPackOrders.length} waiting`
-                : packingInProgressOrders.length > 0
-                  ? `✓ Alarm paused · Packing ${packingInProgressOrders.length} order${packingInProgressOrders.length === 1 ? '' : 's'}`
-                  : '✓ Packing alarm ready'}
-            </p>
-            <p className="mt-1 text-[10px] leading-5 text-neutral-400">
-              {packerAlarmActive
-                ? 'Press Start Packing on the next waiting order to stop the alarm.'
-                : packingInProgressOrders.length > 0
-                  ? 'After the active order is marked Packed, the alarm returns if another order is waiting.'
-                  : 'Alarm starts automatically when a new order enters the packing queue.'}
-            </p>
-          </div>
-        )}
-
-
-        {/* QUEUE COUNTS */}
-
-
-
-        <section className="min-w-0 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
-
-          <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
-
-            Live Packing Queue
-
-          </p>
-
-
-
-          <div className="mt-3 grid grid-cols-4 gap-2">
-
-            {[
-
-              [
-
-                'Received',
-
-                sections
-
-                  .received
-
-                  .length,
-
-              ],
-
-
-
-              [
-
-                'Confirmed',
-
-                sections
-
-                  .confirmed
-
-                  .length,
-
-              ],
-
-
-
-              [
-
-                'Packed',
-
-                sections
-
-                  .packed
-
-                  .length,
-
-              ],
-
-
-
-              [
-
-                'On Road',
-
-                sections
-
-                  .out_for_delivery
-
-                  .length,
-
-              ],
-
-            ].map(
-
-              ([
-
-                label,
-
-                value,
-
-              ]) => (
-
-                <div
-
-                  key={
-
-                    label
-
-                  }
-
-                  className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3 text-center"
-
-                >
-
-                  <p className="text-lg font-black text-white">
-
-                    {
-
-                      value
-
-                    }
-
-                  </p>
-
-
-
-                  <p className="mt-1 text-[8px] font-black uppercase text-neutral-500">
-
-                    {
-
-                      label
-
-                    }
-
-                  </p>
-
-                </div>
-
-              )
-
-            )}
-
-          </div>
-
-
-
-          <p className="mt-3 text-[10px] text-neutral-500">
-
-            Orders refresh
-
-            automatically.
-
-            Use Refresh for an
-
-            immediate check.
-
-          </p>
-
-        </section>
-
-
-
-        {/* SUCCESS */}
-
-
-
-        {message && (
-
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs font-bold text-emerald-300">
-
-            {message}
-
-          </div>
-
-        )}
-
-
-
-        {/* ERROR */}
-
-
-
-        {error && (
-
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-300">
-
-            {error}
-
-          </div>
-
-        )}
-
-
-
-        {renderOrders(
-
-          'New Orders',
-
-          'Confirm incoming orders',
-
-          sections.received
-
-        )}
-
-
-
-        {renderOrders(
-
-          'Packing Queue',
-
-          'Confirmed and preparing',
-
-          sections.confirmed
-
-        )}
-
-
-
-        {renderOrders(
-
-          'Ready to Dispatch',
-
-          'Packed orders',
-
-          sections.packed
-
-        )}
-
-
-
-        {renderOrders(
-
-          'Out for Delivery',
-
-          'Driver has left',
-
-          sections.out_for_delivery
-
-        )}
-
       </div>
 
-
-
-      {/* CAMERA SCANNER */}
-
-
-
-      {cameraOrderId && (
-
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-6">
-
-          <section className="w-full max-w-md overflow-hidden rounded-[28px] border border-neutral-800 bg-neutral-950 shadow-2xl">
-
-            <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-4">
-
-              <div>
-
-                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-400">
-
-                  Product
-
-                  Verification
-
-                </p>
-
-
-
-                <h3 className="mt-1 text-base font-black text-white">
-
-                  Scan one product
-
-                  barcode
-
-                </h3>
-
-              </div>
-
-
-
-              <button
-
-                type="button"
-
-                onClick={
-
-                  closeCameraScanner
-
-                }
-
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-lg font-black text-neutral-300"
-
-                aria-label="Close barcode scanner"
-
-              >
-
-                ×
-
-              </button>
-
-            </div>
-
-
-
-            <div className="p-4">
-
-              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-neutral-800 bg-black">
-
-                <video
-
-                  ref={
-
-                    videoRef
-
-                  }
-
-                  muted
-
-                  playsInline
-
-                  className="h-full w-full object-cover"
-
-                />
-
-
-
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-
-                  <div className="h-28 w-[78%] rounded-2xl border-2 border-violet-400/90 shadow-[0_0_0_999px_rgba(0,0,0,0.32)]" />
-
-                </div>
-
-
-
-                {cameraStarting && (
-
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-xs font-black text-white">
-
-                    Opening
-
-                    Camera...
-
-                  </div>
-
-                )}
-
-              </div>
-
-
-
-              {cameraError ? (
-
-                <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-3 text-[10px] font-bold leading-5 text-amber-300">
-
-                  {
-
-                    cameraError
-
-                  }
-
-                </div>
-
-              ) : (
-
-                <p className="mt-3 text-center text-[10px] leading-5 text-neutral-500">
-
-                  Place one
-
-                  product barcode
-
-                  inside the
-
-                  frame. One
-
-                  camera opening
-
-                  records only one
-
-                  unit to prevent
-
-                  duplicate scans.
-
-                </p>
-
-              )}
-
-
-
-              <button
-
-                type="button"
-
-                onClick={
-
-                  closeCameraScanner
-
-                }
-
-                className="mt-4 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-xs font-black text-neutral-300"
-
-              >
-
-                Cancel Camera
-
-                Scan
-
-              </button>
-
-            </div>
-
-          </section>
-
-        </div>
-
-      )}
-
+      {/* Barcode camera modal: same native scanner and one-scan-per-open behavior. */}
+      {cameraOrderId && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[#07121f]/85 p-0 backdrop-blur-sm sm:items-center sm:p-5"><section role="dialog" aria-modal="true" aria-label="Scan product barcode" className="w-full max-w-md overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:rounded-[28px]"><div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4"><div><p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600">Product verification</p><h3 className="mt-1 text-lg font-black text-[#12253c]">Scan one barcode</h3></div><button type="button" aria-label="Close barcode scanner" onClick={closeCameraScanner} className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><PackerIcon name="close" className="h-5 w-5"/></button></div><div className="px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5"><div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-[#0b1523]"><video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover"/><div className="pointer-events-none absolute inset-0 flex items-center justify-center"><div className="h-[42%] w-[78%] rounded-xl border-2 border-emerald-400 shadow-[0_0_0_999px_rgba(0,0,0,0.32)]"/><div className="absolute h-[2px] w-[65%] bg-emerald-400/80 shadow-[0_0_15px_rgba(52,211,153,0.5)]"/></div>{cameraStarting && <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm font-bold text-white">Opening camera…</div>}</div>{cameraError?<div role="alert" className="mt-3 flex gap-2 rounded-xl bg-amber-50 px-3 py-3 text-xs font-semibold leading-5 text-amber-800"><PackerIcon name="alert" className="h-4 w-4 shrink-0"/>{cameraError}</div>:<p className="mt-4 text-center text-xs leading-5 text-slate-500">Place one product barcode inside the frame. For accuracy, each camera session verifies only one unit.</p>}<button type="button" onClick={closeCameraScanner} className="mt-5 h-12 w-full rounded-xl border border-slate-200 bg-slate-50 text-sm font-extrabold text-slate-700">Cancel scanning</button></div></section></div>}
     </main>
-
   )
-
 }
