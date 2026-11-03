@@ -970,7 +970,9 @@ async function browserChecks() {
 }
 
 try {
-  await command('node', ['scripts/test-commerce-db.mjs'], 'database.log', { env: { ...env, COMMERCE_TEST_DATABASE_URL: databaseUrl } })
+  // The expansion orchestrator can reuse its already validated disposable
+  // database. Standalone runs retain the original fresh-fixture default.
+  if (process.env.COMMERCE_BROWSER_SKIP_DB !== '1') await command('node', [process.env.COMMERCE_BROWSER_USE_EXPANSION === '1' ? 'scripts/test-commerce-expansion-db.mjs' : 'scripts/test-commerce-db.mjs'], 'database.log', { env: { ...env, COMMERCE_TEST_DATABASE_URL: databaseUrl } })
   fixture = await createCommerceFixture({ databaseUrl })
   if (process.env.COMMERCE_BROWSER_SKIP_BUILD !== '1') {
     await command('npm', ['run', 'build'], 'build.log')

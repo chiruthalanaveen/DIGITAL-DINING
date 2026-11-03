@@ -8,6 +8,8 @@ import { OWNER_BUSINESSES, OwnerAccess, slugify, useOwnerSession } from './Owner
 const requestedFeatures = [
   ['catalog', 'Product catalog'], ['inventory', 'Inventory management'], ['cod', 'Cash on delivery'],
   ['pickup', 'Store pickup'], ['delivery', 'Local delivery'], ['branding', 'Brand customization'],
+  ['product_options', 'Product photos and variants'], ['delivery_pincodes', 'Delivery PIN-code coverage'],
+  ['customer_experience', 'Wishlists, reviews and customer requests'], ['promotions', 'Coupons and promotions'],
   ['online_payments', 'Online payments (review request)'],
 ]
 
@@ -79,7 +81,7 @@ function Application({ state }) {
               <div className="co-form-row"><p className="co-form-note">You can track the review from your owner workspace.</p><button className="co-button co-button-primary" type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit application'} <span aria-hidden="true">→</span></button></div>
             </form>
           </section>
-          <aside className="co-side-note"><span className="co-eyebrow">What happens next</span><h3>A little guidance,<br />every step of the way.</h3><ol className="co-status-list">{['Application submitted', 'Requirements reviewed', 'Admin approval', 'Website setup', 'Store activation'].map((title, index) => <li key={title}><b>{index + 1}</b>{title}</li>)}</ol><p>Every website has its own catalog, orders and owner permissions. Our team controls activation and feature availability.</p><p>The shared storefront is included in this foundation. Industry-specific layouts and verified custom domains will be added separately.</p></aside>
+          <aside className="co-side-note"><span className="co-eyebrow">What happens next</span><h3>A little guidance,<br />every step of the way.</h3><ol className="co-status-list">{['Application submitted', 'Requirements reviewed', 'Admin approval', 'Website setup', 'Store activation'].map((title, index) => <li key={title}><b>{index + 1}</b>{title}</li>)}</ol><p>Every website has its own catalog, orders and owner permissions. Our team controls activation and feature availability.</p><p>Ask about general retail, saree, grocery, fashion or food layouts. Layout assignment and custom domains require administrator review. Domain activation also requires verified ownership and provider configuration.</p><p>Online payments and automatic subscription charges are not enabled by this application.</p></aside>
         </div>}
       </OwnerAccess>
     </main>

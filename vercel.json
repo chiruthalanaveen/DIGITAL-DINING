@@ -5,7 +5,8 @@
       "feature/client-websites-phase1": false,
       "feature/phase0-account-payment-guards": false,
       "feature/phase0-subscription-ledger": false,
-      "feature/phase0-address-coordinate-validation": false
+      "feature/phase0-address-coordinate-validation": false,
+      "feature/commerce-expansion": false
     }
   }
 }

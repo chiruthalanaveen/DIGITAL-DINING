@@ -39,6 +39,12 @@ export function developmentEnvironment({ fixturePort = 4319 } = {}) {
     ADMIN_PASSWORD: LOCAL_PASSWORD,
     ADMIN_SESSION_SECRET: 'commerce-local-admin-session-secret-at-least-32-characters',
     MAINTENANCE_MODE: 'false',
+    SUBSCRIPTION_PAID_CHECKOUT_ENABLED: 'false',
+    COMMERCE_ONLINE_PAYMENTS_ENABLED: 'false',
+    COMMERCE_ONLINE_PAYMENTS_ALLOW_LIVE: 'false',
+    COMMERCE_CUSTOM_DOMAINS_ENABLED: 'false',
+    COMMERCE_DOMAIN_PROVISIONING_ENABLED: 'false',
+    COMMERCE_NOTIFICATIONS_ENABLED: 'false',
   })
 }
 
@@ -70,8 +76,35 @@ const RPC_ARGUMENTS = {
   commerce_owner_action: { p_website_id: 'uuid', p_action: 'text', p_payload: 'jsonb' },
   commerce_create_cod_order: { p_website_id: 'uuid', p_items: 'jsonb', p_customer: 'jsonb', p_fulfillment: 'text', p_idempotency_key: 'uuid' },
   commerce_admin_action: { p_action: 'text', p_payload: 'jsonb', p_actor_email: 'text' },
+  commerce_public_catalog_v2: { p_slug: 'text' },
+  commerce_catalog_workspace: { p_website_id: 'uuid' },
+  commerce_catalog_owner_action: { p_website_id: 'uuid', p_action: 'text', p_payload: 'jsonb' },
+  commerce_catalog_admin_action: { p_website_id: 'uuid', p_action: 'text', p_payload: 'jsonb' },
+  commerce_checkout_quote_v2: { p_website_id: 'uuid', p_items: 'jsonb', p_customer: 'jsonb', p_fulfillment: 'text', p_coupon_code: 'text' },
+  commerce_create_cod_order_v2: { p_website_id: 'uuid', p_items: 'jsonb', p_customer: 'jsonb', p_fulfillment: 'text', p_idempotency_key: 'uuid', p_coupon_code: 'text' },
+  commerce_customer_experience: { p_website_id: 'uuid', p_action: 'text', p_payload: 'jsonb' },
+  commerce_owner_engagement: { p_website_id: 'uuid', p_action: 'text', p_payload: 'jsonb' },
+  commerce_public_product_reviews: { p_website_id: 'uuid', p_product_id: 'uuid' },
+  commerce_growth_workspace: { p_website_id: 'uuid' },
+  commerce_growth_analytics: { p_website_id: 'uuid', p_days: 'integer' },
+  commerce_growth_owner_action: { p_website_id: 'uuid', p_action: 'text', p_payload: 'jsonb' },
+  commerce_notification_admin: { p_action: 'text', p_payload: 'jsonb' },
+  commerce_notification_claim: { p_limit: 'integer', p_lease_seconds: 'integer' },
+  commerce_notification_ack: { p_id: 'uuid', p_lease_token: 'uuid', p_sent: 'boolean', p_error_code: 'text', p_provider_message_id: 'text' },
+  commerce_domain_workspace: { p_website_id: 'uuid' },
+  commerce_domain_owner_action: { p_website_id: 'uuid', p_action: 'text', p_payload: 'jsonb' },
+  commerce_domain_admin_action: { p_website_id: 'uuid', p_action: 'text', p_payload: 'jsonb' },
+  commerce_resolve_domain: { p_hostname: 'text' },
+  commerce_payment_availability: { p_website_id: 'uuid' },
+  commerce_payment_readiness: { p_website_id: 'uuid' },
+  commerce_payment_quote: { p_website_id: 'uuid', p_items: 'jsonb', p_customer: 'jsonb', p_fulfillment: 'text', p_coupon_code: 'text' },
+  commerce_payment_status: { p_intent_id: 'uuid' },
+  commerce_payment_start: { p_website_id: 'uuid', p_items: 'jsonb', p_customer: 'jsonb', p_fulfillment: 'text', p_cart_key: 'uuid', p_coupon_code: 'text' },
+  commerce_payment_admin: { p_website_id: 'uuid', p_action: 'text', p_payload: 'jsonb' },
+  commerce_payment_service: { p_action: 'text', p_payload: 'jsonb' },
 }
-const TABLES = new Set(['commerce_websites', 'commerce_memberships', 'commerce_applications', 'commerce_categories', 'commerce_products', 'commerce_customers', 'commerce_orders', 'commerce_order_items', 'commerce_audit_logs'])
+const RPC_OPTIONAL_ARGUMENTS = { commerce_notification_ack: new Set(['p_error_code', 'p_provider_message_id']) }
+const TABLES = new Set(['commerce_websites', 'commerce_memberships', 'commerce_applications', 'commerce_categories', 'commerce_products', 'commerce_customers', 'commerce_orders', 'commerce_order_items', 'commerce_audit_logs', 'commerce_store_settings', 'commerce_product_profiles', 'commerce_product_images', 'commerce_product_variants', 'commerce_delivery_zones', 'commerce_saved_addresses', 'commerce_wishlist_items', 'commerce_reviews', 'commerce_order_requests', 'commerce_order_status_events', 'commerce_coupons', 'commerce_coupon_redemptions', 'commerce_notification_outbox', 'commerce_domains'])
 
 export async function createCommerceFixture({ databaseUrl, port = 4319, appOrigin = 'http://127.0.0.1:4320' }) {
   const target = new URL(databaseUrl)
@@ -226,9 +259,11 @@ export async function createCommerceFixture({ databaseUrl, port = 4319, appOrigi
         const name = url.pathname.split('/').pop()
         const argumentsByName = RPC_ARGUMENTS[name]
         if (!argumentsByName || req.method !== 'POST') return respond(404, { code: 'PGRST202', message: 'Fixture RPC is not available.' })
-        assert.deepEqual(Object.keys(json).sort(), Object.keys(argumentsByName).sort(), `Unexpected arguments for ${name}`)
+        const optional = RPC_OPTIONAL_ARGUMENTS[name] || new Set()
+        assert.ok(Object.keys(json).every(key => Object.hasOwn(argumentsByName, key)), `Unexpected arguments for ${name}`)
+        assert.ok(Object.keys(argumentsByName).every(key => optional.has(key) || Object.hasOwn(json, key)), `Missing arguments for ${name}`)
         const values = []
-        const argumentsSql = Object.entries(argumentsByName).map(([key, type], index) => {
+        const argumentsSql = Object.entries(argumentsByName).filter(([key]) => Object.hasOwn(json, key)).map(([key, type], index) => {
           values.push(type === 'jsonb' ? JSON.stringify(json[key]) : json[key])
           return `${quote(key)} => $${index + 1}::${type}`
         })

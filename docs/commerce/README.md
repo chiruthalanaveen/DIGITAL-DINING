@@ -1,4 +1,22 @@
-# Client Websites — shopping increment
+# Client Websites — current commerce expansion
+
+Updated 3 November 2026. The current work is on
+`feature/commerce-expansion`, based on the previously published application.
+Read the [expansion implementation/test report](expansion-report.md) and
+[five-migration installation/recovery runbook](expansion-installation.md) first.
+The source includes catalog/fulfillment, customer experience, coupons/outbox,
+verified domains and separately gated merchant payments. Local tests are not a
+claim of hosted/provider acceptance or live activation. New hosted SQL,
+production deployment and merges remain unperformed and require separate
+applicable approval. Domain/provider/notification/payment flags remain off.
+
+The sections below preserve the dated first-increment record; its narrower
+source scope and “No SQL migration required” statement describe that older
+increment only. **The current expansion requires five new migrations.** The
+installed foundation must not be replayed, and the separate pending platform
+subscription ledger remains excluded/off.
+
+## Historical first shopping increment
 
 Updated 1 November 2026. Work remains on `feature/client-websites-phase1`, draft
 [PR #3](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/3).

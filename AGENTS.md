@@ -39,6 +39,42 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
+### Current remaining-commerce implementation — updated 3 November 2026
+
+The user explicitly requested continuing the remaining e-commerce requirements.
+Implement the outstanding commerce capabilities in dependency order on
+`feature/commerce-expansion`, based on the published release's documentation
+commit `f9dd674`. This supersedes the earlier three-improvement source limit
+for commerce only; preserve all restaurant/delivery/resort/wallet modules and
+the original storefront stylesheet. Keep automatic deployment disabled.
+
+Prepare versioned, data-preserving commerce migrations and test only in
+isolated loopback development fixtures. Do not apply SQL to any hosted target,
+use main as a test database, deploy this new source, merge PRs or process live
+payments. The previous Production approval covered commit `84188e3` only.
+Keep paid subscriptions disabled and its separate pending migration untouched.
+New domain/provider/notification activation needs verified configuration and
+separate approval; tests must use stubs/development credentials. Preserve data,
+RLS, financial history and cron jobs. Do not ask again for waived backup or
+withdrawn staging setup; record hosted-validation limits accurately.
+
+The current isolated evidence is 531 PostgreSQL assertions, 284/284 unit tests,
+lint with zero errors/166 warnings, and the full repository build passing with
+unchanged source fingerprints during compilation. The expansion browser suite
+passes eight groups/72 screenshots at four widths, and the original commerce
+browser/API compatibility suite also passes against the actual full app with
+simulated Auth/Storage and external provider scripts blocked. These are local
+results; valid PIN recovery and provider acceptance remain unverified.
+The five commerce expansion migrations remain unapplied to hosted databases;
+provider/DNS/email/live-payment gates are not satisfied by local tests. See
+`docs/commerce/expansion-report.md` and `expansion-installation.md` for the
+completion matrix, exact SQL, object inventories and preserved-history rollback.
+
+Use `docs/commerce/expansion-contract.md` as the integration contract and keep
+the implementation/completion matrix truthful. A source implementation is not
+proof of hosted Auth/RLS/provider behavior. Export full changed JS/JSX as TXT
+with exact destinations, migrations/review/rollback steps, tests and screenshots.
+
 ### Published Production release — 2 November 2026
 
 After reviewing the passing lint/test/build report, the user explicitly said

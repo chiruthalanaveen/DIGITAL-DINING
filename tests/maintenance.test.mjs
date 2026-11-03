@@ -112,6 +112,7 @@ function fixture(overrides = {}) {
     },
   })
   const { proxy } = loadModule('proxy.ts', {
+    './lib/server/commerce/domains': { resolveCommerceDomain: async () => null },
     './lib/server/maintenanceSettings': settings,
     './lib/maintenance-page': { maintenancePage: '<!doctype html><title>Maintenance</title>' },
   })
