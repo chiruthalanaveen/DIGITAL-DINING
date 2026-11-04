@@ -97,6 +97,7 @@ const RPC_ARGUMENTS = {
   commerce_resolve_domain: { p_hostname: 'text' },
   commerce_payment_availability: { p_website_id: 'uuid' },
   commerce_payment_readiness: { p_website_id: 'uuid' },
+  commerce_payment_reconciliation_queue: { p_website_id: 'uuid' },
   commerce_payment_quote: { p_website_id: 'uuid', p_items: 'jsonb', p_customer: 'jsonb', p_fulfillment: 'text', p_coupon_code: 'text' },
   commerce_payment_status: { p_intent_id: 'uuid' },
   commerce_payment_start: { p_website_id: 'uuid', p_items: 'jsonb', p_customer: 'jsonb', p_fulfillment: 'text', p_cart_key: 'uuid', p_coupon_code: 'text' },

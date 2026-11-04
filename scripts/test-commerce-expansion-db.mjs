@@ -23,6 +23,7 @@ const migrations = [
   'supabase/migrations/20261102162000_commerce_growth_notifications.sql',
   'supabase/migrations/20261103090000_commerce_verified_domains.sql',
   'supabase/migrations/20261103091000_commerce_online_payments.sql',
+  'supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql',
 ]
 const suites = [
   'supabase/tests/commerce_catalog_expansion.sql',
@@ -31,6 +32,7 @@ const suites = [
   'supabase/tests/commerce_growth_analytics.sql',
   'supabase/tests/commerce_verified_domains.sql',
   'supabase/tests/commerce_online_payments.sql',
+  'supabase/tests/commerce_payment_recovery_queue.sql',
 ]
 // Later increments must be explicitly reviewed and added here. Never glob the
 // migrations directory: it also contains a separate, unapplied platform ledger.
@@ -158,8 +160,20 @@ try {
   assert.equal(originalPolicies.length, 18, 'Preservation must cover all eighteen original policies.')
   const originalRows = await rowsFor(originalTables)
   for (const relative of migrations) {
+    const recoveryQueue = relative.endsWith('_commerce_payment_recovery_queue.sql')
+    const beforeQueueDefinitions = recoveryQueue ? await definitions() : null
+    const beforeQueueRows = recoveryQueue ? await rowsFor(await tables()) : null
     await db.query(await readFile(path.join(root, relative), 'utf8'))
     console.log(`PASS ${relative}`)
+    if (recoveryQueue) {
+      const afterQueueDefinitions = await definitions()
+      const addedFunction = afterQueueDefinitions.functions.filter(value => /^(public\.)?commerce_payment_reconciliation_queue\(uuid\)$/.test(value.signature))
+      assert.equal(addedFunction.length, 1, 'Recovery migration must add exactly its one public queue function.')
+      afterQueueDefinitions.functions = afterQueueDefinitions.functions.filter(value => !addedFunction.includes(value))
+      assert.deepEqual(afterQueueDefinitions, beforeQueueDefinitions, 'Recovery queue must preserve all five-migration definitions, grants, RLS, tables, indexes, constraints and triggers.')
+      assert.deepEqual(await rowsFor(await tables()), beforeQueueRows, 'Recovery queue installation must preserve all five-migration and legacy records.')
+      await check('recovery queue migration adds only its function and preserves all five-migration definitions, policies, grants and rows')
+    }
   }
   assert.deepEqual(await rowsFor(originalTables), originalRows, 'All original columns and business records must remain unchanged on installation.')
   await check('expansion installation preserves every row across all fourteen original tables')
@@ -210,6 +224,23 @@ try {
     await db.query(await readFile(path.join(root, relative), 'utf8'))
     const after = (await db.query('SELECT count(*)::int AS count FROM commerce_test.results')).rows[0].count
     console.log(`PASS ${relative} (${after - before} PostgreSQL assertions)`)
+  }
+
+  const readOnlyQueue = connection('readonly-recovery-queue')
+  await readOnlyQueue.connect()
+  try {
+    await verifyEndpoint(readOnlyQueue)
+    await readOnlyQueue.query('BEGIN READ ONLY')
+    await readOnlyQueue.query('SET LOCAL ROLE service_role')
+    const value = (await readOnlyQueue.query('SELECT public.commerce_payment_reconciliation_queue($1) AS value', ['42000000-0000-4000-8000-000000000001'])).rows[0].value
+    assert.equal(value.total_count, 105)
+    assert.equal(value.intents.length, 100)
+    assert.equal(value.intents[0].state, 'captured_unfulfilled')
+    await readOnlyQueue.query('COMMIT')
+    await check('service-only recovery queue executes successfully inside a PostgreSQL READ ONLY transaction')
+  } finally {
+    await readOnlyQueue.query('ROLLBACK').catch(() => {})
+    await readOnlyQueue.end()
   }
 
   const website = '92000000-0000-4000-8000-000000000001'
@@ -493,7 +524,7 @@ try {
     const beforeDefinitions = await definitions(), beforeData = await rowsFor(await tables())
     let failed
     try { await db.query(await readFile(path.join(root, relative), 'utf8')) } catch (error) { failed = error }
-    const duplicateState = relative.endsWith('_commerce_verified_domains.sql') ? '42723' : '42P07'
+    const duplicateState = /_(commerce_verified_domains|commerce_payment_recovery_queue)\.sql$/.test(relative) ? '42723' : '42P07'
     assert.equal(failed?.code, duplicateState, 'One-time expansion reapplication must reject the first existing object.')
     await assert.rejects(db.query('SELECT 1'), error => error.code === '25P02')
     await db.query('ROLLBACK')

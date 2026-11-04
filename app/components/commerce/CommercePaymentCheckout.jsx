@@ -120,6 +120,7 @@ export function CommercePaymentCheckout({ websiteId, userId, client, checkout, o
       {attempt && <button type="button" disabled={busy} onClick={() => void check()}>Check payment</button>}
     </div>
     {error && <p role="alert">{error}</p>}
+    {attempt && <p className="commerce-payment-reference">{attempt.intent_id ? 'Payment reference' : 'Checkout reference'}: <code>{attempt.intent_id || attempt.cart_key}</code>. Share this reference with the store if you need help. Keep the same attempt.</p>}
     {captured && <p className="commerce-payment-receipt" role="status">Payment of {formatCommerceMoney(payment.receipt.amount_paise)} is captured. Your order needs the store’s attention. Keep receipt {payment.receipt.id}. Do not pay again. A refund has not been confirmed.</p>}
     {unresolved && <p role="status">This payment attempt needs confirmation. Keep this checkout and contact the store if Check payment remains pending. Do not start another payment.</p>}
     {payment?.state === 'ready' && <p role="status">Your saved checkout is ready. Check payment if you have already attempted to pay.</p>}

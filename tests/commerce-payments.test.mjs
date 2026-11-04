@@ -44,6 +44,7 @@ function fixture(t, env = {}) {
   } }
   const serviceClient = { async rpc(name, args) {
     state.calls.push({ client: 'service', name, args })
+    if (name === 'commerce_payment_reconciliation_queue') return { data: state.recovery || { website_id: website, intents: [], total_count: 0, has_more: false }, error: state.recoveryError || null }
     if (name === 'commerce_payment_admin') return { data: { configured: true, merchant_enabled: args.p_payload.enabled ?? false, credential_version: args.p_payload.version_id || version, mode: 'test' }, error: null }
     assert.equal(name, 'commerce_payment_service')
     const payload = args.p_payload
@@ -99,6 +100,53 @@ test('commerce online payments default disabled before RPC/provider access', asy
   const { load, state } = fixture(t, { COMMERCE_ONLINE_PAYMENTS_ENABLED: undefined })
   const response = await load('app/api/commerce/payments/create/route.js').POST(req('create', { payload: checkout }))
   assert.equal(response.status, 503); assert.equal(state.calls.length, 0); assert.equal(state.adminClients, 0)
+})
+test('Admin recovery reads require the signed Admin cookie and return no buyer or merchant secrets', async t => {
+  const { load, state } = fixture(t, { COMMERCE_ONLINE_PAYMENTS_ENABLED: 'false' })
+  const route = load('app/api/commerce/payments/admin/route.js')
+  assert.equal((await route.GET(req(`admin?website_id=${website}`, { method: 'GET' }))).status, 401)
+  assert.equal(state.adminClients, 0)
+  state.recovery = { website_id: website, total_count: 1, has_more: false, private_note: 'never-public', intents: [{ id: intentId, website_id: website, cart_key: checkout.idempotency_key, state: 'ready', amount_paise: 502, currency: 'INR', mode: 'test', provider_order_id: 'order_fixture001', created_at: '2026-11-04T00:00:00Z', receipt: null, buyer_id: buyer, ciphertext: 'never-public', request_payload: checkout, email: 'never-public' }] }
+  const response = await route.GET(req(`admin?website_id=${website}`, { method: 'GET', admin: true }))
+  assert.equal(response.status, 200)
+  const result = await response.json()
+  assert.equal(result.recovery.intents[0].cart_key, checkout.idempotency_key)
+  assert.equal(result.recovery.available, true)
+  assert.equal(result.rollout.enabled, false, 'Recovery reads remain usable while checkout rollout is off.')
+  assert.doesNotMatch(JSON.stringify(result.recovery), /never-public|buyer_id|request_payload|ciphertext|email/)
+  assert.equal(state.providerCalls.length, 0)
+})
+test('Admin recovery never accepts another tenant, duplicate or incomplete successful queue data', async t => {
+  const { load, state } = fixture(t)
+  const route = load('app/api/commerce/payments/admin/route.js')
+  const row = { id: intentId, website_id: website, cart_key: checkout.idempotency_key, state: 'new', amount_paise: 502, currency: 'INR', mode: 'test', provider_order_id: null, created_at: '2026-11-04T00:00:00Z', receipt: null }
+  const base = { website_id: website, intents: [row], total_count: 1, has_more: false }
+  for (const malformed of [{}, { ...base, website_id: foreign }, { ...base, intents: [{ ...row, website_id: foreign }] }, { ...base, intents: [row, row], total_count: 2 }, { ...base, total_count: 2 }, { ...base, has_more: true }, { ...base, intents: [{ ...row, amount_paise: 0 }] }]) {
+    state.recovery = malformed
+    assert.equal((await route.GET(req(`admin?website_id=${website}`, { method: 'GET', admin: true }))).status, 503)
+  }
+  assert.equal(state.providerCalls.length, 0)
+})
+test('Admin recovery canonicalizes a valid uppercase UUID before comparing the database projection', async t => {
+  const { load, state } = fixture(t)
+  const canonical = 'a2000000-0000-4000-8000-000000000001'
+  state.recovery = { website_id: canonical, intents: [], total_count: 0, has_more: false }
+  const response = await load('app/api/commerce/payments/admin/route.js').GET(req(`admin?website_id=${canonical.toUpperCase()}`, { method: 'GET', admin: true }))
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).recovery.website_id, canonical)
+  assert.ok(state.calls.every(call => call.args.p_website_id === canonical))
+})
+test('Admin recovery distinguishes a missing optional RPC from permission and network errors', async t => {
+  const { load, state } = fixture(t)
+  const route = load('app/api/commerce/payments/admin/route.js')
+  state.recoveryError = { code: 'PGRST202' }
+  const missing = await route.GET(req(`admin?website_id=${website}`, { method: 'GET', admin: true }))
+  assert.equal(missing.status, 200)
+  assert.equal((await missing.json()).recovery.available, false)
+  state.recoveryError = { code: '42501' }
+  assert.equal((await route.GET(req(`admin?website_id=${website}`, { method: 'GET', admin: true }))).status, 403)
+  state.recoveryError = { code: '08006' }
+  assert.equal((await route.GET(req(`admin?website_id=${website}`, { method: 'GET', admin: true }))).status, 503)
 })
 test('online-only quotes require verified same-origin Auth and rollout, use no provider or service credentials', async t => {
   const { load, state } = fixture(t)

@@ -1,10 +1,10 @@
 # Commerce expansion changed files
 
-3 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branch: `feature/commerce-expansion`.
+Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branch: `feature/commerce-expansion`, draft [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7).
 
-95 added or modified paths. Full JS/JSX/MJS/TS/TSX source is included in the TXT review package, with matching relative paths and a destination manifest. Apply only to the reviewed branch/base.
+102 added or modified paths across the expansion and payment-recovery follow-up. Full JS/JSX/MJS/TS/TSX files are exported as TXT with an exact destination manifest. The latest review package includes all six pending commerce migrations and their SQL tests/reviews.
 
-| Change | Exact repository / VS Code destination |
+| Change from reviewed base | Exact repository / VS Code destination |
 | --- | --- |
 | Modified | `AGENTS.md` |
 | Added | `app/api/commerce/admin/catalog/route.js` |
@@ -24,8 +24,13 @@
 | Added | `app/api/commerce/workspace/[websiteId]/domains/route.js` |
 | Added | `app/api/commerce/workspace/[websiteId]/engagement/route.js` |
 | Added | `app/api/commerce/workspace/[websiteId]/growth/route.js` |
+| Added | `app/api/commerce/workspace/[websiteId]/payments/route.js` |
 | Modified | `app/api/commerce/workspace/[websiteId]/route.js` |
 | Modified | `app/components/commerce/AdminClientWebsites.jsx` |
+| Added | `app/components/commerce/commerce-domains.css` |
+| Added | `app/components/commerce/commerce-expansion-owner.css` |
+| Added | `app/components/commerce/commerce-growth.css` |
+| Added | `app/components/commerce/commerce-payments.css` |
 | Added | `app/components/commerce/CommerceAdminDomainsPanel.jsx` |
 | Added | `app/components/commerce/CommerceCatalogPanel.jsx` |
 | Added | `app/components/commerce/CommerceDomainsPanel.jsx` |
@@ -33,25 +38,21 @@
 | Added | `app/components/commerce/CommerceGrowthPanel.jsx` |
 | Added | `app/components/commerce/CommercePaymentAdminPanel.jsx` |
 | Added | `app/components/commerce/CommercePaymentCheckout.jsx` |
+| Added | `app/components/commerce/customer-experience.css` |
 | Added | `app/components/commerce/CustomerExperience.jsx` |
 | Added | `app/components/commerce/CustomerProductActions.jsx` |
 | Modified | `app/components/commerce/OwnerApplication.jsx` |
 | Modified | `app/components/commerce/OwnerDashboard.jsx` |
+| Added | `app/components/commerce/OwnerPaymentStatus.jsx` |
 | Modified | `app/components/commerce/ProductGallery.jsx` |
 | Modified | `app/components/commerce/StoreAccount.jsx` |
+| Added | `app/components/commerce/storefront-templates.css` |
 | Modified | `app/components/commerce/Storefront.jsx` |
 | Modified | `app/components/commerce/StorefrontBag.jsx` |
 | Added | `app/components/commerce/StorefrontSections.jsx` |
-| Added | `app/components/commerce/commerce-domains.css` |
-| Added | `app/components/commerce/commerce-expansion-owner.css` |
-| Added | `app/components/commerce/commerce-growth.css` |
-| Added | `app/components/commerce/commerce-payments.css` |
-| Added | `app/components/commerce/customer-experience.css` |
-| Added | `app/components/commerce/storefront-templates.css` |
 | Modified | `app/shops/[slug]/page.jsx` |
 | Modified | `app/shops/[slug]/store-metadata.js` |
 | Modified | `app/shops/layout.jsx` |
-| Modified | `docs/commerce/README.md` |
 | Added | `docs/commerce/catalog-migration-review.md` |
 | Added | `docs/commerce/customer-migration-review.md` |
 | Added | `docs/commerce/domain-migration-review.md` |
@@ -63,6 +64,8 @@
 | Added | `docs/commerce/expansion-schema-inventory.md` |
 | Added | `docs/commerce/growth-migration-review.md` |
 | Added | `docs/commerce/online-payment-migration-review.md` |
+| Added | `docs/commerce/payment-recovery-queue-migration-review.md` |
+| Modified | `docs/commerce/README.md` |
 | Added | `lib/commerce/catalog-options.js` |
 | Added | `lib/commerce/payment-state.js` |
 | Added | `lib/commerce/storefront-seo.js` |
@@ -73,6 +76,7 @@
 | Added | `lib/server/commerce/growth.js` |
 | Added | `lib/server/commerce/notifications.js` |
 | Added | `lib/server/commerce/payment-credentials.js` |
+| Added | `lib/server/commerce/payment-recovery.js` |
 | Added | `lib/server/commerce/payments.js` |
 | Modified | `proxy.ts` |
 | Added | `scripts/test-commerce-expansion-db.mjs` |
@@ -81,12 +85,14 @@
 | Added | `supabase/migrations/20261102162000_commerce_growth_notifications.sql` |
 | Added | `supabase/migrations/20261103090000_commerce_verified_domains.sql` |
 | Added | `supabase/migrations/20261103091000_commerce_online_payments.sql` |
+| Added | `supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql` |
 | Added | `supabase/tests/commerce_catalog_expansion.sql` |
 | Added | `supabase/tests/commerce_customer_experience.sql` |
 | Added | `supabase/tests/commerce_expansion_preexisting_orders.sql` |
 | Added | `supabase/tests/commerce_growth_analytics.sql` |
 | Added | `supabase/tests/commerce_growth_notifications.sql` |
 | Added | `supabase/tests/commerce_online_payments.sql` |
+| Added | `supabase/tests/commerce_payment_recovery_queue.sql` |
 | Added | `supabase/tests/commerce_verified_domains.sql` |
 | Modified | `tests/commerce-api.test.mjs` |
 | Added | `tests/commerce-catalog-options.test.mjs` |
@@ -94,6 +100,7 @@
 | Added | `tests/commerce-engagement.test.mjs` |
 | Added | `tests/commerce-expansion.browser.mjs` |
 | Added | `tests/commerce-growth.test.mjs` |
+| Added | `tests/commerce-owner-payments.test.mjs` |
 | Added | `tests/commerce-payment-state.test.mjs` |
 | Added | `tests/commerce-payments.test.mjs` |
 | Added | `tests/commerce-storefront-seo.test.mjs` |
@@ -102,4 +109,4 @@
 | Modified | `tests/maintenance.test.mjs` |
 | Modified | `vercel.json` |
 
-The original storefront.css and installed foundation migration are unchanged. The separate pending platform subscription ledger is excluded from the five-file commerce migration install chain. Existing restaurant, delivery, resort, wallet and payment source modules are unchanged by this expansion.
+The original storefront.css and installed foundation migration are unchanged. The five 3 November commerce migration files are also unchanged by the sixth, read-only recovery migration. The separate pending platform subscription ledger remains excluded. Existing restaurant, delivery, resort, wallet and payment source modules are unchanged by this expansion.

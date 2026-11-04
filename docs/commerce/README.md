@@ -1,18 +1,34 @@
 # Client Websites — current commerce expansion
 
-Updated 3 November 2026. The current work is on
+Updated 4 November 2026. The current work is on
 `feature/commerce-expansion`, based on the previously published application.
 Read the [expansion implementation/test report](expansion-report.md) and
-[five-migration installation/recovery runbook](expansion-installation.md) first.
+[six-migration installation/recovery runbook](expansion-installation.md) first.
 The source includes catalog/fulfillment, customer experience, coupons/outbox,
 verified domains and separately gated merchant payments. Local tests are not a
 claim of hosted/provider acceptance or live activation. New hosted SQL,
 production deployment and merges remain unperformed and require separate
 applicable approval. Domain/provider/notification/payment flags remain off.
 
+The 4 November follow-up adds a read-only Super Admin open-payment queue and
+buyer recovery references, plus an owner configuration-status panel. The sixth
+SQL migration only adds a service-only read RPC; it never marks an attempt paid,
+refunded, cancelled or abandoned. The first five migrations remain unchanged.
+The final current-source checks pass: 561 isolated SQL assertions, 296/296 unit
+tests, zero lint errors/166 warnings, the full repository build and 198 combined
+browser screenshots. Source fingerprints remain stable across the build and
+both browser suites. The valid-uppercase-UUID Admin query regression passes
+within 21 payment tests; owner status adds eight focused tests. Expansion browser
+coverage includes owner status and retained-intent discovery without provider
+queries. Hosted/provider acceptance and activation remain held. The
+3 November 531-SQL/284-unit/build/browser
+results in the report remain dated historical evidence, not a fresh release
+claim. Draft [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7)
+remains the review destination.
+
 The sections below preserve the dated first-increment record; its narrower
 source scope and “No SQL migration required” statement describe that older
-increment only. **The current expansion requires five new migrations.** The
+increment only. **The current expansion requires six new migrations.** The
 installed foundation must not be replayed, and the separate pending platform
 subscription ledger remains excluded/off.
 

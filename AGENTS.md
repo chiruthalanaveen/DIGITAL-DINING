@@ -39,7 +39,7 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
-### Current remaining-commerce implementation — updated 3 November 2026
+### Current remaining-commerce implementation — updated 4 November 2026
 
 The user explicitly requested continuing the remaining e-commerce requirements.
 Implement the outstanding commerce capabilities in dependency order on
@@ -58,14 +58,29 @@ separate approval; tests must use stubs/development credentials. Preserve data,
 RLS, financial history and cron jobs. Do not ask again for waived backup or
 withdrawn staging setup; record hosted-validation limits accurately.
 
-The current isolated evidence is 531 PostgreSQL assertions, 284/284 unit tests,
+The 4 November follow-up adds only read-only Admin payment discovery/buyer
+references and owner configuration status. Its sixth migration is
+`20261104090000_commerce_payment_recovery_queue.sql`: one service-only read RPC,
+no table/policy/row mutation. Keep the first five migration files byte-for-byte
+unchanged. The six-file local SQL suite passes 561 assertions; focused payment
+tests pass 21 and owner status tests pass 8. Final full unit checks pass 296/296
+with zero skipped, the full repository build passes, lint passes zero errors/
+166 warnings, and both final-source browser suites pass 198 combined screenshots
+(80 expansion/118 original). Application fingerprints remain stable across the
+build and both browser runs, including the valid-uppercase-UUID Admin query
+normalization and regression. Local validation is complete; hosted/provider
+acceptance and external activation remain held. No new provider, hosted SQL,
+deployment, abandonment/release, paid/refund/cancel or activation authority is
+created. The review remains on draft PR #7; do not merge or deploy.
+
+Historical 3 November isolated evidence is 531 PostgreSQL assertions, 284/284 unit tests,
 lint with zero errors/166 warnings, and the full repository build passing with
 unchanged source fingerprints during compilation. The expansion browser suite
 passes eight groups/72 screenshots at four widths, and the original commerce
 browser/API compatibility suite also passes against the actual full app with
 simulated Auth/Storage and external provider scripts blocked. These are local
 results; valid PIN recovery and provider acceptance remain unverified.
-The five commerce expansion migrations remain unapplied to hosted databases;
+All six commerce expansion migrations remain unapplied to hosted databases;
 provider/DNS/email/live-payment gates are not satisfied by local tests. See
 `docs/commerce/expansion-report.md` and `expansion-installation.md` for the
 completion matrix, exact SQL, object inventories and preserved-history rollback.

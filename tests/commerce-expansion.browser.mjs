@@ -354,12 +354,16 @@ export async function runExpansionBrowserChecks({ base, fixture, browser, artifa
     await page.getByText('Your changes were saved for this website.', { exact: true }).waitFor()
     assert.equal((await api(`/api/commerce/catalog/${website.slug}`)).products.find(row => row.id === product.id).images[0].alt, 'Updated local gallery description')
     await snapshot('owner-gallery-variants')
-    for (const [tab, heading] of [['Variant inventory', 'Variant inventory'], ['Delivery coverage', 'Delivery coverage'], ['Policies, FAQ & sections', 'Policies, FAQ & sections'], ['Reviews & requests', 'Customer reviews and requests'], ['Coupons & activity', 'Coupons and store activity'], ['Store domains', 'Store domains']]) {
+    for (const [tab, heading] of [['Variant inventory', 'Variant inventory'], ['Delivery coverage', 'Delivery coverage'], ['Policies, FAQ & sections', 'Policies, FAQ & sections'], ['Reviews & requests', 'Customer reviews and requests'], ['Coupons & activity', 'Coupons and store activity'], ['Store domains', 'Store domains'], ['Store & subscription', 'Store & subscription']]) {
       await workspaceNavigation.getByRole('button', { name: tab, exact: true }).click()
       await page.getByRole('heading', { name: heading, exact: true }).waitFor()
       if (tab === 'Coupons & activity') {
         await page.getByRole('combobox', { name: /^Activity period/ }).selectOption('7')
         await page.getByText('Orders placed · last 7 days', { exact: true }).waitFor()
+      }
+      if (tab === 'Store & subscription') {
+        await page.getByRole('heading', { name: 'Online payment configuration', exact: true }).waitFor()
+        await page.getByRole('status').filter({ hasText: 'A commerce merchant account has not been configured for this website.' }).waitFor()
       }
       await snapshot(`owner-${tab.toLowerCase().replaceAll(/[^a-z]+/g, '-')}`)
     }
@@ -375,6 +379,20 @@ export async function runExpansionBrowserChecks({ base, fixture, browser, artifa
     assert.equal(await page.getByRole('button', { name: 'Save product options', exact: true }).isDisabled(), true)
     await snapshot('admin-expansion-controls')
     checks.push('signed Super Admin read-only catalog inspection and disabled provider/domain controls at four widths without owner impersonation')
+    const { rows: [recoveryFixture] } = await fixture.pool.query("SELECT id,website_id FROM commerce_private.payment_intents WHERE state='captured_unfulfilled' ORDER BY created_at,id LIMIT 1")
+    assert.ok(recoveryFixture, 'Run the full expansion database fixture to include a retained captured payment needing reconciliation.')
+    const queue = (await api(`/api/commerce/payments/admin?website_id=${recoveryFixture.website_id}`, { admin: true })).recovery
+    assert.equal(queue.available, true)
+    assert.ok(queue.intents.some(intent => intent.id === recoveryFixture.id))
+    const recoveryWebsite = (await api('/api/commerce/admin', { admin: true })).websites.find(store => store.id === recoveryFixture.website_id)
+    await page.locator('.ac-website').filter({ has: page.getByText(`/shops/${recoveryWebsite.slug}`, { exact: true }) }).getByRole('button', { name: 'Manage website', exact: true }).click()
+    const recoveryItem = page.locator('.commerce-payment-queue-item').filter({ hasText: recoveryFixture.id })
+    await recoveryItem.getByRole('button', { name: 'Select for reconciliation', exact: true }).click()
+    assert.equal(await page.getByLabel('Payment intent ID', { exact: true }).inputValue(), recoveryFixture.id)
+    assert.equal(await page.getByRole('button', { name: 'Check existing provider payment', exact: true }).isEnabled(), true)
+    // Selecting/reading an attempt is local. Do not submit provider reconciliation.
+    await snapshot('admin-retained-payment-recovery')
+    checks.push('owner payment status uses current scoped configuration; signed Admin finds a retained captured receipt and selects its original reference without provider calls or payment mutations')
     assert.deepEqual(errors, [], `Browser page errors: ${errors.join('; ')}`)
     const result = { result: 'PASS', scope: 'Real local Next.js HTTP routes and PostgreSQL/RLS with simulated Auth/Storage protocols; browser delays and response loss preserve real API execution.', templates, screenshots, checks, checkoutRequests, blockedExternalHosts: [...blocked], hostedAuthTested: false, hostedRlsTested: false, livePayments: false, productionWrites: false }
     await writeFile(path.join(artifacts, 'expansion-browser-results.json'), JSON.stringify(result, null, 2) + '\n')

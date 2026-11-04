@@ -1,6 +1,6 @@
 # Remaining commerce implementation contract
 
-2 November 2026. Branch `feature/commerce-expansion`, base `f9dd674`.
+Updated 4 November 2026. Branch `feature/commerce-expansion`, base `f9dd674`.
 New work is not deployed. No hosted SQL, live fixture/payment, merge, domain
 provisioning or notification send is authorized by this implementation request.
 
@@ -25,6 +25,7 @@ Customer migration: `20261102161000_commerce_customer_experience.sql`.
 Growth migration: `20261102162000_commerce_growth_notifications.sql`.
 Domain migration: `20261103090000_commerce_verified_domains.sql`.
 Online merchant payment migration: `20261103091000_commerce_online_payments.sql`.
+Read-only payment recovery queue: `20261104090000_commerce_payment_recovery_queue.sql`.
 Apply in that order only to an isolated development database; production files
 are review-only until separately approved. Explain any intentionally replaced
 commerce RPC and preserve baseline behavior with compatibility tests.
@@ -119,6 +120,29 @@ off. A captured payment with an unfulfilled order retains its receipt and requir
 reconciliation; it must never be represented as a completed refund or invite a
 new charge. Public readiness exposes only availability/provider/mode. COD and
 online creation share the same cart-key lock to prevent cross-method duplication.
+
+The 4 November recovery follow-up adds
+`commerce_payment_reconciliation_queue(p_website_id uuid)`: a STABLE,
+service-only SECURITY DEFINER read RPC with fixed empty search path and the
+existing actual-role guard. It returns only the selected website's open states
+`new`, `creating`, `provider_unknown`, `ready`, `captured_unfulfilled`, with an
+exact total count and a maximum of 100 references. Captured/unfulfilled entries
+come first, then unknown/creating, then ready/new; each bucket is oldest-first
+by creation timestamp and UUID. It includes original credential mode and safe
+intent/cart/provider-order/receipt references, not buyer IDs, addresses, email,
+encrypted credentials, original requests or full provider events. Read access
+does not mutate or lock payment state, even for archived websites or disabled/
+rotated merchants. Signed Admin HTTP authorization precedes the service call;
+missing capability is reported unavailable while denial/malformed results fail.
+
+Owner GET `/api/commerce/workspace/[websiteId]/payments` reuses the existing
+owner JWT/membership/orders permission and `commerce_payment_readiness` RPC.
+It projects configuration/mode/rollout status only; it cannot activate or prove
+provider connectivity/capture. This owner portion requires no new SQL. Buyers
+see their existing intent reference, or cart key before an intent is confirmed,
+so merchant support can find the same attempt. Neither the queue nor references
+implement unpaid abandonment, cancel an intent, release the cart, create a new
+charge or mark a refund; provider proof and separate authorization remain needed.
 
 Core/API integration is owned by the parent agent. Frontend ownership is split:
 OwnerDashboard/AdminClientWebsites versus Storefront/Bag/Gallery/templates;

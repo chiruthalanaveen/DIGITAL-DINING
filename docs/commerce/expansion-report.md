@@ -1,5 +1,84 @@
 # E-commerce expansion implementation and verification
 
+## 4 November 2026 result: PARTIAL PASS — local checks pass, external activation held
+
+Work continues on `feature/commerce-expansion` in draft
+[PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7). This bounded
+follow-up makes existing unresolved payment attempts discoverable and shows
+owners their actual saved checkout configuration. It does not activate a
+provider, abandon an unpaid attempt or change payment truth.
+
+Final current-source checks pass: **561 SQL assertions, 296/296 unit tests,
+zero lint errors/166 warnings, the full repository build and 198 screenshots**
+from both full-app browser suites. Application source fingerprints remain stable
+through the build and both browser runs. Hosted Supabase/Auth/RLS, real provider
+acceptance and all activation/production approvals remain separate and unperformed.
+
+- Signed Super Admin now receives a read-only open-payment queue for the selected
+  website. It includes `new`, `creating`, `provider_unknown`, `ready` and
+  `captured_unfulfilled`, with captured/unfulfilled first, then unknown/creating,
+  then ready/new; oldest timestamp/UUID orders each bucket. At most 100 safe rows
+  are returned alongside the exact open total and `has_more` flag.
+- References include intent/cart/provider-order/receipt IDs, original credential
+  mode, amount/currency, created time and safe receipt reconciliation state.
+  Buyer identity, shipping, email, credentials, original request and raw provider
+  payloads are excluded. The UI can select the original attempt into the existing
+  reconciliation form; selection itself makes no provider request or mutation.
+- Buyer Checkout shows the existing payment-intent reference, or checkout/cart
+  reference before an intent is confirmed, for support recovery of that same
+  attempt. It retains the existing cart lock and does not create a new charge.
+- The owner workspace has an orders-permission read-only configuration view for
+  merchant configured/enabled state, test/live mode, rollout and blocked reason.
+  It uses verified owner Auth/membership and the existing readiness RPC. Its
+  status is configuration only, not provider connectivity, capture or settlement.
+- Signed Admin GET now canonicalizes a valid uppercase website UUID before
+  matching the database’s lowercase tenant projection. A regression using UUIDs
+  with alphabetic characters passes, avoiding a false malformed-response/HTTP503
+  for an otherwise valid same-tenant identifier. Tenant mismatch still rejects.
+
+The combined follow-up requires the sixth migration,
+[`20261104090000_commerce_payment_recovery_queue.sql`](../../supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql),
+adding only the service-only STABLE read RPC. It creates no table/column/index/
+trigger/RLS policy and updates no payment/business row. The first five migration
+bytes/hashes remain unchanged. Read the [full queue migration review](payment-recovery-queue-migration-review.md)
+and [six-file installation runbook](expansion-installation.md). Owner status
+alone: **No SQL migration required.** It reuses existing readiness SQL.
+
+| Current follow-up check | Result | Limit |
+| --- | --- | --- |
+| `COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/commerce_test node scripts/test-commerce-expansion-db.mjs` | PASS — 561 assertions | Original 531 retained; 27 queue cases and 3 sixth-migration preservation/read-only/reapplication checks. Loopback PostgreSQL 18.4, synthetic Auth only. |
+| `node tests/commerce-payments.test.mjs` | PASS — 21 mocked tests | Four new queue projection/cross-scope/missing/denied and meaningful uppercase-UUID regressions added to the prior 17. No provider call. |
+| `node tests/commerce-owner-payments.test.mjs` | PASS — 8 focused tests | Verified owner JWT, tenant membership/orders permission, safe DTO, missing/denied/malformed responses, gates and honest labels. No hosted Auth. |
+| `npm test` | PASS — 296/296 actual tests, zero skipped | Final current-source full suite includes the uppercase UUID regression; the 3 November 284/284 result below remains historical. Evidence: `commerce-recovery-20261104/final-checks.json` and full unit log. |
+| `npm run lint` | PASS — 0 errors, 166 warnings | Fresh full repository `commerce-recovery-20261104/lint.log`. Warnings remain; no rule disablement. |
+| `npm run build` | PASS — full repository, final source | Includes the UUID normalization; source fingerprints remain stable across compilation and both browser runs. Evidence: `commerce-recovery-20261104/build.log`, `build-source-fingerprint.json`, `final-checks.json`. |
+| `COMMERCE_BROWSER_SKIP_DB=1 COMMERCE_BROWSER_SKIP_BUILD=1 node tests/commerce-expansion.browser.mjs` | PASS — 9 groups, 80 screenshots | Actual full app at 360/390/768/1440 px, owner configuration and selection of the original intent from a retained synthetic local SQL capture receipt; no provider query. Evidence: `commerce-recovery-20261104/browser/expansion-browser-results.json`, `browser.log`. |
+| `COMMERCE_BROWSER_USE_EXPANSION=1 COMMERCE_BROWSER_SKIP_BUILD=1 node tests/commerce.browser.mjs` | PASS — 118 screenshots, final source | Fresh original compatibility plus 80 expansion screenshots gives 198. PIN recovery remains explicit HTTP400/503 unavailable; retired subscription is HTTP410 with the existing billing HTTP307 redirect. The external Checkout script is deliberately blocked, not a passing provider test. |
+
+The sixth SQL SHA-256 is
+`71b549ed8d1e011511e5ca9e27d21aaa9dd87f676c59b955cba70f2bce053d77`.
+Queue installation leaves the existing **33 tables and 31 policies** unchanged;
+the public/private function count becomes 65. Current SQL/application evidence
+is consolidated under
+`/workspace/commerce-validation-artifacts/commerce-recovery-20261104/`. A tested
+hash proves only its recorded local execution, not hosted installation.
+
+No additional environment variable, DNS record, Storage policy or cron job is
+needed for these read-only views/references. Existing server-side service role
+and signed Admin/owner contexts retain their scopes. No hosted SQL, production
+data change, provider setting, deployment, merge, live payment or external
+notification was performed. All existing rollout/production approval holds
+remain in force; no staging/backup prerequisite is requested again.
+
+Unpaid-intent abandonment remains unimplemented and blocked on authoritative
+provider proof and a separately reviewed workflow. An open queue row does not
+prove that an attempt is unpaid, failed or safe to delete. The queue/reference
+work never marks paid/refunded/cancelled, releases a cart, clears a receipt or
+permits switching the same attempt to COD. Capture/provider-unknown recovery
+still requires the original version and provider evidence.
+
+## Historical validated expansion — 3 November 2026
+
 3 November 2026. Branch: `feature/commerce-expansion`, based on `f9dd674`.
 This report describes new source under review. It is **not a production release
 or a claim that all e-commerce acceptance gates are complete**.
@@ -9,7 +88,7 @@ customer records and order facts, coupons/analytics/outbox, verified domains,
 then separate merchant online payments. The application integration and full
 repository/browser checks are being completed against those contracts.
 
-## Current result: PARTIAL PASS
+## 3 November result: local PASS, release PARTIAL PASS
 
 The combined local PostgreSQL suite passes **531 actual assertions** and
 `npm test` passes **284/284 actual tests**. `npm run lint` passes with zero errors
@@ -120,7 +199,7 @@ All styling additions are separate files.
 | `COMMERCE_BROWSER_USE_EXPANSION=1 COMMERCE_BROWSER_SKIP_BUILD=1 node tests/commerce.browser.mjs` | PASS | Original suite recreates the guarded local expanded database, then validates PKCE confirmation/recovery, onboarding/Admin approval, products/media/stock, COD, retry/restock, account/tenant isolation and mobile layouts. Evidence: `original-browser-release.log`, `original-browser/`. |
 | `COMMERCE_BROWSER_SKIP_DB=1 COMMERCE_BROWSER_SKIP_BUILD=1 node tests/commerce-expansion.browser.mjs` | PASS — 8 groups, 72 screenshots | Five templates/JSON-LD, gallery/variants/coverage/coupon checkout, lost-response/reload recovery, customer tools/privacy, actual owner gallery save/analytics panels and signed Admin controls at 360/390/768/1440. Evidence: `browser-release/expansion-browser-results.json`, `expansion-browser-release.log`. |
 
-Use [the exact 95-file manifest](expansion-changes.md) for changed files and the
+Use [the exact 102-file manifest](expansion-changes.md) for changed files and the
 downloadable review package for full JS/JSX/MJS/TS/TSX TXT copies,
 SQL, styles, tests, screenshots and command logs. Do not publish customer data or
 credentials in those artifacts. A green file-wrapper result under restricted
@@ -166,9 +245,10 @@ abandonment/recovery workflow remain operational risks before activation.
 
 Source branch: `feature/commerce-expansion`, pushed for review in draft
 [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7), stacked on
-draft PR #6 and the unmerged #3/#4/#5 chain. Tested application commit:
-`6d38b8d`. Later report-only commits preserve the verified application source
-fingerprint. Automatic Git deployment is disabled for this branch.
+draft PR #6 and the unmerged #3/#4/#5 chain. The current tested application
+files match the 4 November build/browser source fingerprint. The exact reviewed
+commit is recorded in the latest TXT handoff manifest. Automatic Git deployment
+is disabled for this branch.
 No Vercel Preview has been created for this expansion, and no staging-backed
 Preview URL is available. No network-blocked hosted check is relabelled as a pass.
 

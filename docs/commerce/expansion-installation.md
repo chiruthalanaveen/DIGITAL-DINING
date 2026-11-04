@@ -1,6 +1,6 @@
 # Commerce expansion installation, verification and recovery
 
-3 November 2026. This is a review/runbook, not permission to install on a hosted
+Updated 4 November 2026. This is a review/runbook, not permission to install on a hosted
 database, enable providers or deploy. Current authorized testing uses a disposable
 loopback `commerce_test` database. The user withdrew staging/backup prerequisites;
 do not substitute production for testing or ask for those prerequisites again.
@@ -26,6 +26,14 @@ latest edit has been executed or passed tests.
 | 3 | [20261102162000_commerce_growth_notifications.sql](../../supabase/migrations/20261102162000_commerce_growth_notifications.sql) | [Growth review](growth-migration-review.md): coupons, immutable redemptions and notification outbox; authoritative discount/redemption/analytics, leased workers and new-order/status event trigger. |
 | 4 | [20261103090000_commerce_verified_domains.sql](../../supabase/migrations/20261103090000_commerce_verified_domains.sql) | [Domain review](domain-migration-review.md): private tenant domain claim/proof state, reservation/index/RLS, scoped claims/Admin verification and public safe resolution. No DNS is changed by SQL. |
 | 5 | [20261103091000_commerce_online_payments.sql](../../supabase/migrations/20261103091000_commerce_online_payments.sql) | [Payment object/permission/recovery review](online-payment-migration-review.md): five private tables/50 columns, twelve functions, two guards, recovery/key indexes, scoped quote/service RPCs and commerce payment-method constraint widening. |
+| 6 | [20261104090000_commerce_payment_recovery_queue.sql](../../supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql) | [Recovery queue review](payment-recovery-queue-migration-review.md): one service-only, read-only RPC listing open payment references for signed Super Admin. No table, column, index, trigger, RLS policy or business/payment row changes. |
+
+Files 1–5 are byte-for-byte unchanged by the 4 November recovery follow-up.
+Migration 6 is additive and requires those reviewed prerequisites. An already
+approved/installed prefix must not be replayed; only separately approved absent
+files may be applied once. None of these six expansion files is installed on a
+hosted target by this task. The owner configuration-status panel reuses the
+existing readiness RPC and needs no additional SQL by itself.
 
 The canonical `20261022160000_commerce_foundation.sql` is **already installed on
 the hosted project**. Never reapply it there, run a blanket `supabase db push`,
@@ -64,10 +72,16 @@ npm run build
 The recorded URL contains no password and identifies only this local synthetic
 cluster. On another machine, substitute its verified local test identity/port
 securely. The runner installs the bootstrap/foundation **only while creating that
-fresh fixture**, runs the original checks, applies the explicit five-file chain,
+fresh fixture**, runs the original checks, applies the explicit six-file chain,
 and tests preservation, RLS, tampering, concurrency and atomic reapplication.
 It never infers main/staging URLs, globs the migrations folder or calls a hosted
-migration CLI. See [531-assertion database evidence](expansion-db-validation.md).
+migration CLI. See [database evidence](expansion-db-validation.md): the historical
+3 November five-file result was 531 assertions; the 4 November six-file isolated
+run passes 561 assertions. Fresh final-source application checks also pass:
+296/296 unit tests, zero lint errors/166 warnings, the full repository build and
+198 screenshots across both browser suites. Their source fingerprints remain
+stable through the build/runs. These fresh results, separately recorded in the
+report, do not substitute for hosted/provider acceptance or activation approval.
 
 Browser commands, after preparing that disposable database, are:
 
@@ -98,7 +112,7 @@ No hosted target is currently approved for these files. The steps below become
 actionable only after approval identifies the exact target and reviewed hashes.
 Do not run the destructive test runner, bootstrap or SQL test fixtures there.
 
-1. Review all five full files and object inventories. Record their SHA-256 values,
+1. Review all six full files and object inventories. Record their SHA-256 values,
    the application commit, the exact target project/database/version, and the
    existing installed foundation state. Read-only checks must first confirm the
    foundation prerequisites and absence of the new objects; existing objects
@@ -115,11 +129,11 @@ Do not run the destructive test runner, bootstrap or SQL test fixtures there.
    a Preview or use main for fixture checkout.
 4. In the explicitly approved target’s SQL Editor, paste and execute the complete
    first file once, including its `BEGIN`/`COMMIT`. Confirm success and the
-   corresponding read-only checks. Repeat with files 2–5 in the listed order.
+   corresponding read-only checks. Repeat with absent approved files 2–6 in the listed order.
    If a file fails, stop, issue `ROLLBACK` if its session remains aborted, and
    inspect the error; do not continue with fragments or reapply the foundation.
    CLI installation, if separately chosen and approved, must enumerate those
-   exact five files with `psql -X -v ON_ERROR_STOP=1 -f <file>`; no wildcard or
+   exact six files with `psql -X -v ON_ERROR_STOP=1 -f <file>`; no wildcard or
    `db push` is part of this runbook.
 5. Run only read-only verification and compare the before-state. Use separately
    authorized non-production Auth/browser/provider acceptance before feature
