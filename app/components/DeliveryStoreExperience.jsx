@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 import DeliverySavedAddressPicker from '@/app/components/DeliverySavedAddressPicker'
+import DeliveryAccountProfileSheet from '@/app/components/DeliveryAccountProfileSheet'
 import DeliveryCustomerSupportChat from '@/app/components/DeliveryCustomerSupportChat'
 import DeliverySeasonalAds from '@/app/components/DeliverySeasonalAds'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
@@ -699,7 +700,7 @@ export default function DeliveryStoreExperience({
   useLiveDeliveryRefresh(
     () => loadStore(true),
     Boolean(restaurantCode && storeData),
-    1000
+    120000
   )
 
   const categories = useMemo(() => {
@@ -2998,82 +2999,43 @@ export default function DeliveryStoreExperience({
 
       {/* ===== ACCOUNT SHEET ===== */}
       {accountOpen && isCustomerSignedIn && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/60 backdrop-blur-[2px] sm:items-center sm:p-4">
-          <button
-            type="button"
-            aria-label="Close account"
-            onClick={() => setAccountOpen(false)}
-            className="absolute inset-0"
-          />
-          <section className="relative z-10 w-full max-w-md rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl">
-            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200 sm:hidden" />
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-emerald-50 text-xl font-black text-emerald-700">
-                {activeAccountType === 'google' && customerProfile?.avatar_url ? (
-                  <img
-                    src={customerProfile.avatar_url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  (mobileCustomer?.name ||
-                    customerProfile?.full_name ||
-                    customerUser?.email ||
-                    'C').slice(0, 1).toUpperCase()
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-600">Your account</p>
-                <h2 className="mt-0.5 truncate text-lg font-black text-slate-950">
-                  {mobileCustomer?.name ||
-                    (activeAccountType === 'google' ? customerProfile?.full_name : '') ||
-                    customerUser?.user_metadata?.full_name ||
-                    customerUser?.email?.split('@')?.[0] ||
-                    'Customer'}
-                </h2>
-                <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
-                  {mobileCustomer?.mobile
-                    ? `Mobile + PIN · +91 ${mobileCustomer.mobile}`
-                    : customerProfile?.email || customerUser?.email || ''}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAccountOpen(false)}
-                aria-label="Close"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700"
-              >
-                <Icon name="close" className="h-4 w-4" />
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setAccountOpen(false)
-                openTracking()
-              }}
-              className="mt-5 flex w-full items-center justify-between rounded-2xl bg-slate-50 p-4 text-left ring-1 ring-slate-200 transition active:scale-[0.99]"
-            >
-              <span>
-                <span className="block text-sm font-bold text-slate-950">My orders</span>
-                <span className="mt-0.5 block text-xs text-slate-500">Track and manage your deliveries</span>
-              </span>
-              <Icon name="chevron" className="h-4 w-4 -rotate-90 text-slate-400" />
-            </button>
-
-            <button
-              type="button"
-              onClick={signOutDeliveryCustomer}
-              disabled={customerAuthLoading}
-              className="mt-3 h-12 w-full rounded-2xl bg-rose-50 text-sm font-bold text-rose-700 ring-1 ring-rose-200 disabled:opacity-50"
-            >
-              {customerAuthLoading ? 'Signing out…' : 'Sign out'}
-            </button>
-          </section>
-        </div>
+        <DeliveryAccountProfileSheet
+          restaurantCode={restaurantCode}
+          activeAccountType={activeAccountType}
+          customerUser={customerUser}
+          customerProfile={customerProfile}
+          mobileCustomer={mobileCustomer}
+          onClose={() => setAccountOpen(false)}
+          onOrders={() => {
+            setAccountOpen(false)
+            openTracking()
+          }}
+          onSignOut={signOutDeliveryCustomer}
+          onReturns={() => {
+            setAccountOpen(false)
+            openAfterSales({ mobile: mobileCustomer?.mobile || '', tab: 'request' })
+          }}
+          signingOut={customerAuthLoading}
+          onProfileUpdated={({ name, mobile }) => {
+            setCustomerProfile((current) => ({
+              ...(current || {}),
+              full_name: name,
+              phone: mobile,
+            }))
+          }}
+          onAddressSelected={async (point) => {
+            setLocationConfirmed(false)
+            setSelectedSavedAddressId('')
+            const ok = await selectSavedAddressAtCheckout(point)
+            if (ok) {
+              setSelectedSavedAddressId(point.savedAddressId)
+              setAccountOpen(false)
+            }
+            return ok
+          }}
+        />
       )}
+
     </main>
   )
 }

@@ -1090,10 +1090,13 @@ export default function DeliveryManagement({
     }
   }, [restaurantId, refreshOrdersOnly])
 
+  // Realtime subscription above handles changes immediately.
+  // The 15-second fallback catches missed events; the shared hook pauses
+  // its polling while this tab is hidden.
   useLiveDeliveryRefresh(
     () => refreshOrdersOnly(true),
     Boolean(restaurantId),
-    1000
+    15000
   )
 
 

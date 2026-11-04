@@ -283,6 +283,347 @@ function PackerOrderDetailsDialog({ order, onClose }) {
   )
 }
 
+
+// FOCUSED PACKING WORKSPACE (UI ONLY)
+// - Exactly one order is shown expanded for packing.
+// - The barcode scan RPC remains the authoritative packaged-item verification.
+// - Local item tick marks are a visual second check, NOT server-side proof.
+// - Driver handoff/order authorization remain controlled by the existing RPCs.
+function FocusedPackerWorkspace({
+  rows,
+  focusOrderId,
+  setFocusOrderId,
+  updateStatus,
+  updatingOrderId,
+  scanningOrderId,
+  barcodeInputs,
+  setBarcodeInputs,
+  submitBarcode,
+  openCameraScanner,
+  cameraOrderId,
+  openDetails,
+}) {
+  const [itemChecks, setItemChecks] = useState({})
+  const [blockedOrders, setBlockedOrders] = useState({})
+  const [showDeliveryInfo, setShowDeliveryInfo] = useState(false)
+
+  // Stable sorting: in-progress work takes precedence, then oldest incoming.
+  const orderedRows = [...rows].sort((a, b) => {
+    const aPacking = ['confirmed', 'preparing'].includes(String(a.order_status || '').toLowerCase())
+    const bPacking = ['confirmed', 'preparing'].includes(String(b.order_status || '').toLowerCase())
+    if (aPacking !== bPacking) return aPacking ? -1 : 1
+    const aTime = Date.parse(a.created_at || '') || 0
+    const bTime = Date.parse(b.created_at || '') || 0
+    return aTime - bTime
+  })
+
+  const focusedOrder =
+    orderedRows.find((row) => String(row.id) === String(focusOrderId)) ||
+    orderedRows[0] || null
+
+  if (!focusedOrder) {
+    return (
+      <section className="rounded-[26px] border border-dashed border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+          <PackerIcon name="check" className="h-8 w-8" />
+        </div>
+        <h3 className="mt-5 text-lg font-black text-[#12253c]">No orders waiting in this queue</h3>
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
+          New paid or COD orders appear automatically when your store receives them.
+        </p>
+      </section>
+    )
+  }
+
+  const order = focusedOrder
+  const orderItems = Array.isArray(order.items) ? order.items : []
+  const status = String(order.order_status || '').toLowerCase()
+  const isIncoming = status === 'received'
+  const isPacking = ['confirmed', 'preparing'].includes(status)
+  const packing = order.packing && typeof order.packing === 'object' ? order.packing : null
+  const hasPackingData = Boolean(packing && 'requires_scan' in packing)
+  const requiresScan = Boolean(packing?.requires_scan)
+  const serverReady = hasPackingData && Boolean(packing.ready_to_pack)
+  const requiredTotal = Number(packing?.required_total || 0)
+  const scannedTotal = Number(packing?.scanned_total || 0)
+  const remainingTotal = Number(packing?.remaining_total || 0)
+  const missingBarcodeCount = Number(packing?.missing_barcode_count || 0)
+  const scanItems = Array.isArray(packing?.items) ? packing.items : []
+  const statusBusy = updatingOrderId === order.id
+  const scanBusy = scanningOrderId === order.id
+  const isBlocked = Boolean(blockedOrders[order.id])
+  const deliveryAddress = [
+    order.address_line1, order.address_line2, order.landmark,
+    order.city, order.state, order.pincode,
+  ].filter(Boolean).join(', ')
+
+  // Include ordered line, product identity and required quantity in the checklist key.
+  // If the item/quantity changes, an older tick does not match the new line.
+  const checklistLines = orderItems.map((item, index) => ({
+    item,
+    key: JSON.stringify([
+      order.id, index, item.menu_item_id || item.id || '',
+      item.name || '', Number(item.quantity ?? item.qty ?? 1),
+    ]),
+    quantity: Number(item.quantity ?? item.qty ?? 1),
+  }))
+  const checkedLines = checklistLines.filter((line) => Boolean(itemChecks[line.key])).length
+  const manuallyChecked = checklistLines.length > 0 && checkedLines === checklistLines.length
+  const manualPercent = checklistLines.length > 0
+    ? Math.round((checkedLines / checklistLines.length) * 100) : 0
+  const barcodePercent = requiredTotal > 0
+    ? Math.max(0, Math.min(100, Math.round((scannedTotal / requiredTotal) * 100))) : 100
+  const canMarkPacked = isPacking && !statusBusy && !scanBusy &&
+    !isBlocked && manuallyChecked && serverReady && missingBarcodeCount === 0
+
+  const showBarcodeTools = isPacking && hasPackingData && requiresScan &&
+    !serverReady && missingBarcodeCount === 0
+
+  const cardButton = 'flex min-h-[48px] items-center justify-center gap-2 rounded-xl px-4 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50'
+
+  return (
+    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(220px,300px)_minmax(0,1fr)] xl:items-start">
+      {/* Compact queue: selecting a card only changes the focused order. */}
+      <aside className="min-w-0 rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-24" aria-label="Packing queue">
+        <div className="flex items-center justify-between px-2 py-2">
+          <h3 className="text-sm font-black text-[#12253c]">Work queue</h3>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-600">{orderedRows.length}</span>
+        </div>
+        <p className="mb-2 px-2 text-xs leading-5 text-slate-500">Choose one order. Active packing is shown first, followed by older incoming orders.</p>
+        <div className="flex max-h-[360px] flex-col gap-2 overflow-y-auto px-1 pb-1 xl:max-h-[calc(100dvh-220px)]">
+          {orderedRows.map((row) => {
+            const selected = row.id === order.id
+            const working = ['confirmed', 'preparing'].includes(String(row.order_status || '').toLowerCase())
+            const units = Array.isArray(row.items)
+              ? row.items.reduce((sum, item) => sum + Number(item.quantity ?? item.qty ?? 1), 0)
+              : 0
+            return (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => { setFocusOrderId(row.id); setShowDeliveryInfo(false) }}
+                aria-pressed={selected}
+                className={`w-full rounded-2xl border px-3.5 py-3.5 text-left transition focus-visible:outline-2 focus-visible:outline-emerald-500 ${
+                  selected ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-slate-100 bg-slate-50 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-sm font-black text-[#12253c]">#{row.order_code || row.order_number || 'Order'}</span>
+                  <span className={`shrink-0 rounded-lg px-2 py-1 text-[10px] font-extrabold ${
+                    working ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'
+                  }`}>{working ? 'Packing' : 'Incoming'}</span>
+                </div>
+                <p className="mt-1 truncate text-xs font-semibold text-slate-600">{row.customer_name || 'Customer'}</p>
+                <div className="mt-2 flex justify-between gap-2 text-[11px] text-slate-500">
+                  <span>{units} {units === 1 ? 'unit' : 'units'}</span>
+                  <span>{formatDate(row.created_at)}</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </aside>
+
+      {/* Only the selected order has packing controls. */}
+      <section className="min-w-0 overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm" aria-labelledby="focused-packing-title">
+        <div className="border-b border-slate-100 bg-[#12253c] p-5 text-white sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">
+              {isIncoming ? 'Step 1 · Start packing' : 'Step 2 · Verify and pack'}
+            </span>
+            <span className="font-mono text-sm font-black text-white/80">#{order.order_code || order.order_number || 'Order'}</span>
+          </div>
+          <h3 id="focused-packing-title" className="mt-3 text-xl font-black tracking-tight sm:text-2xl">
+            {isIncoming ? 'Ready to start this order?' : 'Pack this order accurately'}
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-slate-300">
+            {order.customer_name || 'Customer'} · {order.payment_method === 'cod' ? 'Cash on delivery' : 'Prepaid'} · {money(order.total_amount)}
+          </p>
+          <div className="mt-4 grid grid-cols-3 gap-1.5" aria-label="Packing steps">
+            {['Start', 'Verify', 'Packed'].map((step, index) => (
+              <div key={step} className={`rounded-lg py-2 text-center text-[10px] font-extrabold ${
+                (isIncoming ? index === 0 : index <= 1) ? 'bg-emerald-400 text-[#10243a]' : 'bg-white/10 text-white/60'
+              }`}>{index + 1}. {step}</div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-5 p-4 sm:p-6">
+          {order.customer_note && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-[11px] font-black uppercase tracking-wider text-amber-800">Customer packing instructions</p>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-amber-900">{order.customer_note}</p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-black text-[#12253c]">Item-by-item checklist</h4>
+            <span className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700">
+              {checkedLines}/{checklistLines.length} checked
+            </span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100" aria-label="Item checklist completion">
+            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${manualPercent}%` }} />
+          </div>
+
+          <div className="space-y-2">
+            {checklistLines.map(({ item, key, quantity }) => {
+              const picked = Boolean(itemChecks[key])
+              return (
+                <label key={key} className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 sm:p-4 ${
+                  picked ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-[#f7f9fb]'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={picked}
+                    disabled={!isPacking}
+                    onChange={(event) => setItemChecks((current) => ({ ...current, [key]: event.target.checked }))}
+                    className="mt-1 h-5 w-5 shrink-0 accent-emerald-600 disabled:opacity-40"
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="break-words text-sm font-extrabold leading-5 text-[#12253c]">{item.name || 'Item'}</span>
+                    <span className="text-xs text-slate-500">Check product, condition and exact quantity</span>
+                  </div>
+                  <span className="rounded-lg bg-white px-2.5 py-1 text-sm font-black text-slate-800">× {quantity}</span>
+                </label>
+              )
+            })}
+            {!orderItems.length && (
+              <p className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">No item details were returned by the server. Ask the manager before packing.</p>
+            )}
+          </div>
+          {isIncoming && (
+            <div className="rounded-xl bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-800">
+              Start Packing unlocks the physical item checklist. The order status changes using your existing secure Supabase function.
+            </div>
+          )}
+
+          {isPacking && (
+            <div className="space-y-4 rounded-2xl border border-slate-200 p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="flex items-center gap-2 text-sm font-black text-[#12253c]">
+                    <PackerIcon name="scan" className="h-4 w-4 text-emerald-600" /> Barcode verification
+                  </h4>
+                  <p className="mt-1 text-xs text-slate-500">{requiresScan
+                    ? `${scannedTotal}/${requiredTotal} packaged units verified by Supabase`
+                    : hasPackingData ? 'No packaged-item barcode scans required' : 'Checking server packing requirements…'}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1.5 text-[11px] font-black ${
+                  serverReady ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                }`}>{serverReady ? 'Server ready' : 'Server pending'}</span>
+              </div>
+              {requiresScan && (
+                <div className="h-2.5 overflow-hidden rounded-full bg-slate-100" aria-label="Barcode scan completion">
+                  <div className="h-full bg-sky-500 transition-all" style={{ width: `${barcodePercent}%` }} />
+                </div>
+              )}
+              {scanItems.length > 0 && (
+                <div className="space-y-2">
+                  {scanItems.map((item, i) => (
+                    <div key={item.menu_item_id || `${item.name}-${i}`} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-extrabold text-slate-800">{item.name || 'Packaged item'}</p>
+                        <p className="mt-1 text-[10px] text-slate-500">{item.barcode ? 'Barcode configured' : 'Barcode needs setup'}</p>
+                      </div>
+                      <span className={`rounded-lg px-2.5 py-1 font-mono text-xs font-black ${
+                        item.complete ? 'bg-emerald-100 text-emerald-800' : 'bg-white text-slate-800'
+                      }`}>{Number(item.scanned_quantity || 0)}/{Number(item.required_quantity || 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {missingBarcodeCount > 0 && (
+                <div role="alert" className="rounded-xl bg-red-50 p-3 text-xs font-semibold leading-5 text-red-800">
+                  {missingBarcodeCount} packaged product(s) have no configured barcode. Ask the manager to configure the barcode. Packing remains blocked.
+                </div>
+              )}
+              {showBarcodeTools && (
+                <div className="space-y-2">
+                  <form onSubmit={async (event) => { event.preventDefault(); await submitBarcode(order.id, barcodeInputs[order.id]) }} className="flex gap-2">
+                    <input
+                      aria-label={`Barcode for ${order.order_code || 'order'}`}
+                      value={barcodeInputs[order.id] || ''}
+                      onChange={(event) => setBarcodeInputs((current) => ({ ...current, [order.id]: event.target.value }))}
+                      autoComplete="off"
+                      inputMode="text"
+                      placeholder="Scan or enter barcode"
+                      className="h-12 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500"
+                    />
+                    <button type="submit" disabled={scanBusy || !String(barcodeInputs[order.id] || '').trim()} className="h-12 rounded-xl bg-[#12253c] px-4 text-xs font-black text-white disabled:opacity-40">{scanBusy ? 'Verifying…' : 'Verify'}</button>
+                  </form>
+                  <button type="button" disabled={scanBusy || Boolean(cameraOrderId)} onClick={() => openCameraScanner(order.id)} className={`${cardButton} w-full border border-emerald-200 bg-emerald-50 text-emerald-800`}>
+                    <PackerIcon name="camera" className="h-5 w-5" /> Scan with camera · {remainingTotal} remaining
+                  </button>
+                </div>
+              )}
+              <p className="text-[11px] leading-5 text-slate-500">The barcode RPC verifies the real product and quantity. Checking an item above does not replace barcode scanning.</p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowDeliveryInfo((current) => !current)}
+            aria-expanded={showDeliveryInfo}
+            className="flex min-h-[46px] w-full items-center justify-between rounded-xl border border-slate-200 px-3.5 text-left text-xs font-bold text-slate-700"
+          >
+            Delivery address and driver info
+            <PackerIcon name="chevron" className={`h-4 w-4 transition-transform ${showDeliveryInfo ? 'rotate-180' : ''}`} />
+          </button>
+          {showDeliveryInfo && (
+            <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs leading-6 text-slate-600">
+              <p><span className="font-extrabold text-slate-800">Address:</span> {deliveryAddress || 'Not provided'}</p>
+              <p><span className="font-extrabold text-slate-800">Driver:</span> {order.driver_name || 'Not assigned yet'}</p>
+              {order.driver_mobile && <p><span className="font-extrabold text-slate-800">Driver phone:</span> {order.driver_mobile}</p>}
+            </div>
+          )}
+
+          <label className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold leading-5 text-rose-800">
+            <input type="checkbox" checked={isBlocked} onChange={(event) => setBlockedOrders((current) => ({ ...current, [order.id]: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-rose-600" />
+            <span><strong>Missing, damaged or wrong product?</strong> Pause this order and contact the manager. This is a local hold on this screen; it does not notify the manager or change the order in Supabase.</span>
+          </label>
+
+          {isIncoming ? (
+            <button
+              type="button"
+              disabled={statusBusy || isBlocked || !orderItems.length}
+              onClick={() => updateStatus(order, 'confirmed')}
+              className={`${cardButton} w-full bg-[#12253c] text-white shadow-md shadow-slate-900/10`}
+            >
+              <PackerIcon name="arrow" className="h-5 w-5" /> {statusBusy ? 'Starting packing…' : 'Start Packing'}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={!canMarkPacked}
+                onClick={() => updateStatus(order, 'packed')}
+                className={`${cardButton} w-full bg-emerald-600 text-white shadow-md shadow-emerald-600/10 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none`}
+              >
+                <PackerIcon name="check" className="h-5 w-5" /> {statusBusy ? 'Updating…' : 'Mark Packed & View Details'}
+              </button>
+              {!canMarkPacked && (
+                <p className="text-center text-[11px] font-semibold leading-5 text-slate-500">
+                  {isBlocked ? 'Resolve the item issue before packing.'
+                    : !manuallyChecked ? `Verify all ${checklistLines.length} product lines and quantities first.`
+                    : !hasPackingData ? 'Waiting for server packing requirements.'
+                    : missingBarcodeCount > 0 ? 'Manager must configure missing barcodes.'
+                    : requiresScan && !serverReady ? `Scan ${remainingTotal} remaining packaged units.`
+                    : 'Packing verification is still in progress.'}
+                </p>
+              )}
+            </>
+          )}
+
+          <p className="text-center text-[11px] leading-5 text-slate-500">
+            Packed orders move into the Packed Orders tab. Only the driver can start delivery.
+          </p>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 export default function DeliveryPackerPortal({
 
   params,
@@ -490,6 +831,7 @@ export default function DeliveryPackerPortal({
   // View-only state: existing auth, barcode and status RPCs are unchanged.
   // Incoming and in-progress orders are the packer's default work queue.
   const [activeStage, setActiveStage] = useState('active')
+  const [focusOrderId, setFocusOrderId] = useState('')
   const [ordersMenuOpen, setOrdersMenuOpen] = useState(false)
   const [orderSearch, setOrderSearch] = useState('')
   const [detailsOpen, setDetailsOpen] = useState({})
@@ -1041,6 +1383,7 @@ export default function DeliveryPackerPortal({
 
 
       setCameraOrderId('')
+      setFocusOrderId('')
       setSelectedOrderId('')
       setSelectedOrderSnapshot(null)
 
@@ -2091,12 +2434,14 @@ export default function DeliveryPackerPortal({
         // After a successful status change, show the next correct queue.
         // Keep backend authorization and barcode checks unchanged.
         if (nextStatus === 'confirmed') {
+          setFocusOrderId(order.id)
           setActiveStage('confirmed')
           setOrdersMenuOpen(true)
           setOrderSearch('')
         }
 
         if (nextStatus === 'packed') {
+          setFocusOrderId('')
           setActiveStage('packed')
           setOrdersMenuOpen(true)
           setOrderSearch('')
@@ -2396,7 +2741,7 @@ export default function DeliveryPackerPortal({
     { key: 'all', label: 'All Orders', icon: 'box', count: orders.length },
     { key: 'active', label: 'Active Orders', icon: 'clock', count: activeOrders.length },
     { key: 'received', label: 'New Orders', icon: 'inbox', count: sections.received.length },
-    { key: 'confirmed', label: 'Packing Now', icon: 'scan', count: sections.confirmed.length },
+    { key: 'confirmed', label: 'Active Packing', icon: 'scan', count: sections.confirmed.length },
     { key: 'packed', label: 'Packed Orders', icon: 'check', count: sections.packed.length },
     { key: 'out_for_delivery', label: 'Out for Delivery', icon: 'truck', count: sections.out_for_delivery.length },
   ]
@@ -2528,7 +2873,7 @@ export default function DeliveryPackerPortal({
                       </button>
                     )}
                     {isReceived && <button type="button" disabled={busy} onClick={()=>updateStatus(order,'confirmed')} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#162a43] px-4 text-sm font-extrabold text-white shadow-md shadow-slate-900/10 transition hover:bg-[#233e5e] active:scale-[0.99] disabled:opacity-50">{busy?'Updating…':'Start Packing'}{!busy && <PackerIcon name="arrow" className="h-4 w-4"/>}</button>}
-                    {isWorking && <button type="button" disabled={busy || scanBusy || !readyToPack} onClick={()=>updateStatus(order,'packed')} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-extrabold text-white shadow-md shadow-emerald-500/15 transition hover:bg-emerald-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"><PackerIcon name="check" className="h-4 w-4"/>{busy ? 'Updating…' : !hasPackingData ? 'Checking packing requirements…' : missingBarcodeCount > 0 ? 'Barcode setup required' : requiresScan && !readyToPack ? `Scan ${remainingTotal} more ${remainingTotal === 1?'unit':'units'}` : 'Mark Packed'}</button>}
+                    {isWorking && <button type="button" onClick={()=>{setFocusOrderId(order.id);selectView('confirmed')}} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-extrabold text-white shadow-md shadow-emerald-500/15 transition hover:bg-emerald-700 active:scale-[0.99]"><PackerIcon name="scan" className="h-4 w-4"/>Open Packing Workspace</button>}
                     {isPacked && <div className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-bold leading-5 text-emerald-800"><PackerIcon name="check" className="h-4 w-4 shrink-0"/><div>{order.driver_id ? 'Packed · Waiting for driver to start delivery' : 'Packed · Waiting for driver assignment'}<p className="mt-1 font-normal text-emerald-700">Only the assigned driver can acknowledge and start delivery.</p></div></div>}
                     {isOut && <div className="flex gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-xs font-bold leading-5 text-violet-800"><PackerIcon name="truck" className="h-4 w-4 shrink-0"/><div>Out for delivery<p className="mt-1 font-normal text-violet-700">The driver completes delivery with proof.</p></div></div>}
                   </div>
@@ -2633,15 +2978,24 @@ export default function DeliveryPackerPortal({
                   {renderOrders('out_for_delivery', 'Out for Delivery', 'Driver handoff complete', sections.out_for_delivery)}
                   {otherOrders.length > 0 && renderOrders('other', 'Other Orders', 'Other statuses returned by your store', otherOrders)}
                 </>
-              ) : activeStage === 'active' ? (
-                <>
-                  {renderOrders('received', 'Incoming Orders', 'New customer orders waiting for the packer', sections.received)}
-                  {renderOrders('confirmed', 'Packing in Progress', 'Orders currently being prepared', sections.confirmed)}
-                </>
-              ) : activeStage === 'received' ? (
-                renderOrders('received', 'New Orders', 'Awaiting your attention', sections.received)
-              ) : activeStage === 'confirmed' ? (
-                renderOrders('confirmed', 'Packing Now', 'In progress', sections.confirmed)
+              ) : ['active', 'received', 'confirmed'].includes(activeStage) ? (
+                <FocusedPackerWorkspace
+                  rows={searchedOrders(
+                    activeStage === 'received' ? sections.received :
+                    activeStage === 'confirmed' ? sections.confirmed :
+                    [...sections.confirmed, ...sections.received]
+                  )}
+                  focusOrderId={focusOrderId}
+                  setFocusOrderId={setFocusOrderId}
+                  updateStatus={updateStatus}
+                  updatingOrderId={updatingOrderId}
+                  scanningOrderId={scanningOrderId}
+                  barcodeInputs={barcodeInputs}
+                  setBarcodeInputs={setBarcodeInputs}
+                  submitBarcode={submitBarcode}
+                  openCameraScanner={openCameraScanner}
+                  cameraOrderId={cameraOrderId}
+                />
               ) : activeStage === 'packed' ? (
                 renderOrders('packed', 'Packed Orders', 'View completed packing details', sections.packed)
               ) : (

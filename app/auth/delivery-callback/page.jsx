@@ -67,39 +67,50 @@ export default function DeliveryGoogleCallbackPage() {
         if (userError || !user?.id) throw userError || new Error('Google login could not be verified.')
 
         const hasGoogleIdentity = user?.identities?.some((item) => item.provider === 'google') ||
-          user?.app_metadata?.provider === 'google'
+          user?.app_metadata?.provider === 'google' ||
+          user?.app_metadata?.providers?.includes('google')
         if (!hasGoogleIdentity) {
           throw new Error('This account is not connected to Google. Use the Google button to choose an account.')
         }
 
-        setMessage('Preparing your delivery profile...')
-        const { data: existing, error: lookupError } = await supabase
-          .from('delivery_customer_profiles')
-          .select('id')
-          .eq('id', user.id)
-          .maybeSingle()
-        if (lookupError) throw new Error(`Delivery profile lookup failed: ${lookupError.message}`)
-
-        if (!existing) {
-          const metadata = user.user_metadata || {}
-          const fullName = String(
-            metadata.full_name || metadata.name || metadata.display_name ||
-            user.email?.split('@')[0] || 'Customer'
-          ).trim().slice(0, 100)
-          const avatarUrl = String(metadata.avatar_url || metadata.picture || '').trim()
-          const { error: insertError } = await supabase
-            .from('delivery_customer_profiles')
-            .insert({
-              id: user.id,
-              full_name: fullName,
-              email: user.email || null,
-              avatar_url: avatarUrl || null,
-            })
-          if (insertError && insertError.code !== '23505') {
-            throw new Error(`Delivery profile could not be created: ${insertError.message}`)
-          }
+        // Google-only Delivery access: retire any older Mobile/PIN cookie so
+        // the Orders and Saved Addresses APIs cannot prefer a different user.
+        const mobileLogout = await fetch('/api/delivery/customer/session', {
+          method: 'DELETE', credentials: 'same-origin', cache: 'no-store',
+        })
+        if (!mobileLogout.ok) {
+          throw new Error('Could not finish switching to your Google account. Please retry.')
         }
 
+        // Google identity has already been verified by Supabase Auth above.
+        // A missing profile API, an optional database migration, or an empty
+        // saved-address book must NOT turn successful OAuth into a login error.
+        // Account/profile APIs keep enforcing their own authenticated identity.
+        setMessage('Opening your Delivery store...')
+        try {
+          const profileResponse = await fetch('/api/delivery/customer/google-profile', {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          })
+          const profileData = await profileResponse.json().catch(() => ({}))
+          if (!profileResponse.ok || profileData?.success !== true) {
+            // 404: route not installed; 503: backend/schema configuration issue.
+            // Log for diagnosis, but do not confuse profile availability with
+            // a verified Google login. No private profile data is returned here.
+            console.warn('[DELIVERY GOOGLE PROFILE] Optional setup lookup failed:', {
+              status: profileResponse.status,
+              code: String(profileData?.code || 'PROFILE_UNAVAILABLE'),
+            })
+          }
+        } catch (profileError) {
+          console.warn('[DELIVERY GOOGLE PROFILE] Optional setup lookup unavailable:',
+            profileError?.message || 'Network error')
+        }
+
+        // Show the actual Delivery storefront directly after successful
+        // Google signup/login. Name, contact mobile and address can still be
+        // added through the protected customer profile and checkout screens.
         clearDeliveryGoogleContext()
         return intendedPath
       } catch (caught) {

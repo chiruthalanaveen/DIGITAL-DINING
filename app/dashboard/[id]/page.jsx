@@ -1874,11 +1874,32 @@ if (staffError) {
       // Order updates are not coupled to this metadata refresh.
     }
 
-    fetchDashboard()
-
-    const interval = setInterval(fetchDashboard, 2000)
-
-    return () => clearInterval(interval)
+    // Refresh large owner metadata only once a minute. Never overlap requests,
+    // and don't waste database work in a background tab. Recheck when returning.
+    let dashboardActive = true
+    let dashboardRefreshBusy = false
+    const refreshDashboardSafely = async () => {
+      if (!dashboardActive || document.hidden || dashboardRefreshBusy) return
+      dashboardRefreshBusy = true
+      try {
+        await fetchDashboard()
+      } catch (refreshError) {
+        console.error('[OWNER DASHBOARD REFRESH]', refreshError)
+      } finally {
+        dashboardRefreshBusy = false
+      }
+    }
+    void refreshDashboardSafely()
+    const interval = window.setInterval(() => void refreshDashboardSafely(), 60000)
+    const refreshWhenVisible = () => {
+      if (!document.hidden) void refreshDashboardSafely()
+    }
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      dashboardActive = false
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [
     authChecked,
     approvalStatus,
@@ -1900,7 +1921,7 @@ if (staffError) {
     setOrdersLoadError('')
 
     const refreshOrders = async () => {
-      if (busy || cancelled) return
+      if (busy || cancelled || document.hidden) return
       busy = true
       try {
         const orderData = await fetchOwnerOrdersSecure(restaurantId)
@@ -1932,9 +1953,14 @@ if (staffError) {
 
     refreshOrders()
     const interval = window.setInterval(refreshOrders, 5000)
+    const refreshOrdersWhenVisible = () => {
+      if (!document.hidden) void refreshOrders()
+    }
+    document.addEventListener('visibilitychange', refreshOrdersWhenVisible)
     return () => {
       cancelled = true
       window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshOrdersWhenVisible)
     }
   }, [authChecked, approvalStatus, restaurantId, hasRealtimeOrderAlarm, ordersRefreshTick])
 
