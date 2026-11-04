@@ -26,6 +26,7 @@ Growth migration: `20261102162000_commerce_growth_notifications.sql`.
 Domain migration: `20261103090000_commerce_verified_domains.sql`.
 Online merchant payment migration: `20261103091000_commerce_online_payments.sql`.
 Read-only payment recovery queue: `20261104090000_commerce_payment_recovery_queue.sql`.
+Stop an existing never-dispatched payment: `20261104120000_commerce_stop_unstarted_payment.sql`.
 Apply in that order only to an isolated development database; production files
 are review-only until separately approved. Explain any intentionally replaced
 commerce RPC and preserve baseline behavior with compatibility tests.
@@ -144,6 +145,47 @@ so merchant support can find the same attempt. Neither the queue nor references
 implement unpaid abandonment, cancel an intent, release the cart, create a new
 charge or mark a refund; provider proof and separate authorization remain needed.
 
+The later stop-unstarted increment is deliberately separate from that queue.
+`commerce_payment_attempt_control(p_website_id uuid,p_cart_key uuid,p_action text
+default 'inspect',p_expected_intent_id uuid default null)` is authenticated-only.
+It binds verified Auth buyer, website and original cart, with optional intent
+binding. Inspection returns `{website_id,cart_key,intent_id,found,payment,
+cancellation,can_cancel_unstarted}`; the HTTP layer adds capability/response
+fields and strips private metadata. A missing row returns no proof and can
+never authorize release, because the original request could still arrive.
+
+Cancellation is permitted only for existing `new`, NULL provider order, NULL
+creation lease and no receipt, checked under Auth SHARE then intent FOR UPDATE.
+It adds immutable `payment_unstarted_cancellations` proof and changes only that
+intent to terminal `cancelled_unstarted`. No cart advisory lock is added. The
+terminal guard prevents reopening/modifying the stopped intent, and the existing
+COD old-key guard continues to reject reuse. Claiming provider creation wins or
+loses against the same row lock, before any provider POST can occur.
+
+`POST /api/commerce/payments/attempt` requires verified same-origin buyer context
+and the website/cart/action/optional expected intent, never caller buyer/role or
+totals. Browser/server must reject stale/foreign/malformed proof. Only matching
+terminal state plus explicit `{id,intent_id,cancelled_at,reason:'never_dispatched'}`
+proof clears the pointer; the parent keeps the bag and generates a fresh UUID.
+Cancelled replay skips credential decryption and provider creation. This does
+not close an already-dispatched provider order, infer expiry, release unknown
+or missing attempts, change stock/orders/receipts/coupon usage/wallets, or mark
+paid/refunded. Store/gateway/rollout disablement does not block own-record recovery.
+
+All cooperating browser tabs serialize shared payment-pointer creation, writes,
+checks before a mutation, and removal through an exclusive Web Locks lock scoped
+to the account/store storage key. There is no compare-then-write fallback. Online
+start, stop and receipt/proof-based pointer release require a secure browser
+context exposing `navigator.locks.request`; unsupported locking fails closed and
+keeps the saved attempt/bag locked. Check payment can still fetch and display
+status, but cannot release the pointer without that lock. COD without a saved
+online pointer remains available. Stale-tab/storage changes invalidate old work;
+an older response cannot replace or remove a newer cart/intent pointer.
+
+A recovered known-`new` intent does not acquire a new provider-resume path.
+Continue is disabled with “Stop this request to restart checkout” guidance;
+the existing proof-checked stop is required before beginning a fresh checkout.
+
 Core/API integration is owned by the parent agent. Frontend ownership is split:
 OwnerDashboard/AdminClientWebsites versus Storefront/Bag/Gallery/templates;
 customer module owns StoreAccount and its own components, growth/domains own
@@ -159,3 +201,11 @@ PostgreSQL and simulated Auth/provider protocols, state their limits. Run npm
 test, npm run lint, npm run build, and mobile/desktop browser flows. Keep native
 images/accessibility and CSS concerns honest. Do not claim full completion while
 remaining online payment/domain/provider/hosted acceptance gates are unresolved.
+
+The 4 November stop-unstarted source passes the local 628-assertion PostgreSQL
+suite, 327/327 full unit tests, lint with zero errors/166 warnings, and the full
+repository `npm run build`. Browser checks pass 13 expansion groups/112 screenshots
+and 118 original compatibility screenshots (230 total, four widths). These use
+synthetic Auth/Storage/provider protocols and actual local RLS; the overall
+checklist remains PARTIAL PASS for hosted/provider/domain/notification acceptance.
+Keep the preceding 561-SQL/296-unit/198-screenshot record dated as historical.

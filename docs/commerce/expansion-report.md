@@ -1,6 +1,73 @@
 # E-commerce expansion implementation and verification
 
-## 4 November 2026 result: PARTIAL PASS — local checks pass, external activation held
+## 4 November 2026: stop an unstarted checkout — local PASS, release PARTIAL PASS
+
+The next bounded source increment remains on `feature/commerce-expansion` in
+draft [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7). A buyer
+can stop an existing payment request only when the database proves that provider
+creation has never been claimed. This is not general unpaid-provider cancellation.
+
+The seventh migration is
+[`20261104120000_commerce_stop_unstarted_payment.sql`](../../supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql).
+Read its [complete object/permission and rollback review](stop-unstarted-payment-migration-review.md)
+and the [seven-file installation runbook](expansion-installation.md). The six
+preceding migration files remain byte-for-byte unchanged.
+
+- The authenticated control RPC binds verified buyer, website and original cart
+  key, with an optional expected intent UUID. Cart-key inspection can recover a
+  reference lost between intent creation and the provider-creation claim.
+- Stopping takes the verified Auth-row share lock, then the same intent row lock
+  used by creation. Only `new` with NULL provider order, NULL creation lease and
+  no capture receipt is eligible. Creation winning the race rejects the stop;
+  stopping winning leaves a terminal `cancelled_unstarted` row and immutable proof.
+- A missing row is not proof. Neither absence, popup dismissal, timeout, provider
+  failure nor `creating`/`provider_unknown`/`ready`/captured/fulfilled state can
+  release the browser pointer. Already-dispatched payments retain reconciliation.
+- The browser requires matching website/cart/intent and explicit immutable proof
+  before removing its pointer. It keeps the bag and uses a fresh checkout UUID.
+  The old key stays reserved, including the existing COD guard. Cancellation
+  proof and the original quote/request/amount/version remain in history.
+- Shared pointer changes use an exclusive Web Locks lock per buyer/store; stale
+  tabs and responses cannot replace or remove a newer attempt. Online start,
+  stop and receipt/proof release fail closed without secure-browser locking.
+  Check payment can still fetch/display status; COD without a saved online
+  pointer is unaffected. A recovered `new` intent has Continue disabled with
+  “Stop this request to restart checkout” guidance, not a new provider-resume path.
+- Stopped create/resume/verification paths do not reopen the request or send a
+  provider order. Recovery remains possible with the store, merchant or rollout
+  disabled; it is an own-record recovery operation, not payment activation.
+
+| Current source check | Result | Limit |
+| --- | --- | --- |
+| `COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/commerce_test node scripts/test-commerce-expansion-db.mjs` | PASS — 628 PostgreSQL assertions | All prior 561 retained plus 67 new stop/race/preservation checks. Isolated PostgreSQL 18.4 with synthetic Auth, not hosted Supabase acceptance. |
+| `node tests/commerce-payments.test.mjs` | PASS — 27 focused mocked tests | Includes same-origin/verified scope, malformed proof, missing row/capability, conflict, cancelled replay and creation-race paths. No real provider calls. |
+| `node tests/commerce-payment-state.test.mjs`; `node tests/commerce-payment-pointer.test.mjs` | PASS — 10 state + 18 pointer tests | Included in the full unit run; tenant/proof boundaries, serialized multi-tab changes, stale scopes and unsupported-locking failures. |
+| `npm test` | PASS — 327/327 actual tests, zero skipped | Current full suite; `unit.log`. The owner-payment test loader resolves the new module alias without changing application behaviour. |
+| `npm run lint` | PASS — 0 errors, 166 warnings | Current full repository `lint.log`; warnings remain. |
+| `npm run build` | PASS — full repository | `build.log` and `build-source-fingerprint.json`; the 321 listed application-source fingerprints remain unchanged through compilation. |
+| `node tests/commerce-expansion.browser.mjs` (exact environment below) | PASS — 13 groups, 112 screenshots | Actual full Next.js app and PostgreSQL at 360/390/768/1440 px; `browser/expansion-browser-results.json`. Includes unstarted inspection/stop, retained bag/fresh COD key, races and stale accounts/tabs. Recovery controls are explicitly scrolled into view and checked against each viewport's bounds. Missing-lock rejection is covered by the separate pointer unit tests. |
+| `node tests/commerce.browser.mjs` (exact environment below) | PASS — 118 screenshots | Fresh original compatibility, simulated Auth/Storage and actual local RLS. Together the suites captured 230 screenshots; no external provider acceptance. |
+
+Exact browser invocations, sequentially after the matching synthetic fixture-4319
+build, were:
+
+```sh
+COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/commerce_test COMMERCE_FIXTURE_PORT=4319 COMMERCE_BROWSER_SKIP_DB=1 COMMERCE_BROWSER_SKIP_BUILD=1 COMMERCE_BROWSER_ARTIFACTS=/workspace/commerce-validation-artifacts/commerce-unstarted-20261104/browser node tests/commerce-expansion.browser.mjs
+COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/commerce_test COMMERCE_FIXTURE_PORT=4319 COMMERCE_BROWSER_USE_EXPANSION=1 COMMERCE_BROWSER_SKIP_BUILD=1 COMMERCE_BROWSER_ARTIFACTS=/workspace/commerce-validation-artifacts/commerce-unstarted-20261104/original-browser node tests/commerce.browser.mjs
+```
+
+Current evidence belongs under
+`/workspace/commerce-validation-artifacts/commerce-unstarted-20261104/`.
+No hosted SQL, production data change, provider lookup, charge, refund,
+deployment, merge or external notification was performed. The new schema is
+review-only for hosted targets and needs no new environment variable, DNS,
+Storage policy or cron job. Existing activation/production holds remain intact.
+General unpaid-provider cancellation, expiry, refunds and hosted/provider
+acceptance remain outstanding; this increment only proves never-dispatched stops.
+The full e-commerce checklist remains **PARTIAL PASS** because hosted Supabase
+Auth/RLS, sandbox provider, domain/TLS and notification acceptance are unperformed.
+
+## Earlier 4 November 2026 recovery follow-up — validated prior source
 
 Work continues on `feature/commerce-expansion` in draft
 [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7). This bounded
@@ -8,7 +75,7 @@ follow-up makes existing unresolved payment attempts discoverable and shows
 owners their actual saved checkout configuration. It does not activate a
 provider, abandon an unpaid attempt or change payment truth.
 
-Final current-source checks pass: **561 SQL assertions, 296/296 unit tests,
+That committed-source check passed: **561 SQL assertions, 296/296 unit tests,
 zero lint errors/166 warnings, the full repository build and 198 screenshots**
 from both full-app browser suites. Application source fingerprints remain stable
 through the build and both browser runs. Hosted Supabase/Auth/RLS, real provider
@@ -41,10 +108,11 @@ The combined follow-up requires the sixth migration,
 adding only the service-only STABLE read RPC. It creates no table/column/index/
 trigger/RLS policy and updates no payment/business row. The first five migration
 bytes/hashes remain unchanged. Read the [full queue migration review](payment-recovery-queue-migration-review.md)
-and [six-file installation runbook](expansion-installation.md). Owner status
+and [installation runbook](expansion-installation.md), now extended to seven files.
+Owner status
 alone: **No SQL migration required.** It reuses existing readiness SQL.
 
-| Current follow-up check | Result | Limit |
+| Earlier recovery-source check | Result | Limit |
 | --- | --- | --- |
 | `COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/commerce_test node scripts/test-commerce-expansion-db.mjs` | PASS — 561 assertions | Original 531 retained; 27 queue cases and 3 sixth-migration preservation/read-only/reapplication checks. Loopback PostgreSQL 18.4, synthetic Auth only. |
 | `node tests/commerce-payments.test.mjs` | PASS — 21 mocked tests | Four new queue projection/cross-scope/missing/denied and meaningful uppercase-UUID regressions added to the prior 17. No provider call. |
@@ -58,7 +126,7 @@ alone: **No SQL migration required.** It reuses existing readiness SQL.
 The sixth SQL SHA-256 is
 `71b549ed8d1e011511e5ca9e27d21aaa9dd87f676c59b955cba70f2bce053d77`.
 Queue installation leaves the existing **33 tables and 31 policies** unchanged;
-the public/private function count becomes 65. Current SQL/application evidence
+the public/private function count becomes 65. That recovery-source SQL/application evidence
 is consolidated under
 `/workspace/commerce-validation-artifacts/commerce-recovery-20261104/`. A tested
 hash proves only its recorded local execution, not hosted installation.
@@ -70,7 +138,7 @@ data change, provider setting, deployment, merge, live payment or external
 notification was performed. All existing rollout/production approval holds
 remain in force; no staging/backup prerequisite is requested again.
 
-Unpaid-intent abandonment remains unimplemented and blocked on authoritative
+General unpaid-provider abandonment remains unimplemented and blocked on authoritative
 provider proof and a separately reviewed workflow. An open queue row does not
 prove that an attempt is unpaid, failed or safe to delete. The queue/reference
 work never marks paid/refunded/cancelled, releases a cart, clears a receipt or
@@ -199,7 +267,7 @@ All styling additions are separate files.
 | `COMMERCE_BROWSER_USE_EXPANSION=1 COMMERCE_BROWSER_SKIP_BUILD=1 node tests/commerce.browser.mjs` | PASS | Original suite recreates the guarded local expanded database, then validates PKCE confirmation/recovery, onboarding/Admin approval, products/media/stock, COD, retry/restock, account/tenant isolation and mobile layouts. Evidence: `original-browser-release.log`, `original-browser/`. |
 | `COMMERCE_BROWSER_SKIP_DB=1 COMMERCE_BROWSER_SKIP_BUILD=1 node tests/commerce-expansion.browser.mjs` | PASS — 8 groups, 72 screenshots | Five templates/JSON-LD, gallery/variants/coverage/coupon checkout, lost-response/reload recovery, customer tools/privacy, actual owner gallery save/analytics panels and signed Admin controls at 360/390/768/1440. Evidence: `browser-release/expansion-browser-results.json`, `expansion-browser-release.log`. |
 
-Use [the exact 102-file manifest](expansion-changes.md) for changed files and the
+Use [the exact changed-file manifest](expansion-changes.md) for paths and the
 downloadable review package for full JS/JSX/MJS/TS/TSX TXT copies,
 SQL, styles, tests, screenshots and command logs. Do not publish customer data or
 credentials in those artifacts. A green file-wrapper result under restricted
@@ -234,21 +302,26 @@ The order/quote/stock/RLS checks use actual local PostgreSQL and real Next HTTP
 routes with synthetic Auth/Storage protocols. The original browser run’s lab
 measurements are local observations, not production/field Web Vitals.
 
-An unresolved online attempt deliberately keeps the cart/payment method locked.
-There is currently no safe unpaid-intent abandonment workflow, so a buyer can
-need merchant help after closing an unpaid checkout. Do not clear the attempt or
-switch it to COD as a workaround; unknown provider results or delayed capture
-must first be reconciled. Real provider sandbox acceptance and a reviewed
-abandonment/recovery workflow remain operational risks before activation.
+An already-dispatched or unknown online attempt deliberately keeps the
+cart/payment method locked. General unpaid-provider abandonment remains absent,
+so a buyer can need merchant help after closing an opened provider checkout.
+Do not clear that attempt or switch its old key to COD as a workaround; unknown
+provider results or delayed capture must first be reconciled. The new flow
+above is narrower: only a proven never-dispatched intent may stop, with retained
+proof and a fresh next key. Real provider sandbox acceptance and a broader
+authoritative cancellation/recovery workflow remain risks before activation.
 
 ## URLs, release state and remaining gates
 
-Source branch: `feature/commerce-expansion`, pushed for review in draft
+Source branch: `feature/commerce-expansion`, under review in draft
 [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7), stacked on
-draft PR #6 and the unmerged #3/#4/#5 chain. The current tested application
-files match the 4 November build/browser source fingerprint. The exact reviewed
-commit is recorded in the latest TXT handoff manifest. Automatic Git deployment
-is disabled for this branch.
+draft PR #6 and the unmerged #3/#4/#5 chain. The preceding recovery commit's
+4 November build/browser fingerprint remains historical evidence. The new
+unstarted-checkout source has passed the local checks recorded above; the latest
+reviewed commit and its verified files belong in the updated TXT handoff
+manifest. This report does not claim that the new increment has been committed
+or pushed; the final handoff records that status. Automatic Git deployment is
+disabled for this branch.
 No Vercel Preview has been created for this expansion, and no staging-backed
 Preview URL is available. No network-blocked hosted check is relabelled as a pass.
 

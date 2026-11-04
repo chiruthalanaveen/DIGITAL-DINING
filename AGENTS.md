@@ -58,7 +58,35 @@ separate approval; tests must use stubs/development credentials. Preserve data,
 RLS, financial history and cron jobs. Do not ask again for waived backup or
 withdrawn staging setup; record hosted-validation limits accurately.
 
-The 4 November follow-up adds only read-only Admin payment discovery/buyer
+The current 4 November source increment adds only a verified buyer's narrow
+stop of an existing never-dispatched checkout, plus the API/browser integration
+needed to validate its proof. Its seventh migration is
+`20261104120000_commerce_stop_unstarted_payment.sql`. Keep the first six files
+byte-for-byte unchanged. It adds immutable private cancellation proof and
+terminal `cancelled_unstarted` state/guards; only `new` with NULL provider order,
+NULL creation lease and no receipt is eligible under Auth SHARE then intent
+FOR UPDATE. Never infer safety from absence, timeouts, popup dismissal or
+provider failure; a missing row cannot release the pointer. Already-dispatched,
+unknown, ready or captured payments remain on existing reconciliation paths.
+Only bound explicit proof permits clearing the pointer; preserve the bag and
+use a fresh UUID. Do not reopen a stopped row or reuse its reserved old key.
+No provider/financial activation or general unpaid-order cancellation authority
+is created. Serialize all shared browser-pointer changes with exclusive Web
+Locks per buyer/store. Secure-browser locking is required for online start/stop
+and receipt/proof release; unsupported locking fails closed while Check can
+fetch/display status, and COD without a saved online pointer is unaffected.
+Recovered known-new Continue stays disabled with Stop-to-restart guidance;
+do not expand provider resume or allow stale-tab responses to clear newer state.
+Local SQL passes 628 assertions, preserving all prior 561 cases;
+focused API tests pass 27 and pointer/state tests pass 18/10. Current full
+application checks pass 327/327 unit tests, lint with zero errors/166 warnings,
+and npm run build. The actual full-app browser suites pass 13 expansion groups/
+112 screenshots plus 118 original compatibility screenshots, 230 total at four
+widths. Overall completion remains PARTIAL PASS for unperformed hosted/provider/
+domain/notification acceptance and activation. See the current report and
+stop-unstarted migration review.
+
+The earlier 4 November committed follow-up added only read-only Admin payment discovery/buyer
 references and owner configuration status. Its sixth migration is
 `20261104090000_commerce_payment_recovery_queue.sql`: one service-only read RPC,
 no table/policy/row mutation. Keep the first five migration files byte-for-byte
@@ -71,7 +99,7 @@ build and both browser runs, including the valid-uppercase-UUID Admin query
 normalization and regression. Local validation is complete; hosted/provider
 acceptance and external activation remain held. No new provider, hosted SQL,
 deployment, abandonment/release, paid/refund/cancel or activation authority is
-created. The review remains on draft PR #7; do not merge or deploy.
+created by that increment. The review remains on draft PR #7; do not merge or deploy.
 
 Historical 3 November isolated evidence is 531 PostgreSQL assertions, 284/284 unit tests,
 lint with zero errors/166 warnings, and the full repository build passing with
@@ -80,7 +108,7 @@ passes eight groups/72 screenshots at four widths, and the original commerce
 browser/API compatibility suite also passes against the actual full app with
 simulated Auth/Storage and external provider scripts blocked. These are local
 results; valid PIN recovery and provider acceptance remain unverified.
-All six commerce expansion migrations remain unapplied to hosted databases;
+All seven commerce expansion migrations remain unapplied to hosted databases;
 provider/DNS/email/live-payment gates are not satisfied by local tests. See
 `docs/commerce/expansion-report.md` and `expansion-installation.md` for the
 completion matrix, exact SQL, object inventories and preserved-history rollback.

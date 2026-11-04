@@ -6,7 +6,7 @@ import process from 'node:process'
 import { spawn } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
-import { createCommerceFixture, developmentEnvironment, developmentUsers, LOCAL_ANON_KEY, LOCAL_PASSWORD } from './helpers/commerce-fixture.mjs'
+import { createCommerceFixture, developmentEnvironment, developmentUsers, LOCAL_ANON_KEY, LOCAL_PASSWORD, LOCAL_SERVICE_KEY } from './helpers/commerce-fixture.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const templates = ['general', 'sarees', 'grocery', 'fashion', 'food']
@@ -26,6 +26,12 @@ export async function runExpansionBrowserChecks({ base, fixture, browser, artifa
   })
   const [owner, , buyer, otherBuyer] = developmentUsers
   let cookie = ''
+  let releaseHeldStop = () => {}
+  async function signal(promise, label) {
+    let timer
+    try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out.`)), 20000) })]) }
+    finally { clearTimeout(timer) }
+  }
   async function api(url, { user, admin = false, method = 'GET', body, expected = 200 } = {}) {
     const headers = { Origin: base }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
@@ -42,9 +48,25 @@ export async function runExpansionBrowserChecks({ base, fixture, browser, artifa
   const customerAction = (website, action, payload, user = buyer) => api('/api/commerce/customer/experience', { user, method: 'POST', body: { website_id: website.id, action, payload } })
   const engagementAction = (website, action, payload) => api(`/api/commerce/workspace/${website.id}/engagement`, { user: owner, method: 'POST', body: { action, payload } })
 
-  async function snapshot(name) {
+  async function fixtureRpc(name, args, { service = false } = {}) {
+    // Direct local RPC fixtures exercise real roles without calling the app's
+    // provider adapter. This helper never accepts a hosted origin or real key.
+    assert.equal(new URL(fixtureOrigin).hostname, '127.0.0.1')
+    const token = service ? LOCAL_SERVICE_KEY : fixture.session(fixture.users.get(buyer.id)).access_token
+    const response = await fetch(`${fixtureOrigin}/rest/v1/rpc/${name}`, { method: 'POST', headers: { apikey: service ? LOCAL_SERVICE_KEY : LOCAL_ANON_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args) })
+    const result = await response.json()
+    assert.equal(response.status, 200, JSON.stringify(result))
+    return result
+  }
+
+  async function snapshot(name, focus = null) {
     for (const width of [1440, 768, 390, 360]) {
       await page.setViewportSize({ width, height: width < 768 ? 844 : 1000 })
+      if (focus) {
+        await focus.scrollIntoViewIfNeeded()
+        const box = await focus.boundingBox()
+        assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1 && box.y >= 0 && box.y + box.height <= (width < 768 ? 844 : 1000) + 1, `${name} recovery control must be visible at ${width}px.`)
+      }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name} has horizontal overflow at ${width}px.`)
       for (const dialog of await page.locator('dialog[open]').all()) {
         const box = await dialog.boundingBox()
@@ -393,6 +415,147 @@ export async function runExpansionBrowserChecks({ base, fixture, browser, artifa
     // Selecting/reading an attempt is local. Do not submit provider reconciliation.
     await snapshot('admin-retained-payment-recovery')
     checks.push('owner payment status uses current scoped configuration; signed Admin finds a retained captured receipt and selects its original reference without provider calls or payment mutations')
+    await fixtureRpc('commerce_payment_admin', { p_website_id: website.id, p_action: 'configure', p_payload: { version_id: randomUUID(), mode: 'test', ciphertext: 'unopened-synthetic-local-credential-envelope-'.repeat(4), enabled: true, actor_email: 'admin@commerce.example.test' } }, { service: true })
+    const originalCartKey = randomUUID()
+    const startUnstarted = key => fixtureRpc('commerce_payment_start', { p_website_id: website.id, p_items: [{ product_id: simple.id, quantity: 1 }], p_customer: { name: 'Local recovery buyer', phone: '9000000033', address: '' }, p_fulfillment: 'pickup', p_cart_key: key, p_coupon_code: '' })
+    const unstarted = await startUnstarted(originalCartKey)
+    assert.equal(unstarted.state, 'new')
+    async function paymentBusinessSnapshot() {
+      return (await fixture.pool.query("SELECT (SELECT stock_quantity FROM public.commerce_products WHERE id=$1) AS stock,(SELECT count(*) FROM public.commerce_orders WHERE website_id=$2) AS orders,(SELECT count(*) FROM commerce_private.payment_receipts WHERE website_id=$2) AS receipts,(SELECT count(*) FROM public.commerce_coupon_redemptions WHERE website_id=$2) AS redemptions", [simple.id, website.id])).rows[0]
+    }
+    async function restorePaymentPointer(key, knownIntent = null) {
+      await page.evaluate(({ website, simple, session, key, knownIntent }) => {
+        localStorage.setItem(`digital-dine-commerce:customer:${website.slug}`, JSON.stringify(session))
+        localStorage.setItem(`dd-commerce-cart:${website.id}`, JSON.stringify({ [simple.id]: 1 }))
+        localStorage.setItem(`commerce-payment-attempt:${website.id}:${session.user.id}`, JSON.stringify({ cart_key: key, intent_id: knownIntent }))
+        sessionStorage.setItem(`dd-commerce-checkout:${website.id}:${session.user.id}`, JSON.stringify({ key }))
+      }, { website, simple, session: fixture.session(fixture.users.get(buyer.id)), key, knownIntent })
+      await page.goto(`${base}/shops/${website.slug}`)
+      await page.getByRole('button', { name: 'Open shopping bag, 1 items', exact: true }).click()
+    }
+    const beforeStop = await paymentBusinessSnapshot()
+    await restorePaymentPointer(originalCartKey)
+    await page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }).waitFor()
+    await page.getByText(unstarted.id, { exact: true }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Place order', exact: true }).isDisabled(), true)
+    await snapshot('unstarted-payment-inspected', page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }))
+    await page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }).click()
+    await page.getByText('Payment processing had not started, so this checkout request was stopped. Your bag is unchanged.', { exact: true }).waitFor()
+    assert.equal(await page.evaluate(({ website, buyer }) => localStorage.getItem(`commerce-payment-attempt:${website.id}:${buyer.id}`), { website, buyer }), null)
+    assert.equal(await page.evaluate(({ website, simple }) => JSON.parse(localStorage.getItem(`dd-commerce-cart:${website.id}`))[simple.id], { website, simple }), 1)
+    assert.deepEqual(await paymentBusinessSnapshot(), beforeStop)
+    const stopped = await api('/api/commerce/payments/attempt', { user: buyer, method: 'POST', body: { website_id: website.id, cart_key: originalCartKey, action: 'inspect' } })
+    assert.equal(stopped.payment.state, 'cancelled_unstarted')
+    assert.equal(stopped.cancellation.reason, 'never_dispatched')
+    await snapshot('unstarted-payment-stopped-bag-kept', page.getByText('Payment processing had not started, so this checkout request was stopped. Your bag is unchanged.', { exact: true }))
+    await page.locator('input[name="customerName"]').fill('Fresh local COD buyer')
+    await page.locator('input[name="customerPhone"]').fill('9000000033')
+    const freshRequest = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === `/api/commerce/checkout/${website.id}`)
+    await page.getByRole('button', { name: 'Place order', exact: true }).click()
+    const successfulCodKey = (await freshRequest).postDataJSON().idempotency_key
+    assert.notEqual(successfulCodKey, originalCartKey)
+    await page.getByRole('heading', { name: 'Your order is confirmed.', exact: true }).waitFor()
+    await snapshot('stopped-payment-fresh-cod-checkout')
+    checks.push('cart-key inspection recovers a lost intent reference; verified never-dispatched cancellation preserves bag/stock/orders/receipts/coupon usage; next COD uses a fresh key')
+    const missingCartKey = randomUUID()
+    await restorePaymentPointer(missingCartKey)
+    await page.getByRole('button', { name: 'Check payment', exact: true }).click()
+    await page.getByRole('alert').filter({ hasText: 'absence is not proof' }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }).count(), 0)
+    assert.equal(await page.getByRole('button', { name: 'Place order', exact: true }).isDisabled(), true)
+    assert.notEqual(await page.evaluate(({ website, buyer }) => localStorage.getItem(`commerce-payment-attempt:${website.id}:${buyer.id}`), { website, buyer }), null)
+    await snapshot('missing-payment-attempt-remains-locked', page.getByRole('alert').filter({ hasText: 'absence is not proof' }))
+    const claimedKey = randomUUID(), toClaim = await startUnstarted(claimedKey)
+    await restorePaymentPointer(claimedKey, toClaim.id)
+    await page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }).waitFor()
+    const claim = await fixtureRpc('commerce_payment_service', { p_action: 'claim_create', p_payload: { intent_id: toClaim.id, buyer_id: buyer.id } }, { service: true })
+    assert.equal(claim.claimed, true)
+    const beforeRejectedStop = await paymentBusinessSnapshot()
+    await page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }).click()
+    await page.getByRole('alert').filter({ hasText: 'Keep this attempt and check its status' }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Place order', exact: true }).isDisabled(), true)
+    assert.notEqual(await page.evaluate(({ website, buyer }) => localStorage.getItem(`commerce-payment-attempt:${website.id}:${buyer.id}`), { website, buyer }), null)
+    assert.deepEqual(await paymentBusinessSnapshot(), beforeRejectedStop)
+    await snapshot('claimed-payment-cannot-be-stopped', page.getByRole('alert').filter({ hasText: 'Keep this attempt and check its status' }))
+    checks.push('missing intent is not cancellation proof; stale eligibility loses to creation claim and keeps the payment pointer/cart lock without provider calls')
+    const delayedKey = randomUUID(), delayedIntent = await startUnstarted(delayedKey)
+    await restorePaymentPointer(delayedKey, delayedIntent.id)
+    await page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }).waitFor()
+    let releaseStop, stopCommitted, stopFinished
+    const heldStop = new Promise(resolve => { releaseStop = resolve })
+    releaseHeldStop = releaseStop
+    const committedStop = new Promise(resolve => { stopCommitted = resolve })
+    const finishedStop = new Promise(resolve => { stopFinished = resolve })
+    await page.route('**/api/commerce/payments/attempt', async route => {
+      if (route.request().postDataJSON()?.action !== 'cancel_unstarted') return route.continue()
+      const response = await route.fetch()
+      stopCommitted(response.status())
+      await heldStop
+      try { await route.fulfill({ response }) } catch { /* The old document may have discarded its request. */ }
+      finally { stopFinished() }
+    })
+    await page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }).click()
+    assert.equal(await signal(committedStop, 'Committed stop response'), 200)
+    await page.goto(`${base}/shops/${website.slug}/account`)
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+    await page.getByLabel('Email address', { exact: true }).fill(otherBuyer.email)
+    await page.getByLabel(/^Password/).fill(LOCAL_PASSWORD)
+    await page.locator('form').getByRole('button', { name: 'Sign in', exact: true }).click()
+    await page.getByRole('button', { name: 'Sign out', exact: true }).waitFor()
+    const otherPendingKey = randomUUID()
+    await page.evaluate(({ website, otherBuyer, key }) => localStorage.setItem(`commerce-payment-attempt:${website.id}:${otherBuyer.id}`, JSON.stringify({ cart_key: key, intent_id: null })), { website, otherBuyer, key: otherPendingKey })
+    releaseStop()
+    await signal(finishedStop, 'Released stop response')
+    await page.unroute('**/api/commerce/payments/attempt')
+    await page.goto(`${base}/shops/${website.slug}`)
+    await page.getByRole('button', { name: 'Open shopping bag, 1 items', exact: true }).click()
+    assert.equal(await page.evaluate(({ website }) => JSON.parse(localStorage.getItem(`digital-dine-commerce:customer:${website.slug}`)).user.id, { website }), otherBuyer.id)
+    assert.equal(await page.evaluate(({ website, otherBuyer }) => JSON.parse(localStorage.getItem(`commerce-payment-attempt:${website.id}:${otherBuyer.id}`)).cart_key, { website, otherBuyer }), otherPendingKey)
+    assert.equal(await page.evaluate(({ website, buyer }) => JSON.parse(localStorage.getItem(`commerce-payment-attempt:${website.id}:${buyer.id}`)).cart_key, { website, buyer }), delayedKey)
+    assert.equal(await page.getByRole('button', { name: 'Place order', exact: true }).isDisabled(), true)
+    assert.equal(await page.getByText('Payment processing had not started, so this checkout request was stopped. Your bag is unchanged.', { exact: true }).count(), 0)
+    await snapshot('late-stop-response-account-isolation', page.getByRole('button', { name: 'Check payment', exact: true }))
+    checks.push('a committed but delayed stop response cannot clear another buyer’s pending pointer, unlock their bag, or publish the previous account’s success state')
+    const peer = await context.newPage()
+    await peer.goto(`${base}/commerce`)
+    for (const phase of ['cancel_unstarted', 'inspect']) {
+      const staleKey = randomUUID(), staleIntent = await startUnstarted(staleKey)
+      await restorePaymentPointer(staleKey, staleIntent.id)
+      await page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }).waitFor()
+      let releaseResponse, responseReady, responseFinished
+      const heldResponse = new Promise(resolve => { releaseResponse = resolve })
+      const readyResponse = new Promise(resolve => { responseReady = resolve })
+      const finishedResponse = new Promise(resolve => { responseFinished = resolve })
+      releaseHeldStop = releaseResponse
+      await page.route('**/api/commerce/payments/attempt', async route => {
+        const body = route.request().postDataJSON()
+        if (body?.action !== phase || body.cart_key !== staleKey) return route.continue()
+        const response = await route.fetch()
+        responseReady(response.status())
+        await heldResponse
+        try { await route.fulfill({ response }) } catch { /* A guarded stale document may discard it. */ }
+        finally { responseFinished() }
+      })
+      await page.getByRole('button', { name: phase === 'inspect' ? 'Check payment' : 'Stop unstarted checkout', exact: true }).click()
+      assert.equal(await signal(readyResponse, `Shared-storage ${phase} response`), 200)
+      const replacementKey = randomUUID(), replacement = await startUnstarted(replacementKey)
+      const beforeStaleReply = await paymentBusinessSnapshot()
+      await peer.evaluate(({ website, buyer, key, id }) => localStorage.setItem(`commerce-payment-attempt:${website.id}:${buyer.id}`, JSON.stringify({ cart_key: key, intent_id: id })), { website, buyer, key: replacementKey, id: replacement.id })
+      releaseResponse()
+      await signal(finishedResponse, `Released shared-storage ${phase} response`)
+      await page.unroute('**/api/commerce/payments/attempt')
+      assert.equal(await page.evaluate(({ website, buyer }) => JSON.parse(localStorage.getItem(`commerce-payment-attempt:${website.id}:${buyer.id}`)).cart_key, { website, buyer }), replacementKey)
+      assert.equal(await page.getByRole('button', { name: 'Place order', exact: true }).isDisabled(), true)
+      assert.deepEqual(await paymentBusinessSnapshot(), beforeStaleReply)
+      await snapshot(`shared-payment-pointer-${phase}`, page.getByRole('button', { name: 'Check payment', exact: true }))
+      await page.evaluate(({ website, buyer, key }) => sessionStorage.setItem(`dd-commerce-checkout:${website.id}:${buyer.id}`, JSON.stringify({ key })), { website, buyer, key: successfulCodKey })
+      await page.reload()
+      await page.getByRole('button', { name: 'Open shopping bag, 1 items', exact: true }).click()
+      await page.getByRole('button', { name: 'Stop unstarted checkout', exact: true }).waitFor()
+      await page.getByText(replacement.id, { exact: true }).waitFor()
+    }
+    await peer.close()
+    checks.push('a delayed cancellation proof cannot delete another tab’s replacement pointer; a delayed nonterminal inspection cannot overwrite it, and reload recovers the replacement intent')
     assert.deepEqual(errors, [], `Browser page errors: ${errors.join('; ')}`)
     const result = { result: 'PASS', scope: 'Real local Next.js HTTP routes and PostgreSQL/RLS with simulated Auth/Storage protocols; browser delays and response loss preserve real API execution.', templates, screenshots, checks, checkoutRequests, blockedExternalHosts: [...blocked], hostedAuthTested: false, hostedRlsTested: false, livePayments: false, productionWrites: false }
     await writeFile(path.join(artifacts, 'expansion-browser-results.json'), JSON.stringify(result, null, 2) + '\n')
@@ -401,7 +564,7 @@ export async function runExpansionBrowserChecks({ base, fixture, browser, artifa
     await page.screenshot({ path: path.join(artifacts, 'expansion-failure.png'), fullPage: true }).catch(() => {})
     await writeFile(path.join(artifacts, 'expansion-browser-failure.json'), JSON.stringify({ error: error.message, errors, checks, screenshots, url: page.url() }, null, 2) + '\n')
     throw error
-  } finally { await context.close() }
+  } finally { releaseHeldStop(); await context.close() }
 }
 
 async function main() {

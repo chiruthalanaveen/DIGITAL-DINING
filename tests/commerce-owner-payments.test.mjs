@@ -57,7 +57,7 @@ function fixture(t) {
       if (specifier === '@/lib/server/adminSession') return { requireAdmin() { throw new Error('Owner status must never use an Admin session.') } }
       if (specifier === '@/lib/server/adminSupabase') return { getAdminSupabase() { throw new Error('Owner status must never create a service-role client.') } }
       if (specifier === '@/lib/commerce/client') return { commerceFetch() { throw new Error('Server markup tests must not issue browser requests.') } }
-      if (specifier.startsWith('@/lib/server/')) return load(specifier.slice(2))
+      if (specifier.startsWith('@/lib/server/') || specifier.startsWith('@/lib/commerce/')) return load(specifier.slice(2))
       if (specifier.startsWith('.')) return load(path.relative(root, path.resolve(path.dirname(filename), specifier)))
       return nativeRequire(specifier)
     }

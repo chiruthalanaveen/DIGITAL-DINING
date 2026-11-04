@@ -24,6 +24,7 @@ const migrations = [
   'supabase/migrations/20261103090000_commerce_verified_domains.sql',
   'supabase/migrations/20261103091000_commerce_online_payments.sql',
   'supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql',
+  'supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql',
 ]
 const suites = [
   'supabase/tests/commerce_catalog_expansion.sql',
@@ -33,6 +34,7 @@ const suites = [
   'supabase/tests/commerce_verified_domains.sql',
   'supabase/tests/commerce_online_payments.sql',
   'supabase/tests/commerce_payment_recovery_queue.sql',
+  'supabase/tests/commerce_stop_unstarted_payment.sql',
 ]
 // Later increments must be explicitly reviewed and added here. Never glob the
 // migrations directory: it also contains a separate, unapplied platform ledger.
@@ -161,8 +163,12 @@ try {
   const originalRows = await rowsFor(originalTables)
   for (const relative of migrations) {
     const recoveryQueue = relative.endsWith('_commerce_payment_recovery_queue.sql')
+    const unstartedControl = relative.endsWith('_commerce_stop_unstarted_payment.sql')
     const beforeQueueDefinitions = recoveryQueue ? await definitions() : null
     const beforeQueueRows = recoveryQueue ? await rowsFor(await tables()) : null
+    const beforeStopDefinitions = unstartedControl ? await definitions() : null
+    const beforeStopTables = unstartedControl ? await tables() : null
+    const beforeStopRows = unstartedControl ? await rowsFor(beforeStopTables) : null
     await db.query(await readFile(path.join(root, relative), 'utf8'))
     console.log(`PASS ${relative}`)
     if (recoveryQueue) {
@@ -173,6 +179,27 @@ try {
       assert.deepEqual(afterQueueDefinitions, beforeQueueDefinitions, 'Recovery queue must preserve all five-migration definitions, grants, RLS, tables, indexes, constraints and triggers.')
       assert.deepEqual(await rowsFor(await tables()), beforeQueueRows, 'Recovery queue installation must preserve all five-migration and legacy records.')
       await check('recovery queue migration adds only its function and preserves all five-migration definitions, policies, grants and rows')
+    }
+    if (unstartedControl) {
+      const after = await definitions()
+      const oldFunctionSignatures = new Set(beforeStopDefinitions.functions.map(value => value.signature))
+      assert.deepEqual(after.functions.filter(value => oldFunctionSignatures.has(value.signature)), beforeStopDefinitions.functions, 'Unstarted control must preserve every existing function body and ACL.')
+      assert.deepEqual(after.policies, beforeStopDefinitions.policies, 'Unstarted control must not replace or add RLS policies.')
+      assert.deepEqual(after.default_grants, beforeStopDefinitions.default_grants)
+      const installedStopTables = await tables()
+      assert.deepEqual(installedStopTables.filter(value => !(value.schema === 'commerce_private' && value.name === 'payment_unstarted_cancellations')), beforeStopTables, 'Unstarted control preserves every old table column, grant and RLS setting.')
+      assert.equal(installedStopTables.length, beforeStopTables.length + 1)
+      assert.deepEqual(await rowsFor(beforeStopTables), beforeStopRows, 'Installation must not change any existing business/payment row.')
+      const oldConstraints = beforeStopDefinitions.constraints.filter(value => !(value.table === 'commerce_private.payment_intents' && value.name === 'payment_intents_state_check'))
+      const unchangedConstraints = after.constraints.filter(value => value.table !== 'commerce_private.payment_unstarted_cancellations' && !(value.table === 'commerce_private.payment_intents' && ['payment_intents_state_check', 'commerce_unstarted_terminal_shape'].includes(value.name)))
+      assert.deepEqual(unchangedConstraints, oldConstraints, 'Only the reviewed private intent state/terminal constraints may change.')
+      assert.deepEqual(after.indexes.filter(value => value.tablename !== 'payment_unstarted_cancellations'), beforeStopDefinitions.indexes)
+      const oldTriggers = new Set(beforeStopDefinitions.triggers.map(value => `${value.table}:${value.name}`))
+      assert.deepEqual(after.triggers.filter(value => oldTriggers.has(`${value.table}:${value.name}`)), beforeStopDefinitions.triggers, 'Every old explicit and foreign-key trigger remains byte-for-byte intact.')
+      const addedTriggers = after.triggers.filter(value => !oldTriggers.has(`${value.table}:${value.name}`))
+      assert.equal(addedTriggers.length, 10, 'Two explicit history guards and eight internal triggers enforce the two new proof foreign keys.')
+      assert.ok(addedTriggers.every(value => ['commerce_payment_unstarted_proof_immutable', 'commerce_payment_cancelled_intent_guard'].includes(value.name) || value.internal && value.definition.includes('payment_unstarted_cancellations')))
+      await check('unstarted control migration preserves existing rows, functions, RLS, grants, indexes and all unrelated constraints/triggers')
     }
   }
   assert.deepEqual(await rowsFor(originalTables), originalRows, 'All original columns and business records must remain unchanged on installation.')
@@ -221,7 +248,22 @@ try {
 
   for (const relative of suites) {
     const before = (await db.query('SELECT count(*)::int AS count FROM commerce_test.results')).rows[0].count
-    await db.query(await readFile(path.join(root, relative), 'utf8'))
+    const source = await readFile(path.join(root, relative), 'utf8')
+    if (relative.endsWith('/commerce_stop_unstarted_payment.sql')) {
+      // Invalid/ambiguous state fixtures are deliberate defense cases, never
+      // persistent evidence or candidates for the real-browser recovery queue.
+      const beforeRows = await rowsFor(await tables())
+      const maxId = (await db.query('SELECT coalesce(max(id),0)::int AS id FROM commerce_test.results')).rows[0].id
+      let labels
+      await db.query('BEGIN')
+      try {
+        await db.query(source.replace(/^begin;\s*/m, '').replace(/commit;\s*$/i, ''))
+        labels = (await db.query('SELECT label FROM commerce_test.results WHERE id>$1 ORDER BY id', [maxId])).rows.map(row => row.label)
+      } finally { await db.query('ROLLBACK') }
+      assert.deepEqual(await rowsFor(await tables()), beforeRows, 'Rollback-only unstarted module restores every prior business and history fixture.')
+      for (const label of labels) await check(label)
+      await check('rollback-only unstarted defense fixtures restore every prior business record and immutable receipt')
+    } else await db.query(source)
     const after = (await db.query('SELECT count(*)::int AS count FROM commerce_test.results')).rows[0].count
     console.log(`PASS ${relative} (${after - before} PostgreSQL assertions)`)
   }
@@ -495,6 +537,104 @@ try {
   const retained = (await db.query('SELECT count(*)::int AS count FROM commerce_private.payment_receipts WHERE intent_id=ANY($1::uuid[])', [finalUnitIntents.map(intent => intent.id)])).rows[0].count
   assert.equal(retained, 2)
   await check('simultaneous independent captured payments cannot oversell and retain the losing captured receipt for reconciliation')
+
+  // These transactions exercise the existing claim_create row lock, not a
+  // simulated provider timeout. A stopped request is safe only before claim.
+  const stopSql = 'SELECT public.commerce_payment_attempt_control($1,$2,$3,$4) AS result'
+  const stopArgs = (key, intent, action = 'cancel_unstarted') => [paymentWebsite, key, action, intent?.id || null]
+  const stockBeforeStops = (await db.query('SELECT stock_quantity FROM public.commerce_products WHERE id=$1', [paymentProduct])).rows[0].stock_quantity
+  const beforeStopBusiness = await rowsFor((await tables()).filter(table => !(table.schema === 'commerce_private' && ['payment_intents', 'payment_unstarted_cancellations'].includes(table.name))))
+  await db.query('UPDATE public.commerce_products SET stock_quantity=5 WHERE id=$1', [paymentProduct])
+  async function beginStopActor(label, role, user = null) {
+    const client = connection(label)
+    await client.connect(); await verifyEndpoint(client)
+    await client.query('BEGIN'); await client.query(`SET LOCAL ROLE ${role}`)
+    await client.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role',$2,true)", [user || '', role])
+    return client
+  }
+  async function stopClaimRace(stopFirst, key) {
+    const intent = await actor(paymentBuyer, startSql, paymentArgs(key))
+    const first = await beginStopActor('stop-race-first', stopFirst ? 'authenticated' : 'service_role', stopFirst ? paymentBuyer : null)
+    const second = await beginStopActor('stop-race-second', stopFirst ? 'service_role' : 'authenticated', stopFirst ? null : paymentBuyer)
+    let pending
+    try {
+      const winner = (await first.query(stopFirst ? stopSql : paymentServiceSql, stopFirst ? stopArgs(key, intent) : ['claim_create', JSON.stringify({ intent_id: intent.id })])).rows[0].result
+      const pid = (await second.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
+      pending = second.query(stopFirst ? paymentServiceSql : stopSql, stopFirst ? ['claim_create', JSON.stringify({ intent_id: intent.id })] : stopArgs(key, intent)).then(result => ({ result: result.rows[0].result }), error => ({ error }))
+      await waitBlocked(pid); await first.query('COMMIT')
+      const losing = await pending
+      if (stopFirst) {
+        assert.equal(winner.payment.state, 'cancelled_unstarted')
+        assert.equal(losing.result.claimed, false)
+        assert.equal(losing.result.state, 'cancelled_unstarted')
+      } else {
+        assert.equal(winner.claimed, true)
+        assert.equal(losing.error?.code, '23505')
+      }
+      const current = (await db.query('SELECT state,provider_order_id,create_lease FROM commerce_private.payment_intents WHERE id=$1', [intent.id])).rows[0]
+      assert.equal(current.state, stopFirst ? 'cancelled_unstarted' : 'creating')
+      assert.equal(current.provider_order_id, null)
+      assert.equal(Boolean(current.create_lease), !stopFirst)
+      assert.equal((await db.query('SELECT count(*)::int AS count FROM commerce_private.payment_unstarted_cancellations WHERE intent_id=$1', [intent.id])).rows[0].count, stopFirst ? 1 : 0)
+      await check(stopFirst ? 'unstarted stop wins a real row-lock race and the provider creation loser cannot acquire a lease' : 'provider creation wins a real row-lock race and stopping rejects without clearing the original lease')
+    } finally {
+      await first.query('ROLLBACK').catch(() => {})
+      if (pending) await pending
+      await second.query('ROLLBACK').catch(() => {})
+      await Promise.all([first.end(), second.end()])
+    }
+  }
+  await stopClaimRace(true, '76200000-0000-4000-8000-000000000001')
+  await stopClaimRace(false, '76200000-0000-4000-8000-000000000002')
+
+  const stopDuplicateKey = '76200000-0000-4000-8000-000000000003'
+  const stopDuplicateIntent = await actor(paymentBuyer, startSql, paymentArgs(stopDuplicateKey))
+  const duplicateStops = await Promise.all([actor(paymentBuyer, stopSql, stopArgs(stopDuplicateKey, stopDuplicateIntent)), actor(paymentBuyer, stopSql, stopArgs(stopDuplicateKey, stopDuplicateIntent))])
+  assert.deepEqual(duplicateStops[0], duplicateStops[1])
+  assert.equal((await db.query('SELECT count(*)::int AS count FROM commerce_private.payment_unstarted_cancellations WHERE intent_id=$1', [stopDuplicateIntent.id])).rows[0].count, 1)
+  await check('simultaneous duplicate stops retain exactly one original immutable proof and timestamp')
+
+  const stopAuthKey = '76200000-0000-4000-8000-000000000004'
+  const stopAuthIntent = await actor(paymentBuyer, startSql, paymentArgs(stopAuthKey))
+  const confirmedAt = (await db.query('SELECT email_confirmed_at::text AS value FROM auth.users WHERE id=$1', [paymentBuyer])).rows[0].value
+  const revoker = connection('stop-auth-withdrawal'), stopWaiter = await beginStopActor('stop-auth-waiter', 'authenticated', paymentBuyer)
+  await revoker.connect(); await verifyEndpoint(revoker)
+  let pendingStop
+  try {
+    await revoker.query('BEGIN')
+    await revoker.query('UPDATE auth.users SET email_confirmed_at=null WHERE id=$1', [paymentBuyer])
+    const pid = (await stopWaiter.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
+    pendingStop = stopWaiter.query(stopSql, stopArgs(stopAuthKey, stopAuthIntent)).then(result => ({ result }), error => ({ error }))
+    await waitBlocked(pid); await revoker.query('COMMIT')
+    assert.equal((await pendingStop).error?.code, '42501')
+    await stopWaiter.query('ROLLBACK')
+    assert.equal((await db.query('SELECT state FROM commerce_private.payment_intents WHERE id=$1', [stopAuthIntent.id])).rows[0].state, 'new')
+    assert.equal((await db.query('SELECT count(*)::int AS count FROM commerce_private.payment_unstarted_cancellations WHERE intent_id=$1', [stopAuthIntent.id])).rows[0].count, 0)
+    await check('stopping rechecks verified Auth after a concurrent withdrawal while preserving the unstarted original')
+  } finally {
+    await revoker.query('ROLLBACK').catch(() => {})
+    if (pendingStop) await pendingStop
+    await stopWaiter.query('ROLLBACK').catch(() => {})
+    await Promise.all([revoker.end(), stopWaiter.end()])
+    await db.query('UPDATE auth.users SET email_confirmed_at=$2::timestamptz WHERE id=$1', [paymentBuyer, confirmedAt])
+  }
+
+  // If original intent insertion has not committed, absence cannot be used to
+  // release the browser pointer. That same original request can still arrive.
+  const lateCreateKey = '76200000-0000-4000-8000-000000000005'
+  const lateCreator = await beginStopActor('stop-original-inflight', 'authenticated', paymentBuyer)
+  try {
+    const inflightIntent = (await lateCreator.query(startSql, paymentArgs(lateCreateKey))).rows[0].result
+    await assert.rejects(actor(paymentBuyer, stopSql, stopArgs(lateCreateKey)), error => error.code === '23505')
+    await lateCreator.query('COMMIT')
+    assert.equal((await actor(paymentBuyer, stopSql, stopArgs(lateCreateKey, inflightIntent, 'inspect'))).can_cancel_unstarted, true)
+    assert.equal((await actor(null, paymentServiceSql, ['claim_create', JSON.stringify({ intent_id: inflightIntent.id })], 'service_role')).claimed, true)
+    assert.equal((await db.query('SELECT count(*)::int AS count FROM commerce_private.payment_unstarted_cancellations WHERE intent_id=$1', [inflightIntent.id])).rows[0].count, 0)
+    await check('an uncommitted missing original is never cancellation proof and can still acquire its one legitimate creation lease')
+  } finally { await lateCreator.query('ROLLBACK').catch(() => {}); await lateCreator.end() }
+  await db.query('UPDATE public.commerce_products SET stock_quantity=$2 WHERE id=$1', [paymentProduct, stockBeforeStops])
+  assert.deepEqual(await rowsFor((await tables()).filter(table => !(table.schema === 'commerce_private' && ['payment_intents', 'payment_unstarted_cancellations'].includes(table.name)))), beforeStopBusiness)
+  await check('unstarted concurrency cases preserve every order, receipt, stock, coupon, wallet, Auth, Storage, merchant and cron record')
 
   // Both worker transactions remain open while claiming. SKIP LOCKED must
   // return different events without waiting for the first worker's commit.

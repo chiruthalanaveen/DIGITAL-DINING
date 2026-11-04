@@ -1,19 +1,41 @@
-# Core, customer and growth SQL object inventory
+# Commerce expansion SQL object inventory
 
-3 November 2026. Generated from the three linked migration source files, with
-explicit explanations for each new table column, constraint/index, function,
-trigger and policy. This is a source inventory, not evidence that a hosted
-database has these objects. Full SQL files remain authoritative. The domain and
-merchant-payment modules have separate full reviews linked in the consolidated
-[installation runbook](expansion-installation.md).
+4 November 2026. This index covers all seven pending commerce migrations in
+their dependency order. The first three modules have their complete column and
+object inventories below; the domain and online-payment entries link their
+full source/reviews, and the sixth/seventh entries explain their exact delta.
+This is a source inventory, not evidence that a hosted database has these
+objects. Full SQL files remain authoritative. Follow the consolidated
+[installation runbook](expansion-installation.md); none of these seven files
+has been applied to a hosted target, and the installed foundation must not be
+replayed. The separate platform subscription ledger is excluded.
 
-All three files are one-time transactional migrations. They add no legacy-row
+All seven files are one-time transactional migrations. They add no legacy-row
 UPDATE/DELETE/backfill and no cron job. New records are mutated through validated
-functions; their policies are SELECT-only. SECURITY DEFINER functions use the
-fixed empty search path shown in their source. Private helpers and public RPCs
-explicitly revoke inherited API/PUBLIC execution before granting only their
-intended callers. Existing RLS policies and financial/business records remain
-unchanged; intentional commerce compatibility DDL is listed separately below.
+functions; the added policies are SELECT-only. SECURITY DEFINER functions use
+the fixed empty search path shown in their source. Functions explicitly revoke
+inherited API/PUBLIC execution before granting only their intended callers.
+Existing RLS policies and financial/business records remain unchanged;
+intentional commerce compatibility DDL is listed below and in each review.
+
+| Order | Complete migration | Object review |
+| --- | --- | --- |
+| 1 | [20261102160000_commerce_catalog_fulfillment.sql](../../supabase/migrations/20261102160000_commerce_catalog_fulfillment.sql) | [Catalog review](catalog-migration-review.md) and inventory below |
+| 2 | [20261102161000_commerce_customer_experience.sql](../../supabase/migrations/20261102161000_commerce_customer_experience.sql) | [Customer review](customer-migration-review.md) and inventory below |
+| 3 | [20261102162000_commerce_growth_notifications.sql](../../supabase/migrations/20261102162000_commerce_growth_notifications.sql) | [Growth review](growth-migration-review.md) and inventory below |
+| 4 | [20261103090000_commerce_verified_domains.sql](../../supabase/migrations/20261103090000_commerce_verified_domains.sql) | [Domain review](domain-migration-review.md) and object summary below |
+| 5 | [20261103091000_commerce_online_payments.sql](../../supabase/migrations/20261103091000_commerce_online_payments.sql) | [Every payment column, constraint, index, function, trigger and grant](online-payment-migration-review.md) |
+| 6 | [20261104090000_commerce_payment_recovery_queue.sql](../../supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql) | [Read-only recovery queue review](payment-recovery-queue-migration-review.md) |
+| 7 | [20261104120000_commerce_stop_unstarted_payment.sql](../../supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql) | [Unstarted-stop review, application steps and verification SQL](stop-unstarted-payment-migration-review.md) |
+
+The current isolated seven-file validation passes **628 PostgreSQL assertions**,
+preserving every prior 561 case and all first-six source hashes. Final fixture
+metadata is **34 inspected tables, 31 policies and 69 application functions**
+(`public` 33 + `commerce_private` 36); including three synthetic Auth/Storage
+helpers gives 72 functions. These are local PostgreSQL 18.4 fixture counts,
+not hosted Supabase verification. Historical five-file evidence remains 531
+assertions and six-file evidence remains 561. See
+[database validation](expansion-db-validation.md) for the logs and limits.
 
 ## Catalog and fulfillment
 
@@ -465,7 +487,178 @@ Owners/Admin receive safe status counts instead of recipient records.
 | `create trigger commerce_coupon_redemption_guard before insert or update or delete on public.commerce_coupon_redemptions for each row execute function commerce_private.guard_coupon_redemption();` | Before redemption INSERT/UPDATE/DELETE, validate the new bound discount or reject edits/deletes. |
 | `create trigger commerce_order_notification_events after insert or update of status on public.commerce_orders for each row execute function commerce_private.enqueue_order_notification();` | After order insertion or actual status change, append a deduplicated outbox event transactionally. |
 
-## Columns added to existing commerce tables
+## Verified domains — fourth migration
+
+Complete SQL: [20261103090000_commerce_verified_domains.sql](../../supabase/migrations/20261103090000_commerce_verified_domains.sql).
+Authorization, provider/DNS/TLS requirements, exact installation and rollback:
+[domain-migration-review.md](domain-migration-review.md).
+
+The new `public.commerce_domains` table has these columns:
+
+| Column | Definition / purpose |
+| --- | --- |
+| `id` | Generated UUID primary key for retained claim history. |
+| `website_id` | Required UUID referencing the commerce website. |
+| `hostname` | Required text passing `valid_domain_hostname`: normalized public hostname, excluding IP/URL/local/reserved/platform forms. |
+| `claimed_by` | Required UUID referencing the original Auth claimant. |
+| `ownership_verified` | Boolean, default false; current ownership-check state. |
+| `ownership_verified_at` | Optional timestamptz; durable first ownership evidence that later failure/release cannot erase. |
+| `deployment_verified` | Boolean, default false; current deployment-check state. |
+| `tls_verified` | Boolean, default false; current certificate-check state. |
+| `provider_project_id` | Optional text, 1–200 characters when present; bound approved provider project. |
+| `verification` | JSONB array, default `[]`, at most 16,000 serialized bytes; private provider DNS instructions. |
+| `verification_checked_at` | Optional timestamptz of the current saved verification checks. |
+| `verified_at` | Optional timestamptz when all current checks pass. |
+| `active` | Boolean, default false; routing activation requires verified ownership/deployment/TLS, project ID and an unreleased claim. |
+| `released_at` | Optional timestamptz; releasing preserves the original claim and ownership evidence. |
+| `created_at` | Timestamptz, default `now()`; original claim timestamp. |
+| `updated_at` | Timestamptz, default `now()`; last validated state change. |
+
+The PK and unique `(website_id,id)` create backing unique indexes. Three CHECKs
+require ownership evidence for verified ownership, all required current checks
+for activation, and a verification-check timestamp whenever `verified_at` is
+present. There are four explicit indexes:
+
+- `commerce_domains_live_hostname`: unique `hostname` where `released_at IS NULL`.
+- `commerce_domains_website`: `(website_id,created_at DESC)` for tenant history.
+- `commerce_domains_public_lookup`: `hostname` where active and unreleased.
+- `commerce_domains_verified_history`: `hostname` where historical ownership exists.
+
+The six new functions are:
+
+| Function | Purpose / API execution |
+| --- | --- |
+| `commerce_private.valid_domain_hostname(text)` | Immutable hostname validator; no API execution. |
+| `commerce_private.domain_owner_access(uuid)` | Verified Auth/current branding-permission membership helper; authenticated execution for the SELECT policy. |
+| `public.commerce_domain_workspace(uuid)` | Verified owner workspace projection; authenticated. |
+| `public.commerce_domain_owner_action(uuid,text,jsonb)` | Locked owner claim/remove actions; authenticated. |
+| `public.commerce_domain_admin_action(uuid,text,jsonb)` | Actual-service-role status/check/activate/deactivate actions; service_role only. |
+| `public.commerce_resolve_domain(text)` | Safe active verified host-to-slug projection; anon/authenticated/service_role. |
+
+RLS is enabled. The sole new policy,
+`commerce_domains_owner_read`, permits authenticated SELECT only when
+`commerce_private.domain_owner_access(website_id)` passes. Direct table DML is
+revoked for all API roles, including service_role. No new trigger, legacy-table
+ALTER, existing-function replacement, row backfill or cron job is introduced.
+Recording claims/checks does not register DNS, issue TLS or authorize deployment.
+
+## Separate online payments — fifth migration
+
+Complete SQL: [20261103091000_commerce_online_payments.sql](../../supabase/migrations/20261103091000_commerce_online_payments.sql).
+The authoritative full inventory of every column, key/index, function, trigger
+and execution grant is in [online-payment-migration-review.md](online-payment-migration-review.md).
+
+| New private table | Retained data / mutation boundary |
+| --- | --- |
+| `payment_credential_versions` | Immutable encrypted website/version-bound merchant credentials; plaintext keys are not stored as SQL columns. |
+| `payment_merchants` | Current tenant credential-version pointer and enabled gate. |
+| `payment_intents` | Original verified buyer/cart key, request/quote, exact amount/currency, credential version, state and one provider-create lease. |
+| `payment_receipts` | Immutable capture identity/amount/time; only validated fulfillment/reconciliation fields may advance. |
+| `payment_webhooks` | Bound signed-event identity/body hash, bounded attempts, processing lease and safe outcome. |
+
+All five tables enable RLS with **no SELECT/mutation policy or direct API-role
+table privilege**. Website-composite FKs/uniqueness bind versions, intents,
+receipts, orders and webhook events. Every declared PK/UNIQUE creates its own
+backing index. The only additional explicit index,
+`commerce_payment_webhook_recovery`, covers `(state,lease_expires_at)` for
+pending/processing/failed events.
+
+Five private functions are `payment_history_guard()`, `payment_assert_service()`,
+`payment_view(uuid)`, `payment_price_checkout(uuid,jsonb,boolean,uuid)` and
+`payment_fulfill(uuid)`. None is directly executable by API roles. Seven public
+functions are `commerce_payment_availability(uuid)` (safe public availability),
+`commerce_payment_readiness(uuid)` (permitted owner),
+`commerce_payment_status(uuid)`,
+`commerce_payment_quote(uuid,jsonb,jsonb,text,text)` and
+`commerce_payment_start(uuid,jsonb,jsonb,text,uuid,text)` (own verified buyer),
+plus `commerce_payment_admin(uuid,text,jsonb)` and
+`commerce_payment_service(text,jsonb)` (actual service-role guarded). The full
+review describes each action and exact grants.
+
+Two history triggers, `commerce_payment_credentials_immutable` and
+`commerce_payment_receipts_immutable`, invoke `payment_history_guard()` before
+UPDATE/DELETE on credential versions/receipts. They retain original encrypted
+credential and captured-payment history. The only existing-table change is
+widening `commerce_orders_payment_method_check` from COD to COD/Razorpay; existing
+COD rows and payment-status checks remain valid. No existing-row DML, policy
+replacement or cron job is added. The new flags/merchant/provider credentials
+are separate from restaurant/wallet/subscription payment integrations and stay
+disabled until applicable activation approval and external acceptance.
+
+## Read-only payment recovery queue — sixth migration
+
+Complete SQL: [20261104090000_commerce_payment_recovery_queue.sql](../../supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql).
+Exact DTO, execution grants, testing and rollback:
+[payment-recovery-queue-migration-review.md](payment-recovery-queue-migration-review.md).
+
+This adds exactly one function:
+`public.commerce_payment_reconciliation_queue(p_website_id uuid) RETURNS jsonb`,
+PL/pgSQL STABLE SECURITY DEFINER with `search_path=''`. It invokes the existing
+actual-role service guard, revokes all inherited execution, and grants only
+service_role EXECUTE. It lists at most 100 website-bound unresolved attempts,
+prioritizing captured/unknown work, with exact `total_count`/`has_more` and a
+safe receipt projection. It does not expose buyer/recipient data, ciphertext,
+private request/quote payloads or creation leases. The signed Admin HTTP guard
+remains required before its server uses a service client.
+
+There is no new/changed table, column, constraint, index, trigger, sequence, RLS
+policy, row mutation, existing-function replacement or cron. Listing does not
+stop/retry an attempt or contact the provider. It runs in a READ ONLY
+transaction. The seventh migration's terminal `cancelled_unstarted` state is
+outside this existing queue's explicit unresolved-state filter, so immutable
+stopped history is not presented as outstanding provider reconciliation.
+
+## Stop a proven unstarted payment — seventh migration
+
+Complete SQL: [20261104120000_commerce_stop_unstarted_payment.sql](../../supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql).
+Full behavior, exact installation, read-only verification and retained-history
+rollback: [stop-unstarted-payment-migration-review.md](stop-unstarted-payment-migration-review.md).
+
+The new private proof table is `commerce_private.payment_unstarted_cancellations`:
+
+| Column | Definition / meaning |
+| --- | --- |
+| `id` | UUID PK, default `gen_random_uuid()`; immutable proof reference. |
+| `website_id` | Required UUID; tenant boundary and composite intent FK component. |
+| `intent_id` | Required unique UUID; exactly one proof per original payment intent. |
+| `buyer_id` | Required UUID FK to `auth.users(id)`; identity is derived from verified Auth. |
+| `cart_key` | Required UUID retaining the original browser checkout key. |
+| `reason` | Required text, default and CHECK fixed to `never_dispatched`. |
+| `cancelled_at` | Required timestamptz, default `now()`; original transaction timestamp retained on retries. |
+
+Unique `(website_id,buyer_id,cart_key)` and FK `(website_id,intent_id)` to
+`payment_intents(website_id,id)` bind proof to its original attempt. These keys
+create three backing unique indexes (PK, intent ID, scoped cart). There is no
+extra explicit index or sequence, no cascading deletion, no new RLS policy,
+and no direct table privilege for any API role. RLS is enabled. Two foreign
+keys add eight internal RI triggers; existing trigger definitions remain
+unchanged.
+
+On existing `payment_intents`, `payment_intents_state_check` is widened by
+terminal `cancelled_unstarted`; `commerce_unstarted_terminal_shape` requires
+NULL provider order and creation lease for that state. No column or existing
+row is rewritten during installation. Four functions are added:
+
+| Function | Purpose / execution |
+| --- | --- |
+| `commerce_private.payment_unstarted_proof_guard()` | Invoker trigger function rejects proof UPDATE/DELETE. |
+| `commerce_private.payment_cancelled_intent_guard()` | SECURITY DEFINER trigger rejects direct terminal insertion, any terminal-row rewrite and unsupported transitions. Only original `new` with NULL provider/lease, no receipt and matching proof may transition, changing only state/updated_at. |
+| `commerce_private.payment_attempt_view(uuid,uuid,uuid)` | SQL STABLE SECURITY DEFINER single-snapshot projection of website/buyer/cart, safe payment, proof and eligibility. |
+| `public.commerce_payment_attempt_control(uuid,uuid,text,uuid)` | SECURITY DEFINER verified-own-buyer `inspect` / `cancel_unstarted`, optionally bound to expected intent. Only authenticated EXECUTE; private helpers have none. |
+
+Every function pins `search_path=''`. Explicit trigger
+`commerce_payment_unstarted_proof_immutable` runs before proof UPDATE/DELETE;
+`commerce_payment_cancelled_intent_guard` runs before intent INSERT/UPDATE.
+Auth is rechecked under FOR SHARE before the intent FOR UPDATE lock. The latter
+serializes with `claim_create`, without an inverse-order cart advisory lock.
+Only a proven **existing** `new`/NULL-provider/NULL-lease/no-receipt intent may
+stop. Missing rows, timeouts, popup dismissal, unknown/provider-ready/captured
+states never authorize release. Duplicate calls retain the same original proof.
+The retained original key stays reserved; only matching proof lets the browser
+keep the bag and create a fresh UUID. No provider call, refund, funds movement,
+existing-policy change, paid-subscription enablement or cron is introduced.
+
+## Columns added to existing commerce tables by the first three migrations
 
 | Existing table / new column | Exact declaration | Meaning |
 | --- | --- | --- |

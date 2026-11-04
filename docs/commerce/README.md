@@ -3,32 +3,51 @@
 Updated 4 November 2026. The current work is on
 `feature/commerce-expansion`, based on the previously published application.
 Read the [expansion implementation/test report](expansion-report.md) and
-[six-migration installation/recovery runbook](expansion-installation.md) first.
+[seven-migration installation/recovery runbook](expansion-installation.md) first.
 The source includes catalog/fulfillment, customer experience, coupons/outbox,
 verified domains and separately gated merchant payments. Local tests are not a
 claim of hosted/provider acceptance or live activation. New hosted SQL,
 production deployment and merges remain unperformed and require separate
 applicable approval. Domain/provider/notification/payment flags remain off.
 
-The 4 November follow-up adds a read-only Super Admin open-payment queue and
-buyer recovery references, plus an owner configuration-status panel. The sixth
-SQL migration only adds a service-only read RPC; it never marks an attempt paid,
-refunded, cancelled or abandoned. The first five migrations remain unchanged.
-The final current-source checks pass: 561 isolated SQL assertions, 296/296 unit
-tests, zero lint errors/166 warnings, the full repository build and 198 combined
-browser screenshots. Source fingerprints remain stable across the build and
-both browser suites. The valid-uppercase-UUID Admin query regression passes
-within 21 payment tests; owner status adds eight focused tests. Expansion browser
-coverage includes owner status and retained-intent discovery without provider
-queries. Hosted/provider acceptance and activation remain held. The
-3 November 531-SQL/284-unit/build/browser
-results in the report remain dated historical evidence, not a fresh release
-claim. Draft [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7)
-remains the review destination.
+The current 4 November increment adds a narrow **stop unstarted checkout** flow.
+Only a verified buyer's existing `new` intent with no provider order, no creation
+lease and no captured receipt can stop, under the same row lock used to claim
+provider creation. Immutable cancellation proof preserves the original request
+and key. Only bound proof unlocks the browser; the bag stays and the next
+checkout uses a fresh UUID. Missing records and already-started/unknown/ready/
+captured payments remain locked for reconciliation. No provider cancellation,
+expiry inference, refund or activation is introduced. Read the
+[full seventh-migration review](stop-unstarted-payment-migration-review.md).
+
+Shared online-payment pointers are serialized across cooperating tabs with Web
+Locks. Online start/stop and receipt/proof release require a secure browser with
+`navigator.locks.request`; unsupported browsers retain the attempt and can still
+fetch/display status through Check payment. COD without a saved online pointer
+is unaffected. A recovered `new` request must use Stop to restart checkout;
+Continue does not add a provider-resume capability.
+
+The seven-file local PostgreSQL suite passes **628 assertions**, retaining all
+prior 561 and adding 67 stop/race/preservation checks. Current full application
+checks pass **327/327 unit tests**, lint with **zero errors/166 warnings**, and
+`npm run build`. Focused payment API tests pass 27; pointer/state tests pass
+18/10. Fresh full-app browser suites pass 13 expansion groups/112 screenshots
+and 118 original compatibility screenshots: **230 total** at four desktop/mobile
+widths. The first six migration files remain byte-for-byte unchanged. The full
+checklist is **PARTIAL PASS** until hosted/provider/domain/notification acceptance
+and applicable activation approvals are complete.
+
+The preceding committed recovery follow-up passed 561 SQL assertions, 296 unit
+tests, zero lint errors/166 warnings, build and 198 browser screenshots. It added
+read-only Admin discovery, buyer references and owner configuration status; the
+sixth migration itself never changes payment state. Those results and the
+3 November 531-SQL/284-unit results remain dated historical evidence. Draft
+[PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7) remains the review
+destination. Hosted/provider acceptance and activation remain held.
 
 The sections below preserve the dated first-increment record; its narrower
 source scope and “No SQL migration required” statement describe that older
-increment only. **The current expansion requires six new migrations.** The
+increment only. **The current expansion requires seven new migrations.** The
 installed foundation must not be replayed, and the separate pending platform
 subscription ledger remains excluded/off.
 

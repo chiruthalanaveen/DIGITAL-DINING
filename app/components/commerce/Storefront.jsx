@@ -10,9 +10,16 @@ import StorefrontBag from './StorefrontBag'
 import StorefrontSections, { StorefrontFAQ, StorefrontPolicies, TEMPLATE_COPY } from './StorefrontSections'
 import CustomerProductActions from './CustomerProductActions'
 import CommercePaymentCheckout from './CommercePaymentCheckout'
+import { checkedUnstartedCancellation } from '@/lib/commerce/payment-state'
 import { addressAutofill, cartLineKey, cartLines, lineStock, normalizeCart, productImages, productPrice, productStock, productVariants, storefrontTemplate, variantLabel } from '@/lib/commerce/catalog-options'
 
 const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value || 0) / 100)
+function recoveryMatchesStoredAttempt(websiteId, buyerId, key) {
+  try {
+    const current = JSON.parse(localStorage.getItem(`commerce-payment-attempt:${websiteId}:${buyerId}`) || 'null')
+    return current === null || current.cart_key === key
+  } catch { return false }
+}
 const color = (value, fallback) => {
   const input = String(value || '')
   if (/^#[\da-f]{6}$/i.test(input)) return input
@@ -105,6 +112,7 @@ export default function Storefront({ initialCatalog }) {
   const [checkoutPending, setCheckoutPending] = useState(false)
   const [onlinePending, setOnlinePending] = useState(false)
   const [paymentKey, setPaymentKey] = useState(null)
+  const [paymentNotice, setPaymentNotice] = useState('')
   const clientRef = useRef(null)
   const attemptRef = useRef(null)
   const restoredAttemptRef = useRef(null)
@@ -154,12 +162,16 @@ export default function Storefront({ initialCatalog }) {
         let pending = null
         try { pending = nextId ? JSON.parse(sessionStorage.getItem(`dd-commerce-checkout:${website.id}:${nextId}`) || 'null') : null } catch {}
         const pendingKey = typeof pending?.key === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(pending.key) ? pending.key : null
-        restoredAttemptRef.current = pendingKey
-        setCheckoutPending(Boolean(pendingKey))
         let online = null
         try { online = nextId ? JSON.parse(localStorage.getItem(`commerce-payment-attempt:${website.id}:${nextId}`) || 'null') : null } catch {}
         const onlineKey = typeof online?.cart_key === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(online.cart_key) ? online.cart_key : null
+        // A newer online attempt in another tab supersedes an old session-only
+        // key. Its completed history must not clear the newer attempt's bag.
+        const coherentPendingKey = onlineKey && pendingKey !== onlineKey ? null : pendingKey
+        restoredAttemptRef.current = coherentPendingKey
+        setCheckoutPending(Boolean(coherentPendingKey))
         setOnlinePending(Boolean(onlineKey))
+        setPaymentNotice('')
         setPaymentKey(nextId ? onlineKey || pendingKey || crypto.randomUUID() : null)
         touchedRef.current = {}
         setCustomer({ name: '', phone: '', address: '', pincode: '', saved_address_id: '' })
@@ -221,6 +233,7 @@ export default function Storefront({ initialCatalog }) {
     // current catalog availability, rather than requiring an orderable cart.
     commerceFetch(`/api/commerce/customer/orders?website_id=${website.id}`, { client }).then(result => {
       if (!alive || accountIdRef.current !== accountId || version !== accountVersionRef.current || restoredAttemptRef.current !== key) return
+      if (!recoveryMatchesStoredAttempt(website.id, accountId, key)) return
       const existing = result.orders?.find(order => order.idempotency_key === key)
       if (!existing) return
       restoredAttemptRef.current = null
@@ -283,6 +296,7 @@ export default function Storefront({ initialCatalog }) {
   function quantity(product, next, variant = null) {
     if (busy || onlinePending || product.variants_required && !variant) return
     setError('')
+    setPaymentNotice('')
     setConfirmation(null)
     setCart(current => {
       const changed = { ...current }
@@ -300,6 +314,12 @@ export default function Storefront({ initialCatalog }) {
     if (busy || onlinePending || !canCOD || !lines.length) return
     setError('')
     if (!verified || !clientRef.current) { setError('Sign in with a verified account before placing your order.'); return }
+    try {
+      if (localStorage.getItem(`commerce-payment-attempt:${website.id}:${session.user.id}`) !== null) {
+        setError('A payment request is saved in this browser. Refresh to open it before using cash on delivery.')
+        return
+      }
+    } catch { setError('The saved payment state could not be checked. Refresh before placing another order.'); return }
     const verifiedSubtotal = quote?.subtotal_paise ?? subtotal
     const verifiedMinimum = quote?.minimum_order_paise ?? minimum
     if (!canOrder || verifiedSubtotal < verifiedMinimum) { setError(verifiedSubtotal < verifiedMinimum ? `The minimum order is ${money(verifiedMinimum)}.` : 'Checkout is not available for this store.'); return }
@@ -325,6 +345,7 @@ export default function Storefront({ initialCatalog }) {
       const result = await commerceFetch(`/api/commerce/checkout/${website.id}`, { client: clientRef.current, method: 'POST', body: { ...body, idempotency_key: attempt.key } })
       if (!sameBuyer()) return
       if (!result.order?.id) throw new Error('The order confirmation was incomplete. Retry with the same details or check your order history.')
+      if (!recoveryMatchesStoredAttempt(website.id, buyerId, attempt.key)) throw new Error('Your original order is confirmed. A newer payment request is saved in another tab. Reload before continuing.')
       setConfirmation(result.order)
       setCart({})
       attemptRef.current = null
@@ -340,6 +361,7 @@ export default function Storefront({ initialCatalog }) {
           if (!sameBuyer()) return
           const existing = history.orders?.find(order => order.idempotency_key === attempt.key)
           if (existing) {
+            if (!recoveryMatchesStoredAttempt(website.id, buyerId, attempt.key)) throw new Error('A newer payment request is saved in another tab. Reload before continuing.')
             setConfirmation(existing)
             setCart({})
             attemptRef.current = null
@@ -370,7 +392,17 @@ export default function Storefront({ initialCatalog }) {
     try { sessionStorage.removeItem(`dd-commerce-checkout:${website.id}:${currentBuyerId}`) } catch {}
   }, [currentBuyerId, website.id])
 
-  const onlinePayment = verified && client && paymentKey && (initialCatalog.payments?.available === true || onlinePending) ? <CommercePaymentCheckout key={`${website.id}:${session.user.id}`} websiteId={website.id} userId={session.user.id} client={client} checkout={{ ...quoteBody, idempotency_key: paymentKey }} disabled={busy || !canOrder || !lines.length || quoteBlocked || checkoutPending && !onlinePending || (quote?.subtotal_paise ?? subtotal) < (quote?.minimum_order_paise ?? minimum)} onStateChange={onlineStateChanged} onComplete={onlineComplete} /> : null
+  const onlineCancelled = useCallback(control => {
+    if (accountIdRef.current !== currentBuyerId || !paymentKey) return
+    try { checkedUnstartedCancellation(control, website.id, paymentKey) } catch { return }
+    setOnlinePending(false); setCheckoutPending(false); setConfirmation(null)
+    setPaymentKey(crypto.randomUUID())
+    setPaymentNotice('Payment processing had not started, so this checkout request was stopped. Your bag is unchanged.')
+    attemptRef.current = null; restoredAttemptRef.current = null
+    try { sessionStorage.removeItem(`dd-commerce-checkout:${website.id}:${currentBuyerId}`) } catch {}
+  }, [currentBuyerId, paymentKey, website.id])
+
+  const onlinePayment = verified && client && paymentKey && (initialCatalog.payments?.available === true || onlinePending) ? <CommercePaymentCheckout key={`${website.id}:${session.user.id}`} websiteId={website.id} userId={session.user.id} client={client} checkout={{ ...quoteBody, idempotency_key: paymentKey }} disabled={busy || !canOrder || !lines.length || quoteBlocked || checkoutPending && !onlinePending || (quote?.subtotal_paise ?? subtotal) < (quote?.minimum_order_paise ?? minimum)} onStateChange={onlineStateChanged} onComplete={onlineComplete} onCancelled={onlineCancelled} /> : null
 
   function renderProduct(product) {
     const options = productVariants(product)
@@ -431,7 +463,7 @@ export default function Storefront({ initialCatalog }) {
       </Modal>
 
       <Modal open={cartOpen} titleId="cs-cart-title" onClose={() => { if (!busy) setCartOpen(false) }} className="cs-cart-dialog">
-        <StorefrontBag website={website} accountPath={accountPath} lines={lines} count={count} subtotal={subtotal} fee={fee} minimum={minimum} method={method} setMethod={setMethod} customer={customer} onCustomerChange={editCustomer} addresses={addresses} onAddressChange={chooseAddress} zonesEnabled={zonesEnabled} couponInput={couponInput} onCouponInput={setCouponInput} couponCode={couponCode} onApplyCoupon={() => { setCouponCode(couponInput.trim().toUpperCase()); setQuoteState(null) }} onRemoveCoupon={() => { setCouponInput(''); setCouponCode(''); setQuoteState(null) }} quote={quote} quoteRequired={quoteRequired} quoteError={currentQuote?.error} quoteBlocked={quoteBlocked && !checkoutPending} session={session} authReady={authReady} verified={verified} canOrder={canOrder} canCOD={canCOD} busy={busy} locked={onlinePending} onlinePayment={onlinePayment} error={error} confirmation={confirmation} onQuantity={quantity} onClose={() => { if (!busy) setCartOpen(false) }} onCheckout={checkout} renderProductImage={product => <ProductImage product={product} />} />
+        <StorefrontBag website={website} accountPath={accountPath} lines={lines} count={count} subtotal={subtotal} fee={fee} minimum={minimum} method={method} setMethod={setMethod} customer={customer} onCustomerChange={editCustomer} addresses={addresses} onAddressChange={chooseAddress} zonesEnabled={zonesEnabled} couponInput={couponInput} onCouponInput={setCouponInput} couponCode={couponCode} onApplyCoupon={() => { setCouponCode(couponInput.trim().toUpperCase()); setQuoteState(null) }} onRemoveCoupon={() => { setCouponInput(''); setCouponCode(''); setQuoteState(null) }} quote={quote} quoteRequired={quoteRequired} quoteError={currentQuote?.error} quoteBlocked={quoteBlocked && !checkoutPending} session={session} authReady={authReady} verified={verified} canOrder={canOrder} canCOD={canCOD} busy={busy} locked={onlinePending} onlinePayment={onlinePayment} paymentNotice={paymentNotice} error={error} confirmation={confirmation} onQuantity={quantity} onClose={() => { if (!busy) setCartOpen(false) }} onCheckout={checkout} renderProductImage={product => <ProductImage product={product} />} />
       </Modal>
     </main>
   )

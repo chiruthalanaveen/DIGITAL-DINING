@@ -2,7 +2,7 @@
 
 Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branch: `feature/commerce-expansion`, draft [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7).
 
-102 added or modified paths across the expansion and payment-recovery follow-up. Full JS/JSX/MJS/TS/TSX files are exported as TXT with an exact destination manifest. The latest review package includes all six pending commerce migrations and their SQL tests/reviews.
+109 added or modified paths across the expansion, read-only payment recovery and verified unstarted-checkout stop. Full JS/JSX/MJS/TS/TSX files are exported as TXT with an exact destination manifest. The current review package includes all seven pending commerce migrations and their complete SQL tests/reviews. Local validation: 327 unit tests, 628 PostgreSQL assertions, build PASS, lint zero errors/166 warnings, and 230 browser screenshots. Hosted/provider acceptance remains unperformed.
 
 | Change from reviewed base | Exact repository / VS Code destination |
 | --- | --- |
@@ -14,6 +14,7 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Modified | `app/api/commerce/checkout/[websiteId]/route.js` |
 | Added | `app/api/commerce/customer/experience/route.js` |
 | Added | `app/api/commerce/payments/admin/route.js` |
+| Added | `app/api/commerce/payments/attempt/route.js` |
 | Added | `app/api/commerce/payments/create/route.js` |
 | Added | `app/api/commerce/payments/quote/route.js` |
 | Added | `app/api/commerce/payments/status/route.js` |
@@ -27,10 +28,6 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `app/api/commerce/workspace/[websiteId]/payments/route.js` |
 | Modified | `app/api/commerce/workspace/[websiteId]/route.js` |
 | Modified | `app/components/commerce/AdminClientWebsites.jsx` |
-| Added | `app/components/commerce/commerce-domains.css` |
-| Added | `app/components/commerce/commerce-expansion-owner.css` |
-| Added | `app/components/commerce/commerce-growth.css` |
-| Added | `app/components/commerce/commerce-payments.css` |
 | Added | `app/components/commerce/CommerceAdminDomainsPanel.jsx` |
 | Added | `app/components/commerce/CommerceCatalogPanel.jsx` |
 | Added | `app/components/commerce/CommerceDomainsPanel.jsx` |
@@ -38,7 +35,6 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `app/components/commerce/CommerceGrowthPanel.jsx` |
 | Added | `app/components/commerce/CommercePaymentAdminPanel.jsx` |
 | Added | `app/components/commerce/CommercePaymentCheckout.jsx` |
-| Added | `app/components/commerce/customer-experience.css` |
 | Added | `app/components/commerce/CustomerExperience.jsx` |
 | Added | `app/components/commerce/CustomerProductActions.jsx` |
 | Modified | `app/components/commerce/OwnerApplication.jsx` |
@@ -46,13 +42,19 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `app/components/commerce/OwnerPaymentStatus.jsx` |
 | Modified | `app/components/commerce/ProductGallery.jsx` |
 | Modified | `app/components/commerce/StoreAccount.jsx` |
-| Added | `app/components/commerce/storefront-templates.css` |
 | Modified | `app/components/commerce/Storefront.jsx` |
 | Modified | `app/components/commerce/StorefrontBag.jsx` |
 | Added | `app/components/commerce/StorefrontSections.jsx` |
+| Added | `app/components/commerce/commerce-domains.css` |
+| Added | `app/components/commerce/commerce-expansion-owner.css` |
+| Added | `app/components/commerce/commerce-growth.css` |
+| Added | `app/components/commerce/commerce-payments.css` |
+| Added | `app/components/commerce/customer-experience.css` |
+| Added | `app/components/commerce/storefront-templates.css` |
 | Modified | `app/shops/[slug]/page.jsx` |
 | Modified | `app/shops/[slug]/store-metadata.js` |
 | Modified | `app/shops/layout.jsx` |
+| Modified | `docs/commerce/README.md` |
 | Added | `docs/commerce/catalog-migration-review.md` |
 | Added | `docs/commerce/customer-migration-review.md` |
 | Added | `docs/commerce/domain-migration-review.md` |
@@ -65,8 +67,9 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `docs/commerce/growth-migration-review.md` |
 | Added | `docs/commerce/online-payment-migration-review.md` |
 | Added | `docs/commerce/payment-recovery-queue-migration-review.md` |
-| Modified | `docs/commerce/README.md` |
+| Added | `docs/commerce/stop-unstarted-payment-migration-review.md` |
 | Added | `lib/commerce/catalog-options.js` |
+| Added | `lib/commerce/payment-pointer.js` |
 | Added | `lib/commerce/payment-state.js` |
 | Added | `lib/commerce/storefront-seo.js` |
 | Modified | `lib/server/commerce/catalog.js` |
@@ -75,6 +78,7 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `lib/server/commerce/expansion.js` |
 | Added | `lib/server/commerce/growth.js` |
 | Added | `lib/server/commerce/notifications.js` |
+| Added | `lib/server/commerce/payment-attempt-control.js` |
 | Added | `lib/server/commerce/payment-credentials.js` |
 | Added | `lib/server/commerce/payment-recovery.js` |
 | Added | `lib/server/commerce/payments.js` |
@@ -86,6 +90,7 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `supabase/migrations/20261103090000_commerce_verified_domains.sql` |
 | Added | `supabase/migrations/20261103091000_commerce_online_payments.sql` |
 | Added | `supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql` |
+| Added | `supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql` |
 | Added | `supabase/tests/commerce_catalog_expansion.sql` |
 | Added | `supabase/tests/commerce_customer_experience.sql` |
 | Added | `supabase/tests/commerce_expansion_preexisting_orders.sql` |
@@ -93,6 +98,7 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `supabase/tests/commerce_growth_notifications.sql` |
 | Added | `supabase/tests/commerce_online_payments.sql` |
 | Added | `supabase/tests/commerce_payment_recovery_queue.sql` |
+| Added | `supabase/tests/commerce_stop_unstarted_payment.sql` |
 | Added | `supabase/tests/commerce_verified_domains.sql` |
 | Modified | `tests/commerce-api.test.mjs` |
 | Added | `tests/commerce-catalog-options.test.mjs` |
@@ -101,6 +107,7 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `tests/commerce-expansion.browser.mjs` |
 | Added | `tests/commerce-growth.test.mjs` |
 | Added | `tests/commerce-owner-payments.test.mjs` |
+| Added | `tests/commerce-payment-pointer.test.mjs` |
 | Added | `tests/commerce-payment-state.test.mjs` |
 | Added | `tests/commerce-payments.test.mjs` |
 | Added | `tests/commerce-storefront-seo.test.mjs` |
@@ -109,4 +116,4 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Modified | `tests/maintenance.test.mjs` |
 | Modified | `vercel.json` |
 
-The original storefront.css and installed foundation migration are unchanged. The five 3 November commerce migration files are also unchanged by the sixth, read-only recovery migration. The separate pending platform subscription ledger remains excluded. Existing restaurant, delivery, resort, wallet and payment source modules are unchanged by this expansion.
+The original storefront.css and installed foundation migration are unchanged. The first six expansion migration files are byte-for-byte unchanged by the seventh file, which introduces immutable proof and verified-buyer stopping only for a never-dispatched checkout. No existing business row is changed by installation; an authorized runtime stop changes only its eligible intent and appends proof. The separate pending platform subscription ledger remains excluded. Existing restaurant, delivery, resort, wallet and payment source modules are unchanged by this expansion. No hosted SQL, deployment, main push, merge or live payment was performed.

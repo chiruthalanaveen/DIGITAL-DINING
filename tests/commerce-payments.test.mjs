@@ -38,6 +38,7 @@ function fixture(t, env = {}) {
   const userClient = { auth: { async getUser(token) { return { data: { user: token === 'valid-token' ? state.user : null }, error: null } } }, async rpc(name, args) {
     state.calls.push({ client: 'user', name, args })
     if (name === 'commerce_payment_start') return { data: view(), error: null }
+    if (name === 'commerce_payment_attempt_control') return { data: state.control, error: state.controlError || null }
     if (name === 'commerce_payment_quote') return { data: state.quote || { subtotal_paise: 502, delivery_fee_paise: 0, discount_paise: 0, total_paise: 502 }, error: null }
     if (name === 'commerce_payment_status') return state.user.id === buyer ? { data: view(), error: null } : { data: null, error: { code: '42501' } }
     throw new Error(`Unexpected user RPC ${name}`)
@@ -52,7 +53,9 @@ function fixture(t, env = {}) {
     switch (args.p_action) {
       case 'context': result = { ...state.intent }; break
       case 'credentials': result = { website_id: website, credential_version: version, ciphertext: state.intent.ciphertext }; break
-      case 'claim_create': result = { claimed: state.intent.state === 'new', lease_token: state.lease }; if (result.claimed) state.intent.state = 'creating'; break
+      case 'claim_create':
+        if (state.cancelDuringClaim) { state.intent.state = 'cancelled_unstarted'; result = { claimed: false, state: state.intent.state }; break }
+        result = { claimed: state.intent.state === 'new', lease_token: state.lease }; if (result.claimed) state.intent.state = 'creating'; break
       case 'create_unknown': state.intent.state = 'provider_unknown'; result = view(); break
       case 'attach_create': case 'attach_reconciled': state.intent.provider_order_id = payload.provider_order_id; state.intent.state = 'ready'; result = view(); break
       case 'capture': state.intent.state = state.captureHeld ? 'captured_unfulfilled' : 'fulfilled'; state.receipt = { id: receiptId, state: state.intent.state, amount_paise: 502, currency: 'INR', provider_payment_id: payload.provider_payment_id, order_id: state.captureHeld ? null : orderId }; result = view(); break
@@ -95,6 +98,99 @@ function fixture(t, env = {}) {
 function ready(state) { state.intent.state = 'ready'; state.intent.provider_order_id = 'order_fixture001' }
 const signature = () => createHmac('sha256', credentials.key_secret).update('order_fixture001|pay_fixture001').digest('hex')
 const verification = () => ({ intent_id: intentId, razorpay_order_id: 'order_fixture001', razorpay_payment_id: 'pay_fixture001', razorpay_signature: signature() })
+function attemptControl({ cancelled = false } = {}) {
+  return { website_id: website, cart_key: checkout.idempotency_key, intent_id: intentId, found: true, can_cancel_unstarted: !cancelled,
+    payment: { id: intentId, website_id: website, state: cancelled ? 'cancelled_unstarted' : 'new', amount_paise: 502, currency: 'INR', provider_order_id: null, receipt: null, order: null, items: [] },
+    cancellation: cancelled ? { id: '7d000000-0000-4000-8000-000000000001', intent_id: intentId, cancelled_at: '2026-11-04T00:00:00Z', reason: 'never_dispatched' } : null }
+}
+
+test('attempt control requires verified same-origin Auth and rejects caller identities, totals and unknown actions', async t => {
+  const { load, state } = fixture(t)
+  const route = load('app/api/commerce/payments/attempt/route.js')
+  const body = { website_id: website, cart_key: checkout.idempotency_key, action: 'inspect' }
+  assert.equal((await route.POST(req('attempt', { payload: body, token: null }))).status, 401)
+  assert.equal((await route.POST(req('attempt', { payload: body, origin: 'https://foreign.example' }))).status, 403)
+  for (const extra of [{ buyer_id: foreign }, { total_paise: 1 }, { action: 'cancel_paid' }, { cart_key: true }]) assert.equal((await route.POST(req('attempt', { payload: { ...body, ...extra } }))).status, 400)
+  state.user.email_confirmed_at = null
+  assert.equal((await route.POST(req('attempt', { payload: body }))).status, 403)
+  assert.equal(state.calls.length, 0)
+  assert.equal(state.adminClients, 0)
+})
+test('attempt inspection is buyer-JWT scoped, canonical and strips private SQL fields while rollout is off', async t => {
+  const { load, state } = fixture(t, { COMMERCE_ONLINE_PAYMENTS_ENABLED: 'false' })
+  const canonical = { website_id: 'a2000000-0000-4000-8000-000000000001', cart_key: 'a6000000-0000-4000-8000-000000000001', intent_id: 'a8000000-0000-4000-8000-000000000001' }
+  state.control = { ...attemptControl(), ...canonical, buyer_id: 'hidden-buyer', ciphertext: 'private-merchant', payment: { ...attemptControl().payment, id: canonical.intent_id, website_id: canonical.website_id, ciphertext: 'private-merchant', request_payload: checkout } }
+  const response = await load('app/api/commerce/payments/attempt/route.js').POST(req('attempt', { payload: { website_id: canonical.website_id.toUpperCase(), cart_key: canonical.cart_key.toUpperCase(), intent_id: canonical.intent_id.toUpperCase(), action: 'inspect' } }))
+  assert.equal(response.status, 200)
+  const result = await response.json()
+  assert.equal(result.can_cancel_unstarted, true)
+  assert.equal(result.intent_id, canonical.intent_id)
+  assert.doesNotMatch(JSON.stringify(result), /hidden-buyer|private-merchant|request_payload|ciphertext/)
+  assert.deepEqual(state.calls[0], { client: 'user', name: 'commerce_payment_attempt_control', args: { p_website_id: canonical.website_id, p_cart_key: canonical.cart_key, p_action: 'inspect', p_expected_intent_id: canonical.intent_id } })
+  assert.equal(state.adminClients, 0)
+  assert.equal(state.providerCalls.length, 0)
+})
+test('only durable scope-bound proof can confirm stopping a checkout', async t => {
+  const { load, state } = fixture(t)
+  const route = load('app/api/commerce/payments/attempt/route.js')
+  const body = { website_id: website, cart_key: checkout.idempotency_key, intent_id: intentId, action: 'cancel_unstarted' }
+  state.control = attemptControl({ cancelled: true })
+  assert.equal((await route.POST(req('attempt', { payload: body }))).status, 200)
+  const good = state.control
+  for (const malformed of [{ ...good, website_id: foreign }, { ...good, cart_key: foreign }, { ...good, intent_id: foreign }, { ...good, cancellation: null }, { ...good, cancellation: { ...good.cancellation, reason: 'provider_failed' } }, { ...good, payment: { ...good.payment, provider_order_id: 'order_fixture001' } }, { ...good, found: false }]) {
+    state.control = malformed
+    assert.equal((await route.POST(req('attempt', { payload: body }))).status, 503)
+  }
+  state.control = attemptControl()
+  assert.equal((await route.POST(req('attempt', { payload: body }))).status, 503, 'Eligibility alone is not cancellation proof.')
+  assert.equal(state.providerCalls.length, 0)
+})
+test('missing capability, absent intent, conflicts and outages never become a confirmed stop', async t => {
+  const { load, state } = fixture(t)
+  const route = load('app/api/commerce/payments/attempt/route.js')
+  const body = { website_id: website, cart_key: checkout.idempotency_key, action: 'inspect' }
+  state.controlError = { code: 'PGRST202' }
+  const unavailable = await route.POST(req('attempt', { payload: body }))
+  assert.equal(unavailable.status, 200)
+  assert.equal((await unavailable.json()).available, false)
+  assert.equal((await route.POST(req('attempt', { payload: { ...body, action: 'cancel_unstarted' } }))).status, 503)
+  state.controlError = null
+  state.control = { website_id: website, cart_key: checkout.idempotency_key, intent_id: null, found: false, can_cancel_unstarted: false, payment: null, cancellation: null }
+  const missing = await route.POST(req('attempt', { payload: body }))
+  assert.equal(missing.status, 200)
+  assert.equal((await missing.json()).can_cancel_unstarted, false)
+  for (const [code, status] of [['23505', 409], ['42501', 403], ['08006', 503]]) {
+    state.controlError = { code }
+    assert.equal((await route.POST(req('attempt', { payload: { ...body, action: 'cancel_unstarted' } }))).status, status)
+  }
+})
+test('cancelled create replay and creation-race loser never post another provider order', async t => {
+  const { load, state, userClient, serviceClient, fetcher } = fixture(t)
+  const { createPayment } = load('lib/server/commerce/payments.js')
+  state.intent.state = 'cancelled_unstarted'
+  state.control = attemptControl({ cancelled: true })
+  state.intent.ciphertext = 'unreadable-on-purpose'
+  const stopped = await createPayment(userClient, state.user, checkout, { serviceClient, fetcher })
+  assert.equal(stopped.attempt_control.cancellation.reason, 'never_dispatched')
+  assert.equal(state.calls.some(call => call.client === 'service'), false)
+  assert.equal(state.providerCalls.length, 0)
+  state.intent.state = 'new'
+  state.intent.ciphertext = load('lib/server/commerce/payment-credentials.js').sealPaymentCredentials(website, version, credentials).ciphertext
+  state.cancelDuringClaim = true
+  const raced = await createPayment(userClient, state.user, checkout, { serviceClient, fetcher })
+  assert.equal(raced.payment.state, 'cancelled_unstarted')
+  assert.equal(state.providerCalls.length, 0)
+})
+test('cancelled resume and verification do not decrypt credentials or contact the provider', async t => {
+  const { load, state, userClient, serviceClient, fetcher } = fixture(t)
+  state.intent.state = 'cancelled_unstarted'; state.intent.ciphertext = 'unreadable-on-purpose'
+  const { resumePayment, verifyPayment, reconcilePayment } = load('lib/server/commerce/payments.js')
+  assert.equal((await resumePayment(userClient, state.user, intentId, { serviceClient })).payment.state, 'cancelled_unstarted')
+  await assert.rejects(verifyPayment(userClient, state.user, verification(), { serviceClient, fetcher }), /stopped before provider/)
+  assert.equal(state.calls.some(call => call.client === 'service'), false)
+  await assert.rejects(reconcilePayment(intentId, { websiteId: website, serviceClient, fetcher }), /stopped before provider/)
+  assert.equal(state.providerCalls.length, 0)
+})
 
 test('commerce online payments default disabled before RPC/provider access', async t => {
   const { load, state } = fixture(t, { COMMERCE_ONLINE_PAYMENTS_ENABLED: undefined })

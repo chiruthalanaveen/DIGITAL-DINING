@@ -27,11 +27,12 @@ latest edit has been executed or passed tests.
 | 4 | [20261103090000_commerce_verified_domains.sql](../../supabase/migrations/20261103090000_commerce_verified_domains.sql) | [Domain review](domain-migration-review.md): private tenant domain claim/proof state, reservation/index/RLS, scoped claims/Admin verification and public safe resolution. No DNS is changed by SQL. |
 | 5 | [20261103091000_commerce_online_payments.sql](../../supabase/migrations/20261103091000_commerce_online_payments.sql) | [Payment object/permission/recovery review](online-payment-migration-review.md): five private tables/50 columns, twelve functions, two guards, recovery/key indexes, scoped quote/service RPCs and commerce payment-method constraint widening. |
 | 6 | [20261104090000_commerce_payment_recovery_queue.sql](../../supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql) | [Recovery queue review](payment-recovery-queue-migration-review.md): one service-only, read-only RPC listing open payment references for signed Super Admin. No table, column, index, trigger, RLS policy or business/payment row changes. |
+| 7 | [20261104120000_commerce_stop_unstarted_payment.sql](../../supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql) | [Stop-unstarted review](stop-unstarted-payment-migration-review.md): immutable private cancellation proof, terminal `cancelled_unstarted` state/guards and verified buyer inspection/stop RPC. Only an existing, never-claimed intent may stop; no provider order, refund or general unpaid cancellation. |
 
-Files 1–5 are byte-for-byte unchanged by the 4 November recovery follow-up.
-Migration 6 is additive and requires those reviewed prerequisites. An already
+Files 1–6 are byte-for-byte unchanged by the stop-unstarted follow-up.
+Migration 7 requires those reviewed prerequisites. An already
 approved/installed prefix must not be replayed; only separately approved absent
-files may be applied once. None of these six expansion files is installed on a
+files may be applied once. None of these seven expansion files is installed on a
 hosted target by this task. The owner configuration-status panel reuses the
 existing readiness RPC and needs no additional SQL by itself.
 
@@ -47,7 +48,11 @@ RLS policies, change wallet balances/payment transactions or install cron jobs.
 It does deliberately add commerce order/item columns, replace the commerce
 total/item uniqueness contracts, wrap two commerce functions while retaining
 their original bodies privately, add commerce triggers and widen the commerce
-payment-method constraint. Review those compatibility effects before approval.
+payment-method constraint. The seventh file additionally widens the private
+intent-state CHECK, adds a terminal-shape CHECK and two guards, and creates the
+immutable cancellation table. Installation has no existing-row DML; an actual
+verified stop appends its proof and changes only the eligible own intent's state
+and updated timestamp. Review those compatibility effects before approval.
 
 ## Reproduce the isolated development checks
 
@@ -72,16 +77,18 @@ npm run build
 The recorded URL contains no password and identifies only this local synthetic
 cluster. On another machine, substitute its verified local test identity/port
 securely. The runner installs the bootstrap/foundation **only while creating that
-fresh fixture**, runs the original checks, applies the explicit six-file chain,
+fresh fixture**, runs the original checks, applies the explicit seven-file chain,
 and tests preservation, RLS, tampering, concurrency and atomic reapplication.
 It never infers main/staging URLs, globs the migrations folder or calls a hosted
 migration CLI. See [database evidence](expansion-db-validation.md): the historical
-3 November five-file result was 531 assertions; the 4 November six-file isolated
-run passes 561 assertions. Fresh final-source application checks also pass:
-296/296 unit tests, zero lint errors/166 warnings, the full repository build and
-198 screenshots across both browser suites. Their source fingerprints remain
-stable through the build/runs. These fresh results, separately recorded in the
-report, do not substitute for hosted/provider acceptance or activation approval.
+3 November five-file result was 531 assertions; the earlier 4 November six-file
+result was 561. The seven-file isolated SQL suite now passes 628 assertions,
+preserving all prior cases and adding 67 stop/race/preservation assertions.
+The current full application passes 327/327 unit tests, lint with zero errors/
+166 warnings, and `npm run build`. Fresh browser checks pass 13 expansion groups/
+112 screenshots plus 118 original compatibility screenshots, 230 total. The
+preceding committed application's 296-unit/198-screenshot result remains
+historical. None substitutes for hosted/provider acceptance or activation approval.
 
 Browser commands, after preparing that disposable database, are:
 
@@ -99,6 +106,15 @@ The original runner can create the expanded database itself by setting
 The final report identifies the commands actually executed. Verification uses
 the full repository `npm run build` and the actual full application.
 
+The 4 November stop-unstarted verification reused its matching fixture-4319
+synthetic build with these exact sequential invocations (the original suite
+recreates only the guarded local fixture):
+
+```sh
+COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/commerce_test COMMERCE_FIXTURE_PORT=4319 COMMERCE_BROWSER_SKIP_DB=1 COMMERCE_BROWSER_SKIP_BUILD=1 COMMERCE_BROWSER_ARTIFACTS=/workspace/commerce-validation-artifacts/commerce-unstarted-20261104/browser node tests/commerce-expansion.browser.mjs
+COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/commerce_test COMMERCE_FIXTURE_PORT=4319 COMMERCE_BROWSER_USE_EXPANSION=1 COMMERCE_BROWSER_SKIP_BUILD=1 COMMERCE_BROWSER_ARTIFACTS=/workspace/commerce-validation-artifacts/commerce-unstarted-20261104/original-browser node tests/commerce.browser.mjs
+```
+
 Local PostgreSQL roles enforce real SQL RLS and transactional locks, while the
 fixture models Auth/REST/Storage/email/provider protocols. These checks do not
 establish Supabase 17/17.6, hosted Auth hooks, real PostgREST JWT/role handling,
@@ -112,7 +128,7 @@ No hosted target is currently approved for these files. The steps below become
 actionable only after approval identifies the exact target and reviewed hashes.
 Do not run the destructive test runner, bootstrap or SQL test fixtures there.
 
-1. Review all six full files and object inventories. Record their SHA-256 values,
+1. Review all seven full files and object inventories. Record their SHA-256 values,
    the application commit, the exact target project/database/version, and the
    existing installed foundation state. Read-only checks must first confirm the
    foundation prerequisites and absence of the new objects; existing objects
@@ -129,11 +145,11 @@ Do not run the destructive test runner, bootstrap or SQL test fixtures there.
    a Preview or use main for fixture checkout.
 4. In the explicitly approved target’s SQL Editor, paste and execute the complete
    first file once, including its `BEGIN`/`COMMIT`. Confirm success and the
-   corresponding read-only checks. Repeat with absent approved files 2–6 in the listed order.
+   corresponding read-only checks. Repeat with absent approved files 2–7 in the listed order.
    If a file fails, stop, issue `ROLLBACK` if its session remains aborted, and
    inspect the error; do not continue with fragments or reapply the foundation.
    CLI installation, if separately chosen and approved, must enumerate those
-   exact six files with `psql -X -v ON_ERROR_STOP=1 -f <file>`; no wildcard or
+   exact seven files with `psql -X -v ON_ERROR_STOP=1 -f <file>`; no wildcard or
    `db push` is part of this runbook.
 5. Run only read-only verification and compare the before-state. Use separately
    authorized non-production Auth/browser/provider acceptance before feature
@@ -156,7 +172,7 @@ WHERE (n.nspname='public' AND c.relname IN
   'commerce_notification_outbox','commerce_domains'))
  OR (n.nspname='commerce_private' AND c.relname IN
  ('payment_credential_versions','payment_merchants','payment_intents',
-  'payment_receipts','payment_webhooks'))
+  'payment_receipts','payment_webhooks','payment_unstarted_cancellations'))
 ORDER BY 1,2;
 
 SELECT schemaname,tablename,policyname,roles,cmd,qual,with_check
@@ -217,6 +233,20 @@ catalog payment readiness exposes only availability/provider/mode; private
 merchant credentials, domain proofs and notification recipients are not public
 catalog data.
 
+The seventh-file inspection/stop flow needs no additional environment variable,
+DNS, Storage policy or cron configuration. Keep provider rollout/live flags off.
+It uses verified buyer context and its controlled SQL RPC, not a service-role
+buyer impersonation or a provider cancellation request.
+
+Online browser actions require a secure context with Web Locks support
+(`navigator.locks.request`, normally HTTPS or trusted localhost). Every shared
+pointer mutation is serialized per buyer/store; a compare-then-write fallback
+would permit tab races and is intentionally absent. Without locking, online
+start, stop and fulfilled-receipt/cancellation-proof release fail closed, retaining
+the saved attempt. Check payment can still fetch/display status. COD without a
+saved online pointer remains available; no new environment value or DNS change
+is needed for this browser requirement.
+
 ## Manual acceptance on the isolated app
 
 Use only the synthetic identities from `tests/helpers/commerce-fixture.mjs` and
@@ -262,6 +292,21 @@ the local fixture server. The production site is not a test destination.
    cross-method cart races and captured/unfulfilled receipts. Keep the original
    attempt/receipt and prevent a new charge until reconciliation; do not report
    a refund from an order/request status.
+9. Create only a local intent, without claiming provider creation. Retain just
+   its cart key in the browser and confirm inspection recovers the original
+   intent reference. Stop it, validate the bound immutable proof, keep the bag
+   and verify the next COD/online request uses a fresh UUID. The old key remains
+   blocked. Check unchanged stock, orders, receipts, coupon usage and wallets.
+   Repeat with a missing row and with creation claiming the row before the stop;
+   both must retain the pointer/lock. Delay a stop response across account
+   changes and confirm it cannot clear another buyer's state. Do not use an
+   expired timer or an opened provider popup as proof of eligibility.
+10. Repeat pointer creation, recovery and proof/receipt release in two tabs;
+    an older response must not overwrite or remove a newer cart/intent pointer.
+    Confirm a recovered known-`new` intent disables Continue and explains
+    “Stop this request to restart checkout”. With Web Locks unavailable, online
+    start/stop/release must retain the attempt; Check payment can fetch/display
+    status and COD with no saved online pointer remains available.
 
 ## Recovery and rollback considerations
 
@@ -287,6 +332,14 @@ versions securely available for receipt/webhook reconciliation. Disabling new
 checkout does not authorize discarding an unresolved capture. Retain immutable
 provider evidence and record captured/unfulfilled states until verified repair;
 no refund is considered complete without its own authoritative provider proof.
+
+Once an unstarted stop exists, retain `cancelled_unstarted`, its immutable proof
+and the intent guards. Never delete proof, reopen the row as `new`, reuse its old
+cart key or narrow the CHECK back to the old states to make a downgrade pass.
+Older application source may retain an unsupported-state error/pointer instead
+of understanding the stop; prefer a forward fix with the proof intact. The
+[seventh-file review](stop-unstarted-payment-migration-review.md) gives exact
+metadata/invariant queries and the retained-history rollback considerations.
 
 Recovery planning remains distinct from an existing backup. The historical
 [backup/recovery guide](backup-recovery.md) contains detailed backup categories,

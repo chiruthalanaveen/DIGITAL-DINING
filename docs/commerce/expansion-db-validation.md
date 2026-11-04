@@ -1,6 +1,6 @@
 # Isolated commerce expansion database validation
 
-3 November 2026. Source on `feature/commerce-expansion`; no hosted SQL,
+Updated 4 November 2026. Source on `feature/commerce-expansion`; no hosted SQL,
 deployment, live payment, DNS/provider provisioning or external notification
 send was performed. The installed hosted foundation is not an installation
 target for these destructive fixtures.
@@ -30,12 +30,19 @@ isolated fixture. It then applies an explicit allowlist, in this order:
 3. `supabase/migrations/20261102162000_commerce_growth_notifications.sql`
 4. `supabase/migrations/20261103090000_commerce_verified_domains.sql`
 5. `supabase/migrations/20261103091000_commerce_online_payments.sql`
+6. `supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql`
+7. `supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql`
 
 The separate platform subscription ledger is excluded. The runner never globs
 migrations, runs `db push`, repairs migration history or connects to a hosted
 target. Additional reviewed commerce migrations must be explicitly added.
 
-The final integrated run passes **531 PostgreSQL assertions**:
+The current seven-file integrated run passes **628 PostgreSQL assertions**.
+It preserves every prior 561 assertion and adds 58 stop-unstarted SQL assertions
+plus nine integration/race/preservation assertions. The first six migration
+files remain byte-for-byte unchanged. Historical evidence is **531 assertions**
+for the five-file 3 November run and **561 assertions** for the earlier six-file
+4 November run; those results are not the current source totals.
 
 | Checks | Actual assertions |
 | --- | ---: |
@@ -47,8 +54,10 @@ The final integrated run passes **531 PostgreSQL assertions**:
 | Bounded UTC trends, best sellers and stock alerts | 34 |
 | Verified-domain module | 73 |
 | Online payment/receipt/webhook and online-only quote module | 44 |
-| Integrated preservation, validation, races and atomic reapplication | 76 |
-| Total | 531 |
+| Read-only payment recovery queue | 27 |
+| Stop-unstarted payment module | 58 |
+| Integrated preservation, validation, races and atomic reapplication | 88 |
+| Total | 628 |
 
 The 72 post-expansion baseline cases run inside a rollback-only synthetic fixture
 transaction. It temporarily truncates commerce/Auth/Storage **fixture** tables
@@ -74,6 +83,29 @@ cancellation decisions, separate notification worker leases, and cross-tenant
 domain claims. The coupon race creates one redemption; the losing checkout
 does not consume stock or leave a partial order. Cancelling a discounted variant
 order restores inventory once and retains its coupon redemption history.
+
+The seventh migration is tested separately against a complete before-state of
+all existing rows, function bodies, policies, grants, indexes and unrelated
+constraints/triggers. It adds only its reviewed objects and constraints, eight
+internal foreign-key triggers and two explicit history guards; it performs no
+existing-row DML during installation. The complete new table/column/function/
+constraint/trigger/index/RLS explanation is in the
+[stop-unstarted migration review](stop-unstarted-payment-migration-review.md)
+and [seven-file object inventory](expansion-schema-inventory.md).
+
+The new stop tests cover verified own-buyer website/cart/intent binding,
+anonymous/unverified/foreign-buyer denial, immutable proof and terminal-row
+guards, duplicate requests, both creation-versus-stop race winners, Auth
+withdrawal during a lock wait, and the invisible/uncommitted original-request
+case. Missing rows never authorize a stop or release. The retained old cart key
+cannot create a COD order; a fresh key can. Stock, orders, receipts, redemptions,
+wallet fixtures and the original scheduled-job fixture remain unchanged by a
+verified stop. Ready, unknown, dispatched or captured payments are excluded.
+
+The stop RPC locks the verified Auth row FOR SHARE, then the intent FOR UPDATE,
+serializing with provider-creation claim. It deliberately does not take a cart
+advisory lock, which would invert fulfillment's lock order. These are local
+transactional tests, not real provider cancellation, refund or capture tests.
 
 Saved-address checkout uses the stored address/PIN to choose delivery coverage;
 submitted replacement shipping fields cannot choose a different zone. A retry
@@ -127,15 +159,26 @@ host overrides and database query overrides before any fixture work. `node
 --check` and focused ESLint on the runner pass. Full application test/lint/build
 and browser evidence belong to the coordinated implementation report.
 
-Evidence log:
-`/workspace/commerce-validation-artifacts/commerce-expansion-20261103/integrated-sql.log`.
+Current evidence log:
+`/workspace/commerce-validation-artifacts/commerce-unstarted-20261104/integrated-sql.log`.
 Consolidated metadata, assertion labels, breakdown and migration hashes:
-`/workspace/commerce-validation-artifacts/commerce-expansion-20261103/integrated-sql-summary.json`.
-The final fixture has 33 tables across the inspected schemas, 31 policies and
-64 public/private application functions. Read-only consistency queries report
-zero inconsistent order totals, coupon redemptions or linked captured receipts,
-and exactly one preserved existing cron fixture. These are observed local
-fixture counts, not hosted Supabase metadata claims.
+`/workspace/commerce-validation-artifacts/commerce-unstarted-20261104/integrated-sql-summary.json`.
+The current final fixture has **34 tables** across the inspected schemas,
+**31 policies** and **69 public/private application functions** (33 public and
+36 private). The evidence summary's 72-function total also includes three
+synthetic Auth/Storage helpers. Read-only consistency queries report zero
+inconsistent order totals, coupon redemptions, linked captured receipts, stopped
+proofs or stopped intents without proof, and exactly one preserved existing
+cron fixture. These are observed local fixture counts, not hosted Supabase
+metadata claims.
+
+The historical five-file log/summary remain under
+`/workspace/commerce-validation-artifacts/commerce-expansion-20261103/`
+(531 assertions; 33 tables, 31 policies, 64 application functions). The
+six-file recovery evidence remains under
+`/workspace/commerce-validation-artifacts/commerce-recovery-20261104/`
+(561 assertions). The seventh migration's tested SHA-256 is
+`a53667d6003885e4ec972ba63859d7e3047b0fbe29344ffca5aa8463a7a6a754`.
 The original foundation remains SHA-256
 `dd2882f6329808783b1d4d97c4264f59989b7e834753aa06efe46d63855db1ca`;
 the original storefront stylesheet remains SHA-256
@@ -159,14 +202,37 @@ SELECT r.id FROM public.commerce_coupon_redemptions r
 JOIN public.commerce_orders o ON o.website_id=r.website_id AND o.id=r.order_id
 WHERE r.user_id<>o.customer_user_id OR r.coupon_id IS DISTINCT FROM o.coupon_id
    OR r.discount_paise<>o.discount_paise;
+
+SELECT count(*) AS inconsistent_stopped_proofs
+FROM commerce_private.payment_unstarted_cancellations c
+JOIN commerce_private.payment_intents i ON i.id=c.intent_id
+WHERE i.website_id<>c.website_id OR i.buyer_id<>c.buyer_id
+   OR i.cart_key<>c.cart_key OR i.state<>'cancelled_unstarted'
+   OR i.provider_order_id IS NOT NULL OR i.create_lease IS NOT NULL
+   OR EXISTS (SELECT 1 FROM commerce_private.payment_receipts r
+              WHERE r.intent_id=i.id);
+
+SELECT count(*) AS stopped_intents_without_proof
+FROM commerce_private.payment_intents i
+WHERE i.state='cancelled_unstarted'
+  AND NOT EXISTS (SELECT 1
+                  FROM commerce_private.payment_unstarted_cancellations c
+                  WHERE c.intent_id=i.id AND c.website_id=i.website_id
+                    AND c.buyer_id=i.buyer_id AND c.cart_key=i.cart_key);
 ```
 
-Expected final two queries: no inconsistent rows. Do not use these instructions
+Expected order/redemption queries: no inconsistent rows; final two proof counts:
+zero. Private-table inspection requires a separately authorized database
+administrator; no direct API-role access is added. Do not use these instructions
 to query production without separate applicable approval.
 
 Rollback means reverting application source while retaining collected variants,
 orders, customer requests/timeline, coupons/redemptions, outbox and domain claim
-history. Existing discounted/variant orders may need the expanded code, so a
+history, including payment attempts, capture receipts and unstarted-stop proofs.
+Do not reopen or delete a stopped intent or reuse its old checkout key. An older
+application may not understand the new terminal state; retain compatible
+proof-aware recovery or use a reviewed forward repair rather than blindly
+rolling back payment handling. Existing discounted/variant orders may need the expanded code, so a
 reviewed forward repair is safer after such orders exist. Dropping new tables,
 resetting hosted data or replaying the foundation is not a data-preserving
 rollback. Per-migration reviews describe their additional limits.

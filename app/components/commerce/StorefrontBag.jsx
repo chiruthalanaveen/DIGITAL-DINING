@@ -17,7 +17,7 @@ export default function StorefrontBag({
   website, accountPath, lines, count, subtotal, fee, minimum,
   method, setMethod, customer, onCustomerChange, addresses = [], onAddressChange, zonesEnabled, session, authReady,
   couponInput, onCouponInput, couponCode, onApplyCoupon, onRemoveCoupon, quote, quoteRequired, quoteError, quoteBlocked,
-  verified, canOrder, canCOD = canOrder, busy, locked = false, onlinePayment, error, confirmation,
+  verified, canOrder, canCOD = canOrder, busy, locked = false, onlinePayment, paymentNotice = '', error, confirmation,
   onQuantity, onClose, onCheckout, renderProductImage,
 }) {
   const id = useId()
@@ -53,6 +53,8 @@ export default function StorefrontBag({
       <div><p className="cs-eyebrow">Your selection</p><h2 id="cs-cart-title">Shopping bag <span>{count}</span></h2></div>
       <button className="cs-modal-close" type="button" disabled={busy} onClick={onClose} aria-label="Close shopping bag">×</button>
     </div>
+
+    {paymentNotice && <p className="cs-notice" role="status">{paymentNotice}</p>}
 
     {confirmation ? <div className="cs-order-confirmed" role="status">
       <span aria-hidden="true">✓</span>
