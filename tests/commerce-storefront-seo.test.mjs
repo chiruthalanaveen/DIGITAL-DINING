@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs'
 
 const source = readFileSync(new URL('../lib/commerce/storefront-seo.js', import.meta.url), 'utf8')
 const { buildStorefrontJsonLd, serializeStorefrontJsonLd, STOREFRONT_PUBLIC_ORIGIN } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
+const metadataSource = readFileSync(new URL('../app/shops/[slug]/store-metadata.js', import.meta.url), 'utf8')
+const { storeMetadata } = await import(`data:text/javascript;base64,${Buffer.from(metadataSource).toString('base64')}`)
 const productId = '11111111-1111-4111-8111-111111111111'
 const otherProductId = '11111111-1111-4111-8111-111111111112'
 const categoryId = '22222222-2222-4222-8222-222222222222'
@@ -156,4 +158,40 @@ test('JSON-LD serializes hostile catalog text without executable HTML or Unicode
   assert.match(serialized, /\\u2028\\u2029/)
   assert.equal(products(JSON.parse(serialized))[0].description, hostile)
   assert.doesNotMatch(serialized, /private-owner|private-supplier|private-buyer|monthly_price|aggregateRating|reviewCount|ratingValue|shippingDetails|invented-two-hours/)
+})
+
+test('dedicated wishlist metadata stays private with its own tenant-bound canonical and sharing title', () => {
+  const data = storeMetadata(catalog().website, 'wishlist')
+  assert.deepEqual(data.robots, { index: false, follow: false })
+  assert.deepEqual(data.title, { absolute: 'Wishlist | Asha Sarees' })
+  assert.deepEqual(data.alternates, { canonical: '/shops/asha-sarees/wishlist' })
+  assert.equal(data.openGraph.url, '/shops/asha-sarees/wishlist')
+  assert.equal(data.openGraph.title, 'Wishlist | Asha Sarees')
+  assert.equal(data.twitter.title, 'Wishlist | Asha Sarees')
+  assert.equal(data.manifest, null)
+  assert.equal(data.appleWebApp, null)
+  assert.doesNotMatch(JSON.stringify(data), /saved_products|customer_details|wishlist_items/)
+})
+
+test('adding wishlist metadata preserves public storefront and boolean account metadata contracts', () => {
+  const website = catalog().website
+  const publicPage = storeMetadata(website)
+  const accountPage = storeMetadata(website, true)
+  assert.deepEqual(publicPage.title, { absolute: 'Shop Asha Sarees' })
+  assert.deepEqual(publicPage.alternates, { canonical: '/shops/asha-sarees' })
+  assert.equal(publicPage.openGraph.url, '/shops/asha-sarees')
+  assert.equal(Object.hasOwn(publicPage, 'robots'), false)
+  assert.deepEqual(accountPage.title, { absolute: 'My account | Asha Sarees' })
+  assert.deepEqual(accountPage.alternates, { canonical: '/shops/asha-sarees/account' })
+  assert.equal(accountPage.openGraph.url, '/shops/asha-sarees/account')
+  assert.deepEqual(accountPage.robots, { index: false, follow: false })
+})
+
+test('unavailable wishlist metadata remains noindex and does not manufacture a tenant canonical', () => {
+  const data = storeMetadata(null, 'wishlist')
+  assert.deepEqual(data.title, { absolute: 'Store unavailable' })
+  assert.deepEqual(data.robots, { index: false, follow: false })
+  assert.equal(Object.hasOwn(data, 'alternates'), false)
+  assert.deepEqual(data.openGraph.images, [])
+  assert.deepEqual(data.twitter.images, [])
 })

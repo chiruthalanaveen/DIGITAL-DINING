@@ -10,7 +10,22 @@ claim of hosted/provider acceptance or live activation. New hosted SQL,
 production deployment and merges remain unperformed and require separate
 applicable approval. Domain/provider/notification/payment flags remain off.
 
-The current 4 November increment adds a narrow **stop unstarted checkout** flow.
+The latest 4 November increment completes the explicit dedicated-wishlist-page
+requirement at `/shops/[slug]/wishlist`, using the existing verified customer API
+and public catalog. It adds storefront/account navigation, private noindex
+metadata, matching custom-host routing, removal/retry/empty states and scoped
+account-response guards. **No SQL migration required.** The seven pending
+expansion migrations remain unchanged; this page introduces no new environment
+variable, DNS setting, Storage policy or cron job. Current checks pass
+331/331 unit tests, lint with zero errors/166 warnings, the full build and
+22 expansion browser groups/136 screenshots, including nine wishlist groups/
+24 screenshots, plus 118 original compatibility screenshots (**254 total**).
+The original runner also passes all 628 unchanged-migration SQL assertions.
+Read the
+[dedicated wishlist report](wishlist-page-report.md).
+
+The preceding committed 4 November increment (`8dbc382`) added a narrow
+**stop unstarted checkout** flow.
 Only a verified buyer's existing `new` intent with no provider order, no creation
 lease and no captured receipt can stop, under the same row lock used to claim
 provider creation. Immutable cancellation proof preserves the original request
@@ -28,10 +43,10 @@ is unaffected. A recovered `new` request must use Stop to restart checkout;
 Continue does not add a provider-resume capability.
 
 The seven-file local PostgreSQL suite passes **628 assertions**, retaining all
-prior 561 and adding 67 stop/race/preservation checks. Current full application
-checks pass **327/327 unit tests**, lint with **zero errors/166 warnings**, and
+prior 561 and adding 67 stop/race/preservation checks. That committed source
+passed **327/327 unit tests**, lint with **zero errors/166 warnings**, and
 `npm run build`. Focused payment API tests pass 27; pointer/state tests pass
-18/10. Fresh full-app browser suites pass 13 expansion groups/112 screenshots
+18/10. Its full-app browser suites passed 13 expansion groups/112 screenshots
 and 118 original compatibility screenshots: **230 total** at four desktop/mobile
 widths. The first six migration files remain byte-for-byte unchanged. The full
 checklist is **PARTIAL PASS** until hosted/provider/domain/notification acceptance

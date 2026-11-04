@@ -58,7 +58,28 @@ separate approval; tests must use stubs/development credentials. Preserve data,
 RLS, financial history and cron jobs. Do not ask again for waived backup or
 withdrawn staging setup; record hosted-validation limits accurately.
 
-The current 4 November source increment adds only a verified buyer's narrow
+The latest 4 November source increment completes the explicit dedicated-wishlist
+page requirement at `/shops/[slug]/wishlist`. Reuse the verified per-store
+customer client, existing customer-experience API/RLS and current public catalog.
+Keep private noindex metadata, exact custom-host rewriting/foreign-tenant denial,
+account-keyed private state, stale GET/POST guards, honest unavailable items and
+accessible removal/retry/focus behavior. Do not alter bag/payment state or add
+provider authority. No SQL migration required; all seven pending expansion
+migrations stay byte-for-byte unchanged and unapplied to hosted targets. Current
+checks pass 331/331 unit tests, full lint with zero errors/166 warnings, build
+with stable application/configuration fingerprints, and 22 expansion browser
+groups/136 screenshots including nine wishlist groups/24 screenshots. The fresh
+original suite passes 118 screenshots and 628 PostgreSQL regression assertions
+for the unchanged seven migrations. Both suites captured 254 screenshots. Do not
+reuse older counts as new evidence. See `docs/commerce/wishlist-page-report.md`.
+
+After wishlist acceptance, the next source dependency is a tracked owner
+feature-request workflow with signed Super Admin review and owner-visible status.
+It is not implemented by the wishlist increment. Its future tenant-scoped
+versioned migration, audit and RLS/permission checks must be developed locally;
+no hosted SQL or automatic feature/security/payment activation is authorized.
+
+The preceding committed 4 November source (`8dbc382`) added a verified buyer's narrow
 stop of an existing never-dispatched checkout, plus the API/browser integration
 needed to validate its proof. Its seventh migration is
 `20261104120000_commerce_stop_unstarted_payment.sql`. Keep the first six files
@@ -78,8 +99,8 @@ fetch/display status, and COD without a saved online pointer is unaffected.
 Recovered known-new Continue stays disabled with Stop-to-restart guidance;
 do not expand provider resume or allow stale-tab responses to clear newer state.
 Local SQL passes 628 assertions, preserving all prior 561 cases;
-focused API tests pass 27 and pointer/state tests pass 18/10. Current full
-application checks pass 327/327 unit tests, lint with zero errors/166 warnings,
+focused API tests pass 27 and pointer/state tests pass 18/10. That source’s full
+application checks passed 327/327 unit tests, lint with zero errors/166 warnings,
 and npm run build. The actual full-app browser suites pass 13 expansion groups/
 112 screenshots plus 118 original compatibility screenshots, 230 total at four
 widths. Overall completion remains PARTIAL PASS for unperformed hosted/provider/

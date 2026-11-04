@@ -137,7 +137,7 @@ export default function StoreAccount({ website }) {
         {!ready ? <p role="status">Checking your account…</p> : session && mode !== 'update' ? <>
           <p className="cs-eyebrow">Signed in</p><h2>{session.user.user_metadata?.full_name || 'My account'}</h2><p className="cs-account-email">{session.user.email}</p>
           {!verified && <div className="cs-notice"><p>Verify your email to place orders and view your order history.</p><button className="cs-secondary" type="button" disabled={busy} onClick={resend}>Resend verification email</button></div>}
-          <div className="cs-account-actions"><Link className="cs-primary" href={home}>Continue shopping</Link><button className="cs-secondary" type="button" disabled={busy} onClick={signOut}>Sign out</button></div>
+          <div className="cs-account-actions"><Link className="cs-primary" href={home}>Continue shopping</Link><Link className="cs-secondary" href={`${home}/wishlist`}>View wishlist</Link><button className="cs-secondary" type="button" disabled={busy} onClick={signOut}>Sign out</button></div>
           <button className="cs-text-button" type="button" onClick={() => { setMode('update'); setError(''); setNotice('') }}>Change password</button>
         </> : <>
           {mode !== 'recover' && mode !== 'update' && <div className="cs-auth-tabs" role="group" aria-label="Choose account action"><button type="button" aria-pressed={mode === 'login'} onClick={() => { setMode('login'); setError(''); setNotice('') }}>Sign in</button><button type="button" aria-pressed={mode === 'signup'} onClick={() => { setMode('signup'); setError(''); setNotice('') }}>Create account</button></div>}

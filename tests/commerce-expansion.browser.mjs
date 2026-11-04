@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import { createCommerceFixture, developmentEnvironment, developmentUsers, LOCAL_ANON_KEY, LOCAL_PASSWORD, LOCAL_SERVICE_KEY } from './helpers/commerce-fixture.mjs'
+import { runWishlistBrowserChecks } from './commerce-wishlist.browser.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const templates = ['general', 'sarees', 'grocery', 'fashion', 'food']
@@ -556,6 +557,10 @@ export async function runExpansionBrowserChecks({ base, fixture, browser, artifa
     }
     await peer.close()
     checks.push('a delayed cancellation proof cannot delete another tab’s replacement pointer; a delayed nonterminal inspection cannot overwrite it, and reload recovers the replacement intent')
+    const wishlistResult = await runWishlistBrowserChecks({ base, fixture, browser, artifacts, store: stores[1], otherStore: stores[2] })
+    checks.push(...wishlistResult.checks)
+    screenshots.push(...wishlistResult.screenshots)
+    for (const host of wishlistResult.blockedExternalHosts) blocked.add(host)
     assert.deepEqual(errors, [], `Browser page errors: ${errors.join('; ')}`)
     const result = { result: 'PASS', scope: 'Real local Next.js HTTP routes and PostgreSQL/RLS with simulated Auth/Storage protocols; browser delays and response loss preserve real API execution.', templates, screenshots, checks, checkoutRequests, blockedExternalHosts: [...blocked], hostedAuthTested: false, hostedRlsTested: false, livePayments: false, productionWrites: false }
     await writeFile(path.join(artifacts, 'expansion-browser-results.json'), JSON.stringify(result, null, 2) + '\n')

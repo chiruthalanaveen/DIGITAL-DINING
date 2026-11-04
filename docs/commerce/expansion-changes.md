@@ -2,7 +2,9 @@
 
 Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branch: `feature/commerce-expansion`, draft [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7).
 
-109 added or modified paths across the expansion, read-only payment recovery and verified unstarted-checkout stop. Full JS/JSX/MJS/TS/TSX files are exported as TXT with an exact destination manifest. The current review package includes all seven pending commerce migrations and their complete SQL tests/reviews. Local validation: 327 unit tests, 628 PostgreSQL assertions, build PASS, lint zero errors/166 warnings, and 230 browser screenshots. Hosted/provider acceptance remains unperformed.
+114 added or modified paths across the expansion, checkout recovery and dedicated wishlist page. Full JS/JSX/MJS/TS/TSX files are exported as 74 complete TXT files with exact destination paths and hashes. Local validation: 331 unit tests, 628 PostgreSQL regression assertions, build PASS, lint zero errors/166 warnings, and 254 browser screenshots. Hosted/provider acceptance remains unperformed.
+
+The current dedicated-wishlist increment: **No SQL migration required.** The cumulative expansion package still includes seven pending, review-only migrations and complete SQL tests/reviews; all seven are byte-for-byte unchanged by this page.
 
 | Change from reviewed base | Exact repository / VS Code destination |
 | --- | --- |
@@ -42,6 +44,7 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `app/components/commerce/OwnerPaymentStatus.jsx` |
 | Modified | `app/components/commerce/ProductGallery.jsx` |
 | Modified | `app/components/commerce/StoreAccount.jsx` |
+| Added | `app/components/commerce/StoreWishlist.jsx` |
 | Modified | `app/components/commerce/Storefront.jsx` |
 | Modified | `app/components/commerce/StorefrontBag.jsx` |
 | Added | `app/components/commerce/StorefrontSections.jsx` |
@@ -50,9 +53,11 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `app/components/commerce/commerce-growth.css` |
 | Added | `app/components/commerce/commerce-payments.css` |
 | Added | `app/components/commerce/customer-experience.css` |
+| Added | `app/components/commerce/store-wishlist.css` |
 | Added | `app/components/commerce/storefront-templates.css` |
 | Modified | `app/shops/[slug]/page.jsx` |
 | Modified | `app/shops/[slug]/store-metadata.js` |
+| Added | `app/shops/[slug]/wishlist/page.jsx` |
 | Modified | `app/shops/layout.jsx` |
 | Modified | `docs/commerce/README.md` |
 | Added | `docs/commerce/catalog-migration-review.md` |
@@ -68,6 +73,7 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `docs/commerce/online-payment-migration-review.md` |
 | Added | `docs/commerce/payment-recovery-queue-migration-review.md` |
 | Added | `docs/commerce/stop-unstarted-payment-migration-review.md` |
+| Added | `docs/commerce/wishlist-page-report.md` |
 | Added | `lib/commerce/catalog-options.js` |
 | Added | `lib/commerce/payment-pointer.js` |
 | Added | `lib/commerce/payment-state.js` |
@@ -111,9 +117,10 @@ Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branc
 | Added | `tests/commerce-payment-state.test.mjs` |
 | Added | `tests/commerce-payments.test.mjs` |
 | Added | `tests/commerce-storefront-seo.test.mjs` |
+| Added | `tests/commerce-wishlist.browser.mjs` |
 | Modified | `tests/commerce.browser.mjs` |
 | Modified | `tests/helpers/commerce-fixture.mjs` |
 | Modified | `tests/maintenance.test.mjs` |
 | Modified | `vercel.json` |
 
-The original storefront.css and installed foundation migration are unchanged. The first six expansion migration files are byte-for-byte unchanged by the seventh file, which introduces immutable proof and verified-buyer stopping only for a never-dispatched checkout. No existing business row is changed by installation; an authorized runtime stop changes only its eligible intent and appends proof. The separate pending platform subscription ledger remains excluded. Existing restaurant, delivery, resort, wallet and payment source modules are unchanged by this expansion. No hosted SQL, deployment, main push, merge or live payment was performed.
+The original storefront.css and installed foundation migration are unchanged. The separate pending platform subscription ledger remains excluded/default off. Existing restaurant, delivery, resort, wallet and payment source modules are unchanged by this expansion. No hosted SQL, deployment, main push, merge or live payment was performed. Owner feature requests are the next planned source dependency; they are not implemented by the wishlist page.

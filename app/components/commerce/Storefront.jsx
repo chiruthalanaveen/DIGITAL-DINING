@@ -421,10 +421,10 @@ export default function Storefront({ initialCatalog }) {
       <div className="cs-topline">{pickup && delivery ? 'Local delivery & store pickup' : delivery ? 'Local delivery available' : pickup ? 'Collect from our store' : 'Explore our collection'}</div>
       <header className="cs-header cs-container">
         <StoreBrand website={website} />
-        <nav aria-label="Store navigation"><a href="#collection">Collection</a><button className="cs-nav-search" type="button" onClick={() => searchRef.current?.focus()}>Search</button><a href="#store-contact">Contact</a><Link href={accountPath}>My account</Link></nav>
+        <nav aria-label="Store navigation"><a href="#collection">Collection</a><button className="cs-nav-search" type="button" onClick={() => searchRef.current?.focus()}>Search</button><a href="#store-contact">Contact</a><Link href={`/shops/${encodeURIComponent(website.slug)}/wishlist`}>Wishlist</Link><Link href={accountPath}>My account</Link></nav>
         <button className="cs-bag" type="button" onClick={() => { setCartOpen(true); setError('') }} aria-label={`Open shopping bag, ${count} items`} disabled={!cartReady}><BagIcon /><span>Bag</span><strong>{count}</strong></button>
       </header>
-      <nav className="cs-mobile-nav cs-container" aria-label="Mobile store navigation"><a href="#collection">Collection</a><button type="button" onClick={() => searchRef.current?.focus()}>Search</button><Link href={accountPath}>Account</Link><a href="#store-contact">Contact</a></nav>
+      <nav className="cs-mobile-nav cs-container" aria-label="Mobile store navigation"><a href="#collection">Collection</a><button type="button" onClick={() => searchRef.current?.focus()}>Search</button><Link href={accountPath}>Account</Link><Link href={`/shops/${encodeURIComponent(website.slug)}/wishlist`}>Wishlist</Link><a href="#store-contact">Contact</a></nav>
 
       <StorefrontSections website={website} categories={categories} products={products} template={template} onCategory={setCategory} renderProduct={renderProduct} />
 

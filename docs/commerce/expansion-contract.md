@@ -18,6 +18,37 @@ verified identity, current membership, website status and existing permissions.
 Admin operations are service-only behind the existing signed Admin session.
 Never trust a submitted owner/customer identity, price, stock or discount.
 
+## Dedicated wishlist page
+
+`/shops/[slug]/wishlist` is a dynamic private presentation of the existing saved
+products relation. Its server route passes only the selected public catalog;
+private wishlist reads/removals use `customer:<slug>` Auth and the existing
+`/api/commerce/customer/experience` GET/POST contract, never a caller-supplied
+buyer. Only verified customers load the list. Private noindex metadata uses the
+wishlist title/canonical; a verified custom host rewrites `/wishlist` to its own
+slug and rejects foreign or nested shop paths.
+
+The client retains wishlist IDs/public eligibility only, joins those IDs to the
+current public catalog and shows generic removable entries for unavailable
+products. It must not reveal archived product metadata, invent stock, write bags
+or change checkout keys. Auth scope/version, keyed children and request guards
+must prevent delayed reads, mutations, errors or finally handlers from showing
+a previous buyer's state. Failed reads/removals stay explicit with retry; a
+successful removal announces the result and restores focus to a remaining
+control or the list heading.
+
+No SQL migration required. No new environment variable, DNS record, Storage
+policy or cron job is needed for this page. The existing customer-experience
+migration remains a prerequisite wherever this optional feature is installed;
+missing capability must be displayed as unavailable, never an empty success.
+Current full unit/build/lint checks pass (331 tests, zero lint errors/166
+warnings); expansion browser checks pass 22 groups/136 screenshots, including
+nine wishlist groups/24 screenshots. The fresh original suite passes 118
+screenshots and reruns all 628 PostgreSQL assertions for the unchanged migration
+chain; both browser suites captured 254 screenshots. See the
+[wishlist report](wishlist-page-report.md). Previous `8dbc382` evidence below
+remains historical.
+
 ## Integration seams
 
 Core catalog migration: `20261102160000_commerce_catalog_fulfillment.sql`.

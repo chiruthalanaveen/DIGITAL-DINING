@@ -45,16 +45,16 @@ export async function proxy(request: NextRequest) {
   if (!await maintenanceEnabled()) {
     // Only storefront entry points use custom-host routing. Existing platform,
     // auth, Admin, API and asset paths retain their current handling.
-    if (pathname === '/' || pathname === '/account' || pathname === '/shops' || pathname.startsWith('/shops/')) {
+    if (pathname === '/' || pathname === '/account' || pathname === '/wishlist' || pathname === '/shops' || pathname.startsWith('/shops/')) {
       const slug = await resolveCommerceDomain(request)
       if (slug) {
         const destination = request.nextUrl.clone()
         let response
-        if (pathname === `/shops/${slug}` || pathname === `/shops/${slug}/account`) {
-          destination.pathname = pathname.endsWith('/account') ? '/account' : '/'
+        if (pathname === `/shops/${slug}` || pathname === `/shops/${slug}/account` || pathname === `/shops/${slug}/wishlist`) {
+          destination.pathname = pathname === `/shops/${slug}` ? '/' : pathname.endsWith('/wishlist') ? '/wishlist' : '/account'
           response = NextResponse.redirect(destination, 307)
-        } else if (pathname === '/' || pathname === '/account') {
-          destination.pathname = `/shops/${slug}${pathname === '/' ? '' : '/account'}`
+        } else if (pathname === '/' || pathname === '/account' || pathname === '/wishlist') {
+          destination.pathname = `/shops/${slug}${pathname === '/' ? '' : pathname}`
           response = NextResponse.rewrite(destination)
         } else {
           // A verified host cannot present another tenant's storefront.

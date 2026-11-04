@@ -480,3 +480,32 @@ test('custom proxy rewrites storefront entries while preserving maintenance, pri
   state.maintenance = false
   assert.equal((await proxy(new NextRequest('https://www.digitaldine-in.online/', { headers: { host: 'www.digitaldine-in.online', 'x-forwarded-host': hostname } }))).headers.get('x-middleware-rewrite'), null)
 })
+
+test('custom-host wishlist routing stays bound to the verified store and preserves maintenance gates', async t => {
+  const { load, state } = fixture(t)
+  enableProvider(t)
+  state.rpcResults.commerce_resolve_domain = 'first-store'
+  const { proxy } = load('proxy.ts')
+  const req = pathname => new NextRequest(`https://${hostname}${pathname}`, { headers: { host: hostname } })
+  const wishlist = await proxy(req('/wishlist?view=saved'))
+  assert.equal(wishlist.headers.get('x-middleware-rewrite'), `https://${hostname}/shops/first-store/wishlist?view=saved`)
+  assert.equal(wishlist.headers.get('cache-control'), 'private, no-store')
+  assert.equal(wishlist.headers.get('vary'), 'Host')
+  const canonical = await proxy(req('/shops/first-store/wishlist?view=saved'))
+  assert.equal(canonical.status, 307)
+  assert.equal(canonical.headers.get('location'), `https://${hostname}/wishlist?view=saved`)
+  for (const pathname of ['/shops/another-store/wishlist', '/shops/first-store/wishlist/private', '/shops/first-store/wishlists']) {
+    const denied = await proxy(req(pathname))
+    assert.equal(denied.status, 404)
+    assert.equal(denied.headers.get('x-middleware-rewrite'), null)
+    assert.equal(denied.headers.get('location'), null)
+    assert.equal(denied.headers.get('cache-control'), 'private, no-store')
+  }
+  assert.equal((await proxy(req('/wishlists'))).headers.get('x-middleware-rewrite'), null)
+  state.maintenance = true
+  assert.equal((await proxy(req('/wishlist'))).status, 503)
+  assert.equal((await proxy(req('/shops/first-store/wishlist'))).status, 503)
+  state.maintenance = false
+  const primary = new NextRequest('https://www.digitaldine-in.online/shops/first-store/wishlist', { headers: { host: 'www.digitaldine-in.online', 'x-forwarded-host': hostname } })
+  assert.equal((await proxy(primary)).headers.get('x-middleware-rewrite'), null)
+})

@@ -1,6 +1,28 @@
 # E-commerce expansion implementation and verification
 
-## 4 November 2026: stop an unstarted checkout — local PASS, release PARTIAL PASS
+## 4 November 2026: dedicated wishlist page — local PASS, release PARTIAL PASS
+
+The current increment closes the explicit requirement for a dedicated wishlist
+page. `/shops/[slug]/wishlist` reuses existing tenant/customer-scoped persistence,
+links from store and account navigation, and presents saved public catalog items
+with an honest unavailable-item fallback. Private noindex metadata and exact
+custom-host routing are included. **No SQL migration required.** The seven
+pending commerce migrations remain unchanged and unapplied to hosted targets.
+
+Read the [wishlist implementation and verification report](wishlist-page-report.md)
+for before/after behavior, file scope, manual acceptance and current test status.
+Current full unit checks pass 331/331 with zero skipped; lint has zero errors/
+166 warnings, and the full repository build passes with stable application/
+configuration fingerprints. The expanded full-app browser suite passes
+22 groups/136 screenshots, including nine wishlist groups/24 screenshots.
+The fresh original suite passes 118 screenshots and reruns all 628 PostgreSQL
+assertions for the unchanged seven-migration chain. Both browser suites captured
+254 screenshots. The 327-unit/628-SQL/230-screenshot record below belongs to
+committed `8dbc382`.
+No hosted SQL, provider activation, production action or merge is part of this
+page work. Overall release acceptance remains **PARTIAL PASS**.
+
+## Earlier 4 November 2026: stop an unstarted checkout — validated prior source
 
 The next bounded source increment remains on `feature/commerce-expansion` in
 draft [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7). A buyer
@@ -37,7 +59,7 @@ preceding migration files remain byte-for-byte unchanged.
   provider order. Recovery remains possible with the store, merchant or rollout
   disabled; it is an own-record recovery operation, not payment activation.
 
-| Current source check | Result | Limit |
+| Prior committed source check | Result | Limit |
 | --- | --- | --- |
 | `COMMERCE_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55447/commerce_test node scripts/test-commerce-expansion-db.mjs` | PASS — 628 PostgreSQL assertions | All prior 561 retained plus 67 new stop/race/preservation checks. Isolated PostgreSQL 18.4 with synthetic Auth, not hosted Supabase acceptance. |
 | `node tests/commerce-payments.test.mjs` | PASS — 27 focused mocked tests | Includes same-origin/verified scope, malformed proof, missing row/capability, conflict, cancelled replay and creation-race paths. No real provider calls. |
@@ -194,7 +216,7 @@ acceptance remains unperformed even where isolated tests pass.
 | 6. Delivery PIN codes and fees | Tenant PIN zones, fees and minimums enforced during quote/order creation; pickup and flat-fee compatibility preserved. | Configure each store’s actual coverage. No shipping-provider or courier booking integration is claimed. |
 | 7. Variants and SKUs | Stock-bearing tenant variants, options, SKU/price, separate inventory adjustments, immutable order snapshots and once-only cancellation restocking. | Variant and final-unit races pass locally; hosted compatibility unperformed. |
 | 8. Policies and trust | Optional plain-text shipping/returns/privacy/terms, FAQ, explicit return policy/window and owner branding permission. | Store operators must supply their actual terms; no legal assurances or invented policies are displayed. |
-| 9. Wishlist | PASS locally: persisted website/customer/product relation, private list, failed-read retry and wishlist/identity-switch isolation in the full browser suite. | Real hosted Auth/RLS remains unperformed. |
+| 9. Wishlist | Persisted website/customer/product relation and inline controls were validated earlier. The dedicated `/shops/[slug]/wishlist` page, private metadata, navigation and custom-host routing now pass 331 full unit tests/build and nine new wishlist browser groups/24 screenshots. See the [wishlist report](wishlist-page-report.md). | The original compatibility suite also passes; real hosted Auth/RLS remains unperformed. |
 | 10. Ratings and reviews | Own completed-order eligibility, rating/body validation, moderation, reset on edit and anonymous approved-review projection without buyer identities. | No fake reviews; hosted Auth/moderation acceptance unperformed. |
 | 11. Coupons and promotions | Fixed/percentage exact-paise discounts, dates, caps, spend and per-buyer/overall limits; atomic immutable redemptions and final-use contention tests. | Actual campaigns are unconfigured. Cancellation retains redemption history; no reset/refund of coupon usage is implied. |
 | 12. Saved addresses | Website/customer address book, one default, scope checks and checkout autofill preserving typed input. Original shipping snapshot survives address edit/delete on identical retries. | Provider Auth/Storage behaviour is not established by local roles. |
