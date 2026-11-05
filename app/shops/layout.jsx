@@ -1,6 +1,7 @@
 import '@/app/components/commerce/storefront.css'
 import '@/app/components/commerce/storefront-editorial.css'
 import '@/app/components/commerce/product-gallery.css'
+import '@/app/components/commerce/storefront-templates.css'
 
 // A client storefront must not advertise the main application's install manifest.
 export const metadata = {

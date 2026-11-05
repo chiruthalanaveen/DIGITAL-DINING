@@ -39,6 +39,119 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
+### Current remaining-commerce implementation — updated 5 November 2026
+
+The user explicitly requested continuing the remaining e-commerce requirements.
+Implement the outstanding commerce capabilities in dependency order on
+`feature/commerce-expansion`, based on the published release's documentation
+commit `f9dd674`. This supersedes the earlier three-improvement source limit
+for commerce only; preserve all restaurant/delivery/resort/wallet modules and
+the original storefront stylesheet. Keep automatic deployment disabled.
+
+Prepare versioned, data-preserving commerce migrations and test only in
+isolated loopback development fixtures. Do not apply SQL to any hosted target,
+use main as a test database, deploy this new source, merge PRs or process live
+payments. The previous Production approval covered commit `84188e3` only.
+Keep paid subscriptions disabled and its separate pending migration untouched.
+New domain/provider/notification activation needs verified configuration and
+separate approval; tests must use stubs/development credentials. Preserve data,
+RLS, financial history and cron jobs. Do not ask again for waived backup or
+withdrawn staging setup; record hosted-validation limits accurately.
+
+The latest source increment implements owner feature requests with signed Super
+Admin review and owner-visible status/history. It requires the eighth migration
+`20261104160000_commerce_feature_requests.sql`, prepared on 4 November and resumed
+for final verification on 5 November. Preserve the first seven migration files
+byte-for-byte. The new public request/private immutable-event tables and scoped
+RPCs do not enable code, alter website features/permissions, charge, send a
+notification or release work. Only new submissions require setup/active status;
+identical saved submissions remain recoverable after the website becomes
+read-only, while verified Auth and current active owner membership remain required.
+Keep owner pending UUID/content bound to user/store through unknown responses;
+Admin reviews use expected status/revision plus a retained action UUID. Never
+infer an accepted decision or overwrite a later state from an old response.
+
+The local eight-file SQL suite passes 702 assertions, retaining all prior 628.
+Fresh final-source checks pass 359/359 unit tests, full lint with zero errors/
+166 warnings and build with stable application/configuration fingerprints.
+Focused API tests pass 28. The complete current expanded full-app suite passes
+30 groups/152 screenshots, including eight feature-request groups/16 screenshots
+and the owner list/detail status-sync assertion. The refreshed detail updates
+its list row; a fresh list refresh clears stale detail/notice. Fresh original
+compatibility passes 118 screenshots and all 702 SQL assertions on this final
+source: 270 primary screenshots total (152 expansion + 118 original). Earlier
+focused-helper screenshots are separate diagnostic evidence, not added again. See `docs/commerce/feature-requests-report.md` and
+the full eighth-migration review.
+All eight expansion files remain unapplied to hosted databases. Hosted Supabase,
+provider/DNS/notification acceptance and production activation are separate.
+
+The preceding committed wishlist source (`55b5934`) completed the dedicated
+`/shops/[slug]/wishlist` page using existing persistence: No SQL migration
+required for that page. Its dated results are 331 unit tests, 628 PostgreSQL
+regression assertions, zero lint errors/166 warnings, build and 254 screenshots
+(136 expansion including 24 wishlist, plus 118 original). Those counts belong
+to that source, not acceptance of the new feature-request workflow.
+
+The preceding committed 4 November source (`8dbc382`) added a verified buyer's narrow
+stop of an existing never-dispatched checkout, plus the API/browser integration
+needed to validate its proof. Its seventh migration is
+`20261104120000_commerce_stop_unstarted_payment.sql`. Keep the first six files
+byte-for-byte unchanged. It adds immutable private cancellation proof and
+terminal `cancelled_unstarted` state/guards; only `new` with NULL provider order,
+NULL creation lease and no receipt is eligible under Auth SHARE then intent
+FOR UPDATE. Never infer safety from absence, timeouts, popup dismissal or
+provider failure; a missing row cannot release the pointer. Already-dispatched,
+unknown, ready or captured payments remain on existing reconciliation paths.
+Only bound explicit proof permits clearing the pointer; preserve the bag and
+use a fresh UUID. Do not reopen a stopped row or reuse its reserved old key.
+No provider/financial activation or general unpaid-order cancellation authority
+is created. Serialize all shared browser-pointer changes with exclusive Web
+Locks per buyer/store. Secure-browser locking is required for online start/stop
+and receipt/proof release; unsupported locking fails closed while Check can
+fetch/display status, and COD without a saved online pointer is unaffected.
+Recovered known-new Continue stays disabled with Stop-to-restart guidance;
+do not expand provider resume or allow stale-tab responses to clear newer state.
+Local SQL passes 628 assertions, preserving all prior 561 cases;
+focused API tests pass 27 and pointer/state tests pass 18/10. That source’s full
+application checks passed 327/327 unit tests, lint with zero errors/166 warnings,
+and npm run build. The actual full-app browser suites pass 13 expansion groups/
+112 screenshots plus 118 original compatibility screenshots, 230 total at four
+widths. Overall completion remains PARTIAL PASS for unperformed hosted/provider/
+domain/notification acceptance and activation. See the current report and
+stop-unstarted migration review.
+
+The earlier 4 November committed follow-up added only read-only Admin payment discovery/buyer
+references and owner configuration status. Its sixth migration is
+`20261104090000_commerce_payment_recovery_queue.sql`: one service-only read RPC,
+no table/policy/row mutation. Keep the first five migration files byte-for-byte
+unchanged. The six-file local SQL suite passes 561 assertions; focused payment
+tests pass 21 and owner status tests pass 8. Final full unit checks pass 296/296
+with zero skipped, the full repository build passes, lint passes zero errors/
+166 warnings, and both final-source browser suites pass 198 combined screenshots
+(80 expansion/118 original). Application fingerprints remain stable across the
+build and both browser runs, including the valid-uppercase-UUID Admin query
+normalization and regression. Local validation is complete; hosted/provider
+acceptance and external activation remain held. No new provider, hosted SQL,
+deployment, abandonment/release, paid/refund/cancel or activation authority is
+created by that increment. The review remains on draft PR #7; do not merge or deploy.
+
+Historical 3 November isolated evidence is 531 PostgreSQL assertions, 284/284 unit tests,
+lint with zero errors/166 warnings, and the full repository build passing with
+unchanged source fingerprints during compilation. The expansion browser suite
+passes eight groups/72 screenshots at four widths, and the original commerce
+browser/API compatibility suite also passes against the actual full app with
+simulated Auth/Storage and external provider scripts blocked. These are local
+results; valid PIN recovery and provider acceptance remain unverified.
+All eight commerce expansion migrations remain unapplied to hosted databases;
+provider/DNS/email/live-payment gates are not satisfied by local tests. See
+`docs/commerce/expansion-report.md` and `expansion-installation.md` for the
+completion matrix, exact SQL, object inventories and preserved-history rollback.
+
+Use `docs/commerce/expansion-contract.md` as the integration contract and keep
+the implementation/completion matrix truthful. A source implementation is not
+proof of hosted Auth/RLS/provider behavior. Export full changed JS/JSX as TXT
+with exact destinations, migrations/review/rollback steps, tests and screenshots.
+
 ### Published Production release — 2 November 2026
 
 After reviewing the passing lint/test/build report, the user explicitly said

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { maintenancePage } from './lib/maintenance-page'
 import { maintenanceEnabled } from './lib/server/maintenanceSettings'
+import { resolveCommerceDomain } from './lib/server/commerce/domains'
 
 const publicFiles = new Set([
   '/favicon.ico',
@@ -41,7 +42,31 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  if (!await maintenanceEnabled()) return NextResponse.next()
+  if (!await maintenanceEnabled()) {
+    // Only storefront entry points use custom-host routing. Existing platform,
+    // auth, Admin, API and asset paths retain their current handling.
+    if (pathname === '/' || pathname === '/account' || pathname === '/wishlist' || pathname === '/shops' || pathname.startsWith('/shops/')) {
+      const slug = await resolveCommerceDomain(request)
+      if (slug) {
+        const destination = request.nextUrl.clone()
+        let response
+        if (pathname === `/shops/${slug}` || pathname === `/shops/${slug}/account` || pathname === `/shops/${slug}/wishlist`) {
+          destination.pathname = pathname === `/shops/${slug}` ? '/' : pathname.endsWith('/wishlist') ? '/wishlist' : '/account'
+          response = NextResponse.redirect(destination, 307)
+        } else if (pathname === '/' || pathname === '/account' || pathname === '/wishlist') {
+          destination.pathname = `/shops/${slug}${pathname === '/' ? '' : pathname}`
+          response = NextResponse.rewrite(destination)
+        } else {
+          // A verified host cannot present another tenant's storefront.
+          response = new NextResponse('Store page not found.', { status: 404 })
+        }
+        response.headers.set('Cache-Control', 'private, no-store')
+        response.headers.set('Vary', 'Host')
+        return response
+      }
+    }
+    return NextResponse.next()
+  }
 
   return new NextResponse(request.method === 'HEAD' ? null : maintenancePage, {
     status: 503,

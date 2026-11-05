@@ -112,6 +112,7 @@ function fixture(overrides = {}) {
     },
   })
   const { proxy } = loadModule('proxy.ts', {
+    './lib/server/commerce/domains': { resolveCommerceDomain: async () => null },
     './lib/server/maintenanceSettings': settings,
     './lib/maintenance-page': { maintenancePage: '<!doctype html><title>Maintenance</title>' },
   })
@@ -300,4 +301,11 @@ test('proxy reflects persisted changes and does not bypass similarly named publi
   const head = await proxy(new NextRequest('https://dining.example/login', { method: 'HEAD' }))
   assert.equal(head.status, 503)
   assert.equal(await head.text(), '')
+  for (const pathname of ['/wishlist', '/shops/first-store/wishlist']) {
+    assert.equal((await proxy(new NextRequest(`https://dining.example${pathname}`))).status, 503)
+  }
+  state.row.status = 'Working'
+  for (const pathname of ['/wishlist', '/shops/first-store/wishlist']) {
+    assert.equal((await proxy(new NextRequest(`https://dining.example${pathname}`))).headers.get('x-middleware-next'), '1')
+  }
 })

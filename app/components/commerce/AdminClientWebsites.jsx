@@ -2,16 +2,23 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { BUSINESS_TYPES, DEFAULT_BRANDING, DEFAULT_FEATURES, DEFAULT_FULFILLMENT, DEFAULT_OWNER_PERMISSIONS, formatCommerceMoney } from '@/lib/commerce/config'
+import { commerceFetch } from '@/lib/commerce/client'
+import CommerceCatalogPanel from './CommerceCatalogPanel'
+import CommerceAdminDomainsPanel from './CommerceAdminDomainsPanel'
+import CommercePaymentAdminPanel from './CommercePaymentAdminPanel'
+import CommerceAdminFeatureRequestsPanel from './CommerceAdminFeatureRequestsPanel'
 import './admin-commerce.css'
+import './owner.css'
 
 const FEATURE_LABELS = { catalog: 'Public catalog', inventory: 'Inventory controls', cod: 'Cash on delivery / pickup' }
 const PERMISSION_LABELS = { products: 'Products', categories: 'Categories', inventory: 'Inventory', orders: 'Orders', branding: 'Branding', customers: 'Customers' }
 const EMPTY_DATA = { websites: [], applications: [], memberships: [], audit_logs: [] }
+const TEMPLATE_OPTIONS = [['general', 'General retail'], ['sarees', 'Sarees & ethnic wear'], ['grocery', 'Groceries'], ['fashion', 'Fashion'], ['food', 'Food ordering']]
 
 function freshDraft(website = {}, ownerId = '') {
   return {
     name: website.name || '', slug: website.slug || '', business_type: website.business_type || 'general',
-    owner_user_id: ownerId, application_id: '', template: 'general', status: website.status || 'setup',
+    owner_user_id: ownerId, application_id: '', template: website.template || 'general', status: website.status || 'setup',
     branding: { ...DEFAULT_BRANDING, ...website.branding },
     features: { ...DEFAULT_FEATURES, ...website.features },
     owner_permissions: { ...DEFAULT_OWNER_PERMISSIONS, ...website.owner_permissions },
@@ -33,7 +40,7 @@ function paise(value, label) {
 function draftPayload(draft) {
   return {
     name: draft.name.trim(), slug: draft.slug.trim().toLowerCase(), business_type: draft.business_type,
-    template: 'general', status: draft.status, branding: draft.branding, features: draft.features,
+    status: draft.status, branding: draft.branding, features: draft.features,
     owner_permissions: draft.owner_permissions,
     fulfillment: { ...draft.fulfillment, delivery_fee_paise: paise(draft.delivery_fee, 'Delivery fee'), minimum_order_paise: paise(draft.minimum_order, 'Minimum order') },
     subscription_plan: draft.subscription_plan.trim(), subscription_status: draft.subscription_status,
@@ -157,6 +164,18 @@ export default function AdminClientWebsites() {
     } else await act('save_website', { ...payload, id: selectedId }, 'Website configuration saved for this client only.')
   }
 
+  async function saveTemplate() {
+    if (pending.current || busy || !loaded || !selectedId) return
+    pending.current = true; setBusy(true); setError(''); setNotice('')
+    try {
+      await commerceFetch('/api/commerce/admin/catalog', { method: 'POST', body: { website_id: selectedId, action: 'save_template', payload: { template: draft.template } } })
+      setData({ ...EMPTY_DATA, ...await adminRequest() })
+      setNotice('The storefront template assignment was saved for this website.')
+    } catch (requestError) {
+      setError(`${requestError.message || 'Template assignment is unavailable.'} Refresh to check the saved assignment before retrying.`)
+    } finally { pending.current = false; setBusy(false) }
+  }
+
   const websites = data.websites || []
   const applications = data.applications || []
   const filtered = websites.filter(website => `${website.name} ${website.slug} ${website.business_type}`.toLowerCase().includes(search.toLowerCase()))
@@ -172,6 +191,7 @@ export default function AdminClientWebsites() {
       {error && <div className="ac-feedback ac-error" role="alert">{error}</div>}
       {notice && <div className="ac-feedback ac-success" role="status">{notice}</div>}
       {!loaded && busy && <p className="ac-loading" role="status">Loading client websites…</p>}
+      {loaded && <CommerceAdminFeatureRequestsPanel websites={websites} />}
       <div className="ac-metrics">
         {[['Client websites', websites.length], ['Active storefronts', websites.filter(website => website.status === 'active').length], ['Awaiting review', pendingApplications.length], ['In setup', websites.filter(website => website.status === 'setup').length]].map(([label, value]) => <div className="ac-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}
       </div>
@@ -192,17 +212,18 @@ export default function AdminClientWebsites() {
         {(creating || selected) && <section className="ac-editor" aria-labelledby="ac-editor-title">
           <div className="ac-panel-heading"><div><p className="ac-eyebrow">{creating ? 'New client website' : 'Client configuration'}</p><h2 id="ac-editor-title">{creating ? 'Build a new storefront' : selected.name}</h2></div><button type="button" className="ac-button ac-secondary" disabled={busy} onClick={() => { setCreating(false); setSelectedId(''); setView(null) }}>Close</button></div>
           {selected && <div className="ac-management-note"><strong>Audited administration</strong><span>You are viewing this client as Super Admin. This does not create or impersonate an owner session.</span></div>}
-          {view?.report && <div className="ac-metrics ac-report">{[['Orders', view.report.order_count], ['Completed COD sales', money(view.report.sales_paise)], ['Customers', view.report.customer_count], ['Products', view.report.product_count]].map(([title, value]) => <div className="ac-metric" key={title}><span>{title}</span><strong>{value ?? 0}</strong></div>)}</div>}
+          {view?.report && <div className="ac-metrics ac-report">{[['Orders', view.report.order_count], ['Completed order value', money(view.report.sales_paise)], ['Customers', view.report.customer_count], ['Products', view.report.product_count]].map(([title, value]) => <div className="ac-metric" key={title}><span>{title}</span><strong>{value ?? 0}</strong></div>)}</div>}
           <form onSubmit={saveWebsite}>
             <fieldset disabled={busy}>
               <legend>Website identity</legend><div className="ac-form-grid">
                 <Field label="Website name"><input required maxLength={120} value={draft.name} onChange={event => update('name', event.target.value)} /></Field>
                 <Field label="Unique website slug" help="3–48 lowercase letters, numbers and hyphens. No DNS configuration is changed."><input required pattern="[a-z0-9][a-z0-9\-]{1,46}[a-z0-9]" maxLength={48} value={draft.slug} onChange={event => update('slug', event.target.value.toLowerCase())} /></Field>
                 <Field label="Business type"><select value={draft.business_type} onChange={event => update('business_type', event.target.value)}>{BUSINESS_TYPES.map(([type, title]) => <option key={type} value={type}>{title}</option>)}</select></Field>
-                <Field label="Website template" help="The shared retail template is available in Phase 1. Industry-specific layouts are a later phase."><select value="general" disabled><option value="general">General retail</option></select></Field>
+                <Field label="Website template" help={creating ? 'Create this website first, then assign its storefront layout separately.' : 'Save template assignment separately. This does not activate the website or change owner permissions.'}><select value={draft.template} disabled={creating} onChange={event => update('template', event.target.value)}>{TEMPLATE_OPTIONS.map(([value, title]) => <option key={value} value={value}>{title}</option>)}</select></Field>
                 <Field label="Website status"><select value={draft.status} onChange={event => update('status', event.target.value)}><option value="setup">Website setup</option><option value="active" disabled={draft.business_type === 'pharmacy'}>Active</option><option value="suspended">Suspended</option><option value="archived">Archived</option></select></Field>
                 <Field label="Verified owner Auth user ID" help={creating ? 'Use the verified applicant account, or leave blank to assign an owner during setup.' : 'Owner reassignment is saved separately and audited.'}><input value={draft.owner_user_id} onChange={event => update('owner_user_id', event.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></Field>
               </div>
+              {!creating && <div className="ac-actions"><button type="button" className="ac-button ac-secondary" onClick={() => void saveTemplate()}>Save template assignment</button></div>}
               {!creating && <button type="button" className="ac-button ac-secondary" disabled={!draft.owner_user_id.trim()} onClick={() => void act('assign_owner', { website_id: selectedId, user_id: draft.owner_user_id.trim() }, 'Verified owner assigned and membership change audited.')}>Assign verified owner</button>}
               {draft.business_type === 'pharmacy' && <p className="ac-warning">Pharmacy activation and prescription sales are blocked. Licensing and regulatory review are required before a later production release.</p>}
             </fieldset>
@@ -222,7 +243,7 @@ export default function AdminClientWebsites() {
             <fieldset disabled={busy}><legend>Delivery and pickup</legend><div className="ac-inline-options">{[['pickup', 'Pickup'], ['delivery', 'Local delivery']].map(([key, title]) => <label className="ac-checkbox" key={key}><input type="checkbox" checked={Boolean(draft.fulfillment[key])} onChange={event => nested('fulfillment', key, event.target.checked)} /><span>{title}</span></label>)}</div><div className="ac-form-grid">
               <Field label="Delivery fee (₹)"><input inputMode="decimal" value={draft.delivery_fee} onChange={event => update('delivery_fee', event.target.value)} /></Field>
               <Field label="Minimum order (₹)"><input inputMode="decimal" value={draft.minimum_order} onChange={event => update('minimum_order', event.target.value)} /></Field>
-            </div><Field label="Pickup address"><textarea rows={2} maxLength={1000} value={draft.fulfillment.pickup_address} onChange={event => nested('fulfillment', 'pickup_address', event.target.value)} /></Field><p className="ac-muted">Shipping-provider integrations and geographic delivery boundaries are planned separately.</p></fieldset>
+            </div><Field label="Pickup address"><textarea rows={2} maxLength={1000} value={draft.fulfillment.pickup_address} onChange={event => nested('fulfillment', 'pickup_address', event.target.value)} /></Field><p className="ac-muted">Owners with branding permission can configure delivery PIN-code coverage and zone fees. Shipping-provider integrations require separate verified configuration.</p></fieldset>
 
             <fieldset disabled={busy}><legend>Subscription configuration</legend><div className="ac-form-grid">
               <Field label="Plan name"><input maxLength={60} value={draft.subscription_plan} onChange={event => update('subscription_plan', event.target.value)} /></Field>
@@ -232,6 +253,7 @@ export default function AdminClientWebsites() {
             <div className="ac-editor-footer"><span className="ac-muted">Changes affect this client website only.</span><button type="submit" className="ac-button" disabled={busy}>{busy ? 'Saving…' : creating ? 'Create client website' : 'Save website configuration'}</button></div>
           </form>
           {view?.orders && <div className="ac-order-summary"><h3>Recent orders</h3>{!view.orders.length ? <p className="ac-muted">No orders for this website yet.</p> : <div className="ac-table-wrap"><table><thead><tr><th>Order</th><th>Created</th><th>Status</th><th>Total</th></tr></thead><tbody>{view.orders.slice(0, 20).map(order => <tr key={order.id}><td>{order.id.slice(0, 8)}</td><td>{date(order.created_at)}</td><td><Status value={order.status} /></td><td>{money(order.total_paise)}</td></tr>)}</tbody></table></div>}</div>}
+          {selected && <><details className="commerce-owner" style={{ minHeight: 0, background: "transparent" }}><summary>View catalog options and content</summary>{['products', 'inventory', 'delivery', 'content'].map(mode => <CommerceCatalogPanel key={`${selected.id}:${mode}`} website={selected} client={null} readOnly products={view?.products || []} categories={view?.categories || []} mode={mode} />)}</details><CommerceAdminDomainsPanel key={`domains:${selected.id}`} website={selected} readOnly={busy} /><CommercePaymentAdminPanel key={`payments:${selected.id}`} websiteId={selected.id} /></>}
         </section>}
       </>}
 

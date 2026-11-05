@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { commerceFetch, getCommerceClient } from '@/lib/commerce/client'
 import { commerceEmailRedirect } from '@/lib/commerce/authRedirect'
 import { StoreBrand, storeStyle } from './Storefront'
+import CustomerExperience from './CustomerExperience'
 
 const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(value || 0) / 100)
 const human = (value) => String(value || '').replaceAll('_', ' ')
@@ -13,6 +14,7 @@ export default function StoreAccount({ website }) {
   const clientRef = useRef(null)
   const accountIdRef = useRef(null)
   const [session, setSession] = useState(null)
+  const [accountClient, setAccountClient] = useState(null)
   const [ready, setReady] = useState(false)
   const [mode, setMode] = useState('login')
   const [busy, setBusy] = useState(false)
@@ -38,6 +40,7 @@ export default function StoreAccount({ website }) {
     clientRef.current = client
     function acceptSession(next) {
       if (!alive) return
+      setAccountClient(client)
       const nextId = next?.user?.id || null
       if (accountIdRef.current !== nextId) {
         accountIdRef.current = nextId
@@ -134,7 +137,7 @@ export default function StoreAccount({ website }) {
         {!ready ? <p role="status">Checking your account…</p> : session && mode !== 'update' ? <>
           <p className="cs-eyebrow">Signed in</p><h2>{session.user.user_metadata?.full_name || 'My account'}</h2><p className="cs-account-email">{session.user.email}</p>
           {!verified && <div className="cs-notice"><p>Verify your email to place orders and view your order history.</p><button className="cs-secondary" type="button" disabled={busy} onClick={resend}>Resend verification email</button></div>}
-          <div className="cs-account-actions"><Link className="cs-primary" href={home}>Continue shopping</Link><button className="cs-secondary" type="button" disabled={busy} onClick={signOut}>Sign out</button></div>
+          <div className="cs-account-actions"><Link className="cs-primary" href={home}>Continue shopping</Link><Link className="cs-secondary" href={`${home}/wishlist`}>View wishlist</Link><button className="cs-secondary" type="button" disabled={busy} onClick={signOut}>Sign out</button></div>
           <button className="cs-text-button" type="button" onClick={() => { setMode('update'); setError(''); setNotice('') }}>Change password</button>
         </> : <>
           {mode !== 'recover' && mode !== 'update' && <div className="cs-auth-tabs" role="group" aria-label="Choose account action"><button type="button" aria-pressed={mode === 'login'} onClick={() => { setMode('login'); setError(''); setNotice('') }}>Sign in</button><button type="button" aria-pressed={mode === 'signup'} onClick={() => { setMode('signup'); setError(''); setNotice('') }}>Create account</button></div>}
@@ -154,8 +157,9 @@ export default function StoreAccount({ website }) {
     {verified && <section className="cs-container cs-order-history" aria-labelledby="cs-orders-title"><div className="cs-section-heading"><div><p className="cs-eyebrow">Your purchases with this store</p><h2 id="cs-orders-title">Order history</h2></div><button className="cs-secondary" type="button" disabled={loadingOrders} onClick={() => setRefresh(current => current + 1)}>{loadingOrders ? 'Loading…' : 'Refresh orders'}</button></div>
       {ordersError && <p role="alert" className="cs-error">{ordersError}</p>}
       {!loadingOrders && !ordersError && visibleOrders.length === 0 && <div className="cs-empty"><h3>No orders yet.</h3><p>Your confirmed orders from {website.name} will appear here.</p><Link className="cs-primary" href={home}>Browse the collection</Link></div>}
-      <div className="cs-orders-list">{visibleOrders.map(order => <article className="cs-history-order" key={order.id}><div className="cs-order-top"><div><p className="cs-small">Order reference</p><h3>{order.id}</h3><p className="cs-small">{new Date(order.created_at).toLocaleString('en-IN')}</p></div><span className="cs-order-status">{human(order.status)}</span></div><ul>{items.filter(item => item.order_id === order.id).map(item => <li key={item.id}><span>{item.quantity} × {item.product_name}</span><strong>{money(item.line_total_paise ?? item.unit_price_paise * item.quantity)}</strong></li>)}</ul><div className="cs-order-bottom"><span>{human(order.fulfillment_method)} · {order.payment_method === 'cod' ? 'Cash payment' : human(order.payment_method)} · {human(order.payment_status)}</span><strong>{money(order.total_paise)}</strong></div></article>)}</div>
+      <div className="cs-orders-list">{visibleOrders.map(order => <article className="cs-history-order" key={order.id}><div className="cs-order-top"><div><p className="cs-small">Order reference</p><h3>{order.id}</h3><p className="cs-small">{new Date(order.created_at).toLocaleString('en-IN')}</p></div><span className="cs-order-status">{human(order.status)}</span></div><ul>{items.filter(item => item.order_id === order.id).map(item => <li key={item.id}><span>{item.quantity} × {item.product_name}{item.variant_name ? ` · ${item.variant_name}` : ""}{item.sku ? ` (${item.sku})` : ""}</span><strong>{money(item.line_total_paise ?? item.unit_price_paise * item.quantity)}</strong></li>)}</ul><div className="cs-order-bottom"><span>{human(order.fulfillment_method)} · {order.payment_method === 'cod' ? 'Cash payment' : human(order.payment_method)} · {human(order.payment_status)}</span><strong>{money(order.total_paise)}</strong></div></article>)}</div>
     </section>}
+    {verified && <CustomerExperience website={website} client={accountClient} session={session} orders={visibleOrders} items={ordersUserId === session?.user?.id ? items : []} onOrdersChange={() => setRefresh(current => current + 1)} />}
     <footer className="cs-container cs-account-footer"><span>{website.name}</span><Link href={home}>Back to the collection</Link></footer>
   </main>
 }
