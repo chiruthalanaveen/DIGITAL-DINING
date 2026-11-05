@@ -39,7 +39,7 @@ Keep these requirements outside the generated Next.js instruction block above.
 
 ## Client Websites main-project scope and release hold
 
-### Current remaining-commerce implementation — updated 4 November 2026
+### Current remaining-commerce implementation — updated 5 November 2026
 
 The user explicitly requested continuing the remaining e-commerce requirements.
 Implement the outstanding commerce capabilities in dependency order on
@@ -58,26 +58,39 @@ separate approval; tests must use stubs/development credentials. Preserve data,
 RLS, financial history and cron jobs. Do not ask again for waived backup or
 withdrawn staging setup; record hosted-validation limits accurately.
 
-The latest 4 November source increment completes the explicit dedicated-wishlist
-page requirement at `/shops/[slug]/wishlist`. Reuse the verified per-store
-customer client, existing customer-experience API/RLS and current public catalog.
-Keep private noindex metadata, exact custom-host rewriting/foreign-tenant denial,
-account-keyed private state, stale GET/POST guards, honest unavailable items and
-accessible removal/retry/focus behavior. Do not alter bag/payment state or add
-provider authority. No SQL migration required; all seven pending expansion
-migrations stay byte-for-byte unchanged and unapplied to hosted targets. Current
-checks pass 331/331 unit tests, full lint with zero errors/166 warnings, build
-with stable application/configuration fingerprints, and 22 expansion browser
-groups/136 screenshots including nine wishlist groups/24 screenshots. The fresh
-original suite passes 118 screenshots and 628 PostgreSQL regression assertions
-for the unchanged seven migrations. Both suites captured 254 screenshots. Do not
-reuse older counts as new evidence. See `docs/commerce/wishlist-page-report.md`.
+The latest source increment implements owner feature requests with signed Super
+Admin review and owner-visible status/history. It requires the eighth migration
+`20261104160000_commerce_feature_requests.sql`, prepared on 4 November and resumed
+for final verification on 5 November. Preserve the first seven migration files
+byte-for-byte. The new public request/private immutable-event tables and scoped
+RPCs do not enable code, alter website features/permissions, charge, send a
+notification or release work. Only new submissions require setup/active status;
+identical saved submissions remain recoverable after the website becomes
+read-only, while verified Auth and current active owner membership remain required.
+Keep owner pending UUID/content bound to user/store through unknown responses;
+Admin reviews use expected status/revision plus a retained action UUID. Never
+infer an accepted decision or overwrite a later state from an old response.
 
-After wishlist acceptance, the next source dependency is a tracked owner
-feature-request workflow with signed Super Admin review and owner-visible status.
-It is not implemented by the wishlist increment. Its future tenant-scoped
-versioned migration, audit and RLS/permission checks must be developed locally;
-no hosted SQL or automatic feature/security/payment activation is authorized.
+The local eight-file SQL suite passes 702 assertions, retaining all prior 628.
+Fresh final-source checks pass 359/359 unit tests, full lint with zero errors/
+166 warnings and build with stable application/configuration fingerprints.
+Focused API tests pass 28. The complete current expanded full-app suite passes
+30 groups/152 screenshots, including eight feature-request groups/16 screenshots
+and the owner list/detail status-sync assertion. The refreshed detail updates
+its list row; a fresh list refresh clears stale detail/notice. Fresh original
+compatibility passes 118 screenshots and all 702 SQL assertions on this final
+source: 270 primary screenshots total (152 expansion + 118 original). Earlier
+focused-helper screenshots are separate diagnostic evidence, not added again. See `docs/commerce/feature-requests-report.md` and
+the full eighth-migration review.
+All eight expansion files remain unapplied to hosted databases. Hosted Supabase,
+provider/DNS/notification acceptance and production activation are separate.
+
+The preceding committed wishlist source (`55b5934`) completed the dedicated
+`/shops/[slug]/wishlist` page using existing persistence: No SQL migration
+required for that page. Its dated results are 331 unit tests, 628 PostgreSQL
+regression assertions, zero lint errors/166 warnings, build and 254 screenshots
+(136 expansion including 24 wishlist, plus 118 original). Those counts belong
+to that source, not acceptance of the new feature-request workflow.
 
 The preceding committed 4 November source (`8dbc382`) added a verified buyer's narrow
 stop of an existing never-dispatched checkout, plus the API/browser integration
@@ -129,7 +142,7 @@ passes eight groups/72 screenshots at four widths, and the original commerce
 browser/API compatibility suite also passes against the actual full app with
 simulated Auth/Storage and external provider scripts blocked. These are local
 results; valid PIN recovery and provider acceptance remain unverified.
-All seven commerce expansion migrations remain unapplied to hosted databases;
+All eight commerce expansion migrations remain unapplied to hosted databases;
 provider/DNS/email/live-payment gates are not satisfied by local tests. See
 `docs/commerce/expansion-report.md` and `expansion-installation.md` for the
 completion matrix, exact SQL, object inventories and preserved-history rollback.

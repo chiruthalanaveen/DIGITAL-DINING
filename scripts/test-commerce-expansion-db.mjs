@@ -25,6 +25,7 @@ const migrations = [
   'supabase/migrations/20261103091000_commerce_online_payments.sql',
   'supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql',
   'supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql',
+  'supabase/migrations/20261104160000_commerce_feature_requests.sql',
 ]
 const suites = [
   'supabase/tests/commerce_catalog_expansion.sql',
@@ -35,6 +36,7 @@ const suites = [
   'supabase/tests/commerce_online_payments.sql',
   'supabase/tests/commerce_payment_recovery_queue.sql',
   'supabase/tests/commerce_stop_unstarted_payment.sql',
+  'supabase/tests/commerce_feature_requests.sql',
 ]
 // Later increments must be explicitly reviewed and added here. Never glob the
 // migrations directory: it also contains a separate, unapplied platform ledger.
@@ -164,11 +166,15 @@ try {
   for (const relative of migrations) {
     const recoveryQueue = relative.endsWith('_commerce_payment_recovery_queue.sql')
     const unstartedControl = relative.endsWith('_commerce_stop_unstarted_payment.sql')
+    const featureRequests = relative.endsWith('_commerce_feature_requests.sql')
     const beforeQueueDefinitions = recoveryQueue ? await definitions() : null
     const beforeQueueRows = recoveryQueue ? await rowsFor(await tables()) : null
     const beforeStopDefinitions = unstartedControl ? await definitions() : null
     const beforeStopTables = unstartedControl ? await tables() : null
     const beforeStopRows = unstartedControl ? await rowsFor(beforeStopTables) : null
+    const beforeFeatureDefinitions = featureRequests ? await definitions() : null
+    const beforeFeatureTables = featureRequests ? await tables() : null
+    const beforeFeatureRows = featureRequests ? await rowsFor(beforeFeatureTables) : null
     await db.query(await readFile(path.join(root, relative), 'utf8'))
     console.log(`PASS ${relative}`)
     if (recoveryQueue) {
@@ -200,6 +206,26 @@ try {
       assert.equal(addedTriggers.length, 10, 'Two explicit history guards and eight internal triggers enforce the two new proof foreign keys.')
       assert.ok(addedTriggers.every(value => ['commerce_payment_unstarted_proof_immutable', 'commerce_payment_cancelled_intent_guard'].includes(value.name) || value.internal && value.definition.includes('payment_unstarted_cancellations')))
       await check('unstarted control migration preserves existing rows, functions, RLS, grants, indexes and all unrelated constraints/triggers')
+    }
+    if (featureRequests) {
+      const after = await definitions(), installed = await tables()
+      const oldFunctions = new Set(beforeFeatureDefinitions.functions.map(value => value.signature))
+      assert.deepEqual(after.functions.filter(value => oldFunctions.has(value.signature)), beforeFeatureDefinitions.functions)
+      assert.deepEqual(after.default_grants, beforeFeatureDefinitions.default_grants)
+      const added = new Set(['commerce_feature_requests', 'feature_request_events'])
+      assert.deepEqual(installed.filter(value => !added.has(value.name)), beforeFeatureTables)
+      assert.equal(installed.length, beforeFeatureTables.length + 2)
+      assert.deepEqual(await rowsFor(beforeFeatureTables), beforeFeatureRows)
+      assert.deepEqual(after.policies.filter(value => value.policyname !== 'commerce_feature_requests_owner_read'), beforeFeatureDefinitions.policies)
+      assert.equal(after.policies.length, beforeFeatureDefinitions.policies.length + 1)
+      assert.deepEqual(after.constraints.filter(value => !added.has(value.table.split('.').at(-1))), beforeFeatureDefinitions.constraints)
+      assert.deepEqual(after.indexes.filter(value => !added.has(value.tablename)), beforeFeatureDefinitions.indexes)
+      const originalTriggers = new Set(beforeFeatureDefinitions.triggers.map(value => `${value.table}:${value.name}`))
+      assert.deepEqual(after.triggers.filter(value => originalTriggers.has(`${value.table}:${value.name}`)), beforeFeatureDefinitions.triggers)
+      const addedTriggers = after.triggers.filter(value => !originalTriggers.has(`${value.table}:${value.name}`))
+      assert.equal(addedTriggers.length, 15, 'Three history triggers plus twelve internal triggers enforce three new foreign keys.')
+      assert.ok(addedTriggers.every(value => ['commerce_feature_request_guard', 'commerce_feature_request_event_record', 'commerce_feature_request_event_immutable'].includes(value.name) || value.internal && /commerce_feature_requests|feature_request_events/.test(value.definition)))
+      await check('feature request migration preserves every existing row, function, policy, grant, index and unrelated trigger/constraint')
     }
   }
   assert.deepEqual(await rowsFor(originalTables), originalRows, 'All original columns and business records must remain unchanged on installation.')
@@ -659,6 +685,82 @@ try {
     await Promise.all(workers.map(client => client.query('ROLLBACK').catch(() => {})))
     await Promise.all(workers.map(client => client.end()))
   }
+
+  const featureWebsite = 'e7200000-0000-4000-8000-000000000001', featureOwner = 'e7100000-0000-4000-8000-000000000001'
+  const featureSql = 'SELECT public.commerce_feature_requests_owner($1,$2,$3::jsonb) AS result'
+  const featureAdminSql = "SELECT public.commerce_feature_requests_admin($1,$2,$3::jsonb,'admin@example.test') AS result"
+  const featureKey = n => `e7500000-0000-4000-8000-${String(n).padStart(12, '0')}`
+  const submitFeature = (key, title = 'Concurrent owner requirement') => actor(featureOwner, featureSql, [featureWebsite, 'submit', JSON.stringify({ submission_key: key, title, description: 'Please review this synthetic local requirement as a separate controlled task.' })])
+  const reviewFeature = payload => actor(null, featureAdminSql, [featureWebsite, 'review', JSON.stringify(payload)], 'service_role')
+  const reviewPayload = (id, key, status = 'approved') => ({ request_id: id, expected_status: 'submitted', expected_revision: 1, status, note: 'Synthetic controlled decision; no feature activation.', assignment_reference: '', action_key: key })
+  const featureBusinessBefore = await rowsFor((await tables()).filter(table => !['commerce_feature_requests', 'feature_request_events', 'commerce_audit_logs'].includes(table.name)))
+  const duplicateFeature = await Promise.all([submitFeature(featureKey(1)), submitFeature(featureKey(1))])
+  assert.equal(duplicateFeature[0].request.id, duplicateFeature[1].request.id)
+  assert.deepEqual(duplicateFeature.map(value => value.replayed).sort(), [false, true])
+  assert.equal((await db.query('SELECT count(*)::int AS count FROM commerce_private.feature_request_events WHERE request_id=$1', [duplicateFeature[0].request.id])).rows[0].count, 1)
+  await check('concurrent identical owner submission creates one request and one immutable initial event')
+  const differentFeature = await Promise.allSettled([submitFeature(featureKey(2), 'First distinct feature requirement'), submitFeature(featureKey(2), 'Second distinct feature requirement')])
+  assert.equal(differentFeature.filter(value => value.status === 'fulfilled').length, 1)
+  assert.equal(differentFeature.find(value => value.status === 'rejected').reason.code, '23505')
+  await check('concurrent changed submissions sharing one key conflict rather than overwriting original content')
+  const decided = await Promise.allSettled([
+    reviewFeature(reviewPayload(duplicateFeature[0].request.id, featureKey(3), 'approved')),
+    reviewFeature(reviewPayload(duplicateFeature[0].request.id, featureKey(4), 'rejected')),
+  ])
+  assert.equal(decided.filter(value => value.status === 'fulfilled').length, 1)
+  assert.equal(decided.find(value => value.status === 'rejected').reason.code, '23505')
+  assert.equal((await db.query('SELECT revision FROM public.commerce_feature_requests WHERE id=$1', [duplicateFeature[0].request.id])).rows[0].revision, 2)
+  await check('competing Admin reviews serialize on the original revision and retain exactly one decision')
+  const retryRequest = await submitFeature(featureKey(5))
+  const repeatedReview = await Promise.all([reviewFeature(reviewPayload(retryRequest.request.id, featureKey(6))), reviewFeature(reviewPayload(retryRequest.request.id, featureKey(6)))])
+  assert.deepEqual(repeatedReview.map(value => value.replayed).sort(), [false, true])
+  assert.equal(repeatedReview[0].action_event.id, repeatedReview[1].action_event.id)
+  assert.equal((await db.query('SELECT count(*)::int AS count FROM public.commerce_audit_logs WHERE action=$1 AND entity_id=$2', ['review_feature_request', retryRequest.request.id])).rows[0].count, 1)
+  await check('concurrent identical Admin action retry produces one durable review event and one audit record')
+  const featureConfirmedAt = (await db.query('SELECT email_confirmed_at::text AS email_confirmed_at FROM auth.users WHERE id=$1', [featureOwner])).rows[0].email_confirmed_at
+  await revokedWhileWaiting({ website: featureWebsite, user: featureOwner, sql: featureSql, args: [featureWebsite, 'submit', JSON.stringify({ submission_key: featureKey(7), title: 'Blocked verification requirement', description: 'This request must not survive verification withdrawal.' })], change: { sql: 'UPDATE auth.users SET email_confirmed_at=NULL WHERE id=$1', args: [featureOwner] }, restore: { sql: 'UPDATE auth.users SET email_confirmed_at=$2 WHERE id=$1', args: [featureOwner, featureConfirmedAt] }, label: 'feature submission rechecks withdrawn verification after waiting on the website lock' })
+  await revokedWhileWaiting({ website: featureWebsite, user: featureOwner, sql: featureSql, args: [featureWebsite, 'submit', JSON.stringify({ submission_key: featureKey(8), title: 'Blocked association requirement', description: 'This request must not survive owner association revocation.' })], change: { sql: 'UPDATE public.commerce_memberships SET active=false WHERE website_id=$1 AND user_id=$2', args: [featureWebsite, featureOwner] }, restore: { sql: 'UPDATE public.commerce_memberships SET active=true WHERE website_id=$1 AND user_id=$2', args: [featureWebsite, featureOwner] }, label: 'feature submission rechecks revoked owner association after waiting on the website lock' })
+  const authRevocation = connection('feature-auth-revocation'), awaitingOwner = connection('feature-auth-waiter')
+  await Promise.all([authRevocation.connect(), awaitingOwner.connect()])
+  let awaitingFeature
+  try {
+    await Promise.all([verifyEndpoint(authRevocation), verifyEndpoint(awaitingOwner)])
+    await authRevocation.query('BEGIN')
+    await authRevocation.query('UPDATE auth.users SET email_confirmed_at=NULL WHERE id=$1', [featureOwner])
+    await awaitingOwner.query('BEGIN')
+    await awaitingOwner.query('SET LOCAL ROLE authenticated')
+    await awaitingOwner.query("SELECT set_config('request.jwt.claim.sub',$1,true)", [featureOwner])
+    const featurePid = (await awaitingOwner.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
+    awaitingFeature = awaitingOwner.query(featureSql, [featureWebsite, 'list', '{}']).then(value => ({ value }), error => ({ error }))
+    await waitBlocked(featurePid)
+    await authRevocation.query('COMMIT')
+    assert.equal((await awaitingFeature).error?.code, '42501')
+    await awaitingOwner.query('ROLLBACK')
+    await check('feature owner Auth SHARE wait rereads verification after a concurrent withdrawal commits')
+  } finally {
+    await authRevocation.query('ROLLBACK').catch(() => {})
+    if (awaitingFeature) await awaitingFeature
+    await awaitingOwner.query('ROLLBACK').catch(() => {})
+    await Promise.all([authRevocation.end(), awaitingOwner.end()])
+    await db.query('UPDATE auth.users SET email_confirmed_at=$2 WHERE id=$1', [featureOwner, featureConfirmedAt])
+  }
+  for (let number = 100; number < 152; number++) await submitFeature(featureKey(number), `Paged feature requirement ${number}`)
+  const beforePageIds = (await db.query('SELECT id FROM public.commerce_feature_requests ORDER BY created_at DESC,id DESC')).rows.map(value => value.id)
+  const globalPage = await actor(null, featureAdminSql, [null, 'list', '{}'], 'service_role')
+  assert.equal(globalPage.requests.length, 50); assert.equal(globalPage.has_more, true); assert.equal(globalPage.website_id, null)
+  const newAfterPage = await submitFeature(featureKey(200), 'New requirement after the first page')
+  const olderPage = await actor(null, featureAdminSql, [null, 'list', JSON.stringify({ before_created_at: globalPage.next_cursor.created_at, before_id: globalPage.next_cursor.id })], 'service_role')
+  assert.deepEqual([...globalPage.requests, ...olderPage.requests].map(value => value.id), beforePageIds)
+  assert.equal(olderPage.requests.some(value => value.id === newAfterPage.request.id), false)
+  assert.equal(olderPage.has_more, false)
+  await check('global Admin keyset paging is bounded stable and complete without duplicates when a newer requirement arrives')
+  const tenantPage = await actor(featureOwner, featureSql, [featureWebsite, 'list', '{}'])
+  const tenantOlder = await actor(featureOwner, featureSql, [featureWebsite, 'list', JSON.stringify({ before_created_at: tenantPage.next_cursor.created_at, before_id: tenantPage.next_cursor.id })])
+  assert.ok([...tenantPage.requests, ...tenantOlder.requests].every(value => value.website_id === featureWebsite))
+  assert.equal(new Set([...tenantPage.requests, ...tenantOlder.requests].map(value => value.id)).size, Number((await db.query('SELECT count(*) AS count FROM public.commerce_feature_requests WHERE website_id=$1', [featureWebsite])).rows[0].count))
+  await check('owner request pagination remains scoped to the authorized website across all pages')
+  assert.deepEqual(await rowsFor((await tables()).filter(table => !['commerce_feature_requests', 'feature_request_events', 'commerce_audit_logs'].includes(table.name))), featureBusinessBefore)
+  await check('feature request races and paging preserve every existing business/configuration/financial/Auth/Storage/cron row')
 
   for (const relative of migrations) {
     const beforeDefinitions = await definitions(), beforeData = await rowsFor(await tables())

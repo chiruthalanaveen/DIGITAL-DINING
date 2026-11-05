@@ -12,6 +12,7 @@ import CommerceEngagementPanel from './CommerceEngagementPanel'
 import CommerceGrowthPanel from './CommerceGrowthPanel'
 import CommerceDomainsPanel from './CommerceDomainsPanel'
 import OwnerPaymentStatus from './OwnerPaymentStatus'
+import CommerceFeatureRequestsPanel from './CommerceFeatureRequestsPanel'
 
 const transitions = { placed: ['confirmed', 'cancelled'], confirmed: ['preparing', 'cancelled'], preparing: ['ready', 'cancelled'], ready: ['completed', 'cancelled'] }
 const readable = value => String(value || 'Unknown').replaceAll('_', ' ')
@@ -254,6 +255,7 @@ function Workspace({ state }) {
     ['content', 'Policies, FAQ & sections', permitted(website, 'branding')],
     ['domains', 'Store domains', permitted(website, 'branding')],
     ['settings', 'Store & subscription', true],
+    ['feature_requests', 'Feature requests', true],
     ['applications', 'My applications', true],
   ].filter(([, , visible]) => visible) : []
   const visibleSection = menu.some(([key]) => key === section) ? section : 'overview'
@@ -272,6 +274,7 @@ function Workspace({ state }) {
         {visibleSection === 'engagement' && <CommerceEngagementPanel key={website.id} website={website} client={client} readOnly={readOnly} />}
         {visibleSection === 'growth' && <CommerceGrowthPanel key={website.id} website={website} client={client} readOnly={readOnly} />}
         {visibleSection === 'domains' && <CommerceDomainsPanel key={website.id} website={website} client={client} readOnly={readOnly} />}
+        {visibleSection === 'feature_requests' && <CommerceFeatureRequestsPanel key={`${website.id}:${session.user.id}`} website={website} client={client} session={session} readOnly={readOnly} />}
         {visibleSection === 'customers' && <section className="co-card"><div className="co-panel-title"><div><h2>Customers</h2><p>Customers who have placed orders with this website. Keep their contact details private.</p></div></div><div className="co-table-wrap"><table><thead><tr><th>Customer</th><th>Phone</th><th>Address</th><th>First order account</th></tr></thead><tbody>{customers.map(customer => <tr key={customer.user_id}><td><strong>{customer.name}</strong></td><td>{customer.phone}</td><td>{customer.address || '—'}</td><td>{dateTime(customer.created_at)}</td></tr>)}</tbody></table>{!customers.length && <Empty>No customer records yet.</Empty>}</div></section>}
         {visibleSection === 'branding' && <Branding key={`${website.id}:${website.updated_at || ''}`} website={website} client={client} busy={busy} readOnly={readOnly} action={action} />}
         {visibleSection === 'settings' && <section className="co-card"><div className="co-panel-title"><div><h2>Store & subscription</h2><p>These settings are configured by the platform team. Contact support to request changes.</p></div></div><dl className="co-detail-list">{[['Website', website.name], ['Preview path', `/shops/${website.slug}`], ['Business category', readable(website.business_type)], ['Website status', readable(website.status)], ['Template', readable(website.template || 'general')], ['Pickup', website.fulfillment?.pickup ? 'Available' : 'Not available'], ['Local delivery', website.fulfillment?.delivery ? 'Available' : 'Not available'], ['Delivery fee', formatCommerceMoney(website.fulfillment?.delivery_fee_paise)], ['Minimum order', formatCommerceMoney(website.fulfillment?.minimum_order_paise)], ['Pickup address', website.fulfillment?.pickup_address || 'Not configured'], ['COD / pay at pickup', enabled(website, 'cod') ? 'Enabled' : 'Disabled'], ['Plan', website.subscription_plan || 'Not configured'], ['Subscription status', readable(website.subscription_status)], ['Configured monthly charge', formatCommerceMoney(website.monthly_price_paise)]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><p className="co-form-note co-panel-note">Billing is managed by the platform team. No automatic charge is made from this workspace.</p><a className="co-text-link" href="mailto:digitaldining077@gmail.com">Request a configuration change →</a>{permitted(website, "orders") && <OwnerPaymentStatus website={website} client={client} />}</section>}

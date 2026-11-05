@@ -1,6 +1,6 @@
 # Remaining commerce implementation contract
 
-Updated 4 November 2026. Branch `feature/commerce-expansion`, base `f9dd674`.
+Updated 5 November 2026. Branch `feature/commerce-expansion`, base `f9dd674`.
 New work is not deployed. No hosted SQL, live fixture/payment, merge, domain
 provisioning or notification send is authorized by this implementation request.
 
@@ -18,7 +18,53 @@ verified identity, current membership, website status and existing permissions.
 Admin operations are service-only behind the existing signed Admin session.
 Never trust a submitted owner/customer identity, price, stock or discount.
 
-## Dedicated wishlist page
+## Owner feature requests
+
+The eighth migration `20261104160000_commerce_feature_requests.sql` is required
+for this workflow; the first seven files remain unchanged. Read the
+[complete feature-request contract](feature-requests-contract.md) for exact RPCs,
+payloads, projections, transitions, replay and paging, and the
+[full object/permission review](feature-requests-migration-review.md) before any
+separately approved hosted installation. Current implementation is review-only.
+
+Owner HTTP GET/POST is `/api/commerce/workspace/[websiteId]/feature-requests`.
+It uses the verified owner JWT and current active membership, independent of
+products/orders/branding permissions. List/get may read retained business history
+on a read-only website. New submissions require setup/active; identical saved
+key/content retries remain recoverable afterwards. Pending content/key is stored
+per verified owner and website until its original result is confirmed. Unicode
+minimums match SQL character counting before saving that pending payload.
+
+Signed Admin HTTP GET/POST is `/api/commerce/admin/feature-requests`. GET without
+website lists the global bounded queue; get/review requires the bound website.
+The signed session supplies the private actor identity, never the request body.
+Reviews use expected status/revision and an action UUID. Identical retries return
+the original event plus current history; no stale response may rewind later state.
+Admin pending actions remain in memory, not shared browser storage. Reloading
+requires fresh history before a new explicit decision.
+
+Submission details and events are immutable. Approved/assigned means reviewed or
+queued for separate controlled development, not enabled/released/paid. No request
+can execute code, modify feature/security settings, send a message or alter an
+order/payment. Missing optional SQL is explicit unavailable capability; denied,
+malformed or failed responses must not be treated as an empty success.
+The workflow needs no new environment, DNS, Storage policy or cron configuration.
+Stored DTO validation must preserve exact database text, including audit
+evidence; input trimming must not normalize strings after reading them. API/SQL
+Unicode character bounds already align. Native HTML maximums remain conservative
+UTF-16 bounds; large valid SQL text must still be readable. Textarea accessible
+names stay stable
+after controlled values change. Current SQL evidence is 702 local assertions.
+Refreshing request details must update the same request in the visible owner
+list; refreshing the list must clear stale detail/notice instead of showing
+contradictory statuses. Fresh final-source checks pass 359 unit tests, zero lint errors/166 warnings and
+build with stable fingerprints. The complete current expanded suite passes
+30 groups/152 screenshots, including the list/detail status agreement assertion.
+Fresh original compatibility also passes 118 screenshots and all 702 SQL
+assertions: 270 primary screenshots total. The earlier focused helper is separate
+diagnostic evidence. Read the [current report](feature-requests-report.md).
+
+## Dedicated wishlist page — preceding committed source
 
 `/shops/[slug]/wishlist` is a dynamic private presentation of the existing saved
 products relation. Its server route passes only the selected public catalog;
@@ -58,6 +104,7 @@ Domain migration: `20261103090000_commerce_verified_domains.sql`.
 Online merchant payment migration: `20261103091000_commerce_online_payments.sql`.
 Read-only payment recovery queue: `20261104090000_commerce_payment_recovery_queue.sql`.
 Stop an existing never-dispatched payment: `20261104120000_commerce_stop_unstarted_payment.sql`.
+Owner requirements and immutable review history: `20261104160000_commerce_feature_requests.sql`.
 Apply in that order only to an isolated development database; production files
 are review-only until separately approved. Explain any intentionally replaced
 commerce RPC and preserve baseline behavior with compatibility tests.

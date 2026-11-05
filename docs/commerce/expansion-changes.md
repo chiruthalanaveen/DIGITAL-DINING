@@ -1,16 +1,17 @@
 # Commerce expansion changed files
 
-Updated 4 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branch: `feature/commerce-expansion`, draft [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7).
+Updated 5 November 2026. Base: `f9dd6741c04101d674a4cc03357e43e8961fa6c6`. Branch: `feature/commerce-expansion`, draft [PR #7](https://github.com/chiruthalanaveen/DIGITAL-DINING/pull/7).
 
-114 added or modified paths across the expansion, checkout recovery and dedicated wishlist page. Full JS/JSX/MJS/TS/TSX files are exported as 74 complete TXT files with exact destination paths and hashes. Local validation: 331 unit tests, 628 PostgreSQL regression assertions, build PASS, lint zero errors/166 warnings, and 254 browser screenshots. Hosted/provider acceptance remains unperformed.
+127 cumulative added or modified paths across the commerce expansion, checkout recovery, dedicated wishlist page and owner feature-request workflow. The handoff exports 81 complete JS/JSX/MJS/TS/TSX files as TXT, with exact destinations and hashes. Current local validation passes 359 unit tests, 702 PostgreSQL assertions, build, lint with zero errors/166 warnings, and 270 primary desktop/mobile screenshots. Hosted/provider acceptance remains unperformed.
 
-The current dedicated-wishlist increment: **No SQL migration required.** The cumulative expansion package still includes seven pending, review-only migrations and complete SQL tests/reviews; all seven are byte-for-byte unchanged by this page.
+The current request/review workflow requires the eighth migration, `20261104160000_commerce_feature_requests.sql`, prepared and tested locally only. The first seven expansion files remain byte-for-byte unchanged. All eight are review-only for hosted installation. The preceding wishlist page required no additional SQL.
 
 | Change from reviewed base | Exact repository / VS Code destination |
 | --- | --- |
 | Modified | `AGENTS.md` |
 | Added | `app/api/commerce/admin/catalog/route.js` |
 | Added | `app/api/commerce/admin/domains/route.js` |
+| Added | `app/api/commerce/admin/feature-requests/route.js` |
 | Added | `app/api/commerce/admin/notifications/route.js` |
 | Modified | `app/api/commerce/admin/route.js` |
 | Modified | `app/api/commerce/checkout/[websiteId]/route.js` |
@@ -26,14 +27,17 @@ The current dedicated-wishlist increment: **No SQL migration required.** The cum
 | Added | `app/api/commerce/workspace/[websiteId]/catalog/route.js` |
 | Added | `app/api/commerce/workspace/[websiteId]/domains/route.js` |
 | Added | `app/api/commerce/workspace/[websiteId]/engagement/route.js` |
+| Added | `app/api/commerce/workspace/[websiteId]/feature-requests/route.js` |
 | Added | `app/api/commerce/workspace/[websiteId]/growth/route.js` |
 | Added | `app/api/commerce/workspace/[websiteId]/payments/route.js` |
 | Modified | `app/api/commerce/workspace/[websiteId]/route.js` |
 | Modified | `app/components/commerce/AdminClientWebsites.jsx` |
 | Added | `app/components/commerce/CommerceAdminDomainsPanel.jsx` |
+| Added | `app/components/commerce/CommerceAdminFeatureRequestsPanel.jsx` |
 | Added | `app/components/commerce/CommerceCatalogPanel.jsx` |
 | Added | `app/components/commerce/CommerceDomainsPanel.jsx` |
 | Added | `app/components/commerce/CommerceEngagementPanel.jsx` |
+| Added | `app/components/commerce/CommerceFeatureRequestsPanel.jsx` |
 | Added | `app/components/commerce/CommerceGrowthPanel.jsx` |
 | Added | `app/components/commerce/CommercePaymentAdminPanel.jsx` |
 | Added | `app/components/commerce/CommercePaymentCheckout.jsx` |
@@ -50,6 +54,7 @@ The current dedicated-wishlist increment: **No SQL migration required.** The cum
 | Added | `app/components/commerce/StorefrontSections.jsx` |
 | Added | `app/components/commerce/commerce-domains.css` |
 | Added | `app/components/commerce/commerce-expansion-owner.css` |
+| Added | `app/components/commerce/commerce-feature-requests.css` |
 | Added | `app/components/commerce/commerce-growth.css` |
 | Added | `app/components/commerce/commerce-payments.css` |
 | Added | `app/components/commerce/customer-experience.css` |
@@ -69,6 +74,9 @@ The current dedicated-wishlist increment: **No SQL migration required.** The cum
 | Added | `docs/commerce/expansion-installation.md` |
 | Added | `docs/commerce/expansion-report.md` |
 | Added | `docs/commerce/expansion-schema-inventory.md` |
+| Added | `docs/commerce/feature-requests-contract.md` |
+| Added | `docs/commerce/feature-requests-migration-review.md` |
+| Added | `docs/commerce/feature-requests-report.md` |
 | Added | `docs/commerce/growth-migration-review.md` |
 | Added | `docs/commerce/online-payment-migration-review.md` |
 | Added | `docs/commerce/payment-recovery-queue-migration-review.md` |
@@ -82,6 +90,7 @@ The current dedicated-wishlist increment: **No SQL migration required.** The cum
 | Added | `lib/server/commerce/domains.js` |
 | Added | `lib/server/commerce/engagement.js` |
 | Added | `lib/server/commerce/expansion.js` |
+| Added | `lib/server/commerce/feature-requests.js` |
 | Added | `lib/server/commerce/growth.js` |
 | Added | `lib/server/commerce/notifications.js` |
 | Added | `lib/server/commerce/payment-attempt-control.js` |
@@ -97,9 +106,11 @@ The current dedicated-wishlist increment: **No SQL migration required.** The cum
 | Added | `supabase/migrations/20261103091000_commerce_online_payments.sql` |
 | Added | `supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql` |
 | Added | `supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql` |
+| Added | `supabase/migrations/20261104160000_commerce_feature_requests.sql` |
 | Added | `supabase/tests/commerce_catalog_expansion.sql` |
 | Added | `supabase/tests/commerce_customer_experience.sql` |
 | Added | `supabase/tests/commerce_expansion_preexisting_orders.sql` |
+| Added | `supabase/tests/commerce_feature_requests.sql` |
 | Added | `supabase/tests/commerce_growth_analytics.sql` |
 | Added | `supabase/tests/commerce_growth_notifications.sql` |
 | Added | `supabase/tests/commerce_online_payments.sql` |
@@ -111,6 +122,8 @@ The current dedicated-wishlist increment: **No SQL migration required.** The cum
 | Added | `tests/commerce-domains.test.mjs` |
 | Added | `tests/commerce-engagement.test.mjs` |
 | Added | `tests/commerce-expansion.browser.mjs` |
+| Added | `tests/commerce-feature-requests.browser.mjs` |
+| Added | `tests/commerce-feature-requests.test.mjs` |
 | Added | `tests/commerce-growth.test.mjs` |
 | Added | `tests/commerce-owner-payments.test.mjs` |
 | Added | `tests/commerce-payment-pointer.test.mjs` |
@@ -123,4 +136,4 @@ The current dedicated-wishlist increment: **No SQL migration required.** The cum
 | Modified | `tests/maintenance.test.mjs` |
 | Modified | `vercel.json` |
 
-The original storefront.css and installed foundation migration are unchanged. The separate pending platform subscription ledger remains excluded/default off. Existing restaurant, delivery, resort, wallet and payment source modules are unchanged by this expansion. No hosted SQL, deployment, main push, merge or live payment was performed. Owner feature requests are the next planned source dependency; they are not implemented by the wishlist page.
+The original storefront.css and installed foundation migration are unchanged. The separate pending platform subscription ledger remains excluded/default off. Existing restaurant, delivery, resort, wallet and payment source modules are unchanged by this expansion. Request approval/assignment does not change features, permissions, subscriptions, payments or deployment. No hosted SQL, production deployment, main push, merge or live payment was performed.

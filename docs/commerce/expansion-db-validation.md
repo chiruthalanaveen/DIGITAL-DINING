@@ -1,6 +1,6 @@
 # Isolated commerce expansion database validation
 
-Updated 4 November 2026. Source on `feature/commerce-expansion`; no hosted SQL,
+Evidence reviewed 5 November 2026; source prepared 4 November 2026. Source on `feature/commerce-expansion`; no hosted SQL,
 deployment, live payment, DNS/provider provisioning or external notification
 send was performed. The installed hosted foundation is not an installation
 target for these destructive fixtures.
@@ -32,17 +32,19 @@ isolated fixture. It then applies an explicit allowlist, in this order:
 5. `supabase/migrations/20261103091000_commerce_online_payments.sql`
 6. `supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql`
 7. `supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql`
+8. `supabase/migrations/20261104160000_commerce_feature_requests.sql`
 
 The separate platform subscription ledger is excluded. The runner never globs
 migrations, runs `db push`, repairs migration history or connects to a hosted
 target. Additional reviewed commerce migrations must be explicitly added.
 
-The current seven-file integrated run passes **628 PostgreSQL assertions**.
-It preserves every prior 561 assertion and adds 58 stop-unstarted SQL assertions
-plus nine integration/race/preservation assertions. The first six migration
-files remain byte-for-byte unchanged. Historical evidence is **531 assertions**
-for the five-file 3 November run and **561 assertions** for the earlier six-file
-4 November run; those results are not the current source totals.
+The current eight-file integrated run passes **702 PostgreSQL assertions**.
+It preserves every prior 628 assertion and adds 62 owner feature-request SQL
+cases, ten request race/paging cases, eighth-installation preservation and
+atomic reapplication: 74 new assertions. The first seven migration files remain
+byte-for-byte unchanged. Historical evidence is 531 assertions for the five-file
+3 November run, 561 for the six-file recovery run, and 628 for the seven-file
+stop-unstarted run; those dated results are not the current source totals.
 
 | Checks | Actual assertions |
 | --- | ---: |
@@ -56,8 +58,9 @@ for the five-file 3 November run and **561 assertions** for the earlier six-file
 | Online payment/receipt/webhook and online-only quote module | 44 |
 | Read-only payment recovery queue | 27 |
 | Stop-unstarted payment module | 58 |
-| Integrated preservation, validation, races and atomic reapplication | 88 |
-| Total | 628 |
+| Owner feature-request module | 62 |
+| Integrated preservation, validation, races and atomic reapplication | 100 |
+| Total | 702 |
 
 The 72 post-expansion baseline cases run inside a rollback-only synthetic fixture
 transaction. It temporarily truncates commerce/Auth/Storage **fixture** tables
@@ -106,6 +109,29 @@ The stop RPC locks the verified Auth row FOR SHARE, then the intent FOR UPDATE,
 serializing with provider-creation claim. It deliberately does not take a cart
 advisory lock, which would invert fulfillment's lock order. These are local
 transactional tests, not real provider cancellation, refund or capture tests.
+
+The eighth migration adds only two new tables, nine functions, two explicit
+paging indexes, three explicit history/guard triggers and one owner SELECT
+policy, plus its key/foreign-key constraints. Both tables enable RLS; owners
+can directly select only ten safe request columns, while private events and
+all direct writes remain denied. Every preceding row, function body, policy,
+grant, index and unrelated constraint/trigger is compared before and after
+installation. Read the [complete owner feature-request object review](feature-requests-migration-review.md)
+and [RPC/DTO contract](feature-requests-contract.md).
+
+The new tests cover authenticated owner-only submission/list/detail, foreign or
+revoked membership and missing/withdrawn verification, safe column projection,
+private replay/actor evidence, strict payloads/cursors and Unicode, immutable
+original text/history, identical and conflicting submission/review keys, legal
+approval/rejection/assignment, stale status/revision comparisons and unchanged
+website settings. Ten independent integration cases exercise simultaneous same
+submissions, changed-content collisions, competing reviews, duplicate review
+replay/audit, website-lock Auth/membership withdrawal, an Auth SHARE wait,
+bounded global paging after a new submission, tenant paging, and a complete
+unrelated business/configuration/financial/Auth/Storage/cron snapshot.
+A known immutable submission replay remains readable after website suspension;
+new submissions remain blocked. Assignment is a recorded development queue
+state, never feature activation, code execution or release.
 
 Saved-address checkout uses the stored address/PIN to choose delivery coverage;
 submitted replacement shipping fields cannot choose a different zone. A retry
@@ -159,18 +185,31 @@ host overrides and database query overrides before any fixture work. `node
 --check` and focused ESLint on the runner pass. Full application test/lint/build
 and browser evidence belong to the coordinated implementation report.
 
-Current evidence log:
-`/workspace/commerce-validation-artifacts/commerce-unstarted-20261104/integrated-sql.log`.
-Consolidated metadata, assertion labels, breakdown and migration hashes:
+Current eight-file evidence log:
+`/workspace/commerce-validation-artifacts/commerce-feature-requests-20261104/integrated-sql.log`.
+The new migration's source SHA-256 is
+`85dcd7d29dab60029ccf3f0d5b3fb847acc7f14fa17885e75d22ff7410b309f2`.
+Its first failed fixture run reused an existing payment-test UUID; only the new
+test namespace was corrected, and the full subsequent run passed. The initial
+failure and contract-only pass remain alongside the final integrated log.
+
+The seven-file historical metadata/labels/hash summary remains at
 `/workspace/commerce-validation-artifacts/commerce-unstarted-20261104/integrated-sql-summary.json`.
-The current final fixture has **34 tables** across the inspected schemas,
-**31 policies** and **69 public/private application functions** (33 public and
-36 private). The evidence summary's 72-function total also includes three
-synthetic Auth/Storage helpers. Read-only consistency queries report zero
-inconsistent order totals, coupon redemptions, linked captured receipts, stopped
-proofs or stopped intents without proof, and exactly one preserved existing
-cron fixture. These are observed local fixture counts, not hosted Supabase
-metadata claims.
+That earlier fixture had **34 inspected tables, 31 policies and 69 application
+functions** (33 public + 36 private), plus three synthetic Auth/Storage helpers.
+Its aggregate consistency checks were zero and the existing cron fixture count
+was one. Those are dated seven-file observations.
+
+The 5 November eight-file read-only capture is
+`/workspace/commerce-validation-artifacts/commerce-feature-requests-20261104/integrated-sql-summary.json`.
+It observes **36 inspected tables, 32 policies and 78 application functions**;
+the 81-function total includes three synthetic Auth/Storage helpers. The existing
+cron fixture count remains one. The authenticated request SELECT grant contains
+exactly the ten safe columns: `assignment_reference`, `created_at`, `description`,
+`id`, `review_note`, `revision`, `status`, `title`, `updated_at`, `website_id`.
+The summary records all eight migration hashes and no hosted SQL or production
+write. These are observed local metadata and fixture invariants, not hosted
+Supabase compatibility or production data checks.
 
 The historical five-file log/summary remain under
 `/workspace/commerce-validation-artifacts/commerce-expansion-20261103/`
@@ -242,3 +281,32 @@ Supabase 17/17.6 compatibility, hosted Auth hooks, PostgREST sessions/RLS behavi
 Storage HTTP behavior, production restoration, real payment capture/settlement,
 DNS/TLS ownership, provider acceptance or external delivery. Those remain
 separate, unperformed acceptance gates.
+
+
+Read-only feature-request consistency checks for an explicitly authorized target:
+
+```sql
+SELECT count(*) AS inconsistent_feature_request_history
+FROM public.commerce_feature_requests r
+WHERE r.revision<>(SELECT count(*) FROM commerce_private.feature_request_events e
+ WHERE e.website_id=r.website_id AND e.request_id=r.id)
+ OR NOT EXISTS(SELECT 1 FROM commerce_private.feature_request_events e
+ WHERE e.website_id=r.website_id AND e.request_id=r.id
+ AND e.revision=r.revision AND e.to_status=r.status
+ AND e.note=r.review_note AND e.assignment_reference=r.assignment_reference
+ AND e.operation_key=r.last_action_key AND e.created_at=r.updated_at);
+
+SELECT count(*) AS inconsistent_feature_admin_events
+FROM commerce_private.feature_request_events
+WHERE revision>1 AND (actor_kind<>'admin' OR actor_email IS NULL
+ OR from_status IS NULL OR to_status='submitted' OR note='');
+```
+
+Both counts should be zero. For rollback, return to the earlier application
+while retaining the new tables, original text, replay keys and immutable audit
+events. Public RPC grants remain installed, so hiding UI alone is not a database
+write hold. A required hold needs a separately approved forward change that
+blocks new writes while preserving scoped reads and known-operation recovery.
+Do not drop/truncate
+history, weaken RLS, delete Auth/business rows, or replay an installed migration.
+Any needed database correction is a separately reviewed forward migration.

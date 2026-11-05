@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import { createCommerceFixture, developmentEnvironment, developmentUsers, LOCAL_ANON_KEY, LOCAL_PASSWORD, LOCAL_SERVICE_KEY } from './helpers/commerce-fixture.mjs'
 import { runWishlistBrowserChecks } from './commerce-wishlist.browser.mjs'
+import { runFeatureRequestsBrowserChecks } from './commerce-feature-requests.browser.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const templates = ['general', 'sarees', 'grocery', 'fashion', 'food']
@@ -561,6 +562,10 @@ export async function runExpansionBrowserChecks({ base, fixture, browser, artifa
     checks.push(...wishlistResult.checks)
     screenshots.push(...wishlistResult.screenshots)
     for (const host of wishlistResult.blockedExternalHosts) blocked.add(host)
+    const featureRequestsResult = await runFeatureRequestsBrowserChecks({ base, fixture, browser, artifacts, store: stores[1] })
+    checks.push(...featureRequestsResult.checks)
+    screenshots.push(...featureRequestsResult.screenshots)
+    for (const host of featureRequestsResult.blockedExternalHosts) blocked.add(host)
     assert.deepEqual(errors, [], `Browser page errors: ${errors.join('; ')}`)
     const result = { result: 'PASS', scope: 'Real local Next.js HTTP routes and PostgreSQL/RLS with simulated Auth/Storage protocols; browser delays and response loss preserve real API execution.', templates, screenshots, checks, checkoutRequests, blockedExternalHosts: [...blocked], hostedAuthTested: false, hostedRlsTested: false, livePayments: false, productionWrites: false }
     await writeFile(path.join(artifacts, 'expansion-browser-results.json'), JSON.stringify(result, null, 2) + '\n')

@@ -1,16 +1,16 @@
 # Commerce expansion SQL object inventory
 
-4 November 2026. This index covers all seven pending commerce migrations in
+Reviewed 5 November 2026. This index covers all eight pending commerce migrations in
 their dependency order. The first three modules have their complete column and
 object inventories below; the domain and online-payment entries link their
-full source/reviews, and the sixth/seventh entries explain their exact delta.
+full source/reviews, and the sixth, seventh and eighth entries explain their exact delta.
 This is a source inventory, not evidence that a hosted database has these
 objects. Full SQL files remain authoritative. Follow the consolidated
-[installation runbook](expansion-installation.md); none of these seven files
+[installation runbook](expansion-installation.md); none of these eight files
 has been applied to a hosted target, and the installed foundation must not be
 replayed. The separate platform subscription ledger is excluded.
 
-All seven files are one-time transactional migrations. They add no legacy-row
+All eight files are one-time transactional migrations. They add no legacy-row
 UPDATE/DELETE/backfill and no cron job. New records are mutated through validated
 functions; the added policies are SELECT-only. SECURITY DEFINER functions use
 the fixed empty search path shown in their source. Functions explicitly revoke
@@ -27,15 +27,20 @@ intentional commerce compatibility DDL is listed below and in each review.
 | 5 | [20261103091000_commerce_online_payments.sql](../../supabase/migrations/20261103091000_commerce_online_payments.sql) | [Every payment column, constraint, index, function, trigger and grant](online-payment-migration-review.md) |
 | 6 | [20261104090000_commerce_payment_recovery_queue.sql](../../supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql) | [Read-only recovery queue review](payment-recovery-queue-migration-review.md) |
 | 7 | [20261104120000_commerce_stop_unstarted_payment.sql](../../supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql) | [Unstarted-stop review, application steps and verification SQL](stop-unstarted-payment-migration-review.md) |
+| 8 | [20261104160000_commerce_feature_requests.sql](../../supabase/migrations/20261104160000_commerce_feature_requests.sql) | [Every feature-request column, function, trigger, index, grant and policy](feature-requests-migration-review.md) |
 
-The current isolated seven-file validation passes **628 PostgreSQL assertions**,
-preserving every prior 561 case and all first-six source hashes. Final fixture
-metadata is **34 inspected tables, 31 policies and 69 application functions**
-(`public` 33 + `commerce_private` 36); including three synthetic Auth/Storage
-helpers gives 72 functions. These are local PostgreSQL 18.4 fixture counts,
-not hosted Supabase verification. Historical five-file evidence remains 531
-assertions and six-file evidence remains 561. See
-[database validation](expansion-db-validation.md) for the logs and limits.
+The current isolated eight-file validation passes **702 PostgreSQL assertions**,
+preserving every prior 628 case and all first-seven source hashes. Historical
+seven-file fixture metadata was 34 inspected tables, 31 policies and 69
+application functions (33 public + 36 private), or 72 including three synthetic
+Auth/Storage helpers. The actual 5 November eight-file read-only capture observes
+**36 tables, 32 policies and 78 application functions**, or 81 including those
+three fixture helpers; exactly one existing cron fixture remains. It confirms
+only ten safe authenticated request-read columns and records all eight hashes.
+All counts describe local PostgreSQL 18.4, not hosted Supabase verification.
+Five/six/seven-file assertion evidence remains 531/561/628 respectively. See
+[database validation](expansion-db-validation.md) for the current log/summary and
+limits.
 
 ## Catalog and fulfillment
 
@@ -657,6 +662,65 @@ states never authorize release. Duplicate calls retain the same original proof.
 The retained original key stays reserved; only matching proof lets the browser
 keep the bag and create a fresh UUID. No provider call, refund, funds movement,
 existing-policy change, paid-subscription enablement or cron is introduced.
+
+## Owner feature requests — eighth migration
+
+Complete SQL: [20261104160000_commerce_feature_requests.sql](../../supabase/migrations/20261104160000_commerce_feature_requests.sql).
+The [full object/permission review](feature-requests-migration-review.md) explains
+every column, CHECK, foreign key, index, function, trigger, policy and rollback;
+the [contract](feature-requests-contract.md) defines exact payloads/projections.
+
+This file adds 25 columns across two new tables, no column on an existing table:
+
+- `public.commerce_feature_requests` (13): `id`, `website_id`, `submitted_by`,
+  `submission_key`, `title`, `description`, `status`, `revision`, `review_note`,
+  `assignment_reference`, `last_action_key`, `created_at`, `updated_at`.
+- `commerce_private.feature_request_events` (12): `id`, `website_id`,
+  `request_id`, `revision`, `operation_key`, `from_status`, `to_status`, `note`,
+  `assignment_reference`, `actor_kind`, `actor_email`, `created_at`.
+
+Requests retain immutable original business requirements and a validated current
+status/revision. Private events retain one immutable submission/review action
+per revision, original replay evidence and a private signed-Admin actor email.
+Three foreign keys use retained-history/default deletion behavior; no cascade,
+sequence, extension or existing constraint replacement is introduced.
+
+Two explicit indexes support tenant/global `(created_at DESC,id DESC)` keyset
+paging, each list returning at most 50 rows with a look-ahead cursor. Six backing
+unique indexes enforce the request primary key, website/request composite key,
+website/submitter/submission key, event primary key, request/revision and
+request/operation key.
+
+Nine new functions pin `search_path=''`:
+
+| Function | Purpose / callable boundary |
+| --- | --- |
+| `commerce_private.feature_request_can_read(uuid)` | STABLE SECURITY DEFINER live verified-owner predicate; authenticated EXECUTE only for the new policy. |
+| `commerce_private.feature_request_payload(jsonb,text[])` | Immutable strict-key/object validator, 64 KiB bound; no direct API execution. |
+| `commerce_private.feature_request_guard()` | SECURITY DEFINER trigger freezes original fields, rejects deletion, validates role/transition/revision/key and sets authoritative timestamps. |
+| `commerce_private.record_feature_request_event()` | SECURITY DEFINER trigger appends coherent history atomically; no direct API execution. |
+| `commerce_private.feature_request_event_immutable()` | Trigger rejects event rewrites/deletes; no direct API execution. |
+| `commerce_private.feature_request_detail(uuid,uuid)` | STABLE SECURITY DEFINER safe website/request detail and ordered history; private execution. |
+| `commerce_private.feature_request_page(uuid,jsonb)` | STABLE SECURITY DEFINER safe bounded tenant/global paging; private execution. |
+| `public.commerce_feature_requests_owner(uuid,text,jsonb)` | Authenticated-only list/get/submit after verified Auth and active owner membership locks. |
+| `public.commerce_feature_requests_admin(uuid,text,jsonb,text)` | Actual service-role-only list/get/review behind signed Admin authorization. |
+
+Three explicit triggers guard requests before INSERT/UPDATE/DELETE, record
+history after INSERT/UPDATE, and reject private event UPDATE/DELETE. Both tables
+have RLS. One new authenticated SELECT policy uses the live owner predicate;
+only ten safe request columns are granted SELECT. Internal keys, submitter
+identity, raw `SELECT *`, all direct writes and private event access are denied.
+All other helpers explicitly revoke inherited execution grants.
+
+New submission requires setup/active state; a known immutable same-content
+retry remains recoverable after suspension. New reviews require the expected
+status/revision plus a fresh operation key. A retry returns the original event
+and current history without duplicate audit/event or state rewind. The graph
+allows at most four events and never treats assigned work as released code.
+Installation changes no existing row/function/policy/grant/index. At runtime,
+review appends an existing Admin audit row; feature/permission/subscription,
+customer/order/stock/wallet/payment/cron data remain unchanged. No provider,
+notification, DNS or application deployment is triggered.
 
 ## Columns added to existing commerce tables by the first three migrations
 

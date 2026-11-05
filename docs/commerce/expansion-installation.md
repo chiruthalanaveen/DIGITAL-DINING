@@ -1,6 +1,6 @@
 # Commerce expansion installation, verification and recovery
 
-Updated 4 November 2026. This is a review/runbook, not permission to install on a hosted
+Updated 5 November 2026. This is a review/runbook, not permission to install on a hosted
 database, enable providers or deploy. Current authorized testing uses a disposable
 loopback `commerce_test` database. The user withdrew staging/backup prerequisites;
 do not substitute production for testing or ask for those prerequisites again.
@@ -28,13 +28,14 @@ latest edit has been executed or passed tests.
 | 5 | [20261103091000_commerce_online_payments.sql](../../supabase/migrations/20261103091000_commerce_online_payments.sql) | [Payment object/permission/recovery review](online-payment-migration-review.md): five private tables/50 columns, twelve functions, two guards, recovery/key indexes, scoped quote/service RPCs and commerce payment-method constraint widening. |
 | 6 | [20261104090000_commerce_payment_recovery_queue.sql](../../supabase/migrations/20261104090000_commerce_payment_recovery_queue.sql) | [Recovery queue review](payment-recovery-queue-migration-review.md): one service-only, read-only RPC listing open payment references for signed Super Admin. No table, column, index, trigger, RLS policy or business/payment row changes. |
 | 7 | [20261104120000_commerce_stop_unstarted_payment.sql](../../supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql) | [Stop-unstarted review](stop-unstarted-payment-migration-review.md): immutable private cancellation proof, terminal `cancelled_unstarted` state/guards and verified buyer inspection/stop RPC. Only an existing, never-claimed intent may stop; no provider order, refund or general unpaid cancellation. |
+| 8 | [20261104160000_commerce_feature_requests.sql](../../supabase/migrations/20261104160000_commerce_feature_requests.sql) | [Feature-request review](feature-requests-migration-review.md): public tenant requests, private immutable events, verified-owner submission/read and signed-service Admin review/global queue. Nine functions, three triggers, two explicit indexes and one safe-column SELECT policy; no feature/configuration/financial activation. |
 
-Files 1–6 are byte-for-byte unchanged by the stop-unstarted follow-up.
-Migration 7 requires those reviewed prerequisites. An already
+Files 1–7 are byte-for-byte unchanged by the feature-request increment.
+Migration 8 requires the reviewed prefix. An already
 approved/installed prefix must not be replayed; only separately approved absent
-files may be applied once. None of these seven expansion files is installed on a
-hosted target by this task. The owner configuration-status panel reuses the
-existing readiness RPC and needs no additional SQL by itself.
+files may be applied once. None of these eight expansion files is installed on a
+hosted target by this task. The wishlist page and owner configuration-status
+panel reuse existing SQL and need no additional migration by themselves.
 
 The canonical `20261022160000_commerce_foundation.sql` is **already installed on
 the hosted project**. Never reapply it there, run a blanket `supabase db push`,
@@ -52,7 +53,12 @@ payment-method constraint. The seventh file additionally widens the private
 intent-state CHECK, adds a terminal-shape CHECK and two guards, and creates the
 immutable cancellation table. Installation has no existing-row DML; an actual
 verified stop appends its proof and changes only the eligible own intent's state
-and updated timestamp. Review those compatibility effects before approval.
+and updated timestamp. File 8 adds only its two new tables, nine functions,
+three triggers, indexes and owner SELECT policy/grants; installation changes no
+existing business row, function, policy or grant. Runtime submission/review adds
+request/events and a small existing Admin audit entry for a new accepted review;
+it does not modify website features, permissions, orders or financial truth.
+Review those compatibility effects before approval.
 
 ## Reproduce the isolated development checks
 
@@ -77,18 +83,21 @@ npm run build
 The recorded URL contains no password and identifies only this local synthetic
 cluster. On another machine, substitute its verified local test identity/port
 securely. The runner installs the bootstrap/foundation **only while creating that
-fresh fixture**, runs the original checks, applies the explicit seven-file chain,
+fresh fixture**, runs the original checks, applies the explicit eight-file chain,
 and tests preservation, RLS, tampering, concurrency and atomic reapplication.
 It never infers main/staging URLs, globs the migrations folder or calls a hosted
-migration CLI. See [database evidence](expansion-db-validation.md): the historical
-3 November five-file result was 531 assertions; the earlier 4 November six-file
-result was 561. The seven-file isolated SQL suite now passes 628 assertions,
-preserving all prior cases and adding 67 stop/race/preservation assertions.
-The current full application passes 327/327 unit tests, lint with zero errors/
-166 warnings, and `npm run build`. Fresh browser checks pass 13 expansion groups/
-112 screenshots plus 118 original compatibility screenshots, 230 total. The
-preceding committed application's 296-unit/198-screenshot result remains
-historical. None substitutes for hosted/provider acceptance or activation approval.
+migration CLI. See [database evidence](expansion-db-validation.md) and the
+[current feature-request report](feature-requests-report.md): the eight-file
+isolated SQL suite passes 702 assertions, retaining all 628 earlier cases.
+Fresh final-source checks pass 359 unit tests, zero lint errors/166 warnings and
+build with stable fingerprints. The complete current expanded suite passes
+30 groups/152 screenshots, including eight feature-request groups/16 screens
+and owner list/detail status agreement. Fresh original compatibility passes
+118 screenshots and all 702 SQL assertions on the final source: 270 primary
+screenshots total. Earlier focused-helper screenshots are separate diagnostic
+evidence. Earlier seven-file 628-SQL/331-unit/254-screenshot
+wishlist and 327-unit/230-screenshot stop results remain historical.
+None substitutes for hosted/provider acceptance or activation approval.
 
 Browser commands, after preparing that disposable database, are:
 
@@ -128,7 +137,7 @@ No hosted target is currently approved for these files. The steps below become
 actionable only after approval identifies the exact target and reviewed hashes.
 Do not run the destructive test runner, bootstrap or SQL test fixtures there.
 
-1. Review all seven full files and object inventories. Record their SHA-256 values,
+1. Review all eight full files and object inventories. Record their SHA-256 values,
    the application commit, the exact target project/database/version, and the
    existing installed foundation state. Read-only checks must first confirm the
    foundation prerequisites and absence of the new objects; existing objects
@@ -144,12 +153,12 @@ Do not run the destructive test runner, bootstrap or SQL test fixtures there.
    `COMMERCE_DOMAIN_PROVISIONING_ENABLED` off. Do not copy Production secrets to
    a Preview or use main for fixture checkout.
 4. In the explicitly approved target’s SQL Editor, paste and execute the complete
-   first file once, including its `BEGIN`/`COMMIT`. Confirm success and the
-   corresponding read-only checks. Repeat with absent approved files 2–7 in the listed order.
+   first absent approved file once, including its `BEGIN`/`COMMIT`. Confirm success and the
+   corresponding read-only checks. Repeat with absent approved files 2–8 in the listed order.
    If a file fails, stop, issue `ROLLBACK` if its session remains aborted, and
    inspect the error; do not continue with fragments or reapply the foundation.
    CLI installation, if separately chosen and approved, must enumerate those
-   exact seven files with `psql -X -v ON_ERROR_STOP=1 -f <file>`; no wildcard or
+   exact eight files with `psql -X -v ON_ERROR_STOP=1 -f <file>`; no wildcard or
    `db push` is part of this runbook.
 5. Run only read-only verification and compare the before-state. Use separately
    authorized non-production Auth/browser/provider acceptance before feature
@@ -169,10 +178,10 @@ WHERE (n.nspname='public' AND c.relname IN
   'commerce_product_variants','commerce_delivery_zones','commerce_saved_addresses',
   'commerce_wishlist_items','commerce_reviews','commerce_order_requests',
   'commerce_order_status_events','commerce_coupons','commerce_coupon_redemptions',
-  'commerce_notification_outbox','commerce_domains'))
+  'commerce_notification_outbox','commerce_domains','commerce_feature_requests'))
  OR (n.nspname='commerce_private' AND c.relname IN
  ('payment_credential_versions','payment_merchants','payment_intents',
-  'payment_receipts','payment_webhooks','payment_unstarted_cancellations'))
+  'payment_receipts','payment_webhooks','payment_unstarted_cancellations','feature_request_events'))
 ORDER BY 1,2;
 
 SELECT schemaname,tablename,policyname,roles,cmd,qual,with_check
@@ -201,6 +210,23 @@ WHERE r.state='fulfilled' AND
  (o.customer_user_id IS DISTINCT FROM
    (SELECT i.buyer_id FROM commerce_private.payment_intents i WHERE i.id=r.intent_id)
   OR o.total_paise<>r.amount_paise OR o.payment_method<>'razorpay');
+
+SELECT count(*) AS inconsistent_feature_request_history
+FROM public.commerce_feature_requests r
+LEFT JOIN LATERAL (
+ SELECT count(*) AS event_count, min(revision) AS first_revision,
+        max(revision) AS last_revision
+ FROM commerce_private.feature_request_events e
+ WHERE e.website_id=r.website_id AND e.request_id=r.id
+) h ON true
+WHERE h.event_count<>r.revision OR h.first_revision<>1
+   OR h.last_revision<>r.revision;
+
+SELECT column_name,privilege_type,grantee
+FROM information_schema.column_privileges
+WHERE table_schema='public' AND table_name='commerce_feature_requests'
+  AND grantee IN ('anon','authenticated','service_role')
+ORDER BY grantee,column_name,privilege_type;
 
 SELECT state,count(*) FROM commerce_private.payment_receipts GROUP BY state;
 SELECT status,count(*) FROM public.commerce_notification_outbox GROUP BY status;
@@ -237,6 +263,14 @@ The seventh-file inspection/stop flow needs no additional environment variable,
 DNS, Storage policy or cron configuration. Keep provider rollout/live flags off.
 It uses verified buyer context and its controlled SQL RPC, not a service-role
 buyer impersonation or a provider cancellation request.
+
+The eighth-file request/review workflow also requires no additional environment
+variable, DNS record, Storage policy or cron job. Owner JWT and signed Admin
+settings remain in their established scopes. Admin approval/assignment records
+review only; it never enables a provider, feature or permission. See the
+[feature-request contract](feature-requests-contract.md) for exact read/replay/
+write authorization and the [current report](feature-requests-report.md) for
+manual UI acceptance.
 
 Online browser actions require a secure context with Web Locks support
 (`navigator.locks.request`, normally HTTPS or trusted localhost). Every shared
@@ -308,6 +342,18 @@ the local fixture server. The production site is not a test destination.
     start/stop/release must retain the attempt; Check payment can fetch/display
     status and COD with no saved online pointer remains available.
 
+11. In the owner workspace, open Feature requests and submit a requirement.
+    Lose only the committed response, reload and retry the same saved key/content;
+    confirm one request and initial event. Switch owners/websites with requests
+    in flight and confirm stale results cannot replace another scope. A foreign
+    owner and customer cannot read, submit or review that website's requests.
+12. In signed Admin management, review the global queue and advance the request
+    through under review, approved and assigned. Require notes and an assignment
+    reference; reject a stale expected revision and replay an original action
+    without duplicate events/audit. Owner refresh must show the stored timeline.
+    Check that features, permissions, subscriptions, fulfillment, orders and
+    receipts did not change. Assignment is not a development release.
+
 ## Recovery and rollback considerations
 
 A failed single migration rolls back atomically; completed earlier files remain
@@ -340,6 +386,17 @@ Older application source may retain an unsupported-state error/pointer instead
 of understanding the stop; prefer a forward fix with the proof intact. The
 [seventh-file review](stop-unstarted-payment-migration-review.md) gives exact
 metadata/invariant queries and the retained-history rollback considerations.
+
+Once feature-request rows exist, retain both requests and private immutable
+events, original submitter/replay keys and Admin audit identity. Disable new
+submissions or remove the UI/API entry points through a reviewed source change
+while preserving history. Do not drop/truncate these tables, delete old events,
+rewrite statuses/revisions or clear replay keys to make a downgrade pass. An
+older application may omit this optional UI; that is not authority to erase its
+data. Prefer a reviewed forward repair. The
+[eighth-file review](feature-requests-migration-review.md) has exact invariant,
+grant and rollback queries. A migration failure rolls back its entire file;
+do not replay already-installed prefixes or manually remove partial fragments.
 
 Recovery planning remains distinct from an existing backup. The historical
 [backup/recovery guide](backup-recovery.md) contains detailed backup categories,

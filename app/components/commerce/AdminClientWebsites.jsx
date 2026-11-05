@@ -6,6 +6,7 @@ import { commerceFetch } from '@/lib/commerce/client'
 import CommerceCatalogPanel from './CommerceCatalogPanel'
 import CommerceAdminDomainsPanel from './CommerceAdminDomainsPanel'
 import CommercePaymentAdminPanel from './CommercePaymentAdminPanel'
+import CommerceAdminFeatureRequestsPanel from './CommerceAdminFeatureRequestsPanel'
 import './admin-commerce.css'
 import './owner.css'
 
@@ -190,6 +191,7 @@ export default function AdminClientWebsites() {
       {error && <div className="ac-feedback ac-error" role="alert">{error}</div>}
       {notice && <div className="ac-feedback ac-success" role="status">{notice}</div>}
       {!loaded && busy && <p className="ac-loading" role="status">Loading client websites…</p>}
+      {loaded && <CommerceAdminFeatureRequestsPanel websites={websites} />}
       <div className="ac-metrics">
         {[['Client websites', websites.length], ['Active storefronts', websites.filter(website => website.status === 'active').length], ['Awaiting review', pendingApplications.length], ['In setup', websites.filter(website => website.status === 'setup').length]].map(([label, value]) => <div className="ac-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}
       </div>

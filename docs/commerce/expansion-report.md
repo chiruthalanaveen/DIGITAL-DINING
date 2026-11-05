@@ -1,6 +1,37 @@
 # E-commerce expansion implementation and verification
 
-## 4 November 2026: dedicated wishlist page — local PASS, release PARTIAL PASS
+## 5 November 2026: owner feature requests — local PASS, release PARTIAL PASS
+
+The latest source implements the remaining owner feature-request workflow:
+verified owners submit requirements, signed Super Admin reviews or assigns them,
+and current owners track the immutable decision history. Status updates are
+review records; they do not activate features, change permissions, execute code,
+charge or deploy. Read the [current report](feature-requests-report.md),
+[exact contract](feature-requests-contract.md) and
+[full eighth-migration review](feature-requests-migration-review.md).
+
+Database changes are required:
+[`20261104160000_commerce_feature_requests.sql`](../../supabase/migrations/20261104160000_commerce_feature_requests.sql)
+adds two tables/25 columns, nine functions, three triggers, two explicit indexes,
+six key indexes and one verified-owner SELECT policy with ten safe column grants.
+The first seven files and installed foundation remain unchanged. All eight
+expansion migrations are unapplied to hosted targets.
+
+The isolated eight-file SQL suite passes **702 assertions**, retaining all prior
+628; focused API tests pass 28. Fresh final-source checks pass **359/359 unit
+tests**, full lint with zero errors/166 warnings and build with stable
+fingerprints. The complete current expanded full-app suite passes
+**30 groups/152 screenshots**, including eight feature-request groups/16 screens
+and owner list/detail status agreement. Fresh original compatibility passes
+118 screenshots and reruns all 702 SQL assertions: **270 primary screenshots
+total** on the same final source. Earlier focused-helper screenshots are separate
+diagnostic evidence; pre-fix totals remain historical. The 331/628/254
+wishlist result below belongs to committed `55b5934`. Overall release remains
+**PARTIAL PASS** for unperformed hosted/provider acceptance.
+No production SQL/data change, live payment, notification, DNS mutation,
+deployment or merge is part of this work.
+
+## Earlier 4 November 2026: dedicated wishlist page — validated prior source
 
 The current increment closes the explicit requirement for a dedicated wishlist
 page. `/shops/[slug]/wishlist` reuses existing tenant/customer-scoped persistence,
@@ -32,7 +63,7 @@ creation has never been claimed. This is not general unpaid-provider cancellatio
 The seventh migration is
 [`20261104120000_commerce_stop_unstarted_payment.sql`](../../supabase/migrations/20261104120000_commerce_stop_unstarted_payment.sql).
 Read its [complete object/permission and rollback review](stop-unstarted-payment-migration-review.md)
-and the [seven-file installation runbook](expansion-installation.md). The six
+and the [installation runbook](expansion-installation.md). The six
 preceding migration files remain byte-for-byte unchanged.
 
 - The authenticated control RPC binds verified buyer, website and original cart
@@ -130,7 +161,7 @@ The combined follow-up requires the sixth migration,
 adding only the service-only STABLE read RPC. It creates no table/column/index/
 trigger/RLS policy and updates no payment/business row. The first five migration
 bytes/hashes remain unchanged. Read the [full queue migration review](payment-recovery-queue-migration-review.md)
-and [installation runbook](expansion-installation.md), now extended to seven files.
+and [installation runbook](expansion-installation.md), now extended to eight files.
 Owner status
 alone: **No SQL migration required.** It reuses existing readiness SQL.
 

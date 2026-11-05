@@ -1,28 +1,40 @@
 # Client Websites — current commerce expansion
 
-Updated 4 November 2026. The current work is on
+Updated 5 November 2026. The current work is on
 `feature/commerce-expansion`, based on the previously published application.
 Read the [expansion implementation/test report](expansion-report.md) and
-[seven-migration installation/recovery runbook](expansion-installation.md) first.
+[eight-migration installation/recovery runbook](expansion-installation.md) first.
 The source includes catalog/fulfillment, customer experience, coupons/outbox,
 verified domains and separately gated merchant payments. Local tests are not a
 claim of hosted/provider acceptance or live activation. New hosted SQL,
 production deployment and merges remain unperformed and require separate
 applicable approval. Domain/provider/notification/payment flags remain off.
 
-The latest 4 November increment completes the explicit dedicated-wishlist-page
-requirement at `/shops/[slug]/wishlist`, using the existing verified customer API
-and public catalog. It adds storefront/account navigation, private noindex
-metadata, matching custom-host routing, removal/retry/empty states and scoped
-account-response guards. **No SQL migration required.** The seven pending
-expansion migrations remain unchanged; this page introduces no new environment
-variable, DNS setting, Storage policy or cron job. Current checks pass
-331/331 unit tests, lint with zero errors/166 warnings, the full build and
-22 expansion browser groups/136 screenshots, including nine wishlist groups/
-24 screenshots, plus 118 original compatibility screenshots (**254 total**).
-The original runner also passes all 628 unchanged-migration SQL assertions.
-Read the
-[dedicated wishlist report](wishlist-page-report.md).
+The latest increment implements **owner feature requests**, signed Super Admin
+review and owner-visible status/history. It adds the eighth, review-only
+migration for tenant-scoped requests and immutable events. A review or assignment
+does not enable a feature, change permissions, charge or deploy. Read the
+[feature-request report](feature-requests-report.md), [exact contract](feature-requests-contract.md)
+and [complete SQL/object/permission review](feature-requests-migration-review.md).
+The first seven files remain unchanged. No hosted SQL or activation is authorized.
+
+The isolated eight-file SQL suite passes **702 assertions**, retaining all 628
+previous cases; focused API tests pass 28. Fresh final-source checks pass
+**359/359 unit tests**, full lint with **zero errors/166 warnings**, and build
+with stable fingerprints. The complete expanded full-app suite passes
+**30 groups/152 screenshots**, including eight feature-request groups/16 screens
+and owner list/detail status agreement. Fresh original compatibility passes
+118 screenshots and all 702 SQL assertions on the same final source: **270
+primary screenshots total**. The earlier focused helper is separate diagnostic
+evidence. This workflow needs no new environment variable,
+DNS setting, Storage policy or cron job.
+
+The preceding committed wishlist source (`55b5934`) added the dedicated page,
+store/account navigation, private metadata and custom-host isolation. **No SQL
+migration required** for that page. Its dated results are 331 unit tests, 628 SQL
+regressions, build, zero lint errors/166 warnings and **254 screenshots**. Read the
+[dedicated wishlist report](wishlist-page-report.md); those earlier counts do not
+stand in for acceptance of owner feature requests.
 
 The preceding committed 4 November increment (`8dbc382`) added a narrow
 **stop unstarted checkout** flow.
@@ -62,7 +74,7 @@ destination. Hosted/provider acceptance and activation remain held.
 
 The sections below preserve the dated first-increment record; its narrower
 source scope and “No SQL migration required” statement describe that older
-increment only. **The current expansion requires seven new migrations.** The
+increment only. **The current expansion requires eight new migrations.** The
 installed foundation must not be replayed, and the separate pending platform
 subscription ledger remains excluded/off.
 
