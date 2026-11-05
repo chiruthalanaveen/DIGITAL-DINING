@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
 import OwnerDeliveryManagement from '@/app/components/OwnerDeliveryManagement'
 import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
+import OwnerWorkspaceOverview from '@/app/components/OwnerWorkspaceOverview'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
@@ -4581,63 +4582,33 @@ if (staffError) {
           />
         )}
 
-        {/* Wallet is available to every approved restaurant/business owner. */}
-        <OwnerDeliveryWallet restaurantId={restaurantId} />
+        {/* Premium cross-module workspace; existing modules remain unchanged. */}
+        <OwnerWorkspaceOverview
+          restaurantId={restaurantId}
+          restaurantName={restaurant.name}
+          mode={dashboardMode}
+          onModeChange={setDashboardMode}
+          allowedModes={[
+            ...(restaurantModuleEnabled ? ['restaurant'] : []),
+            ...(deliveryModuleEnabled ? ['delivery'] : []),
+            ...(resortModuleEnabled ? ['resort'] : []),
+          ]}
+          onRestaurantTab={handleTabSwitch}
+          restaurantStats={{
+            ordersToday: todaysOrders.length,
+            activeOrders: activeOrders.length,
+            tableCount: restaurantTables.length,
+            menuCount: menuItems.length,
+          }}
+        />
 
-        {/* Owner workspace switch. Module visibility follows plan_code exactly. */}
-        <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
-          <div
-            className={`grid gap-2 ${
-              enabledModuleCount >= 3
-                ? 'grid-cols-1 sm:grid-cols-3'
-                : enabledModuleCount === 2
-                  ? 'grid-cols-2'
-                  : 'grid-cols-1'
-            }`}
-          >
-            {restaurantModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('restaurant')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
-                  dashboardMode === 'restaurant'
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
-                }`}
-              >
-                🍽️ Restaurant Dashboard
-              </button>
-            )}
+        {/* Wallet lives inside the Delivery dashboard for Delivery-enabled owners.
+            Keep this existing owner-wallet view available to restaurant/resort-only owners. */}
+        {!deliveryModuleEnabled && (
+          <OwnerDeliveryWallet restaurantId={restaurantId} />
+        )}
 
-            {resortModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('resort')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
-                  dashboardMode === 'resort'
-                    ? 'bg-sky-600 text-white'
-                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
-                }`}
-              >
-                🏨 Resort Dashboard
-              </button>
-            )}
-
-            {deliveryModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('delivery')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
-                  dashboardMode === 'delivery'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
-                }`}
-              >
-                🚚 Delivery Dashboard
-              </button>
-            )}
-          </div>
-        </div>
+        <div id="dd-ws-live-module" className="scroll-mt-24" />
 
         {dashboardMode === 'resort' && resortModuleEnabled && (
           <ResortManagement

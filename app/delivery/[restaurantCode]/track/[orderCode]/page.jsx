@@ -17,9 +17,7 @@ import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
 
-import LiveDeliveryTrackingMap from '@/app/components/LiveDeliveryTrackingMap'
 
-import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 
 import '@/app/components/delivery-reference-mobile.css'
 import '@/app/components/delivery-tracking-premium.css'
@@ -116,44 +114,6 @@ function formatEtaLabel(value, nowMs) {
   return remainingMs > 0
     ? `~${Math.max(1, Math.ceil(remainingMs / 60000))} min`
     : 'ETA updating'
-}
-
-function distanceKm(lat1, lng1, lat2, lng2) {
-
-  const firstLat = Number(lat1)
-
-  const firstLng = Number(lng1)
-
-  const secondLat = Number(lat2)
-
-  const secondLng = Number(lng2)
-
-  if (![firstLat, firstLng, secondLat, secondLng].every(Number.isFinite)) {
-
-    return null
-
-  }
-
-  const toRadians = (value) => (value * Math.PI) / 180
-
-  const earthRadiusKm = 6371.0088
-
-  const dLat = toRadians(secondLat - firstLat)
-
-  const dLng = toRadians(secondLng - firstLng)
-
-  const a =
-
-    Math.sin(dLat / 2) ** 2 +
-
-    Math.cos(toRadians(firstLat)) *
-
-      Math.cos(toRadians(secondLat)) *
-
-      Math.sin(dLng / 2) ** 2
-
-  return 2 * earthRadiusKm * Math.asin(Math.sqrt(a))
-
 }
 
 export default function DeliveryTrackingPage({
@@ -1152,12 +1112,6 @@ export default function DeliveryTrackingPage({
   const cancelled = status === 'cancelled'
   const delivered = status === 'delivered'
   const currentStep = getCurrentStep(selectedOrder)
-  const driverLiveLocation = selectedOrder.driver_live_location || null
-  const trackingAppearance = selectedOrder.tracking || {}
-  const trackingAdvertisement = trackingAppearance.advertisement || null
-  const hasDeliveryPin = selectedOrder.latitude != null && selectedOrder.longitude != null &&
-    Number.isFinite(Number(selectedOrder.latitude)) && Number.isFinite(Number(selectedOrder.longitude))
-  const canShowLiveRider = status === 'out_for_delivery' && Boolean(driverLiveLocation)
   const orderItems = Array.isArray(selectedOrder.items) ? selectedOrder.items : []
   const itemCount = orderItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || item.qty || 1)), 0)
   const isActiveDelivery = !delivered && !cancelled
@@ -1168,9 +1122,7 @@ export default function DeliveryTrackingPage({
     : cancelled
       ? 'This order was cancelled. Its previous details remain available below.'
       : status === 'out_for_delivery'
-        ? canShowLiveRider
-          ? 'Your delivery partner is on the way. Follow the latest reported location on the map.'
-          : 'Your order is on the way. Rider location will appear when available.'
+        ? 'Your order is on the way. Delivery progress will update automatically.'
         : status === 'packed'
           ? 'Your items are packed and being prepared for dispatch.'
           : status === 'preparing'
@@ -1228,45 +1180,7 @@ export default function DeliveryTrackingPage({
           {cancelled && <p className="ddt-cancel-note">This order is no longer active.</p>}
         </section>
 
-        <section className="ddt-map-card" aria-label={`Delivery map for order ${orderNumber}`}>
-          <div className="ddt-section-head">
-            <div className="ddt-section-head-left">
-              <span className="ddt-icon-bubble" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
-              </span>
-              <div><h2>{canShowLiveRider ? 'Follow your delivery' : 'Delivery location'}</h2><p>{canShowLiveRider ? 'Latest rider location' : 'Your selected delivery pin'}</p></div>
-            </div>
-            {canShowLiveRider && <span className="ddt-live-indicator"><span /> RIDER GPS</span>}
-          </div>
-          <div className="ddt-map-frame">
-            {canShowLiveRider ? (
-              <LiveDeliveryTrackingMap
-                driverLatitude={driverLiveLocation.latitude}
-                driverLongitude={driverLiveLocation.longitude}
-                driverHeading={driverLiveLocation.heading}
-                driverName={selectedOrder.driver?.name || 'Delivery partner'}
-                customerLatitude={selectedOrder.latitude}
-                customerLongitude={selectedOrder.longitude}
-                markerType={trackingAppearance.marker_type || 'bike'}
-                markerImageUrl={trackingAppearance.marker_image_url || ''}
-                markerLabel={trackingAppearance.marker_label || selectedOrder.driver?.name || 'Delivery partner'}
-                advertisement={trackingAdvertisement}
-                height={290}
-              />
-            ) : hasDeliveryPin ? (
-              <DeliveryLocationMap latitude={selectedOrder.latitude} longitude={selectedOrder.longitude} readOnly customerPin height={290} zoom={14} />
-            ) : (
-              <div className="ddt-no-map"><span aria-hidden="true">⌖</span><strong>Map location unavailable</strong><p>The map will appear when a valid delivery location is available.</p></div>
-            )}
-            <span className="ddt-map-pin-label">{canShowLiveRider ? 'Rider & destination' : 'Delivery pin'}</span>
-          </div>
-          <div className="ddt-map-caption">
-            <span className="ddt-caption-icon" aria-hidden="true">↻</span>
-            {canShowLiveRider ? 'Rider coordinates update with the tracking data every 3 minutes.' :
-              status === 'out_for_delivery' ? 'Waiting for the rider to share a GPS location.' :
-              'Map shows the delivery destination. Order data refreshes every 3 minutes.'}
-          </div>
-        </section>
+        {/* Map and real-time delivery-partner GPS intentionally not displayed. */}
 
         {selectedOrder.driver && (
           <section className="ddt-info-card ddt-rider" aria-label="Delivery partner">

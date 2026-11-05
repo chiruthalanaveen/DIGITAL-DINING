@@ -9,6 +9,8 @@ import {
 } from 'react'
 import { supabase } from '@/lib/supabase'
 import PaymentGatewayConfigCard from '@/app/components/PaymentGatewayConfigCard'
+import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
+import OwnerSupportChat from '@/app/components/OwnerSupportChat'
 import DeliveryLocationMap from '@/app/components/DeliveryLocationMap'
 import DeliveryServiceAreaEditor from '@/app/components/DeliveryServiceAreaEditor'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
@@ -410,12 +412,19 @@ function afterSalesIsClosed(value) {
 export default function DeliveryManagement({
   restaurant,
   planCode = '',
+  onTabChange,
 }) {
   const restaurantId = restaurant?.id
   const deliveryOnly =
     String(planCode).toLowerCase() === 'delivery'
 
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState('wallet')
+  const [deliveryNavOpen, setDeliveryNavOpen] = useState(false)
+  // Let the parent hide unrelated workspace sections on focused settings/wallet pages.
+  useEffect(() => {
+    if (typeof onTabChange === 'function') onTabChange(tab)
+  }, [tab, onTabChange])
+
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -1090,9 +1099,6 @@ export default function DeliveryManagement({
     }
   }, [restaurantId, refreshOrdersOnly])
 
-  // Realtime subscription above handles changes immediately.
-  // The 15-second fallback catches missed events; the shared hook pauses
-  // its polling while this tab is hidden.
   useLiveDeliveryRefresh(
     () => refreshOrdersOnly(true),
     Boolean(restaurantId),
@@ -4716,6 +4722,7 @@ export default function DeliveryManagement({
 
   const tabs = [
     ['overview', 'Overview'],
+    ['wallet', 'Delivery Wallet'],
     [
       'orders',
       `Orders (${orders.length})`,
@@ -4748,17 +4755,39 @@ export default function DeliveryManagement({
       'packers',
       `Packers (${packers.length})`,
     ],
-    ['settings', 'Settings'],
+    ['settings-home', 'Settings'],
     ['service_area', 'Delivery Area'],
     ['billing', 'Billing'],
-    ['payments', 'Payments'],
+    ['support-chat', '💬 Support Chat'],
     ['website', 'Ordering Website'],
   ]
+
+  // Only one settings destination is rendered at a time; no settings form is destroyed.
+  const settingsPages = [
+    { id: 'settings', title: 'Store & Delivery Settings', icon: '⚙️', description: 'Store identity, fees, handling charges, GST, radius and driver assignment' },
+    { id: 'payments', title: 'Razorpay & Payment Settings', icon: '💳', description: 'Secure Razorpay setup, online payments and Cash on Delivery' },
+    { id: 'billing', title: 'Bill Settings', icon: '🧾', description: 'GSTIN, business identity, signature and invoice footer' },
+    { id: 'service_area', title: 'Delivery Area Settings', icon: '📍', description: 'Draw and manage your custom delivery coverage area' },
+  ]
+  const focusedSetting = settingsPages.find((item) => item.id === tab)
+  const showFocusedView = Boolean(focusedSetting) || tab === 'wallet' || tab === 'support-chat'
+
+  const deliveryTabIcons = {
+    overview: '▦', orders: '☷', menu: '▤', inventory: '▣',
+    cod: '₹', after_sales: '↩', offers: '✦', drivers: '↗',
+    packers: '▱', wallet: '◈', 'settings-home': '⚙',
+    service_area: '⌖', billing: '▧', 'support-chat': '◉',
+    website: '↗',
+  }
+  const currentDeliveryTabLabel = tabs.find(([id]) => id === tab)?.[1] ||
+    focusedSetting?.title || 'Delivery Management'
+
+
 
   if (loading) {
     return (
       <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-8 text-center">
-        <p className="text-sm font-bold text-neutral-400">
+        <p className="text-sm font-bold text-slate-500">
           Loading Delivery
           Management...
         </p>
@@ -4767,21 +4796,89 @@ export default function DeliveryManagement({
   }
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6">
+    <section className="w-full min-w-0">
+      {/* Mobile: a compact toggle instead of squeezing the workspace horizontally. */}
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm lg:hidden">
+        <div className="min-w-0">
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-emerald-600">Delivery workspace</p>
+          <p className="mt-1 truncate text-sm font-black text-slate-900">{currentDeliveryTabLabel}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setDeliveryNavOpen((current) => !current)}
+          aria-expanded={deliveryNavOpen}
+          aria-controls="dd-owner-delivery-side-navigation"
+          aria-label={deliveryNavOpen ? 'Hide delivery navigation' : 'Show delivery navigation'}
+          className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 shadow-sm"
+        >
+          <span aria-hidden="true">{deliveryNavOpen ? '✕' : '☰'}</span>
+          {deliveryNavOpen ? 'Close' : 'Menu'}
+        </button>
+      </div>
+
+      <div className="grid min-w-0 grid-cols-1 items-start gap-5 lg:grid-cols-[234px_minmax(0,1fr)] lg:gap-6 xl:grid-cols-[252px_minmax(0,1fr)]">
+        <aside
+          id="dd-owner-delivery-side-navigation"
+          aria-label="Delivery dashboard navigation"
+          className={`${deliveryNavOpen ? 'block' : 'hidden'} min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)] lg:sticky lg:top-4 lg:block lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto`}
+        >
+          <div className="mb-4 rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-slate-50 px-4 py-4">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-base font-black text-slate-900 shadow-sm">D</div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-400">Delivery dashboard</p>
+            <p className="mt-1 truncate text-sm font-black text-slate-900" title={settings.store_name || restaurant?.name || 'Delivery store'}>
+              {settings.store_name || restaurant?.name || 'Delivery store'}
+            </p>
+            <p className="mt-1 text-[11px] font-medium text-slate-500">Choose a workspace section</p>
+          </div>
+
+          <nav className="flex flex-col gap-1" aria-label="Delivery management sections">
+            {tabs.map(([id, label]) => {
+              const isActive = tab === id || (id === 'settings-home' && Boolean(focusedSetting) && !['service_area', 'billing'].includes(tab))
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setTab(id)
+                    setDeliveryNavOpen(false)
+                  }}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`group flex w-full min-w-0 items-center gap-3 rounded-2xl border px-3 py-3.5 text-left text-sm font-black transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 ${
+                    isActive
+                      ? 'border-emerald-500 bg-emerald-50 text-slate-900 shadow-sm'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-200 hover:bg-white hover:text-slate-900'
+                  }`}
+                >
+                  <span aria-hidden="true" className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base ${isActive ? 'bg-emerald-500 text-slate-900' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                    {deliveryTabIcons[id] || '▤'}
+                  </span>
+                  <span className="min-w-0 flex-1 whitespace-normal break-words leading-4">{label}</span>
+                  {isActive && <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />}
+                </button>
+              )
+            })}
+          </nav>
+          <div className="mt-4 border-t border-slate-200 px-3 pt-3 text-[10px] leading-5 text-slate-500">
+            Owner Delivery management · Digital Dine-In
+          </div>
+        </aside>
+
+        {/* All original dashboard content remains here; only the navigation moved. */}
+        <div className="min-w-0 space-y-5">
+      {!showFocusedView && <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.05)] sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
               Delivery Management
             </p>
 
-            <h2 className="mt-1 text-2xl font-black text-white">
+            <h2 className="mt-1 text-2xl font-black text-slate-900">
               {settings.store_name ||
                 restaurant?.name ||
                 'Delivery Store'}
             </h2>
 
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-neutral-400">
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
               Menu, orders, drivers,
               offers, delivery charges,
               customer payments and the
@@ -4791,8 +4888,8 @@ export default function DeliveryManagement({
           </div>
 
           <div className="flex gap-2">
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-              <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
                 Store
               </p>
 
@@ -4821,8 +4918,8 @@ export default function DeliveryManagement({
               }
               className={`rounded-2xl px-4 py-3 text-[10px] font-black ${
                 alarmEnabled
-                  ? 'bg-emerald-600 text-white'
-                  : 'border border-neutral-800 bg-neutral-950 text-neutral-300'
+                  ? 'bg-emerald-600 text-slate-900'
+                  : 'border border-slate-200 bg-slate-50 text-neutral-300'
               }`}
             >
               {alarmEnabled
@@ -4831,7 +4928,7 @@ export default function DeliveryManagement({
             </button>
           </div>
         </div>
-      </div>
+      </div>}
 
       {message && (
         <div className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-bold text-neutral-200">
@@ -4839,26 +4936,76 @@ export default function DeliveryManagement({
         </div>
       )}
 
-      <nav className="flex gap-2 overflow-x-auto border-b border-neutral-800 pb-3">
-        {tabs.map(
-          ([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() =>
-                setTab(id)
-              }
-              className={`whitespace-nowrap rounded-xl border px-4 py-2.5 text-xs font-black ${
-                tab === id
-                  ? 'border-emerald-500 bg-emerald-500 text-white'
-                  : 'border-neutral-800 bg-neutral-900 text-neutral-400'
-              }`}
-            >
-              {label}
+
+      {focusedSetting && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-orange-400">Delivery Settings</p>
+            <h3 className="mt-1 text-lg font-black text-slate-900">{focusedSetting.title}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTab('settings-home')}
+            className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-slate-900 hover:bg-neutral-700"
+          >
+            ← All Settings
+          </button>
+        </div>
+      )}
+
+      {tab === 'settings-home' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-orange-400">Delivery Settings</p>
+              <h3 className="mt-1 text-lg font-black text-slate-900">Choose a Setting</h3>
+            </div>
+            <button type="button" onClick={() => setTab('overview')} className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-slate-900 hover:bg-neutral-700">
+              ← Overview
             </button>
-          )
-        )}
-      </nav>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {settingsPages.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className="flex items-center gap-4 rounded-3xl border border-neutral-800 bg-neutral-900 p-5 text-left transition hover:border-orange-500/60 hover:bg-neutral-800"
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-neutral-800 text-2xl">{item.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-black text-slate-900">{item.title}</span>
+                  <span className="mt-1 block text-xs text-slate-500">{item.description}</span>
+                </span>
+                <span className="text-orange-400">→</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === 'support-chat' && (
+        <OwnerSupportChat restaurantId={restaurantId} />
+      )}
+
+      {tab === 'wallet' && (
+        <section className="space-y-4" aria-label="Owner Wallet & Platform Fees">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-orange-400">Delivery Wallet</p>
+              <h3 className="mt-1 text-lg font-black text-slate-900">Owner Wallet &amp; Platform Fees</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTab('overview')}
+              className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-slate-900 hover:bg-neutral-700"
+            >
+              ← Back to Overview
+            </button>
+          </div>
+          <OwnerDeliveryWallet restaurantId={restaurantId} />
+        </section>
+      )}
 
       {tab === 'overview' && (
         <div className="space-y-4">
@@ -4901,7 +5048,7 @@ export default function DeliveryManagement({
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                 Store summary
               </p>
 
@@ -4946,11 +5093,11 @@ export default function DeliveryManagement({
             </div>
 
             <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                 Ordering website
               </p>
 
-              <p className="mt-3 break-all font-mono text-xs text-white">
+              <p className="mt-3 break-all font-mono text-xs text-slate-900">
                 {deliveryUrl ||
                   'Restaurant code not available'}
               </p>
@@ -4962,7 +5109,7 @@ export default function DeliveryManagement({
                     copyDeliveryUrl
                   }
                   disabled={!deliveryUrl}
-                  className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-40"
+                  className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-40"
                 >
                   Copy Link
                 </button>
@@ -4972,7 +5119,7 @@ export default function DeliveryManagement({
                     href={deliveryUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white"
+                    className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-slate-900"
                   >
                     Open Store
                   </a>
@@ -4994,7 +5141,7 @@ export default function DeliveryManagement({
                 )
               }
               placeholder="Search code, customer, mobile, city..."
-              className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-white outline-none focus:border-emerald-500"
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-900 outline-none focus:border-emerald-500"
             />
 
             <input
@@ -5007,7 +5154,7 @@ export default function DeliveryManagement({
                 )
               }
               placeholder="Order No."
-              className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-white outline-none focus:border-emerald-500"
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-900 outline-none focus:border-emerald-500"
             />
 
             <input
@@ -5016,7 +5163,7 @@ export default function DeliveryManagement({
               onChange={(event) =>
                 setOrderDateFilter(event.target.value)
               }
-              className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs font-bold text-white outline-none [color-scheme:dark]"
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-900 outline-none [color-scheme:dark]"
             />
 
             <select
@@ -5028,7 +5175,7 @@ export default function DeliveryManagement({
                   event.target.value
                 )
               }
-              className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs font-bold text-white outline-none"
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-900 outline-none"
             >
               <option value="active">
                 Active
@@ -5098,18 +5245,18 @@ export default function DeliveryManagement({
                         </span>
                       </div>
 
-                      <h3 className="mt-3 font-black text-white">
+                      <h3 className="mt-3 font-black text-slate-900">
                         {order.customer_name}
                       </h3>
 
-                      <p className="mt-1 text-xs text-neutral-400">
+                      <p className="mt-1 text-xs text-slate-500">
                         {order.customer_mobile}
                         {order.alternate_mobile
                           ? ` · Alt ${order.alternate_mobile}`
                           : ''}
                       </p>
 
-                      <p className="mt-2 max-w-2xl text-xs leading-5 text-neutral-500">
+                      <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
                         {[
                           order.address_line1,
                           order.address_line2,
@@ -5147,18 +5294,18 @@ export default function DeliveryManagement({
                       </p>
                     </div>
 
-                    <div className="min-w-[220px] rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                      <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                    <div className="min-w-[220px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
                         Total
                       </p>
 
-                      <p className="mt-1 text-xl font-black text-white">
+                      <p className="mt-1 text-xl font-black text-slate-900">
                         {money(
                           order.total_amount
                         )}
                       </p>
 
-                      <p className="mt-2 text-[10px] font-bold text-neutral-400">
+                      <p className="mt-2 text-[10px] font-bold text-slate-500">
                         {String(
                           order.payment_method ||
                             ''
@@ -5173,7 +5320,7 @@ export default function DeliveryManagement({
 
                   <div className="mt-4 grid gap-3 lg:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+                      <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
                         Order status
                       </span>
 
@@ -5188,7 +5335,7 @@ export default function DeliveryManagement({
                               .value
                           )
                         }
-                        className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-white"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-900"
                       >
                         {ORDER_STATUSES.map(
                           (status) => (
@@ -5210,7 +5357,7 @@ export default function DeliveryManagement({
                     </label>
 
                     <label className="block">
-                      <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+                      <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
                         Assign driver
                       </span>
 
@@ -5226,7 +5373,7 @@ export default function DeliveryManagement({
                               .value
                           )
                         }
-                        className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-white"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-900"
                       >
                         <option value="">
                           Unassigned
@@ -5266,9 +5413,9 @@ export default function DeliveryManagement({
                     </label>
                   </div>
 
-                  <div className="mt-4 flex flex-col gap-2 rounded-2xl border border-neutral-800 bg-neutral-950 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="mt-4 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                         Customer Bill
                       </p>
 
@@ -5292,7 +5439,7 @@ export default function DeliveryManagement({
                           order
                         )
                       }
-                      className="shrink-0 rounded-xl bg-sky-600 px-5 py-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
+                      className="shrink-0 rounded-xl bg-sky-600 px-5 py-3 text-xs font-black text-slate-900 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-slate-500"
                     >
                       {printingOrderId === order.id
                         ? 'Generating Bill...'
@@ -5317,7 +5464,7 @@ export default function DeliveryManagement({
                   )}
 
                   <div className="mt-4 border-t border-neutral-800 pt-4">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                       Items
                     </p>
 
@@ -5349,7 +5496,7 @@ export default function DeliveryManagement({
                                 )}
                               </span>
 
-                              <span className="font-black text-white">
+                              <span className="font-black text-slate-900">
                                 {money(
                                   Number(
                                     item.line_total ??
@@ -5383,7 +5530,7 @@ export default function DeliveryManagement({
                     <div className="mt-4 border-t border-neutral-800 pt-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                             Delivery Proof / Attempts
                           </p>
                           <p className="mt-1 text-[10px] text-neutral-600">
@@ -5434,7 +5581,7 @@ export default function DeliveryManagement({
                                     ? '✓ Delivered'
                                     : '✕ Not Delivered'}
                                 </p>
-                                <p className="mt-1 text-[10px] text-neutral-500">
+                                <p className="mt-1 text-[10px] text-slate-500">
                                   Driver:{' '}
                                   {proof.driver_name ||
                                     'Assigned driver'}{' '}
@@ -5460,7 +5607,7 @@ export default function DeliveryManagement({
                             )}
 
                             {proof.driver_note && (
-                              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/60 px-3 py-2.5">
+                              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2.5">
                                 <p className="text-[9px] font-black uppercase tracking-wider text-neutral-600">
                                   Driver Note
                                 </p>
@@ -5484,7 +5631,7 @@ export default function DeliveryManagement({
                                         href={image.url}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="group overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950"
+                                        className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
                                       >
                                         <img
                                           src={image.url}
@@ -5508,7 +5655,7 @@ export default function DeliveryManagement({
             )}
 
             {!filteredOrders.length && (
-              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-slate-500">
                 No matching Delivery
                 orders.
               </div>
@@ -5547,13 +5694,13 @@ export default function DeliveryManagement({
             onSubmit={saveMenuItem}
             className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
           >
-            <h3 className="font-black text-white">
+            <h3 className="font-black text-slate-900">
               {menuForm.id
                 ? 'Edit Delivery Item'
                 : 'Add Delivery Item'}
             </h3>
 
-            <p className="mt-1 text-xs leading-5 text-neutral-500">
+            <p className="mt-1 text-xs leading-5 text-slate-500">
               {menuForm.id
                 ? 'Update the Delivery item details. Inventory/barcode edits remain available in the Inventory tab.'
                 : 'Add normal food items or scan a packaged product barcode and enter its opening stock. Packaged opening stock is recorded through the atomic inventory engine.'}
@@ -5577,7 +5724,7 @@ export default function DeliveryManagement({
                     className={`rounded-xl border px-3 py-3 text-xs font-black ${
                       menuForm.item_type === 'food'
                         ? 'border-orange-500 bg-orange-500/10 text-orange-300'
-                        : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                        : 'border-slate-200 bg-slate-50 text-slate-500'
                     }`}
                   >
                     🍔 Food Item
@@ -5599,7 +5746,7 @@ export default function DeliveryManagement({
                     className={`rounded-xl border px-3 py-3 text-xs font-black ${
                       menuForm.item_type === 'packaged_product'
                         ? 'border-sky-500 bg-sky-500/10 text-sky-300'
-                        : 'border-neutral-800 bg-neutral-950 text-neutral-400'
+                        : 'border-slate-200 bg-slate-50 text-slate-500'
                     }`}
                   >
                     📦 Packaged Product
@@ -5624,7 +5771,7 @@ export default function DeliveryManagement({
                     <button
                       type="button"
                       onClick={scanNewMenuProductBarcode}
-                      className="self-end rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white"
+                      className="self-end rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-slate-900"
                     >
                       📷 Scan
                     </button>
@@ -5787,7 +5934,7 @@ export default function DeliveryManagement({
               />
 
               <label className="block">
-                <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+                <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
                   Description
                 </span>
 
@@ -5806,7 +5953,7 @@ export default function DeliveryManagement({
                       })
                     )
                   }
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-emerald-500"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-900 outline-none focus:border-emerald-500"
                 />
               </label>
 
@@ -5846,7 +5993,7 @@ export default function DeliveryManagement({
                 <button
                   type="submit"
                   disabled={menuSaving}
-                  className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                  className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
                 >
                   {menuSaving
                     ? 'Saving...'
@@ -5863,7 +6010,7 @@ export default function DeliveryManagement({
                         EMPTY_MENU
                       )
                     }
-                    className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white"
+                    className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-slate-900"
                   >
                     Cancel
                   </button>
@@ -5887,7 +6034,7 @@ export default function DeliveryManagement({
                     className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4"
                   >
                     <div className="flex gap-4">
-                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
+                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                         {item.image_url ? (
                           <img
                             src={
@@ -5908,13 +6055,13 @@ export default function DeliveryManagement({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <h3 className="truncate font-black text-white">
+                            <h3 className="truncate font-black text-slate-900">
                               {
                                 item.name
                               }
                             </h3>
 
-                            <p className="mt-1 text-[10px] text-neutral-500">
+                            <p className="mt-1 text-[10px] text-slate-500">
                               {item.category ||
                                 'Other'}{' '}
                               ·{' '}
@@ -5949,7 +6096,7 @@ export default function DeliveryManagement({
                                 item
                               )
                             }
-                            className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-[10px] font-black text-white"
+                            className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-[10px] font-black text-slate-900"
                           >
                             Edit
                           </button>
@@ -5987,7 +6134,7 @@ export default function DeliveryManagement({
                               item.delivery_enabled !==
                               false
                                 ? 'bg-sky-500/10 text-sky-400'
-                                : 'bg-neutral-800 text-neutral-500'
+                                : 'bg-neutral-800 text-slate-500'
                             }`}
                           >
                             {item.delivery_enabled !==
@@ -6004,7 +6151,7 @@ export default function DeliveryManagement({
             )}
 
             {!menuItems.length && (
-              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-slate-500">
                 No menu items yet. Add
                 your first Delivery item.
               </div>
@@ -6019,10 +6166,10 @@ export default function DeliveryManagement({
             <p className="text-[10px] font-black uppercase tracking-wider text-sky-300">
               Owner Inventory Control & History
             </p>
-            <h3 className="mt-1 text-lg font-black text-white">
+            <h3 className="mt-1 text-lg font-black text-slate-900">
               Live Stock, Daily Sales & Movement Ledger
             </h3>
-            <p className="mt-2 text-xs leading-5 text-neutral-400">
+            <p className="mt-2 text-xs leading-5 text-slate-500">
               Owner and Manager use the same atomic stock engine. This report adds daily sales and full movement history without bypassing reserved-stock protection.
             </p>
           </div>
@@ -6056,14 +6203,14 @@ export default function DeliveryManagement({
                   type="button"
                   disabled={inventoryReportLoading}
                   onClick={refreshInventoryReports}
-                  className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                  className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
                 >
                   {inventoryReportLoading ? 'Loading...' : 'Refresh Report'}
                 </button>
                 <button
                   type="button"
                   onClick={exportInventorySummaryCsv}
-                  className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white"
+                  className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900"
                 >
                   ↓ Download CSV
                 </button>
@@ -6083,8 +6230,8 @@ export default function DeliveryManagement({
               <InventoryMetric label="Movements Today" value={Number(inventoryReport?.today_totals?.movements || 0)} />
             </div>
 
-            <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-              <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
                 Selected Range · {inventoryReportStartDate || '—'} → {inventoryReportEndDate || '—'}
               </p>
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -6101,12 +6248,12 @@ export default function DeliveryManagement({
               value={inventorySearch}
               onChange={(event) => setInventorySearch(event.target.value)}
               placeholder="Search product, category or barcode..."
-              className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-white outline-none focus:border-emerald-500"
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-900 outline-none focus:border-emerald-500"
             />
             <select
               value={inventoryFilter}
               onChange={(event) => setInventoryFilter(event.target.value)}
-              className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs font-bold text-white"
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-900"
             >
               <option value="all">All Items</option>
               <option value="food">Food Items</option>
@@ -6136,19 +6283,19 @@ export default function DeliveryManagement({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap gap-2">
-                        <h3 className="font-black text-white">{item.name}</h3>
+                        <h3 className="font-black text-slate-900">{item.name}</h3>
                         <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${type === 'packaged_product' ? 'bg-sky-500/10 text-sky-400' : 'bg-orange-500/10 text-orange-400'}`}>
                           {type === 'packaged_product' ? '📦 PACKAGED' : '🍔 FOOD'}
                         </span>
                       </div>
-                      <p className="mt-1 text-[10px] text-neutral-500">{item.category || 'Other'}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">{item.category || 'Other'}</p>
                       {type === 'packaged_product' && (
-                        <p className="mt-2 break-all font-mono text-[10px] text-neutral-400">
+                        <p className="mt-2 break-all font-mono text-[10px] text-slate-500">
                           Barcode: {item.barcode || 'Not configured'}
                         </p>
                       )}
                     </div>
-                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${!tracked ? 'bg-neutral-800 text-neutral-500' : out ? 'bg-red-500/10 text-red-400' : low ? 'bg-orange-500/10 text-orange-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${!tracked ? 'bg-neutral-800 text-slate-500' : out ? 'bg-red-500/10 text-red-400' : low ? 'bg-orange-500/10 text-orange-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
                       {!tracked ? 'NOT TRACKED' : out ? 'OUT OF STOCK' : low ? 'LOW STOCK' : 'IN STOCK'}
                     </span>
                   </div>
@@ -6165,7 +6312,7 @@ export default function DeliveryManagement({
                       )}
 
                       {tracked && (
-                        <p className="mt-3 text-[10px] text-neutral-500">
+                        <p className="mt-3 text-[10px] text-slate-500">
                           Low-stock alert at {threshold} units
                         </p>
                       )}
@@ -6174,7 +6321,7 @@ export default function DeliveryManagement({
                         <button
                           type="button"
                           onClick={() => startInventoryEdit(item)}
-                          className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white"
+                          className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-slate-900"
                         >
                           Edit Inventory
                         </button>
@@ -6184,7 +6331,7 @@ export default function DeliveryManagement({
                             type="button"
                             disabled={restockingId === item.id}
                             onClick={() => restockInventory(item)}
-                            className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                            className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
                           >
                             {restockingId === item.id ? 'Adding...' : '+ Restock'}
                           </button>
@@ -6202,10 +6349,10 @@ export default function DeliveryManagement({
                   ) : (
                     <div className="mt-5 space-y-3">
                       <div className="grid grid-cols-2 gap-2">
-                        <button type="button" onClick={() => setInventoryDraft((current) => ({ ...current, item_type: 'food', barcode: '', track_stock: false }))} className={`rounded-xl border px-3 py-3 text-xs font-black ${inventoryDraft.item_type === 'food' ? 'border-orange-500 bg-orange-500/10 text-orange-300' : 'border-neutral-800 bg-neutral-950 text-neutral-400'}`}>
+                        <button type="button" onClick={() => setInventoryDraft((current) => ({ ...current, item_type: 'food', barcode: '', track_stock: false }))} className={`rounded-xl border px-3 py-3 text-xs font-black ${inventoryDraft.item_type === 'food' ? 'border-orange-500 bg-orange-500/10 text-orange-300' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
                           🍔 Food Item
                         </button>
-                        <button type="button" onClick={() => setInventoryDraft((current) => ({ ...current, item_type: 'packaged_product', track_stock: true }))} className={`rounded-xl border px-3 py-3 text-xs font-black ${inventoryDraft.item_type === 'packaged_product' ? 'border-sky-500 bg-sky-500/10 text-sky-300' : 'border-neutral-800 bg-neutral-950 text-neutral-400'}`}>
+                        <button type="button" onClick={() => setInventoryDraft((current) => ({ ...current, item_type: 'packaged_product', track_stock: true }))} className={`rounded-xl border px-3 py-3 text-xs font-black ${inventoryDraft.item_type === 'packaged_product' ? 'border-sky-500 bg-sky-500/10 text-sky-300' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
                           📦 Packaged Product
                         </button>
                       </div>
@@ -6213,7 +6360,7 @@ export default function DeliveryManagement({
                       {inventoryDraft.item_type === 'packaged_product' && (
                         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                           <Field label="Barcode" value={inventoryDraft.barcode} onChange={(value) => setInventoryDraft((current) => ({ ...current, barcode: value }))} placeholder="Scan or enter barcode" />
-                          <button type="button" onClick={scanInventoryBarcode} className="self-end rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white">
+                          <button type="button" onClick={scanInventoryBarcode} className="self-end rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-slate-900">
                             📷 Scan
                           </button>
                         </div>
@@ -6235,10 +6382,10 @@ export default function DeliveryManagement({
                       )}
 
                       <div className="flex gap-2">
-                        <button type="button" disabled={inventorySaving} onClick={() => saveInventory(item)} className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50">
+                        <button type="button" disabled={inventorySaving} onClick={() => saveInventory(item)} className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-50">
                           {inventorySaving ? 'Saving...' : 'Save Inventory'}
                         </button>
-                        <button type="button" onClick={() => setEditingInventoryId('')} className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-white">
+                        <button type="button" onClick={() => setEditingInventoryId('')} className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-xs font-black text-slate-900">
                           Cancel
                         </button>
                       </div>
@@ -6249,7 +6396,7 @@ export default function DeliveryManagement({
             })}
 
             {!filteredInventoryItems.length && (
-              <div className="col-span-full rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
+              <div className="col-span-full rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-slate-500">
                 No inventory items match this filter.
               </div>
             )}
@@ -6272,16 +6419,16 @@ export default function DeliveryManagement({
 
       {tab === 'cod' && (
         <div className="space-y-4">
-          <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.05)] sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">
                   COD Cash Reconciliation
                 </p>
-                <h3 className="mt-1 text-xl font-black text-white">
+                <h3 className="mt-1 text-xl font-black text-slate-900">
                   Driver cash due & handovers
                 </h3>
-                <p className="mt-2 max-w-2xl text-xs leading-5 text-neutral-400">
+                <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
                   Approve a handover only after the physical cash is received. Approved cash is automatically allocated to the driver's oldest unsettled COD orders.
                 </p>
               </div>
@@ -6303,20 +6450,20 @@ export default function DeliveryManagement({
             )}
 
             <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                <p className="text-[9px] font-black uppercase text-neutral-500">Rider Cash Due</p>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[9px] font-black uppercase text-slate-500">Rider Cash Due</p>
                 <p className="mt-2 text-xl font-black text-amber-300">{money(codReport?.summary?.cash_due)}</p>
               </div>
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                <p className="text-[9px] font-black uppercase text-neutral-500">Pending Handover</p>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[9px] font-black uppercase text-slate-500">Pending Handover</p>
                 <p className="mt-2 text-xl font-black text-sky-300">{money(codReport?.summary?.pending_handover)}</p>
               </div>
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                <p className="text-[9px] font-black uppercase text-neutral-500">Collected Today</p>
-                <p className="mt-2 text-xl font-black text-white">{money(codReport?.summary?.collected_today)}</p>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[9px] font-black uppercase text-slate-500">Collected Today</p>
+                <p className="mt-2 text-xl font-black text-slate-900">{money(codReport?.summary?.collected_today)}</p>
               </div>
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                <p className="text-[9px] font-black uppercase text-neutral-500">Settled Today</p>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[9px] font-black uppercase text-slate-500">Settled Today</p>
                 <p className="mt-2 text-xl font-black text-emerald-300">{money(codReport?.summary?.settled_today)}</p>
               </div>
             </div>
@@ -6327,8 +6474,8 @@ export default function DeliveryManagement({
               <article key={driver.driver_id} className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-black text-white">{driver.driver_name}</p>
-                    <p className="mt-1 text-[10px] text-neutral-500">{driver.driver_mobile || 'No mobile'}</p>
+                    <p className="text-sm font-black text-slate-900">{driver.driver_name}</p>
+                    <p className="mt-1 text-[10px] text-slate-500">{driver.driver_mobile || 'No mobile'}</p>
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${Number(driver.cash_due || 0) > 0 ? 'bg-amber-500/10 text-amber-300' : 'bg-emerald-500/10 text-emerald-300'}`}>
                     {Number(driver.cash_due || 0) > 0 ? 'Cash Due' : 'Clear'}
@@ -6346,7 +6493,7 @@ export default function DeliveryManagement({
                   </div>
                   <div className="rounded-xl bg-neutral-950 p-3">
                     <p className="text-[8px] font-black uppercase text-neutral-600">Orders</p>
-                    <p className="mt-1 text-xs font-black text-white">{Number(driver.unsettled_orders || 0)}</p>
+                    <p className="mt-1 text-xs font-black text-slate-900">{Number(driver.unsettled_orders || 0)}</p>
                   </div>
                 </div>
               </article>
@@ -6356,7 +6503,7 @@ export default function DeliveryManagement({
           <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">Action Required</p>
-              <h3 className="mt-1 text-lg font-black text-white">Pending Cash Handovers</h3>
+              <h3 className="mt-1 text-lg font-black text-slate-900">Pending Cash Handovers</h3>
             </div>
 
             <div className="mt-4 space-y-3">
@@ -6366,9 +6513,9 @@ export default function DeliveryManagement({
                   <article key={settlement.id} className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-sm font-black text-white">{settlement.driver_name}</p>
+                        <p className="text-sm font-black text-slate-900">{settlement.driver_name}</p>
                         <p className="mt-1 text-2xl font-black text-amber-300">{money(settlement.amount_submitted)}</p>
-                        <p className="mt-1 text-[10px] text-neutral-500">Submitted {orderTime(settlement.submitted_at)}</p>
+                        <p className="mt-1 text-[10px] text-slate-500">Submitted {orderTime(settlement.submitted_at)}</p>
                         {settlement.driver_note && <p className="mt-2 text-xs text-neutral-300">{settlement.driver_note}</p>}
                       </div>
 
@@ -6385,7 +6532,7 @@ export default function DeliveryManagement({
                           type="button"
                           disabled={Boolean(codReviewId)}
                           onClick={() => reviewCodSettlement(settlement, 'approve')}
-                          className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-40"
+                          className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-40"
                         >
                           {codReviewId === settlement.id ? 'Processing...' : '✓ Approve Cash'}
                         </button>
@@ -6395,7 +6542,7 @@ export default function DeliveryManagement({
                 ))}
 
               {!(Array.isArray(codReport?.settlements) ? codReport.settlements : []).some((row) => row.status === 'pending') && (
-                <div className="rounded-2xl border border-neutral-800 bg-neutral-950 py-10 text-center text-xs text-neutral-500">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 py-10 text-center text-xs text-slate-500">
                   No pending COD cash handovers.
                 </div>
               )}
@@ -6404,14 +6551,14 @@ export default function DeliveryManagement({
 
           <div className="grid gap-4 lg:grid-cols-2">
             <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Recent</p>
-              <h3 className="mt-1 text-lg font-black text-white">Settlement History</h3>
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Recent</p>
+              <h3 className="mt-1 text-lg font-black text-slate-900">Settlement History</h3>
               <div className="mt-4 space-y-2">
                 {(Array.isArray(codReport?.settlements) ? codReport.settlements : []).slice(0, 15).map((row) => (
-                  <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3">
+                  <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                     <div>
-                      <p className="text-xs font-black text-white">{row.driver_name} · {money(row.amount_submitted)}</p>
-                      <p className="mt-1 text-[9px] text-neutral-500">{orderTime(row.submitted_at)}{row.reviewed_by_name ? ` · ${row.reviewed_by_name}` : ''}</p>
+                      <p className="text-xs font-black text-slate-900">{row.driver_name} · {money(row.amount_submitted)}</p>
+                      <p className="mt-1 text-[9px] text-slate-500">{orderTime(row.submitted_at)}{row.reviewed_by_name ? ` · ${row.reviewed_by_name}` : ''}</p>
                     </div>
                     <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${row.status === 'approved' ? 'bg-emerald-500/10 text-emerald-300' : row.status === 'rejected' ? 'bg-red-500/10 text-red-300' : 'bg-amber-500/10 text-amber-300'}`}>
                       {labelStatus(row.status)}
@@ -6422,17 +6569,17 @@ export default function DeliveryManagement({
             </section>
 
             <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Order Ledger</p>
-              <h3 className="mt-1 text-lg font-black text-white">Outstanding COD Orders</h3>
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Order Ledger</p>
+              <h3 className="mt-1 text-lg font-black text-slate-900">Outstanding COD Orders</h3>
               <div className="mt-4 space-y-2">
                 {(Array.isArray(codReport?.collections) ? codReport.collections : [])
                   .filter((row) => Number(row.outstanding_amount || 0) > 0)
                   .slice(0, 15)
                   .map((row) => (
-                    <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3">
+                    <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                       <div>
-                        <p className="font-mono text-[10px] font-black text-white">{row.order_code || 'COD Order'}</p>
-                        <p className="mt-1 text-[9px] text-neutral-500">{row.driver_name || 'Unassigned'} · {orderTime(row.collected_at)}</p>
+                        <p className="font-mono text-[10px] font-black text-slate-900">{row.order_code || 'COD Order'}</p>
+                        <p className="mt-1 text-[9px] text-slate-500">{row.driver_name || 'Unassigned'} · {orderTime(row.collected_at)}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-xs font-black text-amber-300">{money(row.outstanding_amount)}</p>
@@ -6452,11 +6599,11 @@ export default function DeliveryManagement({
             onSubmit={saveOffer}
             className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
           >
-            <h3 className="font-black text-white">
+            <h3 className="font-black text-slate-900">
               Delivery Offer
             </h3>
 
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-xs text-slate-500">
               Promotional cards appear
               on the Delivery website.
             </p>
@@ -6563,7 +6710,7 @@ export default function DeliveryManagement({
               />
 
               <label className="block">
-                <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+                <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
                   Description
                 </span>
 
@@ -6582,14 +6729,14 @@ export default function DeliveryManagement({
                       })
                     )
                   }
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-900"
                 />
               </label>
 
               <button
                 type="submit"
                 disabled={offerSaving}
-                className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
               >
                 {offerSaving
                   ? 'Publishing...'
@@ -6612,11 +6759,11 @@ export default function DeliveryManagement({
                           'Offer'}
                       </p>
 
-                      <h3 className="mt-1 font-black text-white">
+                      <h3 className="mt-1 font-black text-slate-900">
                         {offer.title}
                       </h3>
 
-                      <p className="mt-1 text-xs text-neutral-500">
+                      <p className="mt-1 text-xs text-slate-500">
                         {offer.description}
                       </p>
 
@@ -6643,7 +6790,7 @@ export default function DeliveryManagement({
                         className={`rounded-lg px-3 py-2 text-[10px] font-black ${
                           offer.is_active
                             ? 'bg-emerald-500/10 text-emerald-400'
-                            : 'bg-neutral-800 text-neutral-500'
+                            : 'bg-neutral-800 text-slate-500'
                         }`}
                       >
                         {offer.is_active
@@ -6669,7 +6816,7 @@ export default function DeliveryManagement({
             )}
 
             {!deliveryOffers.length && (
-              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
+              <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-slate-500">
                 No Delivery offers yet.
               </div>
             )}
@@ -6684,12 +6831,12 @@ export default function DeliveryManagement({
               Driver Mobile Portal
             </p>
 
-            <p className="mt-2 break-all font-mono text-xs text-white">
+            <p className="mt-2 break-all font-mono text-xs text-slate-900">
               {driverPortalUrl ||
                 'Restaurant code not available'}
             </p>
 
-            <p className="mt-2 text-[10px] leading-5 text-neutral-400">
+            <p className="mt-2 text-[10px] leading-5 text-slate-500">
               Give this link to your
               delivery drivers. Each
               driver signs in with the
@@ -6716,7 +6863,7 @@ export default function DeliveryManagement({
                       )
                     }
                   }}
-                  className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white"
+                  className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900"
                 >
                   Copy Driver Portal Link
                 </button>
@@ -6725,7 +6872,7 @@ export default function DeliveryManagement({
                   href={driverPortalUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-white"
+                  className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-slate-900"
                 >
                   Open Driver Portal
 
@@ -6740,7 +6887,7 @@ export default function DeliveryManagement({
             onSubmit={saveDriver}
             className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
           >
-            <h3 className="font-black text-white">
+            <h3 className="font-black text-slate-900">
               Add Delivery Driver
             </h3>
 
@@ -6881,7 +7028,7 @@ export default function DeliveryManagement({
                 placeholder="Minimum 6 characters"
               />
 
-              <p className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-[10px] leading-5 text-neutral-500">
+              <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[10px] leading-5 text-slate-500">
                 The password is hashed in
                 the database. It is never
                 stored as readable text.
@@ -6890,7 +7037,7 @@ export default function DeliveryManagement({
               <button
                 type="submit"
                 disabled={driverSaving}
-                className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
               >
                 {driverSaving
                   ? 'Adding...'
@@ -6908,15 +7055,15 @@ export default function DeliveryManagement({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="font-black text-white">
+                      <h3 className="font-black text-slate-900">
                         {driver.name}
                       </h3>
 
-                      <p className="mt-1 text-xs text-neutral-400">
+                      <p className="mt-1 text-xs text-slate-500">
                         {driver.mobile}
                       </p>
 
-                      <p className="mt-2 text-[10px] font-bold text-neutral-500">
+                      <p className="mt-2 text-[10px] font-bold text-slate-500">
                         {driver.vehicle_type}{' '}
                         {driver.vehicle_number
                           ? `· ${driver.vehicle_number}`
@@ -6938,7 +7085,7 @@ export default function DeliveryManagement({
                           : driver.status ===
                               'busy'
                             ? 'bg-orange-500/10 text-orange-400'
-                            : 'bg-neutral-800 text-neutral-500'
+                            : 'bg-neutral-800 text-slate-500'
                       }`}
                     >
                       {driver.status}
@@ -6969,7 +7116,7 @@ export default function DeliveryManagement({
                     className={`mt-2 w-full rounded-xl px-4 py-3 text-xs font-black ${
                       driver.is_active ===
                       false
-                        ? 'bg-emerald-600 text-white'
+                        ? 'bg-emerald-600 text-slate-900'
                         : 'border border-red-500/20 bg-red-500/10 text-red-400'
                     }`}
                   >
@@ -6983,7 +7130,7 @@ export default function DeliveryManagement({
             )}
 
             {!drivers.length && (
-              <div className="col-span-full rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
+              <div className="col-span-full rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-slate-500">
                 No drivers added yet.
               </div>
             )}
@@ -6999,11 +7146,11 @@ export default function DeliveryManagement({
               Delivery Packer Portal
             </p>
 
-            <p className="mt-2 break-all font-mono text-xs text-white">
+            <p className="mt-2 break-all font-mono text-xs text-slate-900">
               {packerPortalUrl || 'Restaurant code not available'}
             </p>
 
-            <p className="mt-2 text-[10px] leading-5 text-neutral-400">
+            <p className="mt-2 text-[10px] leading-5 text-slate-500">
               Packers receive all eligible Delivery orders. They can Confirm,
               mark Packed, and move a packed order Out for Delivery after a
               driver has been assigned.
@@ -7021,7 +7168,7 @@ export default function DeliveryManagement({
                       await appPrompt('Copy Packer Portal URL:', packerPortalUrl)
                     }
                   }}
-                  className="rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-white"
+                  className="rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-slate-900"
                 >
                   Copy Packer Portal Link
                 </button>
@@ -7030,7 +7177,7 @@ export default function DeliveryManagement({
                   href={packerPortalUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-white"
+                  className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-slate-900"
                 >
                   Open Packer Portal
                 </a>
@@ -7043,7 +7190,7 @@ export default function DeliveryManagement({
               onSubmit={savePacker}
               className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5"
             >
-              <h3 className="font-black text-white">Add Delivery Packer</h3>
+              <h3 className="font-black text-slate-900">Add Delivery Packer</h3>
 
               <div className="mt-5 space-y-3">
                 <Field
@@ -7090,7 +7237,7 @@ export default function DeliveryManagement({
                   placeholder="Minimum 6 characters"
                 />
 
-                <p className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-[10px] leading-5 text-neutral-500">
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[10px] leading-5 text-slate-500">
                   Packer passwords are hashed and old sessions are invalidated
                   when the owner resets a login.
                 </p>
@@ -7098,7 +7245,7 @@ export default function DeliveryManagement({
                 <button
                   type="submit"
                   disabled={packerSaving}
-                  className="w-full rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                  className="w-full rounded-xl bg-violet-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
                 >
                   {packerSaving ? 'Adding...' : 'Add Packer'}
                 </button>
@@ -7113,8 +7260,8 @@ export default function DeliveryManagement({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="font-black text-white">{packer.name}</h3>
-                      <p className="mt-1 text-xs text-neutral-400">
+                      <h3 className="font-black text-slate-900">{packer.name}</h3>
+                      <p className="mt-1 text-xs text-slate-500">
                         {packer.mobile || 'No mobile added'}
                       </p>
                       <p className="mt-2 text-[10px] font-mono text-violet-300">
@@ -7124,7 +7271,7 @@ export default function DeliveryManagement({
                     <span
                       className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${
                         packer.is_active === false
-                          ? 'bg-neutral-800 text-neutral-500'
+                          ? 'bg-neutral-800 text-slate-500'
                           : 'bg-emerald-500/10 text-emerald-400'
                       }`}
                     >
@@ -7145,7 +7292,7 @@ export default function DeliveryManagement({
                     onClick={() => togglePackerActive(packer)}
                     className={`mt-2 w-full rounded-xl px-4 py-3 text-xs font-black ${
                       packer.is_active === false
-                        ? 'bg-emerald-600 text-white'
+                        ? 'bg-emerald-600 text-slate-900'
                         : 'border border-red-500/20 bg-red-500/10 text-red-400'
                     }`}
                   >
@@ -7157,7 +7304,7 @@ export default function DeliveryManagement({
               ))}
 
               {!packers.length && (
-                <div className="col-span-full rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
+                <div className="col-span-full rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-slate-500">
                   No packers added yet.
                 </div>
               )}
@@ -7169,14 +7316,14 @@ export default function DeliveryManagement({
       {tab === 'settings' && (
         <form
           onSubmit={saveSettings}
-          className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6"
+          className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.05)] sm:p-6"
         >
           <div>
-            <h3 className="font-black text-white">
+            <h3 className="font-black text-slate-900">
               Delivery Settings
             </h3>
 
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-xs text-slate-500">
               Payment method switches are
               managed securely from the
               Payments tab.
@@ -7353,7 +7500,7 @@ export default function DeliveryManagement({
                 }
               />
 
-              <p className="mt-2 text-[10px] leading-4 text-neutral-500">
+              <p className="mt-2 text-[10px] leading-4 text-slate-500">
                 Surge becomes active when orders received in the last hour reach the current delivery capacity. Capacity = active delivery boys × orders per delivery boy per hour.
               </p>
             </div>
@@ -7508,10 +7655,10 @@ export default function DeliveryManagement({
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-400">
                   Owner-only Delivery Coverage
                 </p>
-                <h4 className="mt-1 text-sm font-black text-white">
+                <h4 className="mt-1 text-sm font-black text-slate-900">
                   Map Delivery Radius
                 </h4>
-                <p className="mt-1 max-w-2xl text-[11px] leading-5 text-neutral-400">
+                <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500">
                   Set the restaurant/store dispatch center and choose how many kilometres you will deliver. Customer orders outside this radius are blocked on the server. Managers and packers cannot change this setting.
                 </p>
               </div>
@@ -7527,8 +7674,8 @@ export default function DeliveryManagement({
                 }
                 className={`shrink-0 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase ${
                   settings.delivery_radius_enabled
-                    ? 'bg-sky-500 text-white'
-                    : 'bg-neutral-800 text-neutral-400'
+                    ? 'bg-sky-500 text-slate-900'
+                    : 'bg-neutral-800 text-slate-500'
                 }`}
               >
                 {settings.delivery_radius_enabled
@@ -7556,7 +7703,7 @@ export default function DeliveryManagement({
                   type="button"
                   onClick={chooseOwnerDeliveryCenter}
                   disabled={ownerLocationLoading}
-                  className="w-full rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                  className="w-full rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
                 >
                   {ownerLocationLoading
                     ? 'Getting Store Location...'
@@ -7565,7 +7712,7 @@ export default function DeliveryManagement({
 
                 {settings.delivery_origin_latitude &&
                   settings.delivery_origin_longitude && (
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3 text-[10px] leading-5 text-neutral-400">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[10px] leading-5 text-slate-500">
                       <p className="font-black text-sky-300">
                         Store delivery center set
                       </p>
@@ -7609,7 +7756,7 @@ export default function DeliveryManagement({
                   }}
                   height={320}
                 />
-                <p className="mt-2 text-[10px] leading-4 text-neutral-500">
+                <p className="mt-2 text-[10px] leading-4 text-slate-500">
                   Tap the map or drag the pin to the exact restaurant/store dispatch point. The circle shows the configured delivery boundary.
                 </p>
               </div>
@@ -7623,11 +7770,11 @@ export default function DeliveryManagement({
                   Owner-only Dispatch Automation
                 </p>
 
-                <h4 className="mt-1 text-sm font-black text-white">
+                <h4 className="mt-1 text-sm font-black text-slate-900">
                   Automatic Driver Assignment
                 </h4>
 
-                <p className="mt-1 max-w-2xl text-[11px] leading-5 text-neutral-400">
+                <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500">
                   When enabled, Delivery orders wait until a complete batch is ready.
                   The oldest batch is assigned to one available driver automatically.
                   Cash-on-delivery orders qualify immediately; online-payment orders
@@ -7638,7 +7785,7 @@ export default function DeliveryManagement({
               <span className={`w-fit rounded-full px-3 py-1.5 text-[9px] font-black uppercase ${
                 settings.auto_assign_enabled
                   ? 'bg-emerald-500/10 text-emerald-400'
-                  : 'bg-neutral-800 text-neutral-400'
+                  : 'bg-neutral-800 text-slate-500'
               }`}>
                 {settings.auto_assign_enabled
                   ? 'Automation On'
@@ -7664,7 +7811,7 @@ export default function DeliveryManagement({
               />
 
               <label className="block">
-                <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+                <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
                   Orders Per Driver Batch
                 </span>
 
@@ -7685,7 +7832,7 @@ export default function DeliveryManagement({
                       })
                     )
                   }
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-emerald-500"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-900 outline-none focus:border-emerald-500"
                 />
 
                 <p className="mt-1 text-[9px] leading-4 text-neutral-600">
@@ -7697,11 +7844,11 @@ export default function DeliveryManagement({
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-                <p className="text-[9px] font-black uppercase text-neutral-500">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[9px] font-black uppercase text-slate-500">
                   Eligible Unassigned Queue
                 </p>
-                <p className="mt-1 text-xl font-black text-white">
+                <p className="mt-1 text-xl font-black text-slate-900">
                   {orders.filter((order) =>
                     !order.driver_id &&
                     ['received', 'confirmed', 'preparing', 'packed'].includes(
@@ -7715,11 +7862,11 @@ export default function DeliveryManagement({
                 </p>
               </div>
 
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-                <p className="text-[9px] font-black uppercase text-neutral-500">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[9px] font-black uppercase text-slate-500">
                   Available Drivers
                 </p>
-                <p className="mt-1 text-xl font-black text-white">
+                <p className="mt-1 text-xl font-black text-slate-900">
                   {drivers.filter((driver) =>
                     driver.is_active !== false &&
                     driver.status !== 'offline' &&
@@ -7752,7 +7899,7 @@ export default function DeliveryManagement({
           </div>
 
           <label className="mt-4 block">
-            <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+            <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
               Store Description
             </span>
 
@@ -7770,7 +7917,7 @@ export default function DeliveryManagement({
                   })
                 )
               }
-              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-900"
             />
           </label>
 
@@ -7815,7 +7962,7 @@ export default function DeliveryManagement({
               disabled={
                 savingSettings
               }
-              className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-white disabled:opacity-50"
+              className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
             >
               {savingSettings
                 ? 'Saving...'
@@ -7830,7 +7977,7 @@ export default function DeliveryManagement({
           onSubmit={
             saveBillSettings
           }
-          className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6"
+          className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.05)] sm:p-6"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -7838,11 +7985,11 @@ export default function DeliveryManagement({
                 Owner Billing Settings
               </p>
 
-              <h3 className="mt-1 text-lg font-black text-white">
+              <h3 className="mt-1 text-lg font-black text-slate-900">
                 Delivery Bill Identity
               </h3>
 
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-neutral-400">
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
                 These settings are used for Delivery bills generated by the Owner
                 and Manager portals. GSTIN and billing identity remain Owner-controlled.
               </p>
@@ -7932,7 +8079,7 @@ export default function DeliveryManagement({
           </div>
 
           <label className="mt-3 block">
-            <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+            <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
               Bill Footer
             </span>
 
@@ -7952,11 +8099,11 @@ export default function DeliveryManagement({
                 )
               }
               placeholder="Thank you for your order."
-              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-sky-500"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-900 outline-none focus:border-sky-500"
             />
           </label>
 
-          <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4 text-[10px] leading-5 text-neutral-500">
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[10px] leading-5 text-slate-500">
             Store address and support phone are taken from Delivery Settings.
             Item values, taxes, packing, handling, delivery fee, surge, payment
             and final total are read from the authoritative Delivery order snapshot.
@@ -7967,7 +8114,7 @@ export default function DeliveryManagement({
             disabled={
               savingBillSettings
             }
-            className="mt-5 rounded-xl bg-sky-600 px-5 py-3 text-xs font-black text-white disabled:opacity-50"
+            className="mt-5 rounded-xl bg-sky-600 px-5 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
           >
             {savingBillSettings
               ? 'Saving Billing Settings...'
@@ -7979,8 +8126,8 @@ export default function DeliveryManagement({
       {tab === 'service_area' && (
         <div className="space-y-4">
           <section className="rounded-3xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
-            <h3 className="text-lg font-black text-white">Custom Delivery Area</h3>
-            <p className="mt-2 text-xs leading-5 text-neutral-400">
+            <h3 className="text-lg font-black text-slate-900">Custom Delivery Area</h3>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
               Draw a smaller service region to keep deliveries manageable.
               Customers must still meet your configured delivery radius and existing ordering checks.
               Save your Store Location and Radius in Settings first, if needed.
@@ -8020,7 +8167,7 @@ export default function DeliveryManagement({
                 />
               </div>
             ) : (
-              <p className="mt-4 text-xs text-neutral-500">
+              <p className="mt-4 text-xs text-slate-500">
                 Restaurant code is
                 missing.
               </p>
@@ -8030,22 +8177,22 @@ export default function DeliveryManagement({
               type="button"
               onClick={downloadQr}
               disabled={!qrUrl}
-              className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white disabled:opacity-40"
+              className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-40"
             >
               Download QR
             </button>
           </div>
 
-          <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5 sm:p-6">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.05)] sm:p-6">
             <p className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
               Public Delivery Ordering
             </p>
 
-            <h3 className="mt-1 text-lg font-black text-white">
+            <h3 className="mt-1 text-lg font-black text-slate-900">
               Separate Delivery Website
             </h3>
 
-            <p className="mt-2 text-xs leading-5 text-neutral-400">
+            <p className="mt-2 text-xs leading-5 text-slate-500">
               Customers browse the Delivery
               menu, add items, enter two
               mobile numbers and delivery
@@ -8054,12 +8201,12 @@ export default function DeliveryManagement({
               order.
             </p>
 
-            <div className="mt-5 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-              <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
                 Delivery URL
               </p>
 
-              <p className="mt-2 break-all font-mono text-xs text-white">
+              <p className="mt-2 break-all font-mono text-xs text-slate-900">
                 {deliveryUrl ||
                   'Restaurant code not available'}
               </p>
@@ -8072,7 +8219,7 @@ export default function DeliveryManagement({
                   copyDeliveryUrl
                 }
                 disabled={!deliveryUrl}
-                className="rounded-xl border border-neutral-700 bg-neutral-800 px-5 py-3 text-xs font-black text-white disabled:opacity-40"
+                className="rounded-xl border border-neutral-700 bg-neutral-800 px-5 py-3 text-xs font-black text-slate-900 disabled:opacity-40"
               >
                 Copy Delivery URL
               </button>
@@ -8082,7 +8229,7 @@ export default function DeliveryManagement({
                   href={deliveryUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-white"
+                  className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-slate-900"
                 >
                   Open Delivery Website
                 </a>
@@ -8093,6 +8240,8 @@ export default function DeliveryManagement({
           </div>
         </div>
       )}
+        </div>
+      </div>
     </section>
   )
 }
@@ -8173,11 +8322,11 @@ function AfterSalesWorkspace({
               Returns · Replacements · Refunds
             </p>
 
-            <h3 className="mt-1 text-xl font-black text-white">
+            <h3 className="mt-1 text-xl font-black text-slate-900">
               Delivery After-Sales
             </h3>
 
-            <p className="mt-2 max-w-3xl text-xs leading-5 text-neutral-400">
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500">
               Returned stock is restored only after physical receipt is confirmed.
               Replacement stock is reserved before dispatch. Razorpay refunds are
               sent only through the secure server refund route.
@@ -8188,7 +8337,7 @@ function AfterSalesWorkspace({
             type="button"
             disabled={loading}
             onClick={onRefresh}
-            className="shrink-0 rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+            className="shrink-0 rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
           >
             {loading
               ? 'Refreshing...'
@@ -8211,13 +8360,13 @@ function AfterSalesWorkspace({
                 New After-Sales Case
               </p>
 
-              <h3 className="mt-1 text-lg font-black text-white">
+              <h3 className="mt-1 text-lg font-black text-slate-900">
                 {createOrder.order_code}
                 {' · '}
                 {createOrder.customer_name}
               </h3>
 
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-slate-500">
                 Order status:{' '}
                 {labelStatus(
                   createOrder.order_status
@@ -8241,7 +8390,7 @@ function AfterSalesWorkspace({
 
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <label className="block">
-              <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+              <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
                 Case Type
               </span>
 
@@ -8252,7 +8401,7 @@ function AfterSalesWorkspace({
                     event.target.value
                   )
                 }
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-white"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-900"
               >
                 {availableTypes.map(
                   ([value, label]) => (
@@ -8267,12 +8416,12 @@ function AfterSalesWorkspace({
               </select>
             </label>
 
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3">
-              <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
                 Order Total
               </p>
 
-              <p className="mt-1 text-lg font-black text-white">
+              <p className="mt-1 text-lg font-black text-slate-900">
                 {money(
                   createOrder.total_amount
                 )}
@@ -8283,8 +8432,8 @@ function AfterSalesWorkspace({
           {afterSalesNeedsItems(
             createType
           ) && (
-            <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                 Select Item Quantities
               </p>
 
@@ -8314,12 +8463,12 @@ function AfterSalesWorkspace({
                         className="grid gap-2 rounded-xl border border-neutral-800 bg-neutral-900 p-3 sm:grid-cols-[1fr_120px]"
                       >
                         <div>
-                          <p className="text-xs font-black text-white">
+                          <p className="text-xs font-black text-slate-900">
                             {item.name ||
                               'Item'}
                           </p>
 
-                          <p className="mt-1 text-[10px] text-neutral-500">
+                          <p className="mt-1 text-[10px] text-slate-500">
                             Ordered:{' '}
                             {orderedQty}
                           </p>
@@ -8358,7 +8507,7 @@ function AfterSalesWorkspace({
                                 })
                               )
                             }}
-                            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-bold text-white"
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-900"
                           />
                         </label>
                       </div>
@@ -8376,7 +8525,7 @@ function AfterSalesWorkspace({
           )}
 
           <label className="mt-4 block">
-            <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+            <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
               Reason / Customer Issue
             </span>
 
@@ -8389,7 +8538,7 @@ function AfterSalesWorkspace({
                 )
               }
               placeholder="Example: Product damaged, wrong item, customer unavailable..."
-              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-white outline-none focus:border-emerald-500"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-900 outline-none focus:border-emerald-500"
             />
           </label>
 
@@ -8398,7 +8547,7 @@ function AfterSalesWorkspace({
               type="button"
               disabled={creating}
               onClick={onSubmitCreate}
-              className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-white disabled:opacity-50"
+              className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black text-slate-900 disabled:opacity-50"
             >
               {creating
                 ? 'Creating Case...'
@@ -8487,7 +8636,7 @@ function AfterSalesWorkspace({
                     </span>
                   </div>
 
-                  <h3 className="mt-3 font-black text-white">
+                  <h3 className="mt-3 font-black text-slate-900">
                     {caseRow.order
                       ?.order_code ||
                       'Delivery Order'}
@@ -8496,7 +8645,7 @@ function AfterSalesWorkspace({
                       'Customer'}
                   </h3>
 
-                  <p className="mt-1 text-xs text-neutral-500">
+                  <p className="mt-1 text-xs text-slate-500">
                     {caseRow.customer_mobile ||
                       '—'}
                     {' · '}
@@ -8512,19 +8661,19 @@ function AfterSalesWorkspace({
                   </p>
                 </div>
 
-                <div className="min-w-[220px] rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
+                <div className="min-w-[220px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
                     Original Order
                   </p>
 
-                  <p className="mt-1 text-lg font-black text-white">
+                  <p className="mt-1 text-lg font-black text-slate-900">
                     {money(
                       caseRow.order
                         ?.total_amount
                     )}
                   </p>
 
-                  <p className="mt-1 text-[10px] text-neutral-500">
+                  <p className="mt-1 text-[10px] text-slate-500">
                     {String(
                       caseRow.order
                         ?.payment_method ||
@@ -8540,8 +8689,8 @@ function AfterSalesWorkspace({
               </div>
 
               {items.length > 0 && (
-                <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     Items
                   </p>
 
@@ -8553,13 +8702,13 @@ function AfterSalesWorkspace({
                           className="rounded-xl border border-neutral-800 bg-neutral-900 p-3"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-black text-white">
+                            <p className="text-xs font-black text-slate-900">
                               {
                                 item.item_name
                               }
                             </p>
 
-                            <span className="text-[10px] font-bold text-neutral-500">
+                            <span className="text-[10px] font-bold text-slate-500">
                               Requested{' '}
                               {
                                 item.requested_quantity
@@ -8577,7 +8726,7 @@ function AfterSalesWorkspace({
                               <p className="text-[9px] font-black uppercase text-neutral-600">
                                 Returned
                               </p>
-                              <p className="mt-1 text-xs font-black text-white">
+                              <p className="mt-1 text-xs font-black text-slate-900">
                                 {
                                   item.returned_quantity
                                 }
@@ -8619,7 +8768,7 @@ function AfterSalesWorkspace({
                           </div>
 
                           {item.last_condition && (
-                            <p className="mt-2 text-[10px] text-neutral-500">
+                            <p className="mt-2 text-[10px] text-slate-500">
                               Last condition:{' '}
                               {labelStatus(
                                 item.last_condition
@@ -8640,7 +8789,7 @@ function AfterSalesWorkspace({
                       <p className="text-[9px] font-black uppercase text-sky-300">
                         Approved Refund
                       </p>
-                      <p className="mt-1 text-sm font-black text-white">
+                      <p className="mt-1 text-sm font-black text-slate-900">
                         {money(
                           caseRow.refund_amount
                         )}
@@ -8673,7 +8822,7 @@ function AfterSalesWorkspace({
                       <p className="text-[9px] font-black uppercase text-sky-300">
                         Status
                       </p>
-                      <p className="mt-1 text-xs font-black text-white">
+                      <p className="mt-1 text-xs font-black text-slate-900">
                         {labelStatus(
                           caseRow.refund_status
                         )}
@@ -8682,7 +8831,7 @@ function AfterSalesWorkspace({
                   </div>
 
                   {caseRow.provider_refund_id && (
-                    <p className="mt-3 break-all font-mono text-[9px] text-neutral-500">
+                    <p className="mt-3 break-all font-mono text-[9px] text-slate-500">
                       Razorpay Refund:{' '}
                       {caseRow.provider_refund_id}
                     </p>
@@ -8703,7 +8852,7 @@ function AfterSalesWorkspace({
                           'approve'
                         )
                       }
-                      className="rounded-xl bg-emerald-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                      className="rounded-xl bg-emerald-600 px-4 py-2.5 text-[10px] font-black text-slate-900 disabled:opacity-50"
                     >
                       {busy
                         ? 'Processing...'
@@ -8719,7 +8868,7 @@ function AfterSalesWorkspace({
                           'reject'
                         )
                       }
-                      className="rounded-xl bg-red-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                      className="rounded-xl bg-red-600 px-4 py-2.5 text-[10px] font-black text-slate-900 disabled:opacity-50"
                     >
                       Reject
                     </button>
@@ -8742,7 +8891,7 @@ function AfterSalesWorkspace({
                           'reattempt_failed_delivery'
                         )
                       }
-                      className="rounded-xl bg-sky-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                      className="rounded-xl bg-sky-600 px-4 py-2.5 text-[10px] font-black text-slate-900 disabled:opacity-50"
                     >
                       ↻ Reattempt Delivery
                     </button>
@@ -8759,7 +8908,7 @@ function AfterSalesWorkspace({
                         'receive_return'
                       )
                     }
-                    className="rounded-xl bg-violet-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                    className="rounded-xl bg-violet-600 px-4 py-2.5 text-[10px] font-black text-slate-900 disabled:opacity-50"
                   >
                     📦 Receive Physical Return
                   </button>
@@ -8776,7 +8925,7 @@ function AfterSalesWorkspace({
                         'dispatch_replacement'
                       )
                     }
-                    className="rounded-xl bg-orange-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                    className="rounded-xl bg-orange-600 px-4 py-2.5 text-[10px] font-black text-slate-900 disabled:opacity-50"
                   >
                     🚚 Dispatch Replacement
                   </button>
@@ -8800,7 +8949,7 @@ function AfterSalesWorkspace({
                           caseRow
                         )
                       }
-                      className="rounded-xl bg-sky-600 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                      className="rounded-xl bg-sky-600 px-4 py-2.5 text-[10px] font-black text-slate-900 disabled:opacity-50"
                     >
                       {refundBusy
                         ? 'Checking Razorpay...'
@@ -8831,7 +8980,7 @@ function AfterSalesWorkspace({
                           'record_manual_refund'
                         )
                       }
-                      className="rounded-xl bg-emerald-700 px-4 py-2.5 text-[10px] font-black text-white disabled:opacity-50"
+                      className="rounded-xl bg-emerald-700 px-4 py-2.5 text-[10px] font-black text-slate-900 disabled:opacity-50"
                     >
                       ₹ Record Cash / Manual Refund
                     </button>
@@ -8854,7 +9003,7 @@ function AfterSalesWorkspace({
                         'cancel_case'
                       )
                     }
-                    className="rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-[10px] font-black text-neutral-400 disabled:opacity-50"
+                    className="rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-[10px] font-black text-slate-500 disabled:opacity-50"
                   >
                     Cancel Case
                   </button>
@@ -8867,7 +9016,7 @@ function AfterSalesWorkspace({
                 caseRow.events.length >
                   0 && (
                   <div className="mt-4 border-t border-neutral-800 pt-4">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                       Recent Case Activity
                     </p>
 
@@ -8880,7 +9029,7 @@ function AfterSalesWorkspace({
                               key={
                                 event.id
                               }
-                              className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5"
+                              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5"
                             >
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <p className="text-[10px] font-black text-neutral-300">
@@ -8897,7 +9046,7 @@ function AfterSalesWorkspace({
                               </div>
 
                               {event.note && (
-                                <p className="mt-1 text-[10px] leading-4 text-neutral-500">
+                                <p className="mt-1 text-[10px] leading-4 text-slate-500">
                                   {
                                     event.note
                                   }
@@ -8915,7 +9064,7 @@ function AfterSalesWorkspace({
 
         {!cases.length &&
           !loading && (
-            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-neutral-500">
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900 py-14 text-center text-sm text-slate-500">
               No after-sales cases yet. Open a delivered order and choose Return / Replace / Refund.
             </div>
           )}
@@ -8943,19 +9092,19 @@ function InventoryHistoryPanel({
           <p className="text-[10px] font-black uppercase tracking-wider text-sky-300">
             Inventory Movement History
           </p>
-          <h3 className="mt-1 truncate text-lg font-black text-white">
+          <h3 className="mt-1 truncate text-lg font-black text-slate-900">
             {item?.name || summary?.name || 'Inventory Item'}
           </h3>
-          <p className="mt-1 text-[10px] text-neutral-500">
+          <p className="mt-1 text-[10px] text-slate-500">
             {report?.start_date || '—'} → {report?.end_date || '—'} · Asia/Kolkata
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={loading} onClick={onRefresh} className="rounded-xl border border-neutral-700 bg-neutral-800 px-3 py-2.5 text-[10px] font-black text-white disabled:opacity-50">
+          <button type="button" disabled={loading} onClick={onRefresh} className="rounded-xl border border-neutral-700 bg-neutral-800 px-3 py-2.5 text-[10px] font-black text-slate-900 disabled:opacity-50">
             {loading ? 'Loading...' : 'Refresh'}
           </button>
-          <button type="button" onClick={onDownload} className="rounded-xl bg-emerald-600 px-3 py-2.5 text-[10px] font-black text-white">
+          <button type="button" onClick={onDownload} className="rounded-xl bg-emerald-600 px-3 py-2.5 text-[10px] font-black text-slate-900">
             ↓ History CSV
           </button>
           <button type="button" onClick={onClose} className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-[10px] font-black text-neutral-300">
@@ -8980,13 +9129,13 @@ function InventoryHistoryPanel({
       )}
 
       {!error && loading && !history.length && (
-        <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 py-10 text-center text-xs font-bold text-neutral-500">
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 py-10 text-center text-xs font-bold text-slate-500">
           Loading inventory movement history...
         </div>
       )}
 
       {!loading && !error && !history.length && (
-        <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 py-10 text-center text-xs text-neutral-500">
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 py-10 text-center text-xs text-slate-500">
           No inventory movements were recorded for this item in the selected date range.
         </div>
       )}
@@ -8994,19 +9143,19 @@ function InventoryHistoryPanel({
       {history.length > 0 && (
         <div className="mt-4 space-y-2">
           {history.map((movement, index) => (
-            <article key={movement.id || `${movement.created_at}-${index}`} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <article key={movement.id || `${movement.created_at}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${inventoryMovementTone(movement.movement_type)}`}>
                       {inventoryMovementLabel(movement.movement_type)}
                     </span>
-                    <span className="text-[10px] font-black text-white">
+                    <span className="text-[10px] font-black text-slate-900">
                       Qty {Number(movement.quantity || 0)}
                     </span>
                   </div>
 
-                  <p className="mt-2 text-[10px] text-neutral-500">
+                  <p className="mt-2 text-[10px] text-slate-500">
                     {orderTime(movement.created_at)}
                   </p>
 
@@ -9017,7 +9166,7 @@ function InventoryHistoryPanel({
                   )}
 
                   {movement.notes && (
-                    <p className="mt-2 text-xs leading-5 text-neutral-400">
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
                       {movement.notes}
                     </p>
                   )}
@@ -9032,13 +9181,13 @@ function InventoryHistoryPanel({
                 <div className="grid shrink-0 grid-cols-2 gap-2 text-right">
                   <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2">
                     <p className="text-[8px] font-black uppercase text-neutral-600">Stock</p>
-                    <p className="mt-1 text-[10px] font-black text-white">
+                    <p className="mt-1 text-[10px] font-black text-slate-900">
                       {Number(movement.stock_before || 0)} → {Number(movement.stock_after || 0)}
                     </p>
                   </div>
                   <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2">
                     <p className="text-[8px] font-black uppercase text-neutral-600">Reserved</p>
-                    <p className="mt-1 text-[10px] font-black text-white">
+                    <p className="mt-1 text-[10px] font-black text-slate-900">
                       {Number(movement.reserved_before || 0)} → {Number(movement.reserved_after || 0)}
                     </p>
                   </div>
@@ -9055,11 +9204,11 @@ function InventoryHistoryPanel({
 function Stat({
   title,
   value,
-  accent = 'text-white',
+  accent = 'text-slate-900',
 }) {
   return (
     <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-      <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
         {title}
       </p>
 
@@ -9078,11 +9227,11 @@ function SummaryRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-neutral-800 pb-2 last:border-0 last:pb-0">
-      <span className="text-neutral-500">
+      <span className="text-slate-500">
         {label}
       </span>
 
-      <span className="font-black text-white">
+      <span className="font-black text-slate-900">
         {value}
       </span>
     </div>
@@ -9094,8 +9243,8 @@ function InventoryMetric({
   value,
 }) {
   return (
-    <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3 text-center">
-      <p className="text-lg font-black text-white">
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center">
+      <p className="text-lg font-black text-slate-900">
         {value}
       </p>
 
@@ -9115,7 +9264,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+      <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
         {label}
       </span>
 
@@ -9128,7 +9277,7 @@ function Field({
           )
         }
         placeholder={placeholder}
-        className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-emerald-500"
+        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-900 outline-none focus:border-emerald-500"
       />
     </label>
   )
@@ -9142,7 +9291,7 @@ function SelectField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[10px] font-black uppercase text-neutral-500">
+      <span className="mb-1.5 block text-[10px] font-black uppercase text-slate-500">
         {label}
       </span>
 
@@ -9153,7 +9302,7 @@ function SelectField({
             event.target.value
           )
         }
-        className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-white outline-none focus:border-emerald-500"
+        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-900 outline-none focus:border-emerald-500"
       >
         {options.map(
           ([optionValue, labelText]) => (
@@ -9176,8 +9325,8 @@ function Toggle({
   onChange,
 }) {
   return (
-    <label className="flex items-center justify-between gap-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-      <span className="text-xs font-bold text-white">
+    <label className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <span className="text-xs font-bold text-slate-900">
         {label}
       </span>
 

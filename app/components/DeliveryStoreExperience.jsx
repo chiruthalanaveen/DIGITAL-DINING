@@ -14,6 +14,7 @@ import DeliveryAccountProfileSheet from '@/app/components/DeliveryAccountProfile
 import DeliveryCustomerSupportChat from '@/app/components/DeliveryCustomerSupportChat'
 import DeliverySeasonalAds from '@/app/components/DeliverySeasonalAds'
 import { useLiveDeliveryRefresh } from '@/lib/useLiveDeliveryRefresh'
+import DeliveryCheckoutSheet from '@/app/components/DeliveryCheckoutSheet'
 
 const EMPTY_CHECKOUT = {
   customerName: '',

@@ -11,10 +11,13 @@ import {
   useRouter,
 } from 'next/navigation'
 
+import AdminSupportOwnerIdentity from '@/app/components/AdminSupportOwnerIdentity'
+import AdminSupportOwnerDetails from '@/app/components/AdminSupportOwnerDetails'
 import AdminWalletControls from '@/app/components/AdminWalletControls'
 import AdminRestaurantFeeEditor from '@/app/components/AdminRestaurantFeeEditor'
 import AdminDeliverySignupSettings from '@/app/components/AdminDeliverySignupSettings'
 import AdminPrivacyDeletionReviews from '@/app/components/AdminPrivacyDeletionReviews'
+import AdminErrorHistory from '@/app/components/AdminErrorHistory'
 
 const NAV = [
   ['overview', 'Overview'],
@@ -1283,6 +1286,7 @@ function AdminRegistrationApprovals() {
 }
 
 export default function AdminControlCenter() {
+  const [supportOwnerProfileId, setSupportOwnerProfileId] = useState('')
   const router =
     useRouter()
 
@@ -1292,6 +1296,7 @@ export default function AdminControlCenter() {
   ] =
     useState('overview')
 
+  const [auditView, setAuditView] = useState('actions')
   const [navigationOpen, setNavigationOpen] = useState(false)
   const [navigationCompact, setNavigationCompact] = useState(false)
   const [navigationQuery, setNavigationQuery] = useState('')
@@ -3792,6 +3797,10 @@ export default function AdminControlCenter() {
                               {selectedLiveSupport.restaurant_name ||
                                 'Restaurant'}
                             </p>
+                            <AdminSupportOwnerIdentity
+                              restaurantId={String(selectedLiveSupport?.restaurant_id || '')}
+                              onOpenDetails={() => setSupportOwnerProfileId(String(selectedLiveSupport?.restaurant_id || ''))}
+                            />
 
                             <p className="mt-1 font-mono text-[9px] text-neutral-500">
                               {selectedLiveSupport.restaurant_code ||
@@ -3902,8 +3911,13 @@ export default function AdminControlCenter() {
                                       }`}
                                     >
                                       {adminMessage
-                                        ? 'Admin'
-                                        : 'Restaurant / Manager'}
+                                        ? (message.sender_name || 'Admin · name not recorded')
+                                        : <button type="button"
+                                            className="underline decoration-emerald-400/60 underline-offset-2 hover:text-emerald-300"
+                                            onClick={() => setSupportOwnerProfileId(String(selectedLiveSupport?.restaurant_id || ''))}
+                                            title="Open verified owner profile; sender identity for older chat messages may be unavailable">
+                                            {message.sender_name || 'Owner / Manager · name not recorded'}
+                                          </button>}
                                       {' · '}
                                       {formatDate(
                                         message.created_at
@@ -4473,6 +4487,20 @@ export default function AdminControlCenter() {
                 Admin Audit Log
               </h1>
 
+              <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Audit history views">
+                <button type="button" role="tab" aria-selected={auditView === 'actions'}
+                  onClick={() => setAuditView('actions')}
+                  className={`rounded-xl px-4 py-2 text-xs font-bold ${auditView === 'actions' ? 'bg-red-600 text-white' : 'border border-neutral-700 text-neutral-300'}`}>
+                  Admin Actions
+                </button>
+                <button type="button" role="tab" aria-selected={auditView === 'errors'}
+                  onClick={() => setAuditView('errors')}
+                  className={`rounded-xl px-4 py-2 text-xs font-bold ${auditView === 'errors' ? 'bg-red-600 text-white' : 'border border-neutral-700 text-neutral-300'}`}>
+                  Errors &amp; Crashes
+                </button>
+              </div>
+
+              {auditView === 'actions' ? (
               <div className="mt-5 space-y-2">
                 {!(
                   data?.auditLogs ||
@@ -4523,6 +4551,9 @@ export default function AdminControlCenter() {
                   )
                 )}
               </div>
+              ) : (
+                <div className="mt-5"><AdminErrorHistory /></div>
+              )}
             </div>
           )}
         </section>
@@ -4942,6 +4973,8 @@ export default function AdminControlCenter() {
           </div>
         </div>
       )}
+      {supportOwnerProfileId && <AdminSupportOwnerDetails restaurantId={supportOwnerProfileId}
+        onClose={() => setSupportOwnerProfileId('')} />}
     </main>
   )
 }
