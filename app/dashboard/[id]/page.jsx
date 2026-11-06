@@ -8,13 +8,14 @@ import ResortManagement from '@/app/components/ResortManagement'
 import OwnerDeliveryManagement from '@/app/components/OwnerDeliveryManagement'
 import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
 import OwnerWorkspaceOverview from '@/app/components/OwnerWorkspaceOverview'
+import OwnerPremiumMobileHub from '@/app/components/OwnerPremiumMobileHub'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
 
 // Real-Time Restaurant Chat Widget Component
-function RestaurantChatWidget({ restaurantId }) {
+function RestaurantChatWidget({ restaurantId, openSignal = 0 }) {
   const AI_CATEGORIES = [
     '🔐 Login / Account',
     '🍔 Menu / Food Items',
@@ -229,6 +230,12 @@ function RestaurantChatWidget({ restaurantId }) {
     setIsOpen(true)
     setSupportMode(session?.status === 'connected' ? 'human' : 'ai')
   }
+
+  useEffect(() => {
+    if (!openSignal) return
+    setIsOpen(true)
+    setSupportMode(sessionIdRef.current ? 'human' : 'ai')
+  }, [openSignal])
 
   const askAi = async (conversation, issueCategory, stage = 'conversation') => {
     setAiLoading(true)
@@ -457,19 +464,9 @@ function RestaurantChatWidget({ restaurantId }) {
   const isClosed = status === 'closed'
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 font-sans">
-      {!isOpen ? (
-        <button
-          onClick={handleOpen}
-          className="bg-orange-500 hover:bg-orange-600 text-white font-black p-4 rounded-full shadow-2xl flex items-center space-x-2 transition transform hover:scale-105"
-        >
-          <span>💬</span>
-          <span className="text-xs uppercase tracking-wider pr-1">
-            Support Chat
-          </span>
-        </button>
-      ) : (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(390px,calc(100vw-2rem))] h-[560px] shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-[155] flex items-center justify-center bg-black/70 p-3 font-sans sm:inset-auto sm:bottom-6 sm:right-6 sm:block sm:bg-transparent sm:p-0">
+      {isOpen && (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(390px,calc(100vw-1.5rem))] h-[min(650px,calc(100dvh-1.5rem))] shadow-2xl flex flex-col overflow-hidden">
           <div className="bg-neutral-950 p-4 border-b border-neutral-800">
             <div className="flex justify-between items-start gap-3">
               <div>
@@ -1279,6 +1276,7 @@ export default function RestaurantDashboard() {
   const [isStoreOpen, setIsStoreOpen] = useState(true)
   const [savingStoreStatus, setSavingStoreStatus] = useState(false)
   const [mobileOwnerMenuOpen, setMobileOwnerMenuOpen] = useState(false)
+  const [ownerSupportOpenSignal, setOwnerSupportOpenSignal] = useState(0)
 
   // Add Dish Form States
   const [name, setName] = useState('')
@@ -4402,6 +4400,14 @@ if (staffError) {
             <ThemeToggle />
 
             <button
+              type="button"
+              onClick={() => setOwnerSupportOpenSignal(n => n + 1)}
+              className="hidden lg:inline-flex min-h-10 items-center rounded-xl border border-neutral-200 px-4 text-xs font-bold text-neutral-800"
+            >
+              Live Support
+            </button>
+
+            <button
               onClick={() => setProfileOpen(true)}
               className="border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 font-bold px-4 py-2.5 rounded-xl text-xs transition flex items-center space-x-2 shadow-sm"
               type="button"
@@ -4556,6 +4562,32 @@ if (staffError) {
       {/* Main Container */}
 
       <main className="dd-dashboard-main max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-6">
+
+        <OwnerPremiumMobileHub
+          businessName={restaurant.name}
+          businessCode={restaurant.restaurant_code || ''}
+          mode={dashboardMode}
+          hasRestaurant={restaurantModuleEnabled}
+          hasDelivery={deliveryModuleEnabled}
+          hasResort={resortModuleEnabled}
+          advanced={planFeatures.advanced}
+          storeOpen={isStoreOpen}
+          savingStore={savingStoreStatus}
+          onStoreToggle={handleOwnerStoreToggle}
+          onModeChange={setDashboardMode}
+          onRestaurantTab={handleTabSwitch}
+          onProfile={() => setProfileOpen(true)}
+          onQR={() => router.push(`/dashboard/${restaurantId}/qr`)}
+          onSupport={() => setOwnerSupportOpenSignal(n => n + 1)}
+          orders={orders}
+          ordersLoaded={ordersHaveLoaded}
+          ordersError={ordersLoadError}
+          todayRevenue={todaysOrders.reduce((sum, o) => sum + (o.status === 'cancelled' ? 0 : Number(o.total_amount || 0)), 0)}
+          totalRevenue={totalRevenue}
+          activeCount={activeOrders.length}
+          todayCount={todaysOrders.length}
+          graphData={salesGraphData}
+        />
 
         <div className="dd-dashboard-intro">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
@@ -7365,178 +7397,12 @@ if (staffError) {
       )}
 
 
-      {/* OWNER MOBILE APP NAVIGATION */}
-      {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
-        <>
-          <nav className="dd-owner-mobile-bottom-nav fixed bottom-0 left-0 right-0 z-[80] grid-cols-5 border-t border-neutral-200 bg-white/95 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl">
-            <button
-              type="button"
-              onClick={() =>
-                window.scrollTo({
-                  top: 0,
-                  behavior: 'smooth',
-                })
-              }
-              className="flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black text-orange-500"
-            >
-              <span className="text-base">⌂</span>
-              <span className="mt-0.5">Home</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('menu')}
-              className={`flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black ${
-                activeTab === 'menu'
-                  ? 'bg-orange-50 text-orange-600'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <span className="text-base">≡</span>
-              <span className="mt-0.5">Menu</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('tables')}
-              className={`flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black ${
-                activeTab === 'tables'
-                  ? 'bg-orange-50 text-orange-600'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <span className="text-base">⌁</span>
-              <span className="mt-0.5">Tables</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openOwnerMobileTab('billing')}
-              className={`flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black ${
-                activeTab === 'billing'
-                  ? 'bg-orange-50 text-orange-600'
-                  : 'text-neutral-500'
-              }`}
-            >
-              <span className="text-base">▣</span>
-              <span className="mt-0.5">Billing</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMobileOwnerMenuOpen(true)}
-              className="flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-[9px] font-black text-neutral-500"
-            >
-              <span className="text-base">•••</span>
-              <span className="mt-0.5">More</span>
-            </button>
-          </nav>
-
-          {mobileOwnerMenuOpen && (
-            <div
-              className="fixed inset-0 z-[95] flex items-end bg-black/60 backdrop-blur-sm lg:hidden"
-              onClick={() => setMobileOwnerMenuOpen(false)}
-            >
-              <div
-                className="max-h-[78dvh] w-full overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-neutral-900 shadow-2xl"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200" />
-
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-orange-500">
-                      Owner Tools
-                    </p>
-                    <h3 className="mt-1 text-xl font-black">
-                      More restaurant controls
-                    </h3>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setMobileOwnerMenuOpen(false)}
-                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="mt-5 grid grid-cols-2 gap-2">
-                  {[
-                    ['settlements', '⌂', 'Reports'],
-                    ['staff', '◎', 'Managers'],
-                    ['staff-access', '▦', 'Staff Login QR'],
-                    ['taxes', '₹', 'Taxes'],
-                    ['offers', '★', 'Offers'],
-                    ['swiggy-sync', '↻', 'Menu Sync'],
-                    ['gateway', '₹', 'Payments'],
-                    ['alarm-settings', '◉', 'Alarms'],
-                  ]
-                    .filter(([tabId]) => {
-                      if (
-                        ['staff', 'swiggy-sync', 'alarm-settings'].includes(
-                          tabId
-                        )
-                      ) {
-                        return planFeatures.advanced
-                      }
-
-                      return true
-                    })
-                    .map(([tabId, icon, label]) => (
-                      <button
-                        key={tabId}
-                        type="button"
-                        onClick={() => openOwnerMobileTab(tabId)}
-                        className={`rounded-2xl border p-4 text-left ${
-                          activeTab === tabId
-                            ? 'border-orange-500/30 bg-orange-50 text-orange-700'
-                            : 'border-neutral-200 bg-neutral-50 text-neutral-700'
-                        }`}
-                      >
-                        <div className="text-xl">{icon}</div>
-                        <div className="mt-2 text-[10px] font-black">
-                          {label}
-                        </div>
-                      </button>
-                    ))}
-                </div>
-
-                {resortModuleEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardMode('resort')
-                      setMobileOwnerMenuOpen(false)
-                    }}
-                    className="mt-3 w-full rounded-2xl border border-sky-500/20 bg-sky-50 px-4 py-4 text-left text-[10px] font-black text-sky-700"
-                  >
-                    🏨 Open Resort Dashboard
-                  </button>
-                )}
-
-                {deliveryModuleEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDashboardMode('delivery')
-                      setMobileOwnerMenuOpen(false)
-                    }}
-                    className="mt-3 w-full rounded-2xl border border-emerald-500/20 bg-emerald-50 px-4 py-4 text-left text-[10px] font-black text-emerald-700"
-                  >
-                    🚚 Open Delivery Dashboard
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </>
-      )}
+      {/* Mobile navigation is owned by OwnerPremiumMobileHub. */}
 
       {/* Embedded Real-Time Restaurant Chat Widget */}
       <RestaurantChatWidget
         restaurantId={restaurantId}
+        openSignal={ownerSupportOpenSignal}
       />
     </div>
   )

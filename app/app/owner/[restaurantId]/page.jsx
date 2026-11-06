@@ -7,373 +7,15 @@ import { supabase } from '@/lib/supabase'
 import ResortManagement from '@/app/components/ResortManagement'
 import OwnerDeliveryManagement from '@/app/components/OwnerDeliveryManagement'
 import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
+import OwnerWorkspaceOverview from '@/app/components/OwnerWorkspaceOverview'
+import OwnerPremiumMobileHub from '@/app/components/OwnerPremiumMobileHub'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
 
-function AppIcon({ name, className = 'h-5 w-5', strokeWidth = 1.8 }) {
-  const common = {
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-  }
-
-  const icons = {
-    home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V21h13V9.5" /><path d="M9.5 21v-7h5v7" /></>,
-    orders: <><path d="M6 3.5h12v17H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
-    tables: <><rect x="3.5" y="4" width="17" height="16" rx="2" /><path d="M3.5 10h17M9 4v16M15 4v16" /></>,
-    menu: <><path d="M5 7h14M5 12h14M5 17h14" /></>,
-    more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
-    user: <><circle cx="12" cy="8" r="3.25" /><path d="M5.5 20c.8-4 3-6 6.5-6s5.7 2 6.5 6" /></>,
-    refresh: <><path d="M20 7v5h-5" /><path d="M19 12a7 7 0 1 1-2-5.2L20 9" /></>,
-    chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
-    qr: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" /><path d="M14 14h2v2h-2zM18 14h2v6h-2M14 18h2v2h-2" /></>,
-    billing: <><path d="M6 3.5h12v17l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
-    tag: <><path d="M4 4h7l9 9-7 7-9-9z" /><circle cx="8.5" cy="8.5" r="1.2" /></>,
-    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 9h18M7 15h4" /></>,
-    users: <><circle cx="9" cy="8.5" r="3" /><path d="M3.5 19c.6-3.4 2.5-5 5.5-5s4.9 1.6 5.5 5" /><path d="M15.5 6.2a2.7 2.7 0 0 1 0 5.2M17 14.5c2.1.5 3.3 1.9 3.7 4.5" /></>,
-    sync: <><path d="M20 7h-5V2" /><path d="M20 7a8 8 0 0 0-13.6-2.6L4 7" /><path d="M4 17h5v5" /><path d="M4 17a8 8 0 0 0 13.6 2.6L20 17" /></>,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2-1.7.7-1.9-.9L1.1 6l.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2h3l.7-2 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z" transform="translate(2.5 0) scale(.8)" /></>,
-    bell: <><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" /><path d="M10 19a2.3 2.3 0 0 0 4 0" /></>,
-    hotel: <><path d="M4 21V6h10v15M14 11h6v10M7 9h1M10 9h1M7 13h1M10 13h1M7 17h1M10 17h1M17 14h1M17 17h1" /></>,
-    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
-    logout: <><path d="M10 5H5v14h5" /><path d="M13 8l4 4-4 4M8 12h9" /></>,
-    kitchen: <><path d="M5 12h14v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3z" /><path d="M7 12V9a5 5 0 0 1 10 0v3M9 6.5V4M15 6.5V4" /></>,
-    palette: <><path d="M12 3a9 9 0 1 0 0 18h1.3a2 2 0 0 0 1.2-3.6c-.7-.5-.4-1.5.4-1.7H17a4 4 0 0 0 4-4A8.7 8.7 0 0 0 12 3Z" /><circle cx="7.5" cy="10" r=".8" fill="currentColor" stroke="none" /><circle cx="10" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="14" cy="6.8" r=".8" fill="currentColor" stroke="none" /><circle cx="17" cy="10" r=".8" fill="currentColor" stroke="none" /></>,
-    type: <><path d="M5 6V4h14v2M9 20h6M12 4v16" /></>,
-    moon: <path d="M20 15.2A8 8 0 0 1 8.8 4 8 8 0 1 0 20 15.2Z" />,
-    sun: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
-    volume: <><path d="M5 10v4h4l5 4V6l-5 4z" /><path d="M17 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" /></>,
-    notifications: <><path d="M6 9a6 6 0 0 1 12 0v4l2 3H4l2-3z" /><path d="M10 20h4" /></>,
-    chevron: <path d="m9 18 6-6-6-6" />,
-    close: <path d="M6 6l12 12M18 6 6 18" />,
-    check: <path d="m5 12 4 4L19 6" />,
-    store: <><path d="M4 10v10h16V10" /><path d="M3 10l2-6h14l2 6" /><path d="M8 20v-6h8v6" /></>,
-    wallet: <><rect x="2.5" y="6" width="19" height="14.5" rx="3" /><path d="M3 10.5h18M16.5 15.5h2" /><path d="M6 6V4h12" /></>,
-    truck: <><path d="M3 6h12v12H3zM15 10h3l3 3v5h-6z" /><circle cx="7.5" cy="18.5" r="1.5" /><circle cx="18" cy="18.5" r="1.5" /></>,
-    arrow: <><path d="M4 12h16m-7-7 7 7-7 7" /></>,
-    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></>,
-    help: <><circle cx="12" cy="12" r="9" /><path d="M9.7 9a2.4 2.4 0 1 1 4 2c-1 .8-1.7 1.3-1.7 2.8M12 17h.01" /></>,
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} {...common}>
-      {icons[name] || icons.more}
-    </svg>
-  )
-}
-
-const MOBILE_EXPERIENCE_KEY = 'digital-dine-mobile-experience-v1'
-
-const DEFAULT_MOBILE_EXPERIENCE = {
-  darkMode: false,
-  theme: 'orange',
-  textSize: 'normal',
-  uiStyle: 'soft',
-  pushNotifications: true,
-  orderMessages: true,
-  promotions: false,
-  sound: true,
-}
-
-function MobileExperienceSettings({ open, onClose, portal = 'App' }) {
-  const [saved, setSaved] = useState(DEFAULT_MOBILE_EXPERIENCE)
-  const [draft, setDraft] = useState(DEFAULT_MOBILE_EXPERIENCE)
-
-  const themeOptions = [
-    { id: 'orange', label: 'Orange', color: '#f97316' },
-    { id: 'emerald', label: 'Green', color: '#059669' },
-    { id: 'ocean', label: 'Blue', color: '#2563eb' },
-    { id: 'violet', label: 'Violet', color: '#7c3aed' },
-    { id: 'rose', label: 'Rose', color: '#e11d48' },
-  ]
-
-  const normalize = (value) => ({
-    ...DEFAULT_MOBILE_EXPERIENCE,
-    ...(value && typeof value === 'object' ? value : {}),
-  })
-
-  const applyExperience = (prefs) => {
-    if (typeof document === 'undefined') return
-    const root = document.documentElement
-    root.dataset.ddAppTheme = prefs.theme
-    root.dataset.ddUiStyle = prefs.uiStyle
-    root.dataset.ddTextSize = prefs.textSize
-    root.dataset.ddDarkMode = prefs.darkMode ? 'true' : 'false'
-  }
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const parsed = JSON.parse(localStorage.getItem(MOBILE_EXPERIENCE_KEY) || '{}')
-      const next = normalize(parsed)
-      setSaved(next)
-      setDraft(next)
-      applyExperience(next)
-    } catch {
-      applyExperience(DEFAULT_MOBILE_EXPERIENCE)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!open) return
-    setDraft(saved)
-  }, [open, saved])
-
-  const setPreview = (patch) => {
-    setDraft((current) => {
-      const next = { ...current, ...patch }
-      applyExperience(next)
-      return next
-    })
-  }
-
-  const closeWithoutSaving = () => {
-    setDraft(saved)
-    applyExperience(saved)
-    onClose?.()
-  }
-
-  const save = () => {
-    const next = normalize(draft)
-    setSaved(next)
-    applyExperience(next)
-    try {
-      localStorage.setItem(MOBILE_EXPERIENCE_KEY, JSON.stringify(next))
-    } catch (error) {
-      console.error('Unable to save mobile experience preferences:', error)
-    }
-    onClose?.()
-  }
-
-  if (!open) return null
-
-  const accent = themeOptions.find((item) => item.id === draft.theme)?.color || '#f97316'
-  const surface = draft.darkMode ? 'bg-[#151515] border-white/10 text-white' : 'bg-white border-neutral-200 text-neutral-950'
-  const page = draft.darkMode ? 'bg-[#0d0d0e] text-white' : 'bg-[#f5f5f4] text-neutral-950'
-  const muted = draft.darkMode ? 'text-neutral-400' : 'text-neutral-500'
-
-  const Toggle = ({ value, onChange, label }) => (
-    <button
-      type="button"
-      role="switch"
-      aria-label={label}
-      aria-checked={Boolean(value)}
-      onClick={() => onChange(!value)}
-      className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${
-        value ? 'border-transparent' : draft.darkMode ? 'border-white/10 bg-neutral-800' : 'border-neutral-300 bg-neutral-200'
-      }`}
-      style={value ? { backgroundColor: accent } : undefined}
-    >
-      <span
-        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-          value ? 'translate-x-[23px]' : 'translate-x-[3px]'
-        }`}
-      />
-    </button>
-  )
-
-  return (
-    <div className={`fixed inset-0 z-[120] ${page}`}>
-      <style jsx global>{`
-        html[data-dd-text-size='small'] .dd-mobile-themeable { font-size: 14px; }
-        html[data-dd-text-size='normal'] .dd-mobile-themeable { font-size: 16px; }
-        html[data-dd-text-size='large'] .dd-mobile-themeable { font-size: 18px; }
-        html[data-dd-ui-style='rounded'] .dd-mobile-themeable .dd-experience-surface { border-radius: 20px; }
-        html[data-dd-ui-style='soft'] .dd-mobile-themeable .dd-experience-surface { border-radius: 14px; }
-        html[data-dd-ui-style='crisp'] .dd-mobile-themeable .dd-experience-surface { border-radius: 8px; }
-      `}</style>
-
-      <div className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden">
-        <header className={`shrink-0 border-b px-4 pb-3 pt-[max(0.85rem,env(safe-area-inset-top))] ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]' : 'border-neutral-200 bg-white'}`}>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={closeWithoutSaving}
-              className={`flex h-10 w-10 items-center justify-center rounded-xl border ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
-              aria-label="Back"
-            >
-              <AppIcon name="chevron" className="h-5 w-5 rotate-180" />
-            </button>
-            <div className="min-w-0">
-              <p className={`text-[11px] font-medium ${muted}`}>{portal}</p>
-              <h2 className="text-base font-semibold">App settings</h2>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-4 py-5 pb-28">
-          <section>
-            <div className="mb-2 px-1">
-              <h3 className="text-sm font-semibold">Appearance</h3>
-              <p className={`mt-0.5 text-[11px] ${muted}`}>Choose how this app looks on this device.</p>
-            </div>
-
-            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
-              <div className={`flex items-center justify-between gap-4 p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                    <AppIcon name={draft.darkMode ? 'moon' : 'sun'} className="h-[18px] w-[18px]" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold">Dark mode</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Use a darker app surface.</p>
-                  </div>
-                </div>
-                <Toggle value={draft.darkMode} onChange={(value) => setPreview({ darkMode: value })} label="Dark mode" />
-              </div>
-
-              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                    <AppIcon name="palette" className="h-[18px] w-[18px]" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-semibold">Accent color</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Used for selected controls and switches.</p>
-                  </div>
-                </div>
-                <div className="mt-4 grid grid-cols-5 gap-2">
-                  {themeOptions.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setPreview({ theme: item.id })}
-                      className={`flex min-h-14 flex-col items-center justify-center rounded-xl border px-1 transition ${
-                        draft.theme === item.id
-                          ? draft.darkMode ? 'border-white/30 bg-white/5' : 'border-neutral-300 bg-neutral-50'
-                          : draft.darkMode ? 'border-white/10' : 'border-neutral-200'
-                      }`}
-                      aria-label={`${item.label} accent`}
-                    >
-                      <span className="h-5 w-5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className={`mt-1.5 text-[8px] font-medium ${muted}`}>{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                    <AppIcon name="type" className="h-[18px] w-[18px]" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-semibold">Text size</p>
-                    <p className={`mt-0.5 text-[10px] ${muted}`}>Adjust the app's reading size.</p>
-                  </div>
-                </div>
-                <div className={`mt-4 grid grid-cols-3 rounded-xl p-1 ${draft.darkMode ? 'bg-neutral-900' : 'bg-neutral-100'}`}>
-                  {['small', 'normal', 'large'].map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setPreview({ textSize: id })}
-                      className={`min-h-10 rounded-lg text-[11px] font-medium capitalize transition ${
-                        draft.textSize === id
-                          ? draft.darkMode ? 'bg-neutral-700 text-white shadow-sm' : 'bg-white text-neutral-950 shadow-sm'
-                          : muted
-                      }`}
-                    >
-                      {id}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`border-t p-4 ${draft.darkMode ? 'border-white/10' : 'border-neutral-200'}`}>
-                <p className="text-[13px] font-semibold">Card corners</p>
-                <p className={`mt-0.5 text-[10px] ${muted}`}>A small visual preference; features stay unchanged.</p>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {[
-                    ['rounded', 'Rounded'],
-                    ['soft', 'Soft'],
-                    ['crisp', 'Compact'],
-                  ].map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setPreview({ uiStyle: id })}
-                      className={`min-h-11 border px-2 text-[10px] font-medium transition ${
-                        id === 'rounded' ? 'rounded-2xl' : id === 'soft' ? 'rounded-xl' : 'rounded-md'
-                      } ${
-                        draft.uiStyle === id
-                          ? 'text-white'
-                          : draft.darkMode ? 'border-white/10 text-neutral-400' : 'border-neutral-200 text-neutral-600'
-                      }`}
-                      style={draft.uiStyle === id ? { backgroundColor: accent, borderColor: accent } : undefined}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-6">
-            <div className="mb-2 px-1">
-              <h3 className="text-sm font-semibold">Notifications</h3>
-              <p className={`mt-0.5 text-[11px] ${muted}`}>Control which app alerts are enabled.</p>
-            </div>
-
-            <div className={`dd-experience-surface overflow-hidden border ${surface}`}>
-              {[
-                ['pushNotifications', 'notifications', 'Push notifications', 'General app and order alerts'],
-                ['orderMessages', 'orders', 'Order activity', 'New orders and status changes'],
-                ['promotions', 'tag', 'Product updates', 'Plan and feature announcements'],
-                ['sound', 'volume', 'Alert sound', 'Play sound for supported alerts'],
-              ].map(([key, icon, title, subtitle], index) => (
-                <div key={key} className={`flex items-center justify-between gap-4 p-4 ${index ? draft.darkMode ? 'border-t border-white/10' : 'border-t border-neutral-200' : ''}`}>
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${draft.darkMode ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-                      <AppIcon name={icon} className="h-[18px] w-[18px]" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-semibold">{title}</p>
-                      <p className={`mt-0.5 truncate text-[10px] ${muted}`}>{subtitle}</p>
-                    </div>
-                  </div>
-                  <Toggle value={draft[key]} onChange={(value) => setPreview({ [key]: value })} label={title} />
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <p className={`mt-4 px-1 text-[10px] leading-5 ${muted}`}>
-            These preferences are stored on this device. Restaurant data, orders, staff, menu, billing and payment settings are unchanged.
-          </p>
-        </div>
-
-        <div className={`absolute bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t px-4 pb-[max(0.8rem,env(safe-area-inset-bottom))] pt-3 ${draft.darkMode ? 'border-white/10 bg-[#0d0d0e]/95' : 'border-neutral-200 bg-white/95'} backdrop-blur-xl`}>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={closeWithoutSaving}
-              className={`min-h-11 rounded-xl border text-xs font-semibold ${draft.darkMode ? 'border-white/10 bg-neutral-900 text-neutral-300' : 'border-neutral-200 bg-white text-neutral-700'}`}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              className="min-h-11 rounded-xl text-xs font-semibold text-white shadow-sm"
-              style={{ backgroundColor: accent }}
-            >
-              Save changes
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // Real-Time Restaurant Chat Widget Component
-function RestaurantChatWidget({ restaurantId }) {
+function RestaurantChatWidget({ restaurantId, openSignal = 0 }) {
   const AI_CATEGORIES = [
     '🔐 Login / Account',
     '🍔 Menu / Food Items',
@@ -588,6 +230,12 @@ function RestaurantChatWidget({ restaurantId }) {
     setIsOpen(true)
     setSupportMode(session?.status === 'connected' ? 'human' : 'ai')
   }
+
+  useEffect(() => {
+    if (!openSignal) return
+    setIsOpen(true)
+    setSupportMode(sessionIdRef.current ? 'human' : 'ai')
+  }, [openSignal])
 
   const askAi = async (conversation, issueCategory, stage = 'conversation') => {
     setAiLoading(true)
@@ -816,19 +464,9 @@ function RestaurantChatWidget({ restaurantId }) {
   const isClosed = status === 'closed'
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 font-sans">
-      {!isOpen ? (
-        <button
-          onClick={handleOpen}
-          className="bg-orange-500 hover:bg-orange-600 text-white font-black p-4 rounded-full shadow-2xl flex items-center space-x-2 transition transform hover:scale-105"
-        >
-          <span>💬</span>
-          <span className="text-xs uppercase tracking-wider pr-1">
-            Support Chat
-          </span>
-        </button>
-      ) : (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(390px,calc(100vw-2rem))] h-[560px] shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-[155] flex items-center justify-center bg-black/70 p-3 font-sans sm:inset-auto sm:bottom-6 sm:right-6 sm:block sm:bg-transparent sm:p-0">
+      {isOpen && (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(390px,calc(100vw-1.5rem))] h-[min(650px,calc(100dvh-1.5rem))] shadow-2xl flex flex-col overflow-hidden">
           <div className="bg-neutral-950 p-4 border-b border-neutral-800">
             <div className="flex justify-between items-start gap-3">
               <div>
@@ -1605,689 +1243,11 @@ async function updateOwnerOrderStatusSecure(restaurantId, orderId, newStatus) {
   return payload.order
 }
 
-function OwnerTableQrSheet({
-  restaurant,
-  restaurantId,
-  onClose,
-}) {
-  const [tableNumber, setTableNumber] = useState(1)
-  const [registeredTables, setRegisteredTables] = useState([])
-  const [loadingTables, setLoadingTables] = useState(true)
-  const [registering, setRegistering] = useState(false)
-  const [downloading, setDownloading] = useState(false)
-
-  // Keep the latest close callback without causing the browser-history
-  // effect to run again on every Owner dashboard re-render.
-  const onCloseRef = useRef(onClose)
-
-  useEffect(() => {
-    onCloseRef.current = onClose
-  }, [onClose])
-
-  const currentPlan =
-    restaurant?.plan || 'Starter'
-
-  const isStarter =
-    String(currentPlan).toLowerCase() === 'starter'
-
-  const maximumTable =
-    isStarter ? 5 : 1000
-
-  const origin =
-    typeof window !== 'undefined'
-      ? window.location.origin
-      : ''
-
-  const menuUrl =
-    restaurant?.id && origin
-      ? `${origin}/menu/${restaurant.id}?table=${encodeURIComponent(
-          tableNumber
-        )}`
-      : ''
-
-  const qrCodeImageUrl =
-    menuUrl
-      ? 'https://api.qrserver.com/v1/create-qr-code/' +
-        `?size=360x360&margin=14&data=${encodeURIComponent(
-          menuUrl
-        )}`
-      : ''
-
-  const loadRegisteredTables = async () => {
-    if (!restaurantId) {
-      setRegisteredTables([])
-      setLoadingTables(false)
-      return []
-    }
-
-    try {
-      const { data, error } = await supabase.rpc(
-        'get_owner_registered_tables',
-        {
-          p_restaurant_id: String(restaurantId),
-        }
-      )
-
-      if (error) throw error
-
-      const rows = Array.isArray(data)
-        ? data
-        : []
-
-      setRegisteredTables(rows)
-      return rows
-    } catch (error) {
-      console.error(
-        '[OWNER MOBILE QR] Load tables error:',
-        error
-      )
-
-      appNotice(
-        `Unable to load registered tables: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-
-      return []
-    } finally {
-      setLoadingTables(false)
-    }
-  }
-
-  useEffect(() => {
-    loadRegisteredTables()
-  }, [restaurantId])
-
-  // Treat the QR manager like an app screen even though it is
-  // embedded in the Owner page. Create exactly ONE temporary
-  // history entry while the QR screen is open.
-  //
-  // IMPORTANT:
-  // This effect must NOT depend on the inline onClose callback.
-  // The parent dashboard re-renders often, and the old code could
-  // push multiple QR history entries. That made Back appear stuck
-  // or eventually fall into an older website page.
-  useEffect(() => {
-    if (
-      typeof window === 'undefined' ||
-      !restaurantId
-    ) {
-      return undefined
-    }
-
-    const currentState =
-      window.history.state || {}
-
-    if (
-      !currentState
-        ?.digitalDiningOwnerTableQr
-    ) {
-      window.history.pushState(
-        {
-          ...currentState,
-          digitalDiningOwnerTableQr: true,
-          digitalDiningOwnerRestaurantId:
-            String(restaurantId),
-        },
-        '',
-        window.location.href
-      )
-    }
-
-    const handlePopState = () => {
-      onCloseRef.current?.()
-    }
-
-    window.addEventListener(
-      'popstate',
-      handlePopState
-    )
-
-    return () => {
-      window.removeEventListener(
-        'popstate',
-        handlePopState
-      )
-    }
-  }, [restaurantId])
-
-  const closeQrManager = () => {
-    const finishClose = () => {
-      onCloseRef.current?.()
-    }
-
-    if (
-      typeof window !== 'undefined' &&
-      window.history.state
-        ?.digitalDiningOwnerTableQr
-    ) {
-      // Remove only the temporary QR history entry.
-      // popstate closes the overlay. A short fallback is included
-      // for Android WebViews that occasionally delay popstate.
-      window.history.back()
-
-      window.setTimeout(() => {
-        finishClose()
-      }, 180)
-
-      return
-    }
-
-    finishClose()
-  }
-
-  const handleTableChange = (value) => {
-    let number = Number.parseInt(
-      String(value),
-      10
-    )
-
-    if (!Number.isFinite(number) || number < 1) {
-      number = 1
-    }
-
-    if (isStarter && number > 5) {
-      appNotice(
-        'The Starter plan supports up to 5 table QR codes.'
-      )
-      number = 5
-    }
-
-    setTableNumber(
-      Math.min(number, maximumTable)
-    )
-  }
-
-  const registerCurrentTable = async () => {
-    const cleanTableNumber =
-      Number(tableNumber)
-
-    if (!restaurantId) {
-      throw new Error(
-        'Restaurant ID is missing.'
-      )
-    }
-
-    if (
-      !Number.isInteger(cleanTableNumber) ||
-      cleanTableNumber < 1
-    ) {
-      throw new Error(
-        'Please enter a valid table number.'
-      )
-    }
-
-    const { data, error } = await supabase.rpc(
-      'register_table_qr',
-      {
-        p_restaurant_id: String(
-          restaurantId
-        ),
-        p_table_number: cleanTableNumber,
-      }
-    )
-
-    if (error) {
-      throw new Error(
-        error.message ||
-          'Unable to register this table.'
-      )
-    }
-
-    await loadRegisteredTables()
-    return data
-  }
-
-  const handleRegister = async () => {
-    if (registering) return
-
-    setRegistering(true)
-
-    try {
-      await registerCurrentTable()
-
-      appNotice(
-        `Table ${tableNumber} QR is ready. ✅`
-      )
-    } catch (error) {
-      console.error(
-        '[OWNER MOBILE QR] Register error:',
-        error
-      )
-
-      appNotice(
-        `Unable to register Table ${tableNumber}: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-    } finally {
-      setRegistering(false)
-    }
-  }
-
-  const handleDownload = async () => {
-    if (
-      downloading ||
-      !restaurant ||
-      !qrCodeImageUrl
-    ) {
-      return
-    }
-
-    setDownloading(true)
-
-    try {
-      await registerCurrentTable()
-
-      const response = await fetch(
-        qrCodeImageUrl
-      )
-
-      if (!response.ok) {
-        throw new Error(
-          `QR service returned HTTP ${response.status}.`
-        )
-      }
-
-      const blob = await response.blob()
-
-      if (!blob || blob.size === 0) {
-        throw new Error(
-          'QR image was empty.'
-        )
-      }
-
-      const objectUrl =
-        URL.createObjectURL(blob)
-
-      try {
-        const restaurantName = String(
-          restaurant?.name || 'restaurant'
-        )
-          .replace(/[^a-z0-9]+/gi, '-')
-          .replace(/^-+|-+$/g, '')
-          .toLowerCase()
-
-        const anchor =
-          document.createElement('a')
-
-        anchor.href = objectUrl
-        anchor.download =
-          `${restaurantName || 'restaurant'}` +
-          `-table-${tableNumber}-qr.png`
-
-        document.body.appendChild(anchor)
-        anchor.click()
-        anchor.remove()
-      } finally {
-        window.setTimeout(() => {
-          URL.revokeObjectURL(objectUrl)
-        }, 1000)
-      }
-
-      await loadRegisteredTables()
-    } catch (error) {
-      console.error(
-        '[OWNER MOBILE QR] Download error:',
-        error
-      )
-
-      appNotice(
-        `Unable to download Table ${tableNumber} QR: ${
-          error?.message || 'Please try again.'
-        }`
-      )
-    } finally {
-      setDownloading(false)
-    }
-  }
-
-  const handleCopy = async () => {
-    if (!menuUrl) return
-
-    try {
-      await navigator.clipboard.writeText(
-        menuUrl
-      )
-
-      appNotice(
-        `Table ${tableNumber} menu link copied.`
-      )
-    } catch (error) {
-      console.error(
-        '[OWNER MOBILE QR] Copy error:',
-        error
-      )
-
-      await appPrompt(
-        'Copy this Table QR URL:',
-        menuUrl
-      )
-    }
-  }
-
-  const isRegistered =
-    registeredTables.some(
-      (table) =>
-        String(table?.table_number) ===
-        String(tableNumber)
-    )
-
-  return (
-    <div className="fixed inset-0 z-[9990] bg-[#f6f7f2] text-neutral-900">
-      <div className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden bg-[#f6f7f2]">
-        <header className="shrink-0 bg-[#0c831f] px-4 pb-4 pt-[max(0.85rem,env(safe-area-inset-top))] text-white shadow-lg shadow-green-900/10">
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={closeQrManager}
-              className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-lg font-black backdrop-blur"
-              aria-label="Back to Owner"
-            >
-              ←
-            </button>
-
-            <div className="min-w-0 flex-1 text-center">
-              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-neutral-500">
-                Owner Tools
-              </p>
-
-              <h1 className="mt-0.5 truncate text-[17px] font-black">
-                Table QR Codes
-              </h1>
-
-              <p className="mt-0.5 truncate text-[9px] font-semibold text-white/70">
-                {restaurant?.name || 'Restaurant'}
-              </p>
-            </div>
-
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f8cb46] text-lg text-neutral-900">
-              ▦
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl bg-white/12 p-3 backdrop-blur">
-              <p className="text-[8px] font-black uppercase tracking-wider text-neutral-500">
-                Registered
-              </p>
-
-              <p className="mt-1 text-xl font-black">
-                {loadingTables
-                  ? '…'
-                  : registeredTables.length}
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-white/12 p-3 backdrop-blur">
-              <p className="text-[8px] font-black uppercase tracking-wider text-neutral-500">
-                Selected Table
-              </p>
-
-              <p className="mt-1 text-xl font-black">
-                {tableNumber}
-              </p>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
-          {isStarter && (
-            <div className="mb-4 rounded-2xl border border-amber-300 bg-[#fff7d6] p-3 text-[9px] font-bold leading-5 text-amber-800">
-              Starter Plan supports Table 1 through Table 5.
-            </div>
-          )}
-
-          <section className="rounded-[24px] border border-[#e8e9e4] bg-white p-4 shadow-sm">
-            <label className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
-              Table Number
-            </label>
-
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  handleTableChange(
-                    Math.max(
-                      1,
-                      Number(tableNumber) - 1
-                    )
-                  )
-                }
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-xl font-black"
-              >
-                −
-              </button>
-
-              <input
-                type="number"
-                min="1"
-                max={maximumTable}
-                value={tableNumber}
-                onChange={(event) =>
-                  handleTableChange(
-                    event.target.value
-                  )
-                }
-                className="h-12 min-w-0 flex-1 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 text-center text-lg font-black outline-none focus:border-[#0c831f]"
-              />
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleTableChange(
-                    Number(tableNumber) + 1
-                  )
-                }
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-xl font-black"
-              >
-                +
-              </button>
-            </div>
-
-            <div className="mt-4 rounded-[22px] bg-neutral-50 p-4">
-              <div className="mx-auto max-w-[270px] rounded-[22px] bg-white p-4 shadow-sm">
-                {qrCodeImageUrl ? (
-                  <img
-                    src={qrCodeImageUrl}
-                    alt={`Table ${tableNumber} QR`}
-                    className="aspect-square w-full object-contain"
-                  />
-                ) : (
-                  <div className="flex aspect-square items-center justify-center text-4xl">
-                    ▦
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-3 text-center">
-                <div className="flex items-center justify-center gap-2">
-                  <p className="text-sm font-black">
-                    Table {tableNumber}
-                  </p>
-
-                  {isRegistered && (
-                    <span className="rounded-full bg-orange-50 px-2 py-1 text-[8px] font-semibold text-orange-600">
-                      REGISTERED
-                    </span>
-                  )}
-                </div>
-
-                <p className="mt-1 text-[8px] leading-4 text-neutral-500">
-                  Scanning opens the real customer QR menu for this table.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={handleRegister}
-                disabled={registering}
-                className="rounded-2xl bg-[#f8cb46] px-3 py-3.5 text-[10px] font-black text-neutral-900 disabled:opacity-50"
-              >
-                {registering
-                  ? 'Saving...'
-                  : isRegistered
-                    ? 'Refresh QR'
-                    : 'Register QR'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDownload}
-                disabled={downloading}
-                className="rounded-2xl bg-[#0c831f] px-3 py-3.5 text-[10px] font-black text-white shadow-lg shadow-green-700/15 disabled:opacity-50"
-              >
-                {downloading
-                  ? 'Downloading...'
-                  : 'Download QR'}
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="mt-2 w-full rounded-2xl border border-neutral-200 bg-neutral-50 py-3 text-[9px] font-black text-neutral-600"
-            >
-              Copy Table Menu Link
-            </button>
-          </section>
-
-          {registeredTables.length > 0 && (
-            <section className="mt-4 rounded-[24px] border border-[#e8e9e4] bg-white p-4 shadow-sm">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-wider text-[#0c831f]">
-                    Registered Tables
-                  </p>
-
-                  <h2 className="mt-1 text-[16px] font-black">
-                    Your Table QR list
-                  </h2>
-                </div>
-
-                <span className="rounded-full bg-[#eaf8ed] px-2.5 py-1 text-[8px] font-black text-[#0c831f]">
-                  {registeredTables.length}
-                </span>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {registeredTables
-                  .slice()
-                  .sort(
-                    (a, b) =>
-                      Number(a?.table_number || 0) -
-                      Number(b?.table_number || 0)
-                  )
-                  .map((table) => (
-                    <button
-                      key={
-                        table?.id ||
-                        table?.table_number
-                      }
-                      type="button"
-                      onClick={() =>
-                        handleTableChange(
-                          table.table_number
-                        )
-                      }
-                      className={`rounded-xl border px-3 py-2 text-[9px] font-black ${
-                        String(table?.table_number) ===
-                        String(tableNumber)
-                          ? 'border-[#0c831f] bg-[#eaf8ed] text-[#0c831f]'
-                          : 'border-neutral-200 bg-neutral-50 text-neutral-600'
-                      }`}
-                    >
-                      Table {table.table_number}
-                    </button>
-                  ))}
-              </div>
-            </section>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function MobileOwnerOrderHistory({ restaurantId, formatCurrency }) {
-  const [date, setDate] = useState('')
-  const [searched, setSearched] = useState(false)
-  const [rows, setRows] = useState([])
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [limit, setLimit] = useState(20)
-
-  const lookup = async (event) => {
-    event.preventDefault()
-    if (!restaurantId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || busy) return
-    const [year, month, day] = date.split('-').map(Number)
-    const start = new Date(year, month - 1, day)
-    if (start.getFullYear() !== year || start.getMonth() !== month - 1 || start.getDate() !== day) {
-      setError('Invalid calendar date.')
-      return
-    }
-    const end = new Date(start)
-    end.setDate(end.getDate() + 1)
-    setBusy(true)
-    setError('')
-    setSearched(false)
-    setRows([])
-    setLimit(20)
-    try {
-      const PAGE_SIZE = 1000
-      const found = []
-      for (let offset = 0; ; offset += PAGE_SIZE) {
-        const { data, error: queryError } = await supabase.from('orders')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .gte('created_at', start.toISOString())
-          .lt('created_at', end.toISOString())
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true })
-          .range(offset, offset + PAGE_SIZE - 1)
-        if (queryError) throw queryError
-        const batch = Array.isArray(data) ? data : []
-        found.push(...batch)
-        if (batch.length < PAGE_SIZE) break
-      }
-      setRows(found)
-      setSearched(true)
-    } catch (caught) {
-      setError(caught?.message || 'Unable to load older orders.')
-    } finally { setBusy(false) }
-  }
-
-  return (
-    <section className="dd-mobile-history mt-6 rounded-3xl border border-neutral-200 bg-white p-4">
-      <div className="flex items-center gap-2"><AppIcon name="clock" className="h-5 w-5 text-orange-500" /><h3 className="text-sm font-extrabold text-neutral-900">Search order history</h3></div>
-      <p className="mt-1 text-[11px] leading-5 text-neutral-500">Look up orders from any earlier date. Results are loaded directly with your restaurant's access policies.</p>
-      <form onSubmit={lookup} className="mt-3 flex items-end gap-2">
-        <label className="min-w-0 flex-1 text-[11px] font-semibold text-neutral-500">Order date
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900" />
-        </label>
-        <button disabled={!date || busy} type="submit" className="min-h-11 rounded-xl bg-neutral-900 px-4 text-xs font-bold text-white disabled:opacity-50">{busy ? 'Searching…' : 'Search'}</button>
-      </form>
-      {error && <p role="alert" className="mt-3 text-xs text-red-600">{error}</p>}
-      {searched && <div className="mt-4"><p className="text-xs font-bold text-neutral-700">{rows.length} order{rows.length === 1 ? '' : 's'} found</p><div className="mt-3 space-y-2">
-        {rows.slice(0,limit).map((order) => <div key={order.id} className="flex items-center justify-between gap-3 rounded-xl bg-neutral-50 p-3 text-xs"><div className="min-w-0"><p className="font-bold text-neutral-900">Order #{String(order.order_number || order.id || '').slice(-7).toUpperCase()}</p><p className="mt-1 capitalize text-neutral-500">{String(order.status || 'unknown').replaceAll('_',' ')}</p></div><p className="shrink-0 font-bold text-neutral-900">{formatCurrency(order.total_amount)}</p></div>)}
-        {!rows.length && <p className="text-xs text-neutral-500">No orders for this date.</p>}
-      </div>{rows.length > limit && <button type="button" onClick={() => setLimit((n) => n + 20)} className="mt-3 min-h-11 w-full rounded-xl border border-neutral-200 text-xs font-bold text-neutral-800">Load more</button>}</div>}
-    </section>
-  )
-}
-
 export default function RestaurantDashboard() {
   useMobileViewportLock()
   const params = useParams()
   const restaurantId = String(params.id || params.restaurantId || '').trim()
   const router = useRouter()
-  // The native owner application uses its own login entry point.
-  // Do not fall through to the general website login on session expiry.
-  const ownerAppLoginUrl = restaurantId
-    ? `/app/owner?restaurantId=${encodeURIComponent(restaurantId)}`
-    : '/app'
   const [restaurant, setRestaurant] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
   // Accounts remain locked until the Super Admin approves registration.
@@ -2311,14 +1271,12 @@ export default function RestaurantDashboard() {
   const [ordersLastSynced, setOrdersLastSynced] = useState(null)
   const [ordersRefreshTick, setOrdersRefreshTick] = useState(0)
   const [restaurantTables, setRestaurantTables] = useState([])
-  const [activeTab, setActiveTab] = useState('owner-home')
+  const [activeTab, setActiveTab] = useState('settlements')
   const [dashboardMode, setDashboardMode] = useState('restaurant')
   const [isStoreOpen, setIsStoreOpen] = useState(true)
   const [savingStoreStatus, setSavingStoreStatus] = useState(false)
   const [mobileOwnerMenuOpen, setMobileOwnerMenuOpen] = useState(false)
-  const [experienceOpen, setExperienceOpen] = useState(false)
-  const [tableQrOpen, setTableQrOpen] = useState(false)
-  const [mobileOrderFilter, setMobileOrderFilter] = useState('active')
+  const [ownerSupportOpenSignal, setOwnerSupportOpenSignal] = useState(0)
 
   // Add Dish Form States
   const [name, setName] = useState('')
@@ -2625,7 +1583,7 @@ restaurantModuleEnabled,
 
     const verifyDashboardAccess = async () => {
       if (!restaurantId) {
-        router.replace(ownerAppLoginUrl)
+        router.replace('/login')
         return
       }
 
@@ -2635,7 +1593,7 @@ restaurantModuleEnabled,
       } = await supabase.auth.getUser()
 
       if (error || !user) {
-        if (!cancelled) router.replace(ownerAppLoginUrl)
+        if (!cancelled) router.replace('/login')
         return
       }
 
@@ -2648,26 +1606,43 @@ restaurantModuleEnabled,
         setProfileEmail(user.email || '')
       }
 
-      // Verify the URL tenant's owner relationship on the server-backed
-      // restaurant row. New registrations have restaurants.owner_id = user.id,
-      // while some legacy installations use restaurants.id = user.id.
-      // Never assume the URL is proof of ownership.
-      const { data: ownedRestaurant, error: ownershipError } = await supabase
-        .from('restaurants')
-        .select('id, owner_id, name, approval_status')
-        .eq('id', restaurantId)
-        .maybeSingle()
+      // Registration stores the Supabase Auth user ID directly in
+      // restaurants.id. Verify both the URL restaurant and logged-in owner
+      // against that same ID. Do not use owner_id here.
+      if (String(restaurantId) !== String(user.id)) {
+        console.error('Dashboard ownership verification failed:', {
+          restaurantId,
+          userId: user.id,
+          reason: 'Restaurant URL does not belong to the authenticated user',
+        })
 
-      const isOwner = ownedRestaurant && (
-        String(ownedRestaurant.owner_id || '') === String(user.id) ||
-        String(ownedRestaurant.id) === String(user.id)
-      )
+        if (!cancelled) {
+          router.replace('/login')
+        }
 
-      if (ownershipError || !isOwner) {
-        console.error('Owner dashboard access denied:', ownershipError?.message || 'Owner ID does not match tenant')
-        if (!cancelled) router.replace(ownerAppLoginUrl)
         return
       }
+
+      const { data: ownedRestaurant, error: ownershipError } = await supabase
+        .from('restaurants')
+        .select('id, name, subscription_status, approval_status')
+        .eq('id', user.id)
+        .maybeSingle()
+
+     if (ownershipError || !ownedRestaurant) {
+  console.error('Dashboard ownership verification failed:', {
+    restaurantId,
+    userId: user?.id,
+    ownershipError,
+    ownedRestaurant,
+  })
+
+  if (!cancelled) {
+    router.replace('/login')
+  }
+
+  return
+}
 
       if (!cancelled) {
         const status = String(ownedRestaurant.approval_status || 'pending').toLowerCase()
@@ -2682,7 +1657,7 @@ restaurantModuleEnabled,
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === 'SIGNED_OUT' || !session?.user) {
-          router.replace(ownerAppLoginUrl)
+          router.replace('/login')
         }
       }
     )
@@ -2697,13 +1672,13 @@ restaurantModuleEnabled,
     alarmSettingsDirtyRef.current = false
   }, [restaurantId])
 
-  // Keep a brief transition, without making mobile owners wait four seconds.
+  // Keep the opening experience visible for a minimum of 4 seconds.
   // Authentication and dashboard loading continue normally in the background.
   useEffect(() => {
     if (!authChecked || !restaurant || entryLoaderDone) return undefined
 
     const elapsed = Date.now() - entryLoaderStartedAtRef.current
-    const remaining = Math.max(0, 850 - elapsed)
+    const remaining = Math.max(0, 4000 - elapsed)
 
     const timer = window.setTimeout(() => {
       setEntryLoaderDone(true)
@@ -2722,7 +1697,7 @@ restaurantModuleEnabled,
       } = await supabase.auth.getUser()
 
       if (authError || !user) {
-        router.replace(ownerAppLoginUrl)
+        router.replace('/login')
         return
       }
 
@@ -2742,7 +1717,7 @@ restaurantModuleEnabled,
          String(ownedRestaurant.owner_id || '') !== String(user.id))
       ) {
         console.error('Dashboard ownership check failed:', ownershipError)
-        router.replace(ownerAppLoginUrl)
+        router.replace('/login')
         return
       }
 
@@ -2761,7 +1736,7 @@ restaurantModuleEnabled,
         .maybeSingle()
 
       if (error || !restData) {
-        router.replace(ownerAppLoginUrl)
+        router.replace('/login')
         return
       }
 
@@ -2898,11 +1873,32 @@ if (staffError) {
       // Order updates are not coupled to this metadata refresh.
     }
 
-    fetchDashboard()
-
-    const interval = setInterval(fetchDashboard, 2000)
-
-    return () => clearInterval(interval)
+    // Refresh large owner metadata only once a minute. Never overlap requests,
+    // and don't waste database work in a background tab. Recheck when returning.
+    let dashboardActive = true
+    let dashboardRefreshBusy = false
+    const refreshDashboardSafely = async () => {
+      if (!dashboardActive || document.hidden || dashboardRefreshBusy) return
+      dashboardRefreshBusy = true
+      try {
+        await fetchDashboard()
+      } catch (refreshError) {
+        console.error('[OWNER DASHBOARD REFRESH]', refreshError)
+      } finally {
+        dashboardRefreshBusy = false
+      }
+    }
+    void refreshDashboardSafely()
+    const interval = window.setInterval(() => void refreshDashboardSafely(), 60000)
+    const refreshWhenVisible = () => {
+      if (!document.hidden) void refreshDashboardSafely()
+    }
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      dashboardActive = false
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [
     authChecked,
     approvalStatus,
@@ -2924,7 +1920,7 @@ if (staffError) {
     setOrdersLoadError('')
 
     const refreshOrders = async () => {
-      if (busy || cancelled) return
+      if (busy || cancelled || document.hidden) return
       busy = true
       try {
         const orderData = await fetchOwnerOrdersSecure(restaurantId)
@@ -2956,9 +1952,14 @@ if (staffError) {
 
     refreshOrders()
     const interval = window.setInterval(refreshOrders, 5000)
+    const refreshOrdersWhenVisible = () => {
+      if (!document.hidden) void refreshOrders()
+    }
+    document.addEventListener('visibilitychange', refreshOrdersWhenVisible)
     return () => {
       cancelled = true
       window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshOrdersWhenVisible)
     }
   }, [authChecked, approvalStatus, restaurantId, hasRealtimeOrderAlarm, ordersRefreshTick])
 
@@ -4647,7 +3648,7 @@ if (staffError) {
 
       await supabase.auth.signOut()
     } finally {
-      router.replace(ownerAppLoginUrl)
+      router.replace('/login')
     }
   }
 
@@ -4921,7 +3922,7 @@ if (staffError) {
               type="button"
               onClick={async () => {
                 await supabase.auth.signOut()
-                router.replace(ownerAppLoginUrl)
+                router.replace('/login')
               }}
               className="rounded-xl border border-neutral-700 bg-neutral-800 px-5 py-3 text-sm font-bold text-white hover:bg-neutral-700"
             >
@@ -4950,7 +3951,7 @@ if (staffError) {
   }
 
   return (
-    <div className="dd-mobile-themeable dd-light-dashboard dd-owner-dashboard min-h-screen bg-[#f5f6f8] text-neutral-900 font-sans pb-16">
+    <div className="dd-light-dashboard dd-owner-dashboard min-h-screen bg-[#f5f6f8] text-neutral-900 font-sans pb-16">
       <style jsx global>{`
         @media print {
           body * {
@@ -5310,126 +4311,14 @@ if (staffError) {
         }
       `}</style>
 
-
-      {/* Native mobile design layer. Business logic and desktop operations are untouched. */}
-      <style jsx global>{`
-        @media (max-width:1023px) {
-          body { overflow-x: hidden; }
-          .dd-owner-dashboard { --dd-brand:#f97316; background:#f7f8fa !important; color:#171717 !important; padding-bottom:calc(91px + env(safe-area-inset-bottom)) !important; min-height:100dvh; }
-          .dd-owner-dashboard .dd-owner-desktop-header, .dd-owner-dashboard .dd-owner-desktop-intro, .dd-owner-dashboard .dd-owner-desktop-metrics, .dd-owner-dashboard .dd-owner-module-switch, .dd-owner-dashboard .dd-dashboard-sidebar { display:none !important; }
-          .dd-owner-dashboard .dd-dashboard-main { padding:16px 14px 25px !important; margin:0 auto !important; width:100%; max-width:600px; display:flex; flex-direction:column; gap:20px; }
-          .dd-owner-dashboard .dd-owner-wallet-zone { display:none !important; }
-          .dd-owner-dashboard .dd-owner-wallet-zone.dd-wallet-visible { display:block !important; }
-          .dd-owner-dashboard .dd-mobile-home, .dd-owner-dashboard .dd-mobile-orders, .dd-owner-dashboard .dd-mobile-wallet-heading { display:block; }
-          .dd-owner-dashboard .dd-mobile-home .space-y-5 > * { min-width:0 }
-          .dd-owner-dashboard .dd-mobile-home, .dd-owner-dashboard .dd-mobile-orders { font-family:system-ui,-apple-system,'Segoe UI',sans-serif; }
-          .dd-owner-dashboard .dd-owner-mobile-bottom-nav { display:flex !important; }
-          .dd-owner-dashboard .dd-dashboard-main .rounded-3xl { border-radius:20px; }
-          .dd-owner-dashboard .dd-dashboard-main input, .dd-owner-dashboard .dd-dashboard-main select, .dd-owner-dashboard .dd-dashboard-main textarea { font-size:16px; max-width:100%; }
-          .dd-owner-dashboard .dd-dashboard-main .overflow-x-auto { overscroll-behavior-x:contain; }
-          .dd-owner-dashboard .dd-dashboard-main table { max-width:none; }
-          .dd-owner-dashboard .dd-dashboard-main button { touch-action:manipulation; }
-          .dd-owner-dashboard .dd-dashboard-main .contents { min-width:0; }
-          .dd-owner-dashboard .dd-dashboard-main .dd-mobile-orders { min-width:0; }
-          .dd-owner-dashboard .dd-mobile-home .dd-mobile-order-card { color:#171717; }
-          .dd-owner-dashboard .dd-mobile-feature-card, .dd-owner-dashboard .dd-mobile-order-card, .dd-owner-dashboard .dd-mobile-empty { border:1px solid #eaecf0; background:#fff; border-radius:19px; }
-          .dd-owner-dashboard .dd-mobile-feature-card { display:flex; min-height:137px; flex-direction:column; align-items:flex-start; padding:16px; text-align:left; box-shadow:0 3px 12px rgba(17,24,39,.025); }
-          .dd-owner-dashboard .dd-mobile-order-card { padding:15px; box-shadow:0 3px 12px rgba(17,24,39,.025); }
-          .dd-owner-dashboard .dd-mobile-empty { min-height:110px; padding:22px 15px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:12px; color:#64748b; }
-          .dd-owner-dashboard .dd-mobile-order-status { display:inline-flex; padding:6px 9px; white-space:nowrap; border-radius:10px; background:#fff2e8; color:#c0561a; font-size:10px; font-weight:800; text-transform:capitalize; }
-          .dd-owner-dashboard .dd-mobile-status-action { display:flex; width:100%; margin-top:13px; justify-content:center; align-items:center; gap:10px; border-radius:12px; min-height:43px; background:#fff2e8; color:#bb531e; font-size:12px; font-weight:800; }
-          .dd-owner-dashboard .dd-mobile-quick-action { display:flex; min-width:0; min-height:91px; flex-direction:column; align-items:center; justify-content:center; text-align:center; border:1px solid #eceef1; border-radius:18px; background:#fff; color:#252525; box-shadow:0 2px 9px rgba(0,0,0,.025); }
-          .dd-owner-dashboard .dd-mobile-action-icon, .dd-owner-dashboard .dd-mobile-feature-symbol { display:flex; width:42px; height:42px; align-items:center; justify-content:center; border-radius:14px; }
-          .dd-owner-dashboard .dd-mobile-feature-symbol { height:43px; width:43px; }
-          .dd-owner-dashboard .dd-tile-orange { background:#fff0e6; color:#ec6b27; }
-          .dd-owner-dashboard .dd-tile-blue { background:#eaf2ff; color:#3678d9; }
-          .dd-owner-dashboard .dd-tile-green { background:#e7f8ec; color:#22975a; }
-          .dd-owner-dashboard .dd-tile-purple { background:#f0eaff; color:#8357c3; }
-          .dd-owner-dashboard .dd-mobile-section-heading { display:flex; align-items:end; justify-content:space-between; gap:12px; }
-          .dd-owner-dashboard .dd-mobile-section-heading h2, .dd-owner-dashboard .dd-mobile-section-heading h3 { color:#202124; font-size:16px; font-weight:850; letter-spacing:-.025em; }
-          .dd-owner-dashboard .dd-mobile-section-heading p { margin-top:2px; color:#7b8290; font-size:11px; }
-          .dd-owner-dashboard .dd-mobile-inline-link { min-height:40px; padding:0 5px; font-size:12px; color:#e76b25; font-weight:800; white-space:nowrap; }
-          .dd-owner-dashboard .dd-mobile-filterbar { display:flex; background:#eceff3; border-radius:15px; padding:4px; }
-          .dd-owner-dashboard .dd-mobile-filterbar button { flex:1; min-height:38px; border-radius:11px; font-weight:750; font-size:12px; color:#69717c; }
-          .dd-owner-dashboard .dd-mobile-filterbar button.dd-active { background:#fff; color:#202124; box-shadow:0 1px 5px rgba(0,0,0,.06); }
-          .dd-owner-dashboard .dd-mobile-refresh { display:flex; align-items:center; min-height:44px; gap:5px; color:#d96525; font-size:11px; font-weight:800; }
-          .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(130deg,#fa823b 0%,#ee5e3a 55%,#d7494a 100%); border-radius:23px; padding:21px 18px 17px; box-shadow:0 9px 25px rgba(229,95,53,.16); }
-          .dd-owner-dashboard .dd-mobile-hero-symbol { width:52px; height:52px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.15); border-radius:18px; color:#fff; }
-          .dd-owner-dashboard .dd-mobile-history { box-shadow:0 3px 12px rgba(17,24,39,.025); }
-          .dd-owner-dashboard .dd-owner-mobile-bottom-nav { position:fixed !important; left:0; right:0; bottom:0; z-index:85; width:100%; height:calc(67px + env(safe-area-inset-bottom)); padding:6px 5px calc(6px + env(safe-area-inset-bottom)); background:rgba(255,255,255,.97) !important; border-top:1px solid #ebedf0; box-shadow:0 -8px 22px rgba(12,24,42,.06); backdrop-filter:blur(18px); align-items:stretch; justify-content:space-around; gap:1px; }
-          .dd-owner-dashboard .dd-mobile-nav-link { position:relative; display:flex; flex:1; min-width:0; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#88909b; border-radius:14px; font-size:10px; font-weight:700; }
-          .dd-owner-dashboard .dd-mobile-nav-link.dd-is-current { color:#ed6c2f; }
-          .dd-owner-dashboard .dd-mobile-nav-link.dd-is-current:before { content:''; position:absolute; top:-6px; left:calc(50% - 13px); width:26px; height:3px; border-radius:0 0 4px 4px; background:#ee7138; }
-          .dd-owner-dashboard .dd-mobile-nav-dot { position:absolute; right:-4px; top:-4px; width:8px; height:8px; background:#ff5d50; border:1px solid white; border-radius:50%; }
-          .dd-owner-dashboard .dd-mobile-app-header { position:sticky; z-index:50; top:0; background:rgba(255,255,255,.97); border-bottom:1px solid #e9ecf0; padding:max(10px,env(safe-area-inset-top)) 15px 11px; backdrop-filter:blur(18px); }
-          .dd-owner-dashboard .dd-mobile-brand-icon { display:flex; height:46px; width:46px; flex:none; align-items:center; justify-content:center; border-radius:16px; background:linear-gradient(140deg,#ff8b42,#f45c37); color:white; }
-          .dd-owner-dashboard .dd-mobile-header-action { display:flex; height:42px; width:42px; flex:none; align-items:center; justify-content:center; border:1px solid #eceef1; border-radius:14px; background:#f8f9fb; color:#3f4650; }
-          .dd-owner-dashboard .dd-mobile-store-pill { display:inline-flex; min-height:39px; align-items:center; gap:8px; border-radius:12px; padding:0 11px; font-size:11px; font-weight:800; }
-          .dd-owner-dashboard .dd-mobile-store-pill.dd-open { color:#198b52; background:#e9f9ef; }
-          .dd-owner-dashboard .dd-mobile-store-pill.dd-closed { color:#c63e3e; background:#fff0f0; }
-          .dd-owner-dashboard .dd-mobile-store-pill:disabled { opacity:.55; }
-          .dd-owner-dashboard .dd-mobile-sheet-scrim { position:fixed; inset:0; z-index:100; display:flex; align-items:end; background:rgba(11,16,23,.55); backdrop-filter:blur(5px); }
-          .dd-owner-dashboard .dd-mobile-sheet { width:100%; max-width:600px; max-height:86dvh; overflow:auto; margin:0 auto; padding:15px 16px calc(23px + env(safe-area-inset-bottom)); border-radius:27px 27px 0 0; background:#fff; box-shadow:0 -10px 40px rgba(0,0,0,.2); }
-          .dd-owner-dashboard .dd-mobile-sheet-tool { min-width:0; min-height:84px; display:flex; flex-direction:column; gap:8px; align-items:center; justify-content:center; padding:12px 3px; border:1px solid #e9ebef; border-radius:16px; color:#e97531; background:#fcfcfd; }
-          .dd-owner-dashboard .dd-mobile-sheet-tool span { font-size:10px; font-weight:750; color:#303741; }
-          .dd-owner-dashboard .dd-mobile-wallet-heading { margin-bottom:-7px; }
-          .dd-owner-dashboard .dd-owner-wallet-zone * { max-width:100%; }
-          .dd-owner-dashboard .dd-owner-wallet-zone { overflow-wrap:anywhere; }
-          .dd-owner-dashboard .dd-dashboard-main .dd-mobile-home > * + * { margin-top:18px; }
-          .dd-owner-dashboard .dd-dashboard-main .dd-mobile-orders > * + * { margin-top:14px; }
-        }
-
-        /* Saved app appearance is device-local; it never changes tenant settings. */
-        @media (max-width:1023px) {
-          html[data-dd-app-theme='emerald'] .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(135deg,#159a67,#0a745d); }
-          html[data-dd-app-theme='ocean'] .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(135deg,#3688e8,#2650a2); }
-          html[data-dd-app-theme='violet'] .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(135deg,#8560df,#6c3eb1); }
-          html[data-dd-app-theme='rose'] .dd-owner-dashboard .dd-mobile-hero { background:linear-gradient(135deg,#f05c88,#bc3b5d); }
-          html[data-dd-text-size='large'] .dd-owner-dashboard .dd-mobile-home p, html[data-dd-text-size='large'] .dd-owner-dashboard .dd-mobile-orders p { font-size:13px; }
-          html[data-dd-text-size='small'] .dd-owner-dashboard .dd-mobile-home p, html[data-dd-text-size='small'] .dd-owner-dashboard .dd-mobile-orders p { font-size:11px; }
-          html[data-dd-ui-style='rounded'] .dd-owner-dashboard .dd-mobile-quick-action, html[data-dd-ui-style='rounded'] .dd-owner-dashboard .dd-mobile-order-card, html[data-dd-ui-style='rounded'] .dd-owner-dashboard .dd-mobile-feature-card { border-radius:24px; }
-          html[data-dd-ui-style='crisp'] .dd-owner-dashboard .dd-mobile-quick-action, html[data-dd-ui-style='crisp'] .dd-owner-dashboard .dd-mobile-order-card, html[data-dd-ui-style='crisp'] .dd-owner-dashboard .dd-mobile-feature-card { border-radius:9px; }
-          html[data-dd-dark-mode='true'] .dd-owner-dashboard { background:#101115 !important; color:#f5f5f5 !important; }
-          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-app-header, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-owner-mobile-bottom-nav { background:rgba(24,25,30,.98) !important; border-color:#30313a !important; }
-          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-app-header h1, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-section-heading h2, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-section-heading h3, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-order-card, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-order-card .text-neutral-900, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-feature-card, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-wallet-heading h2 { color:#f5f5f5 !important; }
-          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-empty, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-quick-action, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-order-card, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-feature-card, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-history { background:#1c1e24 !important; border-color:#30313a !important; color:#f4f4f4 !important; }
-          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-sheet { background:#1c1e24 !important; }
-          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-sheet h2 { color:#fff !important; }
-          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-sheet-tool, html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-header-action { background:#292b31 !important; border-color:#343640 !important; }
-          html[data-dd-dark-mode='true'] .dd-owner-dashboard .dd-mobile-sheet-tool span { color:#e8e8ed !important; }
-        }
-
-        @media (prefers-reduced-motion:reduce) {
-          .dd-owner-dashboard *, .dd-owner-dashboard *:before, .dd-owner-dashboard *:after { scroll-behavior:auto !important; transition:none !important; }
-        }
-      `}</style>
-
       <audio
         ref={audioRef}
         src="/sounds/kitchen-default.mp3"
         preload="auto"
       />
 
-      {/* App header — large tap targets, minimal chrome, real owner status actions. */}
-      <header className="dd-mobile-app-header lg:hidden">
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={() => {setDashboardMode(restaurantModuleEnabled ? 'restaurant' : 'delivery');setActiveTab('owner-home');window.scrollTo({top:0,behavior:'smooth'})}} className="dd-mobile-brand-icon" aria-label="Owner home">
-            {restaurant.logo_url ? <img src={restaurant.logo_url} alt="" className="h-full w-full rounded-xl object-cover" /> : <AppIcon name="store" className="h-6 w-6" />}
-          </button>
-          <div className="min-w-0 flex-1"><p className="text-[10px] font-semibold tracking-wide text-neutral-500">DIGITAL DINE · OWNER</p><h1 className="truncate text-[16px] font-extrabold tracking-tight text-neutral-900">{restaurant.name}</h1></div>
-          <button type="button" onClick={() => setProfileOpen(true)} aria-label="Open profile" className="dd-mobile-header-action"><AppIcon name="user" className="h-5 w-5" /></button>
-          <button type="button" onClick={() => setMobileOwnerMenuOpen(true)} aria-label="More options" className="dd-mobile-header-action"><AppIcon name="more" className="h-5 w-5" /></button>
-        </div>
-        {restaurantModuleEnabled && <div className="mt-3 flex items-center justify-between gap-3">
-          <button type="button" role="switch" aria-checked={isStoreOpen} disabled={savingStoreStatus} onClick={handleOwnerStoreToggle} className={`dd-mobile-store-pill ${isStoreOpen ? 'dd-open' : 'dd-closed'}`}>
-            <span className="h-2 w-2 rounded-full bg-current" />{savingStoreStatus ? 'Updating store…' : isStoreOpen ? 'Restaurant open' : 'Restaurant closed'}<AppIcon name="chevron" className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" onClick={() => openOwnerMobileTab('mobile-orders')} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-orange-50 px-3 text-[11px] font-extrabold text-orange-700"><AppIcon name="orders" className="h-4 w-4" />{ordersHaveLoaded ? activeOrders.length : '—'} live</button>
-        </div>}
-      </header>
-
-      {/* Existing responsive website header remains on large screens. */}
-      <header className="dd-dashboard-header dd-owner-desktop-header bg-white border-b border-neutral-200 sticky top-0 z-30 px-6 py-4 shadow-sm">
+      {/* Top Partner Header */}
+      <header className="dd-dashboard-header bg-white border-b border-neutral-200 sticky top-0 z-30 px-6 py-4 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
 
           <div className="flex items-center space-x-3">
@@ -5509,6 +4398,14 @@ if (staffError) {
 
           <div className="flex items-center space-x-3">
             <ThemeToggle />
+
+            <button
+              type="button"
+              onClick={() => setOwnerSupportOpenSignal(n => n + 1)}
+              className="hidden lg:inline-flex min-h-10 items-center rounded-xl border border-neutral-200 px-4 text-xs font-bold text-neutral-800"
+            >
+              Live Support
+            </button>
 
             <button
               onClick={() => setProfileOpen(true)}
@@ -5666,7 +4563,33 @@ if (staffError) {
 
       <main className="dd-dashboard-main max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-6">
 
-        <div className="dd-dashboard-intro dd-owner-desktop-intro">
+        <OwnerPremiumMobileHub
+          businessName={restaurant.name}
+          businessCode={restaurant.restaurant_code || ''}
+          mode={dashboardMode}
+          hasRestaurant={restaurantModuleEnabled}
+          hasDelivery={deliveryModuleEnabled}
+          hasResort={resortModuleEnabled}
+          advanced={planFeatures.advanced}
+          storeOpen={isStoreOpen}
+          savingStore={savingStoreStatus}
+          onStoreToggle={handleOwnerStoreToggle}
+          onModeChange={setDashboardMode}
+          onRestaurantTab={handleTabSwitch}
+          onProfile={() => setProfileOpen(true)}
+          onQR={() => router.push(`/dashboard/${restaurantId}/qr`)}
+          onSupport={() => setOwnerSupportOpenSignal(n => n + 1)}
+          orders={orders}
+          ordersLoaded={ordersHaveLoaded}
+          ordersError={ordersLoadError}
+          todayRevenue={todaysOrders.reduce((sum, o) => sum + (o.status === 'cancelled' ? 0 : Number(o.total_amount || 0)), 0)}
+          totalRevenue={totalRevenue}
+          activeCount={activeOrders.length}
+          todayCount={todaysOrders.length}
+          graphData={salesGraphData}
+        />
+
+        <div className="dd-dashboard-intro">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
             Owner Dashboard
           </p>
@@ -5682,239 +4605,42 @@ if (staffError) {
           </div>
         </div>
 
-
-        {/* MOBILE OWNER HOME — app-first operations, backed by the existing loaded orders. */}
-        {dashboardMode === 'restaurant' && restaurantModuleEnabled && activeTab === 'owner-home' && (
-          <section className="dd-mobile-home lg:hidden space-y-5" aria-label="Owner home">
-            <div className="dd-mobile-hero">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold text-white/75">Your restaurant today</p>
-                  <h2 className="mt-1 truncate text-[22px] font-extrabold tracking-tight text-white">
-                    {restaurant.name}
-                  </h2>
-                  <p className="mt-1 text-xs text-white/80">
-                    {ordersLoadError ? 'Orders need attention' : ordersHaveLoaded ? 'Your live business snapshot' : 'Loading order activity…'}
-                  </p>
-                </div>
-                <div className="dd-mobile-hero-symbol" aria-hidden="true"><AppIcon name="chart" className="h-7 w-7" /></div>
-              </div>
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5">
-                  <p className="text-[11px] text-white/85">Sales today</p>
-                  <p className="mt-1 text-[22px] font-extrabold tracking-tight text-white">
-                    {ordersHaveLoaded ? formatCurrency(todaysOrders.filter((o) => String(o.status || '').toLowerCase() !== 'cancelled').reduce((sum, o) => sum + Number(o.total_amount || 0), 0)) : '—'}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/20 bg-white/15 p-3.5">
-                  <p className="text-[11px] text-white/85">Orders today</p>
-                  <p className="mt-1 text-[22px] font-extrabold text-white">{ordersHaveLoaded ? todaysOrders.length : '—'}</p>
-                </div>
-              </div>
-              <div className="mt-3 flex items-center justify-between text-[11px] text-white/85">
-                <span>{activeOrders.length} active kitchen orders</span>
-                <button type="button" onClick={() => openOwnerMobileTab('mobile-orders')} className="inline-flex min-h-9 items-center gap-1 font-bold text-white">
-                  View orders <AppIcon name="arrow" className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {ordersLoadError && (
-              <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                Order figures may be incomplete: {ordersLoadError}
-              </div>
-            )}
-
-            <div className="dd-mobile-section-heading">
-              <div><h3>Quick actions</h3><p>Your most-used owner tools</p></div>
-            </div>
-            <div className="grid grid-cols-4 gap-2.5">
-              {[
-                ['mobile-orders', 'orders', 'Orders', 'dd-tile-orange'],
-                ['menu', 'menu', 'Menu', 'dd-tile-blue'],
-                ['tables', 'tables', 'Tables', 'dd-tile-green'],
-                ['billing', 'billing', 'Billing', 'dd-tile-purple'],
-              ].map(([id, icon, title, color]) => (
-                <button type="button" key={id} onClick={() => openOwnerMobileTab(id)} className="dd-mobile-quick-action">
-                  <span className={`dd-mobile-action-icon ${color}`}><AppIcon name={icon} className="h-5 w-5" /></span>
-                  <span className="mt-2 text-[11px] font-semibold">{title}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="dd-mobile-section-heading">
-              <div><h3>Live orders</h3><p>Orders requiring attention</p></div>
-              <button type="button" className="dd-mobile-inline-link" onClick={() => openOwnerMobileTab('mobile-orders')}>See all</button>
-            </div>
-            <div className="space-y-3">
-              {!ordersHaveLoaded ? (
-                <div className="dd-mobile-empty">Loading latest orders…</div>
-              ) : activeOrders.length === 0 ? (
-                <div className="dd-mobile-empty"><AppIcon name="check" className="mx-auto mb-2 h-6 w-6 text-emerald-500" />All caught up. New orders will appear here.</div>
-              ) : activeOrders.slice(0, 3).map((order) => (
-                <button type="button" key={order.id} onClick={() => openOwnerMobileTab('mobile-orders')} className="dd-mobile-order-card w-full text-left">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-neutral-900">Order #{String(order.order_number || order.id || '').slice(-6).toUpperCase()}</span>
-                    <span className="dd-mobile-order-status">{String(order.status || 'pending').replaceAll('_',' ')}</span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
-                    <span>Table {order.table_number || '—'} · {Array.isArray(order.items) ? order.items.length : 0} items</span>
-                    <span className="font-extrabold text-neutral-900">{formatCurrency(order.total_amount)}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div className="dd-mobile-section-heading"><div><h3>Manage your business</h3><p>Operations in one place</p></div></div>
-            <div className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => { setTableQrOpen(true); setMobileOwnerMenuOpen(false) }} className="dd-mobile-feature-card">
-                <span className="dd-mobile-feature-symbol dd-tile-green"><AppIcon name="qr" /></span>
-                <span className="mt-3 text-[13px] font-extrabold">Table QR codes</span>
-                <span className="mt-1 text-[11px] text-neutral-500">Register & share menus</span>
-              </button>
-              <button type="button" onClick={() => openOwnerMobileTab('mobile-wallet')} className="dd-mobile-feature-card">
-                <span className="dd-mobile-feature-symbol dd-tile-orange"><AppIcon name="wallet" /></span>
-                <span className="mt-3 text-[13px] font-extrabold">Platform wallet</span>
-                <span className="mt-1 text-[11px] text-neutral-500">Balance & recharge</span>
-              </button>
-              {deliveryModuleEnabled && (
-                <button type="button" onClick={() => { setDashboardMode('delivery'); setMobileOwnerMenuOpen(false); window.scrollTo({top:0,behavior:'smooth'}) }} className="dd-mobile-feature-card">
-                  <span className="dd-mobile-feature-symbol dd-tile-blue"><AppIcon name="truck" /></span>
-                  <span className="mt-3 text-[13px] font-extrabold">DD MART</span>
-                  <span className="mt-1 text-[11px] text-neutral-500">Delivery operations</span>
-                </button>
-              )}
-              <button type="button" onClick={() => openOwnerMobileTab('settlements')} className="dd-mobile-feature-card">
-                <span className="dd-mobile-feature-symbol dd-tile-purple"><AppIcon name="chart" /></span>
-                <span className="mt-3 text-[13px] font-extrabold">Reports</span>
-                <span className="mt-1 text-[11px] text-neutral-500">Sales & performance</span>
-              </button>
-            </div>
-          </section>
-        )}
-
-        {dashboardMode === 'restaurant' && restaurantModuleEnabled && activeTab === 'mobile-orders' && (
-          <section className="dd-mobile-orders lg:hidden space-y-4" aria-label="Restaurant order management">
-            <div className="dd-mobile-section-heading">
-              <div><h2>Restaurant orders</h2><p>Latest live updates from your restaurant</p></div>
-              <button type="button" className="dd-mobile-refresh" onClick={() => setOrdersRefreshTick((tick) => tick + 1)}><AppIcon name="refresh" className="h-4 w-4" /> Refresh</button>
-            </div>
-            <div className="dd-mobile-filterbar">
-              {[
-                ['active', 'Active'], ['today', 'Today'], ['all', 'Recent'],
-              ].map(([value, title]) => (
-                <button key={value} type="button" aria-pressed={mobileOrderFilter === value} onClick={() => setMobileOrderFilter(value)} className={mobileOrderFilter === value ? 'dd-active' : ''}>{title}</button>
-              ))}
-            </div>
-            {ordersLoadError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">{ordersLoadError}</p>}
-            {!ordersHaveLoaded && !ordersLoadError && <div className="dd-mobile-empty">Loading secure order data…</div>}
-            {ordersHaveLoaded && (() => {
-              const filtered = [...orders].filter((order) => mobileOrderFilter === 'active'
-                ? ['pending','preparing','ready'].includes(String(order.status || '').toLowerCase())
-                : mobileOrderFilter === 'today'
-                  ? String(order.created_at || '').slice(0,10) === todayString
-                  : true)
-                .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 80)
-              if (!filtered.length) return <div className="dd-mobile-empty">No {mobileOrderFilter} orders found.</div>
-              return <div className="space-y-3">{filtered.map((order) => {
-                const currentStatus = String(order.status || '').toLowerCase()
-                const nextStatus = currentStatus === 'pending' ? 'preparing' : currentStatus === 'preparing' ? 'ready' : currentStatus === 'ready' ? 'completed' : null
-                return (
-                  <article key={order.id} className="dd-mobile-order-card">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0"><p className="font-extrabold">Order #{String(order.order_number || order.id || '').slice(-8).toUpperCase()}</p><p className="mt-1 text-[11px] text-neutral-500">{order.created_at ? new Date(order.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Time not available'}</p></div>
-                      <span className="dd-mobile-order-status">{String(order.status || 'unknown').replaceAll('_',' ')}</span>
-                    </div>
-                    <div className="mt-3 flex items-end justify-between gap-3 border-t border-neutral-100 pt-3">
-                      <div className="text-xs text-neutral-600"><span className="font-semibold">Table {order.table_number || '—'}</span><p className="mt-1">{Array.isArray(order.items) ? `${order.items.length} line items` : 'Restaurant order'}</p></div>
-                      <span className="text-lg font-extrabold">{formatCurrency(order.total_amount)}</span>
-                    </div>
-                    {nextStatus && (
-                      <button type="button" className="dd-mobile-status-action" onClick={() => updateOrderStatus(order.id, nextStatus)}>
-                        Mark as {nextStatus === 'completed' ? 'completed' : nextStatus} <AppIcon name="arrow" className="h-4 w-4" />
-                      </button>
-                    )}
-                  </article>
-                )
-              })}</div>
-            })()}
-            <MobileOwnerOrderHistory restaurantId={restaurantId} formatCurrency={formatCurrency} />
-          </section>
-        )}
-
         {deliveryModuleEnabled && (
           <NativeDeliveryPush
             restaurantId={restaurantId}
             role="owner"
             enabled={deliveryModuleEnabled}
+            dashboardPath={`/dashboard/${restaurantId}?module=delivery`}
           />
         )}
 
-        {/* Wallet is available to every approved restaurant/business owner. */}
-        {activeTab === 'mobile-wallet' && (
-          <div className="dd-mobile-wallet-heading lg:hidden">
-            <p className="text-[11px] font-extrabold uppercase tracking-widest text-orange-600">Digital Dine Wallet</p>
-            <h2 className="mt-1 text-2xl font-extrabold text-neutral-900">Platform wallet</h2>
-            <p className="mt-1 text-xs leading-5 text-neutral-500">View your account balance, fees, recharge and history securely.</p>
-          </div>
-        )}
-        <div className={`dd-owner-wallet-zone ${activeTab === 'mobile-wallet' ? 'dd-wallet-visible' : ''}`}>
+        {/* Premium cross-module workspace; existing modules remain unchanged. */}
+        <OwnerWorkspaceOverview
+          restaurantId={restaurantId}
+          restaurantName={restaurant.name}
+          mode={dashboardMode}
+          onModeChange={setDashboardMode}
+          allowedModes={[
+            ...(restaurantModuleEnabled ? ['restaurant'] : []),
+            ...(deliveryModuleEnabled ? ['delivery'] : []),
+            ...(resortModuleEnabled ? ['resort'] : []),
+          ]}
+          onRestaurantTab={handleTabSwitch}
+          restaurantStats={{
+            ordersToday: todaysOrders.length,
+            activeOrders: activeOrders.length,
+            tableCount: restaurantTables.length,
+            menuCount: menuItems.length,
+          }}
+        />
+
+        {/* Wallet lives inside the Delivery dashboard for Delivery-enabled owners.
+            Keep this existing owner-wallet view available to restaurant/resort-only owners. */}
+        {!deliveryModuleEnabled && (
           <OwnerDeliveryWallet restaurantId={restaurantId} />
-        </div>
+        )}
 
-        {/* Owner workspace switch. Module visibility follows plan_code exactly. */}
-        <div className="dd-owner-module-switch rounded-3xl border border-neutral-800 bg-neutral-900 p-2">
-          <div
-            className={`grid gap-2 ${
-              enabledModuleCount >= 3
-                ? 'grid-cols-1 sm:grid-cols-3'
-                : enabledModuleCount === 2
-                  ? 'grid-cols-2'
-                  : 'grid-cols-1'
-            }`}
-          >
-            {restaurantModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('restaurant')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
-                  dashboardMode === 'restaurant'
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
-                }`}
-              >
-                🍽️ Restaurant Dashboard
-              </button>
-            )}
-
-            {resortModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('resort')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
-                  dashboardMode === 'resort'
-                    ? 'bg-sky-600 text-white'
-                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
-                }`}
-              >
-                🏨 Resort Dashboard
-              </button>
-            )}
-
-            {deliveryModuleEnabled && (
-              <button
-                type="button"
-                onClick={() => setDashboardMode('delivery')}
-                className={`rounded-2xl px-4 py-3 text-xs font-black uppercase transition ${
-                  dashboardMode === 'delivery'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-neutral-950 text-neutral-400 hover:text-white'
-                }`}
-              >
-                🚚 Delivery Dashboard
-              </button>
-            )}
-          </div>
-        </div>
+        <div id="dd-ws-live-module" className="scroll-mt-24" />
 
         {dashboardMode === 'resort' && resortModuleEnabled && (
           <ResortManagement
@@ -5933,8 +4659,8 @@ if (staffError) {
 
         {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
           <div className="contents">
-        {/* Metrics Grid — full website stays on desktop; mobile has a separate overview. */}
-        <div className="dd-owner-desktop-metrics grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
 
           <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm">
             <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
@@ -6073,10 +4799,7 @@ if (staffError) {
                   <h2 className="text-lg font-black text-white">Restaurant Tables</h2>
                   <p className="text-xs text-neutral-500 mt-1">Only table QR codes registered from your Table QR page are counted.</p>
                 </div>
-                <button type="button" onClick={() => {
-                  if (window.matchMedia('(max-width: 1023px)').matches) setTableQrOpen(true)
-                  else router.push(`/dashboard/${restaurantId}/qr`)
-                }} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black">📷 Manage Table QR Codes</button>
+                <button type="button" onClick={() => router.push(`/dashboard/${restaurantId}/qr`)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs font-black">📷 Manage Table QR Codes</button>
               </div>
               {configuredTableNumbers.length === 0 ? (
                 <div className="text-center py-10 text-sm text-neutral-500">No table QR codes have been registered yet.</div>
@@ -8674,68 +7397,12 @@ if (staffError) {
       )}
 
 
-      {/* NATIVE-STYLE OWNER NAVIGATION: accessible on all authorized modules. */}
-      <nav className="dd-owner-mobile-bottom-nav" aria-label="Mobile owner navigation">
-        {[
-          ['home', 'home', 'Home', restaurantModuleEnabled ? 'owner-home' : 'delivery'],
-          ['orders', 'orders', 'Orders', restaurantModuleEnabled ? 'mobile-orders' : 'delivery'],
-          ...(restaurantModuleEnabled ? [['menu', 'menu', 'Menu', 'menu']] : [['delivery', 'truck', 'DD MART', 'delivery']]),
-          ['wallet', 'wallet', 'Wallet', 'mobile-wallet'],
-        ].map(([key, icon, title, destination]) => {
-          const selected = (destination === 'delivery' ? dashboardMode === 'delivery' : destination === 'mobile-wallet' ? activeTab === destination : dashboardMode === 'restaurant' && activeTab === destination)
-          return (
-            <button key={key} type="button" aria-label={title} aria-current={selected ? 'page' : undefined} onClick={() => {
-              setMobileOwnerMenuOpen(false)
-              if (destination === 'delivery') setDashboardMode('delivery')
-              else { setDashboardMode('restaurant'); setActiveTab(destination) }
-              window.scrollTo({top:0,behavior:'smooth'})
-            }} className={`dd-mobile-nav-link ${selected ? 'dd-is-current' : ''}`}>
-              <span className="relative"><AppIcon name={icon} className="h-[21px] w-[21px]" />
-                {key === 'orders' && dashboardMode !== 'delivery' && activeOrders.length > 0 && <span className="dd-mobile-nav-dot" />}
-              </span><span>{title}</span>
-            </button>
-          )
-        })}
-        <button type="button" aria-label="More owner tools" aria-expanded={mobileOwnerMenuOpen} onClick={() => setMobileOwnerMenuOpen(true)} className="dd-mobile-nav-link"><AppIcon name="more" className="h-[21px] w-[21px]" /><span>More</span></button>
-      </nav>
-
-      {mobileOwnerMenuOpen && (
-        <div className="dd-mobile-sheet-scrim lg:hidden" onClick={() => setMobileOwnerMenuOpen(false)}>
-          <div className="dd-mobile-sheet" role="dialog" aria-modal="true" aria-label="All owner tools" onClick={(event) => event.stopPropagation()}>
-            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200" />
-            <div className="flex items-center justify-between gap-3">
-              <div><p className="text-[11px] font-bold uppercase tracking-widest text-orange-600">Digital Dine</p><h2 className="mt-1 text-xl font-extrabold text-neutral-900">Manage your business</h2><p className="mt-1 text-xs text-neutral-500">Everything you need, one tap away.</p></div>
-              <button type="button" aria-label="Close menu" onClick={() => setMobileOwnerMenuOpen(false)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-100"><AppIcon name="close" /></button>
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-2.5">
-              {[
-                ...(restaurantModuleEnabled ? [
-                  ['settlements','chart','Reports'], ['tables','tables','Tables'], ['billing','billing','Billing'],
-                  ['offers','tag','Offers'],['staff','users','Managers'],['staff-access','qr','Staff QR'],
-                  ['taxes','settings','Taxes'],['swiggy-sync','sync','Menu Sync'],['gateway','card','Payments'],['alarm-settings','bell','Alarms'],
-                ] : []),
-              ].filter(([id]) => !['staff','swiggy-sync','alarm-settings'].includes(id) || planFeatures.advanced).map(([id,icon,title]) => (
-                <button type="button" key={id} onClick={() => openOwnerMobileTab(id)} className="dd-mobile-sheet-tool"><AppIcon name={icon} className="h-[21px] w-[21px]" /><span>{title}</span></button>
-              ))}
-              {restaurantModuleEnabled && <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setTableQrOpen(true);setMobileOwnerMenuOpen(false)}}><AppIcon name="qr" className="h-[21px] w-[21px]" /><span>Table QR</span></button>}
-              {deliveryModuleEnabled && <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setDashboardMode('delivery');setMobileOwnerMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'})}}><AppIcon name="truck" className="h-[21px] w-[21px]" /><span>DD MART</span></button>}
-              {resortModuleEnabled && <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setDashboardMode('resort');setMobileOwnerMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'})}}><AppIcon name="hotel" className="h-[21px] w-[21px]" /><span>Resort</span></button>}
-              <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setExperienceOpen(true);setMobileOwnerMenuOpen(false)}}><AppIcon name="palette" className="h-[21px] w-[21px]" /><span>Appearance</span></button>
-              <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setProfileOpen(true);setMobileOwnerMenuOpen(false)}}><AppIcon name="user" className="h-[21px] w-[21px]" /><span>My profile</span></button>
-              <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setMobileOwnerMenuOpen(false);router.push('/delete-account')}}><AppIcon name="user" className="h-[21px] w-[21px]" /><span>Delete account</span></button>
-              <button type="button" className="dd-mobile-sheet-tool" onClick={() => {setMobileOwnerMenuOpen(false);handleLogout()}}><AppIcon name="logout" className="h-[21px] w-[21px]" /><span>Sign out</span></button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Preserved native-app appearance preferences and table QR manager. */}
-      <MobileExperienceSettings open={experienceOpen} onClose={() => setExperienceOpen(false)} portal="Owner App" />
-      {tableQrOpen && <OwnerTableQrSheet restaurant={restaurant} restaurantId={restaurantId} onClose={() => setTableQrOpen(false)} />}
+      {/* Mobile navigation is owned by OwnerPremiumMobileHub. */}
 
       {/* Embedded Real-Time Restaurant Chat Widget */}
       <RestaurantChatWidget
         restaurantId={restaurantId}
+        openSignal={ownerSupportOpenSignal}
       />
     </div>
   )
