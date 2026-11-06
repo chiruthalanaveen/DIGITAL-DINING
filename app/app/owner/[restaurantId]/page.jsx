@@ -14,6 +14,52 @@ import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
 
+// Non-invasive bridge to the existing Delivery Owner tab buttons. No backend changes.
+function OwnerDeliverySection({ restaurant, planCode, navigationTarget, navigationRequest }) {
+  const containerRef = useRef(null)
+  const initialNavigationDoneRef = useRef(false)
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth >= 1024) return undefined
+    const root = containerRef.current
+    if (!root) return undefined
+    let cancelled = false
+    let observer
+    let timeout
+    const labels = {
+      overview: /^Overview$/i, orders: /^Orders\s*\(/i,
+      menu: /^Delivery Menu\s*\(/i, inventory: /^Inventory\s*\(/i,
+      packers: /^Packers\s*\(/i, drivers: /^Drivers\s*\(/i,
+      wallet: /^Delivery Wallet$/i, after_sales: /^Returns\s*\/\s*Refunds/i,
+      service_area: /^Delivery Area$/i, settings: /^Settings$/i,
+      billing: /^Billing$/i, cod: /^COD Cash/i,
+      offers: /^Offers\s*\(/i, website: /^Ordering Website$/i,
+      'support-chat': /Support Chat/i,
+    }
+    const target = labels[navigationTarget] ? navigationTarget : 'overview'
+    const desired = navigationRequest > 0 ? target : 'overview'
+    const attempt = () => {
+      if (cancelled) return
+      const nav = root.querySelector('#dd-owner-delivery-side-navigation nav[aria-label="Delivery management sections"]')
+      if (!nav) return
+      const buttons = [...nav.querySelectorAll('button')]
+      const match = buttons.find(button => labels[desired]?.test(button.querySelectorAll('span')[1]?.textContent.trim() || button.textContent.trim()))
+      if (!match) return
+      const current = buttons.find(button => button.getAttribute('aria-current') === 'page')
+      if (current !== match) match.click()
+      initialNavigationDoneRef.current = true
+      observer?.disconnect()
+      window.clearTimeout(timeout)
+    }
+    // Loading states may delay the navigation; observe until the actual buttons mount.
+    observer = new MutationObserver(attempt)
+    observer.observe(root, { childList: true, subtree: true })
+    timeout = window.setTimeout(() => observer?.disconnect(), 12000)
+    attempt()
+    return () => { cancelled = true; observer?.disconnect(); window.clearTimeout(timeout) }
+  }, [navigationTarget, navigationRequest])
+  return <div ref={containerRef}><OwnerDeliveryManagement restaurant={restaurant} planCode={planCode} /></div>
+}
+
 // Real-Time Restaurant Chat Widget Component
 function RestaurantChatWidget({ restaurantId, openSignal = 0 }) {
   const AI_CATEGORIES = [
@@ -464,7 +510,9 @@ function RestaurantChatWidget({ restaurantId, openSignal = 0 }) {
   const isClosed = status === 'closed'
 
   return (
-    <div className="fixed inset-0 z-[155] flex items-center justify-center bg-black/70 p-3 font-sans sm:inset-auto sm:bottom-6 sm:right-6 sm:block sm:bg-transparent sm:p-0">
+    <div className={isOpen
+      ? 'fixed inset-0 z-[155] flex items-center justify-center bg-black/70 p-3 font-sans sm:inset-auto sm:bottom-6 sm:right-6 sm:block sm:bg-transparent sm:p-0'
+      : 'hidden'}>
       {isOpen && (
         <div className="bg-neutral-900 border border-neutral-800 rounded-3xl w-[min(390px,calc(100vw-1.5rem))] h-[min(650px,calc(100dvh-1.5rem))] shadow-2xl flex flex-col overflow-hidden">
           <div className="bg-neutral-950 p-4 border-b border-neutral-800">
@@ -1275,8 +1323,21 @@ export default function RestaurantDashboard() {
   const [dashboardMode, setDashboardMode] = useState('restaurant')
   const [isStoreOpen, setIsStoreOpen] = useState(true)
   const [savingStoreStatus, setSavingStoreStatus] = useState(false)
-  const [mobileOwnerMenuOpen, setMobileOwnerMenuOpen] = useState(false)
   const [ownerSupportOpenSignal, setOwnerSupportOpenSignal] = useState(0)
+  const [mobileWorkspaceOpen, setMobileWorkspaceOpen] = useState(false)
+  const [mobileDeliveryTarget, setMobileDeliveryTarget] = useState('overview')
+  const [mobileDeliveryRequest, setMobileDeliveryRequest] = useState(0)
+  const openMobileWorkspace = (nextMode, nextTab = 'overview') => {
+    if (nextMode === 'delivery' && !deliveryModuleEnabled) return
+    if (nextMode === 'resort' && !resortModuleEnabled) return
+    if (nextMode === 'restaurant' && !restaurantModuleEnabled) return
+    if (nextMode !== dashboardMode) setDashboardMode(nextMode)
+    if (nextMode === 'delivery') {
+      setMobileDeliveryTarget(nextTab || 'overview')
+      setMobileDeliveryRequest(v => v + 1)
+    }
+    setMobileWorkspaceOpen(true)
+  }
 
   // Add Dish Form States
   const [name, setName] = useState('')
@@ -3562,7 +3623,6 @@ if (staffError) {
   const openOwnerMobileTab = (tabId) => {
     setDashboardMode('restaurant')
     handleTabSwitch(tabId)
-    setMobileOwnerMenuOpen(false)
 
     window.setTimeout(() => {
       window.scrollTo({
@@ -4400,14 +4460,6 @@ if (staffError) {
             <ThemeToggle />
 
             <button
-              type="button"
-              onClick={() => setOwnerSupportOpenSignal(n => n + 1)}
-              className="hidden lg:inline-flex min-h-10 items-center rounded-xl border border-neutral-200 px-4 text-xs font-bold text-neutral-800"
-            >
-              Live Support
-            </button>
-
-            <button
               onClick={() => setProfileOpen(true)}
               className="border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 font-bold px-4 py-2.5 rounded-xl text-xs transition flex items-center space-x-2 shadow-sm"
               type="button"
@@ -4574,7 +4626,9 @@ if (staffError) {
           storeOpen={isStoreOpen}
           savingStore={savingStoreStatus}
           onStoreToggle={handleOwnerStoreToggle}
-          onModeChange={setDashboardMode}
+          onModeChange={(next) => { setDashboardMode(next); setMobileWorkspaceOpen(false); if (next === 'delivery') { setMobileDeliveryTarget('overview'); setMobileDeliveryRequest(v => v + 1) } }}
+          onWorkspaceOpen={openMobileWorkspace}
+          onMobileScreenChange={() => setMobileWorkspaceOpen(false)}
           onRestaurantTab={handleTabSwitch}
           onProfile={() => setProfileOpen(true)}
           onQR={() => router.push(`/dashboard/${restaurantId}/qr`)}
@@ -4615,7 +4669,7 @@ if (staffError) {
         )}
 
         {/* Premium cross-module workspace; existing modules remain unchanged. */}
-        <OwnerWorkspaceOverview
+        <div className="hidden lg:block"><OwnerWorkspaceOverview
           restaurantId={restaurantId}
           restaurantName={restaurant.name}
           mode={dashboardMode}
@@ -4632,15 +4686,16 @@ if (staffError) {
             tableCount: restaurantTables.length,
             menuCount: menuItems.length,
           }}
-        />
+        /></div>
 
         {/* Wallet lives inside the Delivery dashboard for Delivery-enabled owners.
             Keep this existing owner-wallet view available to restaurant/resort-only owners. */}
         {!deliveryModuleEnabled && (
-          <OwnerDeliveryWallet restaurantId={restaurantId} />
+          <div className="hidden lg:block"><OwnerDeliveryWallet restaurantId={restaurantId} /></div>
         )}
 
         <div id="dd-ws-live-module" className="scroll-mt-24" />
+        <div className={mobileWorkspaceOpen ? 'block' : 'hidden lg:block'}>
 
         {dashboardMode === 'resort' && resortModuleEnabled && (
           <ResortManagement
@@ -4651,11 +4706,13 @@ if (staffError) {
         )}
 
         {dashboardMode === 'delivery' && deliveryModuleEnabled && (
-  <OwnerDeliveryManagement
-    restaurant={restaurant}
-    planCode={currentPlanCode}
-  />
-)}
+          <OwnerDeliverySection
+            restaurant={restaurant}
+            planCode={currentPlanCode}
+            navigationTarget={mobileDeliveryTarget}
+            navigationRequest={mobileDeliveryRequest}
+          />
+        )}
 
         {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
           <div className="contents">
@@ -7247,6 +7304,7 @@ if (staffError) {
 
           </div>
         )}
+        </div>
       </main>
 
       {/* Printable Bill */}

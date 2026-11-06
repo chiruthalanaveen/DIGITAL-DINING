@@ -55,6 +55,15 @@ export default function WaiterPortal({ params }) {
   const [waiterName, setWaiterName] = useState('')
 
   const [showProfile, setShowProfile] = useState(false)
+  const [mobileTheme, setMobileTheme] = useState('dark')
+  const [activeMobileTab, setActiveMobileTab] = useState('ready')
+  const [submittingDirectOrder, setSubmittingDirectOrder] = useState(false)
+  const directOrderPendingRef = useRef(false)
+  const goToMobileSection = (tab) => {
+    setActiveMobileTab(tab)
+    if (tab === 'profile') { setShowProfile(true); return }
+    document.getElementById(`waiter-${tab}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
 
 
@@ -2896,15 +2905,9 @@ export default function WaiterPortal({ params }) {
 
     async () => {
 
-      if (
-
-        cart.length === 0
-
-      ) {
-
-        return
-
-      }
+      if (cart.length === 0 || directOrderPendingRef.current) return
+      directOrderPendingRef.current = true
+      setSubmittingDirectOrder(true)
 
 
 
@@ -3154,6 +3157,9 @@ export default function WaiterPortal({ params }) {
 
         )
 
+      } finally {
+        directOrderPendingRef.current = false
+        setSubmittingDirectOrder(false)
       }
 
     }
@@ -3474,9 +3480,34 @@ export default function WaiterPortal({ params }) {
 
   return (
 
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-6 space-y-6">
+    <div className={`dd-ops-shell min-h-screen bg-neutral-950 text-neutral-100 p-3 pb-28 sm:p-6 space-y-5 ${mobileTheme === 'light' ? 'dd-ops-light' : ''}`}>
 
 
+
+      
+      <style>{`
+        .dd-ops-light { background:#f7f8f5!important; color:#17211c!important; }
+        .dd-ops-light .bg-neutral-950 { background-color:#f7f8f5!important; }
+        .dd-ops-light .bg-neutral-900 { background-color:#fff!important; }
+        .dd-ops-light .bg-neutral-800 { background-color:#e8eae5!important; }
+        .dd-ops-light .border-neutral-800 { border-color:#e4e7df!important; }
+        .dd-ops-light .text-white, .dd-ops-light .text-neutral-100, .dd-ops-light .text-neutral-200 { color:#1a241f!important; }
+        .dd-ops-light .text-neutral-300, .dd-ops-light .text-neutral-400, .dd-ops-light .text-neutral-500 { color:#59645b!important; }
+        .dd-ops-light input, .dd-ops-light select { color:#18241d; }
+        .dd-ops-light .dd-mobile-tab {background:#fff;color:#39463d;}
+        .dd-ops-light .dd-mobile-tab[data-active='true'] { color:#137a46;background:#eaf8ee; }
+        .dd-ops-light .dd-mobile-tabs {background:rgba(255,255,255,.97);border-color:#e5e7eb;}
+        .dd-ops-light .dd-ops-hero {background:linear-gradient(125deg,#fff8cc,#fff 68%);color:#1c2821;border-color:#f1df84;}
+        .dd-ops-light .dd-ops-hero p {color:#526052;}
+        @media (prefers-reduced-motion: reduce){.dd-ops-shell *, .dd-ops-shell *::before, .dd-ops-shell *::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+      `}</style>
+
+      <div className="dd-ops-hero rounded-3xl border border-yellow-500/30 bg-gradient-to-r from-yellow-500/20 via-neutral-900 to-neutral-900 p-4 shadow-sm sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div><p className="text-[11px] font-bold uppercase tracking-widest text-yellow-400">Restaurant service</p><h2 className="mt-1 text-xl font-black sm:text-2xl">Ready to serve</h2><p className="mt-1 text-xs text-neutral-400">{readyOrders.length} orders waiting for handover</p></div>
+          <button type="button" aria-label="Toggle light or dark mode" onClick={() => setMobileTheme(x => x === 'light' ? 'dark' : 'light')} className="min-h-11 shrink-0 rounded-xl border border-yellow-500/30 bg-neutral-900 px-3 text-sm font-bold">{mobileTheme === 'light' ? '🌙 Dark' : '☀️ Light'}</button>
+        </div>
+      </div>
 
       {/* PROFILE MODAL */}
 
@@ -3892,6 +3923,7 @@ export default function WaiterPortal({ params }) {
 
 
 
+      <div id="waiter-ready" className="scroll-mt-5" />
       {/* READY ORDERS */}
 
 
@@ -4056,6 +4088,7 @@ export default function WaiterPortal({ params }) {
 
 
 
+      <div id="waiter-menu" className="scroll-mt-5" />
       {/* MENU */}
 
 
@@ -4272,7 +4305,8 @@ export default function WaiterPortal({ params }) {
 
 
 
-        {/* CART */}
+        <div id="waiter-cart" className="scroll-mt-5" />
+      {/* CART */}
 
 
 
@@ -4368,19 +4402,13 @@ export default function WaiterPortal({ params }) {
 
             }
 
-            disabled={
-
-              cart.length ===
-
-              0
-
-            }
+            disabled={cart.length === 0 || submittingDirectOrder}
 
             className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-black py-3 rounded-xl text-xs uppercase"
 
           >
 
-            Send to Kitchen 🍳
+            {submittingDirectOrder ? 'Sending order…' : 'Send to Kitchen 🍳'}
 
           </button>
 
@@ -4389,6 +4417,15 @@ export default function WaiterPortal({ params }) {
         </div>
 
       </div>
+
+      <nav aria-label="Waiter mobile navigation" className="dd-mobile-tabs fixed bottom-0 inset-x-0 z-40 border-t border-neutral-700 bg-neutral-950/95 px-2 pt-2 backdrop-blur-xl lg:hidden" style={{paddingBottom:'max(8px, env(safe-area-inset-bottom))'}}>
+        <div className="mx-auto grid max-w-lg grid-cols-4 gap-1">
+        <button type="button" aria-label="Ready" data-active={activeMobileTab === 'ready'} aria-current={activeMobileTab === 'ready' ? 'page' : undefined} onClick={() => goToMobileSection('ready')} className="dd-mobile-tab min-h-[62px] flex flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-neutral-300 transition active:scale-[.97]" key="ready"><span aria-hidden="true" className="text-xl">🔔</span><span className="text-[11px] font-extrabold">Ready</span></button>
+        <button type="button" aria-label="Menu" data-active={activeMobileTab === 'menu'} aria-current={activeMobileTab === 'menu' ? 'page' : undefined} onClick={() => goToMobileSection('menu')} className="dd-mobile-tab min-h-[62px] flex flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-neutral-300 transition active:scale-[.97]" key="menu"><span aria-hidden="true" className="text-xl">🍽️</span><span className="text-[11px] font-extrabold">Menu</span></button>
+        <button type="button" aria-label="Cart" data-active={activeMobileTab === 'cart'} aria-current={activeMobileTab === 'cart' ? 'page' : undefined} onClick={() => goToMobileSection('cart')} className="dd-mobile-tab min-h-[62px] flex flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-neutral-300 transition active:scale-[.97]" key="cart"><span aria-hidden="true" className="text-xl">🛒</span><span className="text-[11px] font-extrabold">Cart</span></button>
+        <button type="button" aria-label="Profile" data-active={activeMobileTab === 'profile'} aria-current={activeMobileTab === 'profile' ? 'page' : undefined} onClick={() => goToMobileSection('profile')} className="dd-mobile-tab min-h-[62px] flex flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-neutral-300 transition active:scale-[.97]" key="profile"><span aria-hidden="true" className="text-xl">👤</span><span className="text-[11px] font-extrabold">Profile</span></button>
+        </div>
+      </nav>
 
     </div>
 

@@ -189,10 +189,10 @@ function NewAssignmentPopup({ order, onAcknowledge, onView }) {
 
 function DriverBottomNav({ view, setView, codBadge, inboxBadge }) {
   const tabs = [
-    { key: 'tracking', label: 'Trips', icon: '◎' },
-    { key: 'orders', label: 'Orders', icon: '▣' },
-    { key: 'cod', label: 'COD', icon: '₹', badge: codBadge },
-    { key: 'more', label: 'More', icon: '⋯', badge: inboxBadge },
+    { key: 'tracking', label: 'Home', icon: '⌂' },
+    { key: 'orders', label: 'Orders', icon: '▣', badge: inboxBadge },
+    { key: 'earnings', label: 'Earnings', icon: '₹' },
+    { key: 'more', label: 'Profile', icon: '◯' },
   ]
 
   const moreViews = [
@@ -207,13 +207,13 @@ function DriverBottomNav({ view, setView, codBadge, inboxBadge }) {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 px-2 pt-1 shadow-[0_-8px_28px_rgba(0,0,0,.06)] backdrop-blur lg:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <div className="grid grid-cols-4">
         {tabs.map((tab) => {
           const active =
-            view === tab.key || (tab.key === 'more' && moreViews.includes(view))
+              view === tab.key || (tab.key === 'more' && moreViews.includes(view)) || (tab.key === 'earnings' && view === 'cod')
 
           return (
             <button
@@ -221,7 +221,7 @@ function DriverBottomNav({ view, setView, codBadge, inboxBadge }) {
               type="button"
               onClick={() => setView(tab.key)}
               className={`relative flex min-h-[64px] flex-col items-center justify-center gap-1 ${
-                active ? 'text-blue-600' : 'text-neutral-500'
+                active ? 'text-emerald-700 bg-amber-50' : 'text-neutral-500'
               }`}
             >
               <span className="text-xl leading-none">{tab.icon}</span>
@@ -678,6 +678,7 @@ export default function DeliveryDriverPortal({ params }) {
   const [gpsRestartNonce, setGpsRestartNonce] = useState(0)
 
   const [driverView, setDriverView] = useState('tracking')
+  const [driverMobileTheme, setDriverMobileTheme] = useState('light')
   const [driverSearch, setDriverSearch] = useState('')
   const [resultOrder, setResultOrder] = useState(null)
 
@@ -2048,7 +2049,16 @@ export default function DeliveryDriverPortal({ params }) {
   /* ---------------- LOGGED-IN VIEW ---------------- */
 
   return (
-    <main className="min-h-[100dvh] bg-[#f5f6f8] text-neutral-900">
+    <main className={`dd-driver-mobile min-h-[100dvh] bg-[#f5f6f8] text-neutral-900 ${driverMobileTheme === 'dark' ? 'dd-driver-dark' : ''}`}>
+      <style>{`
+        @media(max-width:1023px){
+          .dd-driver-dark,.dd-driver-dark > div:first-of-type{background:#0f172a!important;color:#f8fafc!important}
+          .dd-driver-dark header,.dd-driver-dark .bg-white{background:#1e293b!important;border-color:#334155!important}
+          .dd-driver-dark .text-neutral-900,.dd-driver-dark .text-neutral-800{color:#f8fafc!important}
+          .dd-driver-dark .text-neutral-500,.dd-driver-dark .text-neutral-600{color:#cbd5e1!important}
+        }
+        @media(prefers-reduced-motion:reduce){.dd-driver-mobile *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+      `}</style>
       {/* NEW ASSIGNMENT POPUP (shows on phone and desktop) */}
       <NewAssignmentPopup
         order={currentPopupOrder}
@@ -2081,10 +2091,13 @@ export default function DeliveryDriverPortal({ params }) {
             </div>
             <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1.5 text-[10px] font-bold text-emerald-700 min-[390px]:inline-flex">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-              On shift
+              {driver.status === 'busy' ? 'On delivery' : driver.status === 'offline' ? 'Offline' : 'Available'}
             </span>
           </div>
 
+          <div className="mt-3 flex justify-end">
+            <button type="button" onClick={() => setDriverMobileTheme(x => x === 'light' ? 'dark' : 'light')} aria-label="Toggle light or dark appearance" className="min-h-11 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-900">{driverMobileTheme === 'light' ? '🌙 Dark mode' : '☀ Light mode'}</button>
+          </div>
           <div className="mt-3 flex min-w-0 items-center justify-between gap-2 border-t border-neutral-100 pt-3">
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-black uppercase tracking-wider text-neutral-600">
@@ -2169,7 +2182,18 @@ export default function DeliveryDriverPortal({ params }) {
           </div>
         )}
 
+        {driverView === 'earnings' && (
+          <section className="space-y-4" aria-label="Driver earnings">
+            <div className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5">
+              <p className="text-xs font-extrabold uppercase tracking-widest text-amber-700">Driver earnings</p>
+              <h2 className="mt-2 text-xl font-black text-neutral-900">Payout details not connected</h2>
+              <p className="mt-2 text-sm leading-6 text-neutral-600">Order totals and cash collected are not your earnings. Your payout breakdown will appear once an authorized earnings source is connected.</p>
+              <button type="button" onClick={() => setDriverView('cod')} className="mt-4 min-h-12 w-full rounded-2xl bg-emerald-700 px-4 font-bold text-white">View COD collection records</button>
+            </div>
+          </section>
+        )}
         {driverView === 'cod' && <div>{renderCodWorkspace()}</div>}
+
 
         {driverView === 'more' && (
           <MobileMoreMenu

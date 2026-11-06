@@ -831,6 +831,9 @@ export default function DeliveryPackerPortal({
   // View-only state: existing auth, barcode and status RPCs are unchanged.
   // Incoming and in-progress orders are the packer's default work queue.
   const [activeStage, setActiveStage] = useState('active')
+  const [mobilePackerMenu, setMobilePackerMenu] = useState(false)
+  const [mobilePackerTheme, setMobilePackerTheme] = useState('light')
+
   const [focusOrderId, setFocusOrderId] = useState('')
   const [ordersMenuOpen, setOrdersMenuOpen] = useState(false)
   const [orderSearch, setOrderSearch] = useState('')
@@ -2888,7 +2891,17 @@ export default function DeliveryPackerPortal({
   }
 
   return (
-    <main className="min-h-[100dvh] overflow-x-hidden bg-[#f5f7fa] font-sans text-slate-900">
+    <main className={`dd-packer-mobile min-h-[100dvh] overflow-x-hidden bg-[#f5f7fa] pb-24 font-sans text-slate-900 ${mobilePackerTheme === 'dark' ? 'dd-packer-dark' : ''}`}>
+      <style>{`
+      @media (max-width:1023px) {
+        .dd-packer-dark {background:#0f172a!important;color:#f8fafc!important;}
+        .dd-packer-dark header,.dd-packer-dark .bg-white {background-color:#1e293b!important;border-color:#334155!important;}
+        .dd-packer-dark .text-slate-900,.dd-packer-dark .text-slate-800,.dd-packer-dark [class*="text-[#12253c]"],.dd-packer-dark [class*="text-[#122238]"] {color:#f8fafc!important;}
+        .dd-packer-dark .text-slate-500,.dd-packer-dark .text-slate-600 {color:#cbd5e1!important;}
+        .dd-packer-dark input {background:#0f172a!important;color:#fff!important;}
+      }
+      @media(prefers-reduced-motion:reduce){.dd-packer-mobile *{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
+      `}</style>
       <div className="lg:flex lg:min-h-[100dvh]">
         {/* Desktop sidebar */}
         <aside className="hidden w-[252px] shrink-0 flex-col bg-[#122238] text-white lg:sticky lg:top-0 lg:flex lg:h-[100dvh]">
@@ -3006,6 +3019,35 @@ export default function DeliveryPackerPortal({
           </div>
         </div>
       </div>
+
+      <nav aria-label="Packer mobile navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-amber-200 bg-white/95 px-2 pt-2 shadow-[0_-8px_24px_rgba(15,23,42,.08)] backdrop-blur-lg lg:hidden" style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
+        <div className="mx-auto grid max-w-lg grid-cols-4 gap-2">
+          {[
+            { key: 'home', label: 'Home', icon: 'grid' },
+            { key: 'scan', label: 'Scan', icon: 'scan' },
+            { key: 'orders', label: 'Orders', icon: 'box' },
+            { key: 'profile', label: 'Profile', icon: 'user' },
+          ].map((tab) => (
+            <button key={tab.key} type="button" aria-label={tab.label} aria-current={(tab.key === 'home' && activeStage === 'overview') || (tab.key === 'scan' && activeStage === 'active') || (tab.key === 'orders' && activeStage === 'all') || (tab.key === 'profile' && mobilePackerMenu) ? 'page' : undefined}
+              onClick={() => {
+                if (tab.key === 'profile') { setMobilePackerMenu(true); return }
+                setMobilePackerMenu(false)
+                selectView(tab.key === 'home' ? 'overview' : tab.key === 'scan' ? 'active' : 'all')
+              }}
+              className={`flex min-h-[62px] flex-col items-center justify-center gap-1 rounded-2xl px-1 text-xs font-extrabold ${((tab.key === 'home' && activeStage === 'overview') || (tab.key === 'scan' && activeStage === 'active') || (tab.key === 'orders' && activeStage === 'all')) ? 'bg-amber-100 text-amber-900' : 'text-slate-600'}`}>
+              <PackerIcon name={tab.icon} className="h-5 w-5"/>{tab.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+      {mobilePackerMenu && <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/60 p-3 lg:hidden" role="presentation" onClick={() => setMobilePackerMenu(false)}>
+        <section role="dialog" aria-modal="true" aria-label="Packer profile and settings" onClick={(event) => event.stopPropagation()} className="w-full rounded-3xl bg-white p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-slate-900 shadow-xl">
+          <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">{packerName}</h2><p className="text-sm text-slate-500">Packing operations</p></div><button type="button" aria-label="Close profile" onClick={() => setMobilePackerMenu(false)} className="min-h-11 rounded-xl bg-slate-100 px-4">Close</button></div>
+          <p className="mt-4 text-sm font-bold">Today's queue: {orders.length} · Active: {activeOrders.length} · Packed: {sections.packed.length}</p>
+          <button type="button" onClick={() => setMobilePackerTheme(x => x === 'light' ? 'dark' : 'light')} className="mt-4 min-h-12 w-full rounded-xl border border-slate-200 font-bold">Switch to {mobilePackerTheme === 'light' ? 'dark' : 'light'} mode</button>
+          <button type="button" onClick={logout} className="mt-3 min-h-12 w-full rounded-xl bg-rose-600 font-bold text-white">Sign out</button>
+        </section>
+      </div>}
 
       {selectedOrder && (
         <PackerOrderDetailsDialog

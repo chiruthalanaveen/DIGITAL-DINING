@@ -3372,11 +3372,10 @@ restaurantModuleEnabled,
            ===================================================== */}
         <nav className="dd-mobile-dock fixed inset-x-0 bottom-0 z-[55] border-t px-2 pt-2 lg:hidden">
           {dashboardMode === 'restaurant' && restaurantModuleEnabled ? (
-            <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+            <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
               {[
+                [hasAdvancedAnalytics ? 'settlements' : 'live-orders', '⌂', 'Home'],
                 ['live-orders', '◉', 'Orders'],
-                ['tables', '⌁', 'Tables'],
-                ['menu', '≡', 'Menu'],
                 ['staff', '◎', 'Staff'],
               ].map(([id, icon, label]) => (
                 <button
@@ -3403,7 +3402,7 @@ restaurantModuleEnabled,
                 type="button"
                 onClick={() => setMobileMoreOpen(true)}
                 className={`flex min-w-0 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-[9px] font-black transition ${
-                  ['offers', 'settlements', 'swiggy-sync'].includes(activeTab) ||
+                  ['offers', 'tables', 'menu', 'swiggy-sync'].includes(activeTab) ||
                   mobileMoreOpen
                     ? 'bg-orange-500/12 text-orange-500'
                     : 'text-neutral-500'
