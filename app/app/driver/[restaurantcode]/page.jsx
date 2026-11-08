@@ -78,30 +78,19 @@ const DELIVERY_FAILURE_REASONS = [
    ========================================================= */
 
 function NewAssignmentPopup({ order, onAcknowledge, onView }) {
-  const [vibrated, setVibrated] = useState(false)
-
+  const lastNotifiedOrderRef = useRef('')
   useEffect(() => {
-    if (!order) return
-    if (!vibrated && typeof navigator !== 'undefined' && navigator.vibrate) {
+    const nextOrderId = String(order?.id || '')
+    if (!nextOrderId || nextOrderId === lastNotifiedOrderRef.current) return
+    lastNotifiedOrderRef.current = nextOrderId
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
       navigator.vibrate([300, 150, 300, 150, 300])
-      setVibrated(true)
     }
-  }, [order, vibrated])
-
-  useEffect(() => {
-    if (!order) setVibrated(false)
-  }, [order])
+  }, [order?.id])
 
   if (!order) return null
 
-  const address = [
-    order.address_line1,
-    order.address_line2,
-    order.landmark,
-    order.city,
-  ]
-    .filter(Boolean)
-    .join(', ')
+  const address = driverAddressText(order)
 
   const isCod = order.payment_method === 'cod'
 
@@ -183,6 +172,74 @@ function NewAssignmentPopup({ order, onAcknowledge, onView }) {
   )
 }
 
+// Field normalization for driver-facing data. This does not query private tables or
+// change the server's authorization: only fields already returned to this driver are read.
+function driverAddressObject(value) {
+  if (!value) return null
+  if (typeof value === 'object' && !Array.isArray(value)) return value
+  if (typeof value === 'string' && value.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+    } catch { return null }
+  }
+  return null
+}
+
+function driverAddressText(order) {
+  if (!order) return ''
+  const primary = [order.address_line1, order.address_line2, order.landmark,
+    order.city, order.state, order.pincode].filter(v => typeof v === 'string' || typeof v === 'number').map(String).map(v=>v.trim()).filter(Boolean)
+  if (order.address_line1 || order.address_line2) return [...new Set(primary)].join(', ')
+  for (const field of [order.delivery_address, order.customer_address,
+    order.shipping_address, order.address, order.dropoff_address,
+    order.customer?.address]) {
+    const obj = driverAddressObject(field)
+    if (obj) {
+      const text = [obj.address_line1, obj.address_line2, obj.line1, obj.line2,
+        obj.house_number, obj.flat_no, obj.street, obj.area, obj.landmark,
+        obj.city, obj.state, obj.pincode, obj.postal_code]
+        .filter(v => typeof v === 'string' || typeof v === 'number')
+        .map(String).map(v => v.trim()).filter(Boolean)
+      if (text.length) return [...new Set(text)].join(', ')
+    } else if (typeof field === 'string' && field.trim() && !field.trim().startsWith('{')) {
+      return field.trim()
+    }
+  }
+  return primary.length ? [...new Set(primary)].join(', ') : ''
+}
+
+function driverCustomerPhone(order) {
+  if (!order) return ''
+  const fields = [order.customer_mobile, order.customer_phone,
+    order.customer_phone_number, order.alternate_mobile, order.delivery_phone,
+    order.contact_number, order.phone, order.mobile,
+    order.customer?.mobile, order.customer?.phone,
+    driverAddressObject(order.delivery_address)?.phone,
+    driverAddressObject(order.delivery_address)?.mobile]
+  for (const field of fields) {
+    const clean = String(field ?? '').trim().replace(/[^\d+]/g, '')
+    if (/^\+?\d{7,15}$/.test(clean)) return clean
+  }
+  return ''
+}
+
+function driverMapUrl(order) {
+  if (!order) return null
+  const data = driverAddressObject(order.delivery_address) || driverAddressObject(order.address) || {}
+  const latRaw = order.latitude ?? order.delivery_latitude ?? order.dropoff_lat ?? data.latitude ?? data.lat
+  const lngRaw = order.longitude ?? order.delivery_longitude ?? order.dropoff_lng ?? data.longitude ?? data.lng
+  if (latRaw !== '' && latRaw != null && lngRaw !== '' && lngRaw != null) {
+    const lat = Number(latRaw), lng = Number(lngRaw)
+    if (Number.isFinite(lat) && Number.isFinite(lng) &&
+      Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (lat !== 0 || lng !== 0)) {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`
+    }
+  }
+  const address = driverAddressText(order)
+  return address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : null
+}
+
 /* =========================================================
    MOBILE COMPONENTS
    ========================================================= */
@@ -191,7 +248,7 @@ function DriverBottomNav({ view, setView, codBadge, inboxBadge }) {
   const tabs = [
     { key: 'tracking', label: 'Home', icon: '⌂' },
     { key: 'orders', label: 'Orders', icon: '▣', badge: inboxBadge },
-    { key: 'earnings', label: 'Earnings', icon: '₹' },
+    { key: 'cod', label: 'COD', icon: '₹', badge: codBadge },
     { key: 'more', label: 'Profile', icon: '◯' },
   ]
 
@@ -213,7 +270,7 @@ function DriverBottomNav({ view, setView, codBadge, inboxBadge }) {
       <div className="grid grid-cols-4">
         {tabs.map((tab) => {
           const active =
-              view === tab.key || (tab.key === 'more' && moreViews.includes(view)) || (tab.key === 'earnings' && view === 'cod')
+              view === tab.key || (tab.key === 'more' && moreViews.includes(view))
 
           return (
             <button
@@ -241,48 +298,22 @@ function DriverBottomNav({ view, setView, codBadge, inboxBadge }) {
 }
 
 function MobileMoreMenu({ setView, onLogout, restaurantName, driverName }) {
-  const items = [
-    { key: 'inbox', icon: '✉', label: 'Inbox & Alerts' },
-    { key: 'customers', icon: '♙', label: 'Customers' },
-    { key: 'assigned', icon: '🚚', label: 'Assigned Deliveries' },
-    { key: 'returns', icon: '↩', label: 'Return Pickups' },
-    { key: 'dashboard', icon: '⌂', label: 'Dashboard' },
-    { key: 'help', icon: '?', label: 'Help & Support' },
-    { key: 'settings', icon: '⚙', label: 'Settings' },
-  ]
-
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-        <p className="text-sm font-black text-neutral-900">{driverName || 'Driver'}</p>
-        <p className="text-sm text-neutral-500">{restaurantName || 'Delivery'}</p>
+    <section className="space-y-4" aria-label="Driver profile">
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">Signed in as</p>
+        <h2 className="mt-2 text-xl font-black text-neutral-900">{driverName || 'Driver'}</h2>
+        <p className="mt-1 text-sm text-neutral-600">{restaurantName || 'Delivery store'}</p>
       </div>
-
-      <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-        {items.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => setView(item.key)}
-            className="flex min-h-[56px] w-full items-center gap-4 border-b border-neutral-100 px-4 text-left last:border-b-0 active:bg-neutral-50"
-          >
-            <span className="w-7 text-center text-lg">{item.icon}</span>
-            <span className="flex-1 text-base font-semibold text-neutral-800">
-              {item.label}
-            </span>
-            <span className="text-neutral-300">›</span>
-          </button>
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={onLogout}
-        className="min-h-[52px] w-full rounded-2xl bg-rose-600 text-base font-black text-white"
-      >
-        Sign Out
+      <button type="button" onClick={() => setView('help')}
+        className="min-h-[52px] w-full rounded-2xl border border-neutral-200 bg-white px-5 text-left text-sm font-bold text-neutral-900">
+        Delivery problem / Help
       </button>
-    </div>
+      <button type="button" onClick={onLogout}
+        className="min-h-[56px] w-full rounded-2xl bg-rose-600 px-5 text-base font-black text-white">
+        Log Out
+      </button>
+    </section>
   )
 }
 
@@ -306,16 +337,9 @@ function CurrentStopCard({ order, onNavigate, onStart, onCompleteStop, updating 
   const status = String(order.order_status || '')
   const isTransit = status === 'out_for_delivery'
   const isPacked = status === 'packed'
-  const mobile = String(order.customer_mobile || '')
-  const whatsapp = mobile.replace(/\D/g, '')
-  const address = [
-    order.address_line1,
-    order.address_line2,
-    order.landmark,
-    order.city,
-  ]
-    .filter(Boolean)
-    .join(', ')
+  const mobile = driverCustomerPhone(order)
+  const address = driverAddressText(order)
+  const mapUrl = driverMapUrl(order)
   const codDue = order.payment_method === 'cod' && order.payment_status !== 'paid'
 
   return (
@@ -341,7 +365,7 @@ function CurrentStopCard({ order, onNavigate, onStart, onCompleteStop, updating 
         {order.customer_name || 'Customer'}
       </p>
       <p className="mt-1 text-base leading-6 text-neutral-600">
-        {address || 'No address'}
+        {address || 'Delivery address is missing from this assignment. Contact the store.'}
       </p>
 
       <div className="mt-4 flex items-center justify-between rounded-2xl bg-neutral-50 px-4 py-3">
@@ -364,41 +388,22 @@ function CurrentStopCard({ order, onNavigate, onStart, onCompleteStop, updating 
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        <button
-          type="button"
-          onClick={() => onNavigate(order)}
-          className="min-h-[56px] rounded-2xl bg-neutral-900 text-sm font-black text-white"
-        >
-          ↗ Navigate
-        </button>
-
-        {mobile ? (
-          <a
-            href={`tel:${mobile}`}
-            className="flex min-h-[56px] items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-sm font-black text-neutral-800"
-          >
-            ☎ Call
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        {mapUrl ? (
+          <a href={mapUrl} target="_blank" rel="noopener noreferrer"
+            className="flex min-h-[56px] items-center justify-center rounded-2xl bg-neutral-900 px-2 text-center text-sm font-black text-white">
+            ↗ Navigate
           </a>
         ) : (
-          <span className="flex min-h-[56px] items-center justify-center rounded-2xl bg-neutral-50 text-sm font-bold text-neutral-300">
-            No phone
-          </span>
+          <span className="flex min-h-[56px] items-center justify-center rounded-2xl bg-neutral-100 px-2 text-center text-xs font-bold text-neutral-600">No address to navigate</span>
         )}
-
-        {whatsapp ? (
-          <a
-            href={`https://wa.me/${whatsapp}`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex min-h-[56px] items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-sm font-black text-neutral-800"
-          >
-            ✉ Message
+        {mobile ? (
+          <a href={`tel:${mobile}`} aria-label={`Call customer ${mobile}`}
+            className="flex min-h-[56px] items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 px-2 text-sm font-black text-neutral-800">
+            ☎ Call customer
           </a>
         ) : (
-          <span className="flex min-h-[56px] items-center justify-center rounded-2xl bg-neutral-50 text-sm font-bold text-neutral-300">
-            No chat
-          </span>
+          <span className="flex min-h-[56px] items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 px-2 text-center text-xs font-bold text-amber-800">Phone missing — ask store</span>
         )}
       </div>
 
@@ -419,7 +424,7 @@ function CurrentStopCard({ order, onNavigate, onStart, onCompleteStop, updating 
           onClick={() => onCompleteStop(order)}
           className="mt-4 min-h-[60px] w-full rounded-2xl bg-emerald-600 text-base font-black text-white"
         >
-          Complete Stop
+          Confirm Delivered / Report Issue
         </button>
       )}
     </article>
@@ -464,16 +469,8 @@ function ResultSheet({ order, open, onClose, sessionToken, onCompleted }) {
       return
     }
 
-    const confirmed = await appConfirm(
-      result === 'delivered'
-        ? `Confirm ${order.order_code} was delivered?`
-        : `Submit a Not Delivered attempt for ${order.order_code}?`,
-      {
-        title: 'Confirm',
-        confirmText: result === 'delivered' ? 'Confirm Delivered' : 'Submit Attempt',
-      }
-    )
-    if (!confirmed) return
+    // The primary button in this dialog is the explicit confirmation.
+    // Avoid layering another modal over this sheet (which prevented taps on some devices).
 
     setSubmitting(true)
     setLocalError('')
@@ -516,22 +513,24 @@ function ResultSheet({ order, open, onClose, sessionToken, onCompleted }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/50 lg:hidden" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" role="presentation" onClick={() => { if (!submitting) onClose() }}>
       <div
-        className="max-h-[90dvh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-5"
+        className="max-h-[92dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl" role="dialog" aria-modal="true" aria-labelledby="driver-delivery-result-title"
         style={{ paddingBottom: 'calc(20px + env(safe-area-inset-bottom))' }}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-300" />
 
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-black text-neutral-900">
-            Complete Stop · {order.order_code}
+          <h3 id="driver-delivery-result-title" className="text-lg font-black text-neutral-900">
+            Delivery result · {order.order_code}
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[44px] min-w-[44px] text-2xl text-neutral-400"
+            disabled={submitting}
+            aria-label="Close delivery result"
+            className="min-h-[44px] min-w-[44px] text-2xl text-neutral-400 disabled:opacity-40"
           >
             ×
           </button>
@@ -681,6 +680,7 @@ export default function DeliveryDriverPortal({ params }) {
   const [driverMobileTheme, setDriverMobileTheme] = useState('light')
   const [driverSearch, setDriverSearch] = useState('')
   const [resultOrder, setResultOrder] = useState(null)
+  const [selectedDriverOrderId, setSelectedDriverOrderId] = useState('')
 
   // New assignment popup state
   const [popupQueue, setPopupQueue] = useState([])
@@ -743,27 +743,23 @@ export default function DeliveryDriverPortal({ params }) {
       if (rpcError) throw rpcError
 
       if (!data?.success) {
-        throw new Error(data?.message || 'Driver session is invalid.')
+        const message = data?.message || 'Unable to refresh assigned orders.'
+        if (/session.*(invalid|expired)|invalid.*session|unauthori[sz]ed/i.test(message)) {
+          setPortalData(null)
+          setSessionToken('')
+          try { localStorage.removeItem(storageKey) } catch {}
+        }
+        setError(message)
+        return
       }
 
       setPortalData(data)
       setError('')
     } catch (loadError) {
       console.error('Driver portal load error:', loadError)
-      setPortalData(null)
-      setSessionToken('')
-
-      try {
-        localStorage.removeItem(storageKey)
-      } catch {
-        // Ignore.
-      }
-
-      setError(
-        loadError?.message ||
-          'Your Driver Portal session expired. Please sign in again.'
-      )
+      setError(loadError?.message || 'Unable to refresh assigned orders. Check the connection.')
     }
+
   }
 
   const loadCodSummary = async (tokenOverride = '', quiet = false) => {
@@ -949,6 +945,9 @@ export default function DeliveryDriverPortal({ params }) {
       setMessage('')
       setError('')
       setPopupQueue([])
+      setResultOrder(null)
+      setSelectedDriverOrderId('')
+      setDriverView('tracking')
     }
   }
 
@@ -1048,6 +1047,7 @@ export default function DeliveryDriverPortal({ params }) {
 
   const viewAssignedOrder = (order) => {
     acknowledgeAssignment(order)
+    setSelectedDriverOrderId(String(order.id))
     setDriverView('tracking')
   }
 
@@ -1099,13 +1099,13 @@ export default function DeliveryDriverPortal({ params }) {
   const liveTrackingOrders = useMemo(() => {
     if (!liveTrackingOrder) return []
 
-    const primaryMobile = normalizeMobile(liveTrackingOrder.customer_mobile)
+    const primaryMobile = normalizeMobile(driverCustomerPhone(liveTrackingOrder))
     if (!primaryMobile) return [liveTrackingOrder]
 
     return activeOrders.filter(
       (order) =>
         String(order.order_status || '') === 'out_for_delivery' &&
-        normalizeMobile(order.customer_mobile) === primaryMobile
+        normalizeMobile(driverCustomerPhone(order)) === primaryMobile
     )
   }, [activeOrders, liveTrackingOrder])
 
@@ -1300,17 +1300,7 @@ export default function DeliveryDriverPortal({ params }) {
 
   const searchTerm = driverSearch.trim().toLowerCase()
 
-  const orderAddress = (order) =>
-    [
-      order?.address_line1,
-      order?.address_line2,
-      order?.landmark,
-      order?.city,
-      order?.state,
-      order?.pincode,
-    ]
-      .filter(Boolean)
-      .join(', ')
+  const orderAddress = driverAddressText
 
   const matchesSearch = (order) => {
     if (!searchTerm) return true
@@ -1318,8 +1308,7 @@ export default function DeliveryDriverPortal({ params }) {
     const haystack = [
       order?.order_code,
       order?.customer_name,
-      order?.customer_mobile,
-      order?.alternate_mobile,
+      driverCustomerPhone(order),
       orderAddress(order),
     ]
       .filter(Boolean)
@@ -1336,7 +1325,7 @@ export default function DeliveryDriverPortal({ params }) {
     orderId: order.id,
     orderCode: order.order_code,
     name: order.customer_name || 'Customer',
-    mobile: order.customer_mobile || '',
+    mobile: driverCustomerPhone(order),
     alternateMobile: order.alternate_mobile || '',
     address: orderAddress(order),
     status: order.order_status,
@@ -1357,16 +1346,18 @@ export default function DeliveryDriverPortal({ params }) {
     'Store pickup'
 
   const currentStop =
+    activeOrders.find(order => String(order.id) === selectedDriverOrderId) ||
     liveTrackingOrder ||
-    activeOrders.find((order) => order.order_status === 'packed') ||
-    null
+    activeOrders.find(order => order.order_status === 'packed') ||
+    activeOrders[0] || null
 
   const openNavigation = (order) => {
-    const url =
-      order.latitude && order.longitude
-        ? `https://www.google.com/maps/search/?api=1&query=${order.latitude},${order.longitude}`
-        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(orderAddress(order))}`
-    window.open(url, '_blank')
+    const url = driverMapUrl(order)
+    if (!url) {
+      setError('This assignment does not include a delivery address or GPS pin. Contact the store to correct the order.')
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   const viewMeta = {
@@ -1430,21 +1421,11 @@ export default function DeliveryDriverPortal({ params }) {
   const currentView = viewMeta[driverView] || viewMeta.tracking
 
   const sidebarItems = [
-    { key: 'dashboard', icon: '⌂', label: 'Dashboard' },
-    { key: 'tracking', icon: '◎', label: 'Tracking', badge: activeOrders.length || '' },
-    { key: 'inbox', icon: '✉', label: 'Inbox', badge: waitingToStartOrders.length || '' },
-    { key: 'orders', icon: '▣', label: 'Orders' },
-    { key: 'customers', icon: '♙', label: 'Customers' },
-    { key: 'assigned', icon: '🚚', label: 'Assigned Deliveries', badge: activeOrders.length || '' },
-    {
-      key: 'cod',
-      icon: '₹',
-      label: 'COD Reconciliation',
-      badge: codCashDue > 0 ? money(codCashDue) : '',
-    },
-    { key: 'returns', icon: '↩', label: 'Return Pickups' },
-    { key: 'help', icon: '?', label: 'Help & Support' },
-    { key: 'settings', icon: '⚙', label: 'Settings' },
+    { key: 'tracking', icon: '⌂', label: 'Active Delivery', badge: activeOrders.length || '' },
+    { key: 'orders', icon: '▣', label: 'Assigned / Completed' },
+    { key: 'cod', icon: '₹', label: 'COD Reconciliation', badge: codCashDue > 0 ? money(codCashDue) : '' },
+    { key: 'help', icon: '?', label: 'Delivery Problem' },
+    { key: 'settings', icon: '⚙', label: 'Profile / Log Out' },
   ]
 
   const renderAlarmCard = () => (
@@ -1578,14 +1559,7 @@ export default function DeliveryDriverPortal({ params }) {
 
   const renderTrackingCard = (order) => {
     const address = orderAddress(order)
-    const hasLiveLocation =
-      Number.isFinite(Number(order.latitude)) && Number.isFinite(Number(order.longitude))
-
-    const mapUrl = hasLiveLocation
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-          `${order.latitude},${order.longitude}`
-        )}`
-      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+    const mapUrl = driverMapUrl(order)
 
     const status = String(order.order_status || '')
     const isPacked = status === 'packed'
@@ -1601,7 +1575,7 @@ export default function DeliveryDriverPortal({ params }) {
         ? 'bg-amber-100 text-amber-700'
         : 'bg-sky-100 text-sky-700'
 
-    const mobile = String(order.customer_mobile || '')
+    const mobile = driverCustomerPhone(order)
     const whatsapp = mobile.replace(/\D/g, '')
 
     return (
@@ -1654,7 +1628,7 @@ export default function DeliveryDriverPortal({ params }) {
 
           <div className="mt-2 grid grid-cols-2 gap-4 text-[9px] leading-4 text-neutral-500">
             <p className="line-clamp-2">{restaurantPickupAddress}</p>
-            <p className="line-clamp-2 text-right">{address || 'Customer address'}</p>
+            <p className="break-words text-right font-semibold text-neutral-700">{address || 'Delivery address missing — ask store'}</p>
           </div>
         </div>
 
@@ -1699,9 +1673,11 @@ export default function DeliveryDriverPortal({ params }) {
 
         <div className="mt-4 grid gap-2 sm:grid-cols-3">
           <a
-            href={mapUrl}
+            href={mapUrl || undefined}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
+            aria-disabled={!mapUrl}
+            onClick={(event) => { if (!mapUrl) event.preventDefault() }}
             className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-[10px] font-black text-neutral-700 transition hover:bg-neutral-100"
           >
             ↗ Navigate
@@ -1785,7 +1761,7 @@ export default function DeliveryDriverPortal({ params }) {
             onClick={() => setResultOrder(order)}
             className="mt-4 w-full rounded-xl bg-emerald-600 px-5 py-3.5 text-xs font-black text-white shadow-sm"
           >
-            Complete Stop
+            Confirm Delivered / Report Issue
           </button>
         )}
 
@@ -1994,7 +1970,11 @@ export default function DeliveryDriverPortal({ params }) {
               Sign in using the Driver User ID and password given by the restaurant owner.
             </p>
 
-            <form onSubmit={handleLogin} className="mt-6 space-y-4">
+            {sessionToken && !portalData && (
+                <button type="button" onClick={() => loadPortal(sessionToken)}
+                  className="mb-3 min-h-[48px] w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-800">Retry loading assigned orders</button>
+              )}
+              <form onSubmit={handleLogin} className="mt-6 space-y-4">
               <label className="block">
                 <span className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-neutral-500">
                   Driver User ID
@@ -2033,7 +2013,7 @@ export default function DeliveryDriverPortal({ params }) {
                 disabled={loggingIn}
                 className="min-h-[56px] w-full rounded-xl bg-emerald-600 px-5 py-4 text-base font-black text-white disabled:opacity-50"
               >
-                {loggingIn ? 'Signing In...' : 'Open Driver Portal'}
+                {loggingIn ? 'Signing In...' : 'Log In'}
               </button>
             </form>
 
@@ -2158,26 +2138,26 @@ export default function DeliveryDriverPortal({ params }) {
         )}
 
         {driverView === 'orders' && (
-          <div className="space-y-3">
-            {activeOrders.map((order) => (
-              <button
-                key={order.id}
-                type="button"
-                onClick={() => setDriverView('tracking')}
-                className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 text-left"
-              >
-                <div className="min-w-0">
-                  <p className="font-mono text-sm font-black text-neutral-900">
-                    {order.order_code}
-                  </p>
-                  <p className="truncate text-sm text-neutral-500">
-                    {order.customer_name || 'Customer'}
-                  </p>
+          <div className="space-y-4">
+            <h2 className="text-sm font-black text-neutral-900">Assigned orders ({activeOrders.length})</h2>
+            {activeOrders.map(order => (
+              <CurrentStopCard key={order.id} order={order}
+                updating={updatingOrderId === order.id}
+                onNavigate={openNavigation}
+                onStart={o => updateStatus(o, 'out_for_delivery')}
+                onCompleteStop={setResultOrder}/>
+            ))}
+            {!activeOrders.length && <p className="rounded-2xl bg-white p-5 text-sm text-neutral-500">No active assignments.</p>}
+            <h2 className="pt-3 text-sm font-black text-neutral-900">Completed / past orders ({recentOrders.length})</h2>
+            {recentOrders.map(order => (
+              <div key={order.id} className="rounded-2xl border border-neutral-200 bg-white p-4">
+                <div className="flex justify-between gap-3">
+                  <span className="font-mono font-black text-neutral-900">#{order.order_code}</span>
+                  <span className="text-xs font-bold text-emerald-700">{labelStatus(order.order_status)}</span>
                 </div>
-                <span className="ml-3 text-base font-black text-neutral-900">
-                  {money(order.total_amount)}
-                </span>
-              </button>
+                <p className="mt-2 text-sm text-neutral-800">{order.customer_name || 'Customer'}</p>
+                <p className="mt-1 break-words text-sm text-neutral-600">{driverAddressText(order) || 'No address supplied'}</p>
+              </div>
             ))}
           </div>
         )}
@@ -2363,7 +2343,7 @@ export default function DeliveryDriverPortal({ params }) {
       <DriverBottomNav
         view={driverView}
         setView={setDriverView}
-        codBadge={codCashDue > 0 ? Math.round(codCashDue) : 0}
+        codBadge={codCashDue > 0 ? 1 : 0}
         inboxBadge={waitingToStartOrders.length}
       />
 
@@ -2375,7 +2355,7 @@ export default function DeliveryDriverPortal({ params }) {
         onCompleted={async (text) => {
           setMessage(text)
           setError('')
-          await loadPortal()
+          await Promise.all([loadPortal(), loadCodSummary('', true)])
         }}
       />
 
@@ -2720,7 +2700,7 @@ export default function DeliveryDriverPortal({ params }) {
                         <button
                           key={order.id}
                           type="button"
-                          onClick={() => setDriverView('tracking')}
+                          onClick={() => { setSelectedDriverOrderId(String(order.id)); setDriverView('tracking') }}
                           className="flex w-full items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left transition hover:bg-white"
                         >
                           <div className="min-w-0">
@@ -2968,7 +2948,7 @@ export default function DeliveryDriverPortal({ params }) {
                         onClick={logout}
                         className="mt-4 w-full rounded-xl bg-rose-600 px-4 py-3 text-xs font-black text-white"
                       >
-                        Sign Out of Driver Portal
+                        Log Out of Driver Portal
                       </button>
                     </div>
                   </section>

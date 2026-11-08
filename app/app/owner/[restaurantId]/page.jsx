@@ -4705,6 +4705,13 @@ if (staffError) {
           />
         )}
 
+        {/* DD_ORDERING_MODES_20261108: secure combined restaurant order inbox */}
+        {restaurantModuleEnabled && (
+          <a href={`/app/operations/${encodeURIComponent(restaurantId)}`}
+            className="mx-3 my-3 block rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-center text-sm font-black text-indigo-800">
+            🍽 Restaurant Orders · Dine-In / Takeaway / Delivery
+          </a>
+        )}
         {dashboardMode === 'delivery' && deliveryModuleEnabled && (
           <OwnerDeliverySection
             restaurant={restaurant}

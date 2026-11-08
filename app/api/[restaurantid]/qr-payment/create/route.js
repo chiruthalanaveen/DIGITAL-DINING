@@ -1,4 +1,6 @@
+// DD_ORDERING_MODES_20261108
 // Paste into: app/api/restaurant/qr-payment/create/route.js
+import { assertDineInCheckout, OrderingError, failOrdering } from '@/lib/server/restaurantOrdering'
 import { qrAdmin, qrRespond, qrError, qrSafeError, qrAssert, qrEligible,
   qrGateway, qrBuildVerifiedCart, qrRupees, qrRestaurantCustomerFee, QR_ID_RE } from '@/lib/server/qrPaymentServer'
 
@@ -49,6 +51,7 @@ export async function POST(request) {
         payload.items.some((item) => item?.is_daily_offer === true)) {
       return qrError('Offers are disabled for this restaurant.', 403, 'FEATURE_DISABLED')
     }
+    await assertDineInCheckout(admin, restaurantId, tableNumber, payload)
     const { snapshot, subtotalPaise } = await qrBuildVerifiedCart(admin, restaurantId, payload.items)
     const subtotal = qrRupees(subtotalPaise / 100)
     const gstRate = feature?.gst_enabled === false ? 0 :
@@ -135,6 +138,7 @@ export async function POST(request) {
       currency: 'INR',
     })
   } catch (error) {
+    if (error instanceof OrderingError) return failOrdering(error)
     return qrSafeError(error)
   }
 }

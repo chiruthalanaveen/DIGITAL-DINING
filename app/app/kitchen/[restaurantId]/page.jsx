@@ -78,6 +78,7 @@ export default function KitchenPortal({ params }) {
   const [todayOrdersLoading, setTodayOrdersLoading] = useState(false)
 
   const [updatingOrder, setUpdatingOrder] = useState(null)
+  const statusUpdateInFlightRef = useRef(false)
 
   const [lastOrdersRefresh, setLastOrdersRefresh] = useState(null)
   const [lastTodayRefresh, setLastTodayRefresh] = useState(null)
@@ -2286,10 +2287,8 @@ export default function KitchenPortal({ params }) {
       orderId,
       newStatus
     ) => {
-      if (updatingOrder) {
-        return
-      }
-
+      if (statusUpdateInFlightRef.current || updatingOrder) return
+      statusUpdateInFlightRef.current = true
       setUpdatingOrder(orderId)
 
       try {
@@ -2323,19 +2322,18 @@ export default function KitchenPortal({ params }) {
         }
 
         if (!data?.success) {
-          clearSavedSession()
-
-          sessionTokenRef.current = ''
-          sessionModeRef.current = false
-
-          setSessionToken('')
-          setSessionMode(false)
-          setIsAuthenticated(false)
-
-          throw new Error(
-            data?.message ||
-              'Unable to update order.'
-          )
+          // A stale order, denied transition or temporary rule failure is not
+          // necessarily an expired staff session. Keep login intact and show the error.
+          const failure = data?.message || 'Unable to update order.'
+          if (/session.*(invalid|expired)|invalid.*session|unauthori[sz]ed/i.test(failure)) {
+            clearSavedSession()
+            sessionTokenRef.current = ''
+            sessionModeRef.current = false
+            setSessionToken('')
+            setSessionMode(false)
+            setIsAuthenticated(false)
+          }
+          throw new Error(failure)
         }
 
         const updatedOrder =
@@ -2376,6 +2374,7 @@ export default function KitchenPortal({ params }) {
           }`
         )
       } finally {
+        statusUpdateInFlightRef.current = false
         setUpdatingOrder(null)
       }
     }
@@ -2653,6 +2652,8 @@ export default function KitchenPortal({ params }) {
     )
 
     setShowProfile(false)
+    setActiveMobileTab('queue')
+    statusUpdateInFlightRef.current = false
 
     knownOrderIdsRef.current =
       new Set()
@@ -3802,6 +3803,11 @@ export default function KitchenPortal({ params }) {
 
       </div>
 
+      {/* DD_ORDERING_MODES_20261108: role-scoped restaurant orders */}
+      <a href={`/app/operations/${encodeURIComponent(restaurantId)}?role=staff`}
+        className="mb-24 mt-5 block rounded-xl border border-indigo-500 bg-indigo-950 px-4 py-3 text-center text-xs font-bold text-indigo-100">
+        Kitchen orders · Open secure order inbox
+      </a>
       <nav aria-label="Kitchen mobile navigation" className="dd-mobile-tabs fixed bottom-0 inset-x-0 z-40 border-t border-neutral-700 bg-neutral-950/95 px-2 pt-2 backdrop-blur-xl lg:hidden" style={{paddingBottom:'max(8px, env(safe-area-inset-bottom))'}}>
         <div className="mx-auto grid max-w-lg grid-cols-4 gap-1">
         <button type="button" aria-label="Queue" data-active={activeMobileTab === 'queue'} aria-current={activeMobileTab === 'queue' ? 'page' : undefined} onClick={() => goToMobileSection('queue')} className="dd-mobile-tab min-h-[62px] flex flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-neutral-300 transition active:scale-[.97]" key="queue"><span aria-hidden="true" className="text-xl">🍳</span><span className="text-[11px] font-extrabold">Queue</span></button>

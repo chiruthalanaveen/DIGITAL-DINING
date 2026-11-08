@@ -975,14 +975,15 @@ export default function DeliveryPackerPortal({
 
       if (!data?.success) {
 
-        throw new Error(
-
-          data?.message ||
-
-            'Packer session is invalid.'
-
-        )
-
+        const message = data?.message || 'Unable to load packing orders.'
+        const invalidSession = /session.*(invalid|expired)|invalid.*session|unauthori[sz]ed/i.test(message)
+        if (invalidSession) {
+          setSessionToken('')
+          setPortalData(null)
+          try { localStorage.removeItem(storageKey) } catch {}
+        }
+        setError(message)
+        return
       }
 
 
@@ -992,48 +993,9 @@ export default function DeliveryPackerPortal({
       setError('')
 
     } catch (loadError) {
-
-      console.error(
-
-        'Packer portal load error:',
-
-        loadError
-
-      )
-
-
-
-      setPortalData(null)
-      setSelectedOrderId('')
-      setSelectedOrderSnapshot(null)
-
-      setSessionToken('')
-
-
-
-      try {
-
-        localStorage.removeItem(
-
-          storageKey
-
-        )
-
-      } catch {
-
-        // Ignore.
-
-      }
-
-
-
-      setError(
-
-        loadError?.message ||
-
-          'Your Packer Portal session expired. Please sign in again.'
-
-      )
+      console.error('Packer portal load error:', loadError)
+      // Temporary connectivity failures must not delete a valid staff session.
+      setError(loadError?.message || 'Unable to refresh packing orders. Check your connection and retry.')
 
     } finally {
 
@@ -1385,6 +1347,8 @@ export default function DeliveryPackerPortal({
 
 
 
+      stopCamera()
+      setMobilePackerMenu(false)
       setCameraOrderId('')
       setFocusOrderId('')
       setSelectedOrderId('')
@@ -2621,9 +2585,7 @@ export default function DeliveryPackerPortal({
   const packingInProgressOrders =
     sections.confirmed
 
-  const packerAlarmShouldRing =
-    waitingToPackOrders.length > 0 &&
-    packingInProgressOrders.length === 0
+  const packerAlarmShouldRing = waitingToPackOrders.length > 0
 
   const {
     enabled: packerAlarmEnabled,
@@ -2651,6 +2613,16 @@ export default function DeliveryPackerPortal({
    * MODERN PACKER WORKSPACE — presentation only
    * ---------------------------------------------------------
    */
+
+  // Prefer an authoritative server count. Never invent a total from a small active-order window.
+  const packedToday = useMemo(() => {
+    const serverCount = portalData?.packed_today_count ?? portalData?.stats?.packed_today_count
+      ?? portalData?.summary?.packed_today_count
+    if (serverCount !== undefined && serverCount !== null && serverCount !== '' &&
+      Number.isInteger(Number(serverCount)) && Number(serverCount) >= 0) return Number(serverCount)
+    // A partial order list cannot establish the total packed today.
+    return null
+  }, [portalData])
 
   if (loading) {
     return (
@@ -2701,6 +2673,8 @@ export default function DeliveryPackerPortal({
               <p className="mt-7 text-xs font-extrabold uppercase tracking-[0.18em] text-emerald-600">Staff sign in</p>
               <h2 className="mt-2 text-[30px] font-black leading-tight tracking-tight">Welcome back.</h2>
               <p className="mt-3 text-sm leading-6 text-slate-500">Sign in with the Packer User ID and password given by your store owner.</p>
+              {sessionToken && !portalData && <button type="button" onClick={() => loadPortal(sessionToken)}
+  className="mt-5 min-h-12 w-full rounded-xl border border-emerald-300 bg-emerald-50 text-sm font-bold text-emerald-800">Retry loading packing orders</button>}
               <form onSubmit={handleLogin} className="mt-8 space-y-5">
                 <label className="block">
                   <span className="mb-2 block text-xs font-extrabold text-slate-700">Packer User ID</span>
@@ -2712,7 +2686,7 @@ export default function DeliveryPackerPortal({
                 </label>
                 {error && <div role="alert" className="flex gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-semibold leading-5 text-red-700"><PackerIcon name="alert" className="mt-0.5 h-4 w-4 shrink-0"/>{error}</div>}
                 <button type="submit" disabled={loggingIn} className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#12253c] px-5 text-sm font-extrabold text-white shadow-lg shadow-slate-900/10 transition hover:bg-[#1c3756] active:scale-[0.99] disabled:cursor-wait disabled:opacity-60">
-                  {loggingIn ? 'Signing in…' : 'Open Pack Station'}
+                  {loggingIn ? 'Signing in…' : 'Log In'}
                   {!loggingIn && <PackerIcon name="arrow" className="h-4 w-4"/>}
                 </button>
               </form>
@@ -2748,6 +2722,7 @@ export default function DeliveryPackerPortal({
     { key: 'packed', label: 'Packed Orders', icon: 'check', count: sections.packed.length },
     { key: 'out_for_delivery', label: 'Out for Delivery', icon: 'truck', count: sections.out_for_delivery.length },
   ]
+
 
   const selectView = (key) => {
     setActiveStage(key)
@@ -2932,7 +2907,7 @@ export default function DeliveryPackerPortal({
             </nav>
           </div>
           <div className="mx-4 mt-8 rounded-2xl border border-white/10 bg-white/5 p-4"><span className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-emerald-300"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400"/> Live updates</span><p className="mt-2 text-xs leading-5 text-slate-400">Your packing queue stays in sync with incoming delivery orders.</p></div>
-          <div className="mt-auto border-t border-white/10 p-4"><div className="flex items-center gap-3 rounded-xl bg-white/5 p-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300"><PackerIcon name="user" className="h-5 w-5"/></div><div className="min-w-0"><p className="truncate text-xs font-extrabold">{packerName}</p><p className="text-[11px] text-slate-400">Packer account</p></div></div><button type="button" onClick={logout} className="mt-3 flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left text-xs font-bold text-slate-400 transition hover:bg-white/10 hover:text-white"><PackerIcon name="logout" className="h-4 w-4"/> Sign out</button></div>
+          <div className="mt-auto border-t border-white/10 p-4"><div className="flex items-center gap-3 rounded-xl bg-white/5 p-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300"><PackerIcon name="user" className="h-5 w-5"/></div><div className="min-w-0"><p className="truncate text-xs font-extrabold">{packerName}</p><p className="text-[11px] text-slate-400">Packer account</p></div></div><button type="button" onClick={logout} className="mt-3 flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left text-xs font-bold text-slate-400 transition hover:bg-white/10 hover:text-white"><PackerIcon name="logout" className="h-4 w-4"/> Log Out</button></div>
         </aside>
 
         <div className="min-w-0 flex-1">
@@ -2940,10 +2915,17 @@ export default function DeliveryPackerPortal({
           <header className="sticky top-0 z-30 border-b border-slate-200/90 bg-white/95 backdrop-blur-xl"><div className="mx-auto flex max-w-[1480px] flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6 lg:px-9"><div className="flex min-w-0 items-center gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#122238] text-emerald-400 lg:hidden"><PackerIcon name="box" className="h-5 w-5"/></div><div className="min-w-0"><p className="truncate text-sm font-black tracking-tight text-[#122238]">{restaurant.name || 'Delivery Pack Station'}</p><p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">Packer dashboard <span className="lg:hidden">· {packerName}</span></p></div></div><div className="flex items-center gap-2"><button type="button" onClick={packerAlarmEnabled?disablePackerAlarm:enablePackerAlarm} aria-pressed={packerAlarmEnabled} className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-[11px] font-extrabold transition ${packerAlarmEnabled?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}><PackerIcon name="bell" className="h-4 w-4"/><span className="hidden sm:inline">{packerAlarmEnabled?'Alarm on':'Enable alarm'}</span><span className="sm:hidden">{packerAlarmEnabled?'On':'Alarm'}</span></button><button type="button" disabled={refreshing} onClick={()=>loadPortal('',true)} aria-label="Refresh packing queue" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"><PackerIcon name="refresh" className={`h-4 w-4 ${refreshing?'animate-spin':''}`}/></button><button type="button" onClick={logout} className="flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-extrabold text-slate-600 transition hover:bg-slate-50 lg:hidden"><PackerIcon name="logout" className="h-4 w-4"/><span className="hidden min-[390px]:inline">Logout</span></button></div></div></header>
           {/* Main */}
           <div className="mx-auto max-w-[1480px] space-y-6 px-4 py-6 pb-[calc(3rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-9 lg:py-8">
-            <div className="relative overflow-hidden rounded-[26px] bg-[#13273f] px-5 py-6 text-white sm:px-7 sm:py-7"><div className="pointer-events-none absolute -right-12 -top-24 h-72 w-72 rounded-full bg-emerald-400/10 blur-2xl"/><div className="pointer-events-none absolute bottom-0 right-16 h-28 w-28 rounded-full border-[28px] border-white/[0.04]"/><div className="relative"><div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-emerald-300"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"/> Live fulfilment</div><div className="mt-4 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-black tracking-tight sm:text-[30px]">Good to see you, {packerName.split(' ')[0]}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Keep every order accurate and on time. Pick an order, verify the items and get it ready for the driver.</p></div><button type="button" onClick={() => selectView('active')} aria-label={`Open Active Orders, ${activeOrders.length} orders`} className="group flex shrink-0 items-center gap-3 rounded-2xl border border-emerald-400/25 bg-white/5 px-4 py-3 text-left transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300"><PackerIcon name="box" className="h-5 w-5"/></div><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Open active orders</p><p className="text-2xl font-black tabular-nums">{activeOrders.length}</p></div><PackerIcon name="right" className="h-4 w-4 text-emerald-300 transition group-hover:translate-x-1"/></button></div></div></div>
+            <div className="relative hidden lg:block overflow-hidden rounded-[26px] bg-[#13273f] px-5 py-6 text-white sm:px-7 sm:py-7"><div className="pointer-events-none absolute -right-12 -top-24 h-72 w-72 rounded-full bg-emerald-400/10 blur-2xl"/><div className="pointer-events-none absolute bottom-0 right-16 h-28 w-28 rounded-full border-[28px] border-white/[0.04]"/><div className="relative"><div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-emerald-300"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"/> Live fulfilment</div><div className="mt-4 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-black tracking-tight sm:text-[30px]">Good to see you, {packerName.split(' ')[0]}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Keep every order accurate and on time. Pick an order, verify the items and get it ready for the driver.</p></div><button type="button" onClick={() => selectView('active')} aria-label={`Open Active Orders, ${activeOrders.length} orders`} className="group flex shrink-0 items-center gap-3 rounded-2xl border border-emerald-400/25 bg-white/5 px-4 py-3 text-left transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300"><PackerIcon name="box" className="h-5 w-5"/></div><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Open active orders</p><p className="text-2xl font-black tabular-nums">{activeOrders.length}</p></div><PackerIcon name="right" className="h-4 w-4 text-emerald-300 transition group-hover:translate-x-1"/></button></div></div></div>
+
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 lg:hidden" aria-label="Packing summary">
+              <p className="text-xs font-black uppercase tracking-wide text-amber-900">Orders packed today</p>
+              <p className="mt-1 text-3xl font-black tabular-nums text-slate-900">{packedToday === null ? '—' : packedToday}</p>
+              {packedToday === null && <p className="mt-1 text-xs text-amber-900">Ask the backend to return packed_today_count for this store and packing shift.</p>}
+              <p className="mt-3 text-xs font-bold text-slate-700">{sections.received.length} new · {sections.confirmed.length} packing now</p>
+            </section>
 
             {/* One-tap access to incoming work and packed order details. */}
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="hidden lg:grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => selectView('active')}
@@ -2965,7 +2947,7 @@ export default function DeliveryPackerPortal({
             </div>
 
             {/* Queue overview cards */}
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[
+            <div className="hidden lg:grid grid-cols-2 gap-3 xl:grid-cols-4">{[
               {key:'received',name:'New orders',detail:'Waiting to start',count:sections.received.length,icon:'inbox',accent:'text-amber-600',background:'bg-amber-50'},
               {key:'confirmed',name:'Packing now',detail:'Being prepared',count:sections.confirmed.length,icon:'scan',accent:'text-sky-600',background:'bg-sky-50'},
               {key:'packed',name:'Packed orders',detail:'View order details',count:sections.packed.length,icon:'check',accent:'text-emerald-600',background:'bg-emerald-50'},
@@ -2979,7 +2961,7 @@ export default function DeliveryPackerPortal({
 
             {/* Queue navigation and search */}
             <div className="space-y-4"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-600">Order management</p><h2 className="mt-1 text-[23px] font-black tracking-tight text-[#12253c]">{stages.find((stage) => stage.key === activeStage)?.label || 'Packing queue'}</h2></div><p className="inline-flex items-center gap-2 text-[11px] font-bold text-slate-500"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"/> Automatically updated</p></div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><nav aria-label="Orders and order stages" className="-mx-4 flex min-w-0 gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 lg:hidden">{stages.map((stage)=><button key={stage.key} type="button" onClick={()=>selectView(stage.key)} aria-pressed={activeStage===stage.key} className={`flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-[11px] font-extrabold transition ${activeStage===stage.key?'border-[#12253c] bg-[#12253c] text-white':'border-slate-200 bg-white text-slate-600'}`}><PackerIcon name={stage.icon} className="h-4 w-4"/>{stage.label}<span className={`rounded-md px-1.5 py-0.5 text-[10px] ${activeStage===stage.key?'bg-white/20':'bg-slate-100'}`}>{stage.count}</span></button>)}</nav><label className="relative block w-full sm:max-w-xs"><PackerIcon name="search" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={orderSearch} onChange={(event)=>setOrderSearch(event.target.value)} type="search" aria-label="Search orders" placeholder="Search order, customer or product" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"/></label></div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><nav aria-label="Orders and order stages" className="hidden -mx-4 flex min-w-0 gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 lg:hidden">{stages.map((stage)=><button key={stage.key} type="button" onClick={()=>selectView(stage.key)} aria-pressed={activeStage===stage.key} className={`flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-[11px] font-extrabold transition ${activeStage===stage.key?'border-[#12253c] bg-[#12253c] text-white':'border-slate-200 bg-white text-slate-600'}`}><PackerIcon name={stage.icon} className="h-4 w-4"/>{stage.label}<span className={`rounded-md px-1.5 py-0.5 text-[10px] ${activeStage===stage.key?'bg-white/20':'bg-slate-100'}`}>{stage.count}</span></button>)}</nav><label className="relative block w-full sm:max-w-xs"><PackerIcon name="search" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={orderSearch} onChange={(event)=>setOrderSearch(event.target.value)} type="search" aria-label="Search orders" placeholder="Search order, customer or product" className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"/></label></div>
             </div>
 
             <div id="packer-orders-content" className="scroll-mt-28 space-y-9" role="region" aria-live="polite" aria-label={stages.find((stage) => stage.key === activeStage)?.label || 'Packing queue'}>
@@ -3021,20 +3003,22 @@ export default function DeliveryPackerPortal({
       </div>
 
       <nav aria-label="Packer mobile navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-amber-200 bg-white/95 px-2 pt-2 shadow-[0_-8px_24px_rgba(15,23,42,.08)] backdrop-blur-lg lg:hidden" style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
-        <div className="mx-auto grid max-w-lg grid-cols-4 gap-2">
+        <div className="mx-auto grid max-w-lg grid-cols-3 gap-2">
           {[
-            { key: 'home', label: 'Home', icon: 'grid' },
-            { key: 'scan', label: 'Scan', icon: 'scan' },
-            { key: 'orders', label: 'Orders', icon: 'box' },
+            { key: 'orders', label: 'Orders', icon: 'box', stage: 'active' },
+            { key: 'packed', label: 'Packed', icon: 'check', stage: 'packed' },
             { key: 'profile', label: 'Profile', icon: 'user' },
           ].map((tab) => (
-            <button key={tab.key} type="button" aria-label={tab.label} aria-current={(tab.key === 'home' && activeStage === 'overview') || (tab.key === 'scan' && activeStage === 'active') || (tab.key === 'orders' && activeStage === 'all') || (tab.key === 'profile' && mobilePackerMenu) ? 'page' : undefined}
+            <button key={tab.key} type="button" aria-label={tab.label}
+              aria-current={(tab.key === 'profile' ? mobilePackerMenu : !mobilePackerMenu && activeStage === tab.stage) ? 'page' : undefined}
               onClick={() => {
                 if (tab.key === 'profile') { setMobilePackerMenu(true); return }
                 setMobilePackerMenu(false)
-                selectView(tab.key === 'home' ? 'overview' : tab.key === 'scan' ? 'active' : 'all')
+                selectView(tab.stage)
               }}
-              className={`flex min-h-[62px] flex-col items-center justify-center gap-1 rounded-2xl px-1 text-xs font-extrabold ${((tab.key === 'home' && activeStage === 'overview') || (tab.key === 'scan' && activeStage === 'active') || (tab.key === 'orders' && activeStage === 'all')) ? 'bg-amber-100 text-amber-900' : 'text-slate-600'}`}>
+              className={`flex min-h-[62px] flex-col items-center justify-center gap-1 rounded-2xl px-1 text-xs font-extrabold ${
+                (tab.key === 'profile' ? mobilePackerMenu : !mobilePackerMenu && activeStage === tab.stage)
+                  ? 'bg-amber-100 text-amber-900' : 'text-slate-600'}`}>
               <PackerIcon name={tab.icon} className="h-5 w-5"/>{tab.label}
             </button>
           ))}
@@ -3043,9 +3027,9 @@ export default function DeliveryPackerPortal({
       {mobilePackerMenu && <div className="fixed inset-0 z-[60] flex items-end bg-slate-950/60 p-3 lg:hidden" role="presentation" onClick={() => setMobilePackerMenu(false)}>
         <section role="dialog" aria-modal="true" aria-label="Packer profile and settings" onClick={(event) => event.stopPropagation()} className="w-full rounded-3xl bg-white p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-slate-900 shadow-xl">
           <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">{packerName}</h2><p className="text-sm text-slate-500">Packing operations</p></div><button type="button" aria-label="Close profile" onClick={() => setMobilePackerMenu(false)} className="min-h-11 rounded-xl bg-slate-100 px-4">Close</button></div>
-          <p className="mt-4 text-sm font-bold">Today's queue: {orders.length} · Active: {activeOrders.length} · Packed: {sections.packed.length}</p>
+          <p className="mt-4 text-sm font-bold">Packed today: {packedToday === null ? '—' : packedToday} · Waiting: {sections.received.length}</p>
           <button type="button" onClick={() => setMobilePackerTheme(x => x === 'light' ? 'dark' : 'light')} className="mt-4 min-h-12 w-full rounded-xl border border-slate-200 font-bold">Switch to {mobilePackerTheme === 'light' ? 'dark' : 'light'} mode</button>
-          <button type="button" onClick={logout} className="mt-3 min-h-12 w-full rounded-xl bg-rose-600 font-bold text-white">Sign out</button>
+          <button type="button" onClick={logout} className="mt-3 min-h-12 w-full rounded-xl bg-rose-600 font-bold text-white">Log Out</button>
         </section>
       </div>}
 

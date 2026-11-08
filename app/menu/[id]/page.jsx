@@ -5,6 +5,9 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { appNotice } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
+import RestaurantOrderingChooser from '@/app/components/RestaurantOrderingChooser'
+import RestaurantDeliveryCheckout from '@/app/components/RestaurantDeliveryCheckout'
+import { getFreshDineInProof } from '@/lib/client/restaurantLocation'
 
 // Restaurant logo used throughout the QR menu.
 function RestaurantLogo({ restaurant, className = '', imageClassName = 'w-full h-full object-contain' }) {
@@ -162,6 +165,19 @@ export default function CustomerMenuPage() {
   const [filterType, setFilterType] = useState('all')
 
   const [orderType, setOrderType] = useState('dine-in')
+  // DD_ORDERING_MODES_20261108: additive restaurant / home delivery UI; no old workflows removed.
+  const [orderingOptions, setOrderingOptions] = useState(null)
+  const [deliveryCheckoutOpen, setDeliveryCheckoutOpen] = useState(false)
+  const [locationIssue, setLocationIssue] = useState('')
+  useEffect(() => {
+    if (!restaurantId) return
+    let active = true
+    fetch('/api/restaurant/ordering-options?restaurantId=' + encodeURIComponent(restaurantId), { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (active && data?.success) setOrderingOptions(data) })
+      .catch(() => {})
+    return () => { active = false }
+  }, [restaurantId])
 
   const [loading, setLoading] = useState(true)
 
@@ -1275,6 +1291,12 @@ export default function CustomerMenuPage() {
     }
   }
 
+  const getDineInProof = async () => {
+    if (orderType !== 'dine-in' || !orderingOptions?.geofenceEnabled) return {}
+    const position = await getFreshDineInProof()
+    return { ...position, tableQrToken: searchParams.get('tableToken') || '' }
+  }
+
   const createPublicOrder = async ({
     paymentMode,
     status,
@@ -1315,6 +1337,7 @@ export default function CustomerMenuPage() {
 
     // Pay at Counter now goes through a server-verified checkout. The browser
     // cannot set payment status, restaurant platform-fee rate, or item prices.
+    const dineInProof = await getDineInProof()
     const response = await fetch('/api/restaurant/qr-counter-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1327,6 +1350,7 @@ export default function CustomerMenuPage() {
         orderType,
         items: itemsSnapshot,
         totalAmount: Number(totalAmount || 0),
+        ...dineInProof,
       }),
     })
     const data = await response.json().catch(() => null)
@@ -1474,6 +1498,7 @@ export default function CustomerMenuPage() {
       await fetchCustomerOrders(finalMobile)
     } catch (error) {
       console.error('Counter payment error:', error)
+      setLocationIssue(error?.message || 'Unable to verify Dine-In checkout.')
       appNotice('Failed to place order: ' + error.message)
     } finally {
       setPaymentLoading(false)
@@ -1627,6 +1652,7 @@ export default function CustomerMenuPage() {
         throw new Error('Razorpay checkout is unavailable. Check your internet connection.')
       }
 
+      const dineInProof = await getDineInProof()
       const createResponse = await fetch('/api/restaurant/qr-payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1638,7 +1664,8 @@ export default function CustomerMenuPage() {
           customerMobile: finalMobile,
           orderType,
           items: finalItems,
-          totalAmount
+          totalAmount,
+          ...dineInProof,
         })
       })
       const checkout = await createResponse.json().catch(() => null)
@@ -1715,6 +1742,7 @@ export default function CustomerMenuPage() {
       setPaymentLoading(false)
     } catch (error) {
       console.error('[QR MENU] Secure checkout error:', error)
+      setLocationIssue(error?.message || 'Unable to verify Dine-In checkout.')
       appNotice('Checkout Error: ' + (error?.message || 'Please try again.'))
       setPaymentLoading(false)
     }
@@ -1764,6 +1792,10 @@ export default function CustomerMenuPage() {
       </button>
     </div>
   ) : null
+
+  if (deliveryCheckoutOpen && orderingOptions?.homeDeliveryAvailable) {
+    return <RestaurantDeliveryCheckout restaurantCode={orderingOptions.restaurantCode} onBack={() => setDeliveryCheckoutOpen(false)} />
+  }
 
   if (loading) {
     return (
@@ -2599,49 +2631,11 @@ export default function CustomerMenuPage() {
             </div>
           </section>
 
-          {/* ORDER MODE */}
+          {/* DD_ORDERING_MODES_20261108: unified mode selection */}
           <section className="px-3 min-[390px]:px-4 pt-4">
-            <div
-              className={`grid gap-1 rounded-2xl border border-black/5 bg-white p-1.5 shadow-sm ${
-                dineInEnabled && takeawayEnabled
-                  ? 'grid-cols-2'
-                  : 'grid-cols-1'
-              }`}
-            >
-              {dineInEnabled && (
-                <button
-                  type="button"
-                  onClick={() => setOrderType('dine-in')}
-                  className={`rounded-xl py-3 text-xs font-black transition ${
-                    orderType === 'dine-in'
-                      ? 'bg-neutral-950 text-white shadow'
-                      : 'text-neutral-500'
-                  }`}
-                >
-                  🍽 Dine-In
-                </button>
-              )}
-
-              {takeawayEnabled && (
-                <button
-                  type="button"
-                  onClick={() => setOrderType('parcel')}
-                  className={`rounded-xl py-3 text-xs font-black transition ${
-                    orderType === 'parcel'
-                      ? 'bg-orange-500 text-white shadow'
-                      : 'text-neutral-500'
-                  }`}
-                >
-                  🥡 Takeaway
-                </button>
-              )}
-
-              {!dineInEnabled && !takeawayEnabled && (
-                <div className="rounded-xl bg-amber-50 px-3 py-3 text-center text-xs font-bold text-amber-800">
-                  Ordering is currently unavailable.
-                </div>
-              )}
-            </div>
+            <RestaurantOrderingChooser options={orderingOptions} orderType={orderType}
+              issue={locationIssue} onRestaurantMode={mode => { setOrderType(mode); setLocationIssue('') }}
+              onDelivery={() => setDeliveryCheckoutOpen(true)} />
           </section>
 
           {/* OFFERS */}
@@ -3106,51 +3100,10 @@ export default function CustomerMenuPage() {
                         ))}
                       </div>
 
-                      <div className="mt-5">
-                        <p className="mb-2 text-[9px] font-black uppercase tracking-wider text-neutral-400">
-                          Order type
-                        </p>
-                        <div
-                          className={`grid gap-2 rounded-2xl bg-neutral-100 p-1.5 ${
-                            dineInEnabled && takeawayEnabled
-                              ? 'grid-cols-2'
-                              : 'grid-cols-1'
-                          }`}
-                        >
-                          {dineInEnabled && (
-                            <button
-                              type="button"
-                              onClick={() => setOrderType('dine-in')}
-                              className={`rounded-xl py-3 text-xs font-black ${
-                                orderType === 'dine-in'
-                                  ? 'bg-white text-neutral-950 shadow-sm'
-                                  : 'text-neutral-500'
-                              }`}
-                            >
-                              🍽 Dine-In
-                            </button>
-                          )}
-
-                          {takeawayEnabled && (
-                            <button
-                              type="button"
-                              onClick={() => setOrderType('parcel')}
-                              className={`rounded-xl py-3 text-xs font-black ${
-                                orderType === 'parcel'
-                                  ? 'bg-white text-orange-600 shadow-sm'
-                                  : 'text-neutral-500'
-                              }`}
-                            >
-                              🥡 Takeaway
-                            </button>
-                          )}
-
-                          {!dineInEnabled && !takeawayEnabled && (
-                            <div className="rounded-xl bg-amber-50 px-3 py-3 text-center text-xs font-bold text-amber-800">
-                              Ordering is currently unavailable.
-                            </div>
-                          )}
-                        </div>
+                      <div className="mt-5"><p className="mb-2 text-xs font-black">Order type</p>
+                        <RestaurantOrderingChooser options={orderingOptions} orderType={orderType}
+                          issue={locationIssue} onRestaurantMode={mode => { setOrderType(mode); setLocationIssue('') }}
+                          onDelivery={() => setDeliveryCheckoutOpen(true)} />
                       </div>
 
                       <div className="mt-5 rounded-[24px] bg-neutral-950 p-4 text-white">

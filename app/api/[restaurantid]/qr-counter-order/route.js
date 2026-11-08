@@ -1,7 +1,9 @@
+// DD_ORDERING_MODES_20261108
 // Destination: app/api/restaurant/qr-counter-order/route.js
 // Browser submits items and displayed total; server verifies all prices,
 // ERP customer fee, GST, wallet/order eligibility and feature permissions.
 // The privileged SQL RPC is granted ONLY to service_role.
+import { assertDineInCheckout, OrderingError, failOrdering } from '@/lib/server/restaurantOrdering'
 import { qrAdmin, qrRespond, qrError, qrSafeError, qrAssert,
   qrEligible, qrBuildVerifiedCart, qrRupees,
   qrRestaurantCustomerFee, QR_ID_RE } from '@/lib/server/qrPaymentServer'
@@ -52,6 +54,7 @@ export async function POST(request) {
       return qrError('Offers are disabled for this restaurant.', 403, 'FEATURE_DISABLED')
     }
 
+    await assertDineInCheckout(admin, restaurantId, tableNumber, payload)
     const { snapshot, subtotalPaise } = await qrBuildVerifiedCart(admin, restaurantId, payload.items)
     const subtotal = qrRupees(subtotalPaise / 100)
     const gstRate = feature?.gst_enabled === false ? 0 :
@@ -100,6 +103,7 @@ export async function POST(request) {
       platformFeePaise: data.order.platform_fee_paise,
       platformFeeCustomerAmount: data.order.platform_fee_customer_amount })
   } catch (error) {
+    if (error instanceof OrderingError) return failOrdering(error)
     return qrSafeError(error)
   }
 }

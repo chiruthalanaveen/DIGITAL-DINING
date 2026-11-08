@@ -59,6 +59,7 @@ export default function WaiterPortal({ params }) {
   const [activeMobileTab, setActiveMobileTab] = useState('ready')
   const [submittingDirectOrder, setSubmittingDirectOrder] = useState(false)
   const directOrderPendingRef = useRef(false)
+  const handoverPendingIdsRef = useRef(new Set())
   const goToMobileSection = (tab) => {
     setActiveMobileTab(tab)
     if (tab === 'profile') { setShowProfile(true); return }
@@ -2639,20 +2640,8 @@ export default function WaiterPortal({ params }) {
 
     async (orderId) => {
 
-      if (
-
-        !orderId ||
-
-        !restaurantId
-
-      ) {
-
-        return
-
-      }
-
-
-
+      if (!orderId || !restaurantId || handoverPendingIdsRef.current.has(String(orderId))) return
+      handoverPendingIdsRef.current.add(String(orderId))
       try {
 
         let data
@@ -2847,14 +2836,8 @@ export default function WaiterPortal({ params }) {
 
 
 
-        if (
-
-          readyOrders.length <= 1
-
-        ) {
-
+        if (readyOrders.filter(order => String(order.id) !== String(orderId)).length === 0) {
           stopAlarm()
-
         }
 
 
@@ -2866,23 +2849,10 @@ export default function WaiterPortal({ params }) {
         )
 
       } catch (error) {
-
-        console.error(
-
-          'Handover error:',
-
-          error
-
-        )
-
-
-
-        appNotice(
-
-          `Unable to record handover: ${error.message}`
-
-        )
-
+        console.error('Handover error:', error)
+        appNotice(`Unable to record handover: ${error.message}`)
+      } finally {
+        handoverPendingIdsRef.current.delete(String(orderId))
       }
 
     }
@@ -3181,8 +3151,10 @@ export default function WaiterPortal({ params }) {
   const handleLogout = () => {
 
     stopAlarm()
-
-
+    handoverPendingIdsRef.current.clear()
+    setActiveMobileTab('ready')
+    directOrderPendingRef.current = false
+    setSubmittingDirectOrder(false)
 
     soundEnabledRef.current = false
 
@@ -4418,6 +4390,11 @@ export default function WaiterPortal({ params }) {
 
       </div>
 
+      {/* DD_ORDERING_MODES_20261108: role-scoped restaurant orders */}
+      <a href={`/app/operations/${encodeURIComponent(restaurantId)}?role=staff`}
+        className="mb-24 mt-5 block rounded-xl border border-indigo-500 bg-indigo-950 px-4 py-3 text-center text-xs font-bold text-indigo-100">
+        Ready table orders · Open secure order inbox
+      </a>
       <nav aria-label="Waiter mobile navigation" className="dd-mobile-tabs fixed bottom-0 inset-x-0 z-40 border-t border-neutral-700 bg-neutral-950/95 px-2 pt-2 backdrop-blur-xl lg:hidden" style={{paddingBottom:'max(8px, env(safe-area-inset-bottom))'}}>
         <div className="mx-auto grid max-w-lg grid-cols-4 gap-1">
         <button type="button" aria-label="Ready" data-active={activeMobileTab === 'ready'} aria-current={activeMobileTab === 'ready' ? 'page' : undefined} onClick={() => goToMobileSection('ready')} className="dd-mobile-tab min-h-[62px] flex flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-neutral-300 transition active:scale-[.97]" key="ready"><span aria-hidden="true" className="text-xl">🔔</span><span className="text-[11px] font-extrabold">Ready</span></button>
