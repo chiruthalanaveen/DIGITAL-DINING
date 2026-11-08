@@ -18,6 +18,7 @@ import AdminRestaurantFeeEditor from '@/app/components/AdminRestaurantFeeEditor'
 import AdminDeliverySignupSettings from '@/app/components/AdminDeliverySignupSettings'
 import AdminPrivacyDeletionReviews from '@/app/components/AdminPrivacyDeletionReviews'
 import AdminErrorHistory from '@/app/components/AdminErrorHistory'
+import AdminMaintenanceSettings from '@/app/components/AdminMaintenanceSettings'
 
 const NAV = [
   ['overview', 'Overview'],
@@ -1354,6 +1355,16 @@ export default function AdminControlCenter() {
     setData,
   ] =
     useState(null)
+
+  const syncMaintenanceStatus = useCallback(({ enabled }) => {
+    setData((current) => current ? {
+      ...current,
+      platform: {
+        ...current.platform,
+        websiteStatus: enabled ? 'Not Working' : 'Working',
+      },
+    } : current)
+  }, [])
 
   const [
     loading,
@@ -4390,65 +4401,7 @@ export default function AdminControlCenter() {
               </div>
 
               <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
-                        Public Website
-                      </p>
-
-                      <h2 className="mt-1 text-lg font-black text-white">
-                        Website Status
-                      </h2>
-                    </div>
-
-                    <StatusPill
-                      value={
-                        data?.platform
-                          ?.websiteStatus ||
-                        'Working'
-                      }
-                    />
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={
-                        actionLoading
-                      }
-                      onClick={() =>
-                        action({
-                          action:
-                            'set_website_status',
-                          status:
-                            'Working',
-                        })
-                      }
-                      className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white"
-                    >
-                      Working
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={
-                        actionLoading
-                      }
-                      onClick={() =>
-                        action({
-                          action:
-                            'set_website_status',
-                          status:
-                            'Not Working',
-                        })
-                      }
-                      className="rounded-xl bg-red-600 px-4 py-3 text-xs font-black text-white"
-                    >
-                      Not Working
-                    </button>
-                  </div>
-                </div>
+                <AdminMaintenanceSettings onChange={syncMaintenanceStatus} />
 
                 <div className="rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
                   <p className="text-[9px] font-black uppercase tracking-wider text-neutral-500">
