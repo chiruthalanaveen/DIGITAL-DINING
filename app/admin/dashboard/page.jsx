@@ -18,6 +18,10 @@ import AdminRestaurantFeeEditor from '@/app/components/AdminRestaurantFeeEditor'
 import AdminDeliverySignupSettings from '@/app/components/AdminDeliverySignupSettings'
 import AdminPrivacyDeletionReviews from '@/app/components/AdminPrivacyDeletionReviews'
 import AdminErrorHistory from '@/app/components/AdminErrorHistory'
+import AdminRestaurantOrderingControls from '@/app/components/AdminRestaurantOrderingControls'
+import AdminEcommerceStoresPage from '@/app/admin/ecommerce/stores/page'
+import AdminEcommerceProductsPage from '@/app/admin/ecommerce/products/ProductManagementContent'
+import AdminEcommerceWalletsPage from '@/app/admin/ecommerce/wallets/page'
 
 const NAV = [
   ['overview', 'Overview'],
@@ -29,8 +33,12 @@ const NAV = [
   ['tenants', 'Tenants & Access'],
   ['operations', 'Operations'],
   ['delivery-orders', 'Delivery Orders'],
+  ['restaurant-ordering', 'Restaurant Ordering'],
   ['people', 'Users & Staff'],
   ['inventory', 'Inventory'],
+  ['ecommerce-stores', 'E-Commerce Websites'],
+  ['ecommerce-products', 'E-Commerce Products'],
+  ['ecommerce-wallets', 'E-Commerce Wallets'],
   ['live-support', 'Live Support'],
   ['support', 'Help Centre'],
   ['reviews', 'Reviews'],
@@ -42,7 +50,7 @@ const NAV = [
 // UI navigation groups and icons: presentation only. Existing module keys remain untouched.
 const NAV_GROUPS = [
   { title: 'Workspace', items: ['overview', 'registrations', 'wallet-controls', 'tenants'] },
-  { title: 'Commerce', items: ['operations', 'delivery-orders', 'payments', 'inventory'] },
+  { title: 'Commerce', items: ['operations', 'delivery-orders', 'restaurant-ordering', 'payments', 'inventory', 'ecommerce-stores', 'ecommerce-products', 'ecommerce-wallets'] },
   { title: 'Growth & Onboarding', items: ['custom-plans', 'delivery-signup', 'people'] },
   { title: 'Customer Experience', items: ['live-support', 'support', 'reviews'] },
   { title: 'Administration', items: ['privacy-deletions', 'system', 'audit'] },
@@ -51,8 +59,8 @@ const NAV_GROUPS = [
 const NAV_ICONS = {
   overview: 'dashboard', 'custom-plans': 'sparkles', registrations: 'user-check', 'privacy-deletions': 'shield',
   'wallet-controls': 'wallet', 'delivery-signup': 'truck', tenants: 'building',
-  operations: 'activity', 'delivery-orders': 'package', people: 'users',
-  inventory: 'layers', 'live-support': 'messages', support: 'life-ring',
+  operations: 'activity', 'delivery-orders': 'package', 'restaurant-ordering': 'settings', people: 'users',
+  inventory: 'layers', 'ecommerce-stores': 'globe', 'ecommerce-products': 'package', 'ecommerce-wallets': 'wallet', 'live-support': 'messages', support: 'life-ring',
   reviews: 'star', payments: 'credit', system: 'settings', audit: 'shield',
 }
 
@@ -66,8 +74,12 @@ const NAV_DESCRIPTIONS = {
   tenants: 'Manage restaurants, access and platform fees',
   operations: 'Cross-platform operations and activity',
   'delivery-orders': 'Delivery order history and reports',
+  'restaurant-ordering': 'Configure per-tenant dine-in GPS, table QR and combined delivery',
   people: 'Owners, staff and delivery teams',
   inventory: 'Stock and availability monitoring',
+  'ecommerce-stores': 'Create, approve and manage E-Commerce websites',
+  'ecommerce-products': 'Manage E-Commerce categories, products, stock and images',
+  'ecommerce-wallets': 'Manage E-Commerce wallet balances and fees',
   'live-support': 'Active customer support conversations',
   support: 'Help Centre ticket management',
   reviews: 'Customer feedback and moderation',
@@ -1303,6 +1315,12 @@ export default function AdminControlCenter() {
   const [commandOpen, setCommandOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
 
+  // Support the old /admin/restaurant-ordering bookmark and dashboard deep links.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('section')
+    if (requested && NAV.some(([key]) => key === requested)) setSection(requested)
+  }, [])
+
   // Only the interface changes here; selecting a section never mutates tenant data.
   const switchSection = (key) => {
     if (!NAV.some(([navKey]) => navKey === key)) return
@@ -1310,7 +1328,13 @@ export default function AdminControlCenter() {
     setNavigationOpen(false)
     setCommandOpen(false)
     setCommandQuery('')
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      if (key === 'overview') url.searchParams.delete('section')
+      else url.searchParams.set('section', key)
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
   }
 
   useEffect(() => {
@@ -1390,6 +1414,8 @@ export default function AdminControlCenter() {
     setTenantEditor,
   ] =
     useState(null)
+
+  const [orderingEditorOpen, setOrderingEditorOpen] = useState(false)
 
   const [
     actionLoading,
@@ -2122,8 +2148,9 @@ export default function AdminControlCenter() {
 
   const openTenantEditor =
     (
-      tenant
+      tenant, showOrdering = false
     ) => {
+      setOrderingEditorOpen(showOrdering)
       setTenantEditor({
         ...tenant,
         planCode:
@@ -3005,6 +3032,13 @@ export default function AdminControlCenter() {
                             >
                               Manage Access
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => openTenantEditor(tenant, true)}
+                              className="ml-2 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-[9px] font-black text-red-300 hover:bg-red-500/20"
+                            >
+                              Ordering
+                            </button>
                           </td>
                         </tr>
                       )
@@ -3245,6 +3279,10 @@ export default function AdminControlCenter() {
             </div>
           )}
 
+          {section === 'ecommerce-stores' && <AdminEcommerceStoresPage />}
+          {section === 'ecommerce-products' && <AdminEcommerceProductsPage />}
+          {section === 'ecommerce-wallets' && <AdminEcommerceWalletsPage />}
+
           {section === 'registrations' && (
             <AdminRegistrationApprovals />
           )}
@@ -3263,6 +3301,10 @@ export default function AdminControlCenter() {
 
           {section === 'delivery-orders' && (
             <DeliveryOrdersReport />
+          )}
+
+          {section === 'restaurant-ordering' && (
+            <AdminRestaurantOrderingControls tenants={data?.tenants || []} />
           )}
 
           {section ===
@@ -4594,7 +4636,7 @@ export default function AdminControlCenter() {
 
       {tenantEditor && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-          <div className="max-h-[94dvh] w-full max-w-lg overflow-y-auto rounded-t-[30px] border border-neutral-800 bg-neutral-950 p-5 shadow-2xl sm:rounded-[30px]">
+          <div className="max-h-[94dvh] w-full max-w-2xl overflow-y-auto rounded-t-[30px] border border-neutral-800 bg-neutral-950 p-5 shadow-2xl sm:rounded-[30px]">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[9px] font-black uppercase tracking-wider text-red-400">
@@ -4872,6 +4914,47 @@ export default function AdminControlCenter() {
                   )}
                 </div>
               </div>
+
+              <section className="rounded-2xl border border-red-500/20 bg-neutral-900/70 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-red-400">Per-Tenant Restaurant Ordering</p>
+                    <h3 className="mt-1 text-sm font-black text-white">Dine-In · Takeaway · Home Delivery · Table QR</h3>
+                    <p className="mt-2 text-[10px] leading-5 text-neutral-400">
+                      Configure the selected tenant's GPS boundary, signed QR tables, preparation time and home-delivery entry.
+                      Plan and feature switches above/below still determine access.
+                    </p>
+                  </div>
+                  <button type="button" aria-expanded={orderingEditorOpen} onClick={() => setOrderingEditorOpen((value) => !value)}
+                    className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-[10px] font-black text-red-300 hover:bg-red-500/20">
+                    {orderingEditorOpen ? 'Hide Settings' : 'Configure Ordering'}
+                  </button>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[
+                    ['Dine-In', ['restaurant_pro', 'restaurant_standard', 'restaurant_resort_pro', 'restaurant_resort_standard', 'restaurant_delivery', 'restaurant_resort_delivery'].includes(tenantEditor.planCode) && tenantEditor.features?.restaurant_enabled !== false && tenantEditor.features?.qr_menu_enabled !== false && tenantEditor.features?.dine_in_enabled !== false],
+                    ['Takeaway', ['restaurant_pro', 'restaurant_standard', 'restaurant_resort_pro', 'restaurant_resort_standard', 'restaurant_delivery', 'restaurant_resort_delivery'].includes(tenantEditor.planCode) && tenantEditor.features?.restaurant_enabled !== false && tenantEditor.features?.qr_menu_enabled !== false && tenantEditor.features?.takeaway_enabled !== false],
+                    ['Home Delivery', ['delivery', 'restaurant_delivery', 'restaurant_resort_delivery'].includes(tenantEditor.planCode) && tenantEditor.features?.delivery_enabled !== false && tenantEditor.features?.delivery_customer_ordering_enabled !== false],
+                    ['Table QR', ['restaurant_pro', 'restaurant_standard', 'restaurant_resort_pro', 'restaurant_resort_standard', 'restaurant_delivery', 'restaurant_resort_delivery'].includes(tenantEditor.planCode) && tenantEditor.features?.restaurant_enabled !== false && tenantEditor.features?.qr_menu_enabled !== false],
+                  ].map(([name, allowed]) => (
+                    <div key={name} className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
+                      <p className="text-[10px] font-bold text-neutral-200">{name}</p>
+                      <p className={`mt-1 text-[9px] font-black ${allowed ? 'text-emerald-400' : 'text-neutral-500'}`}>
+                        {allowed ? 'Plan/feature eligible' : 'Not included / disabled'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-[10px] leading-5 text-amber-300/80">
+                  Unsaved plan/feature edits are previews only. Use “Save Access, Subscription & Features” below to apply them.
+                  Ordering policy has its own Save button.
+                </p>
+                {orderingEditorOpen && (
+                  <div className="mt-4 border-t border-neutral-800 pt-4">
+                    <AdminRestaurantOrderingControls key={tenantEditor.id} restaurantId={tenantEditor.id} tenant={tenantEditor} compact />
+                  </div>
+                )}
+              </section>
 
               <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4">
                 <div>

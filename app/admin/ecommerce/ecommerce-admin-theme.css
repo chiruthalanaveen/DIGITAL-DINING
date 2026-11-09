@@ -1,0 +1,25 @@
+/* E-Commerce admin visual theme. Scope prevents changes to other admin modules. */
+.dd-ecommerce-skin { color:#f5f5f5; background:#0b0d12; min-height:60vh; font-family:inherit; }
+.dd-ecommerce-skin > main, .dd-ecommerce-skin main { background:transparent !important; color:#f5f5f5 !important; max-width:none !important; margin:0 !important; padding:0 !important; min-height:0 !important; font-family:inherit !important; }
+.dd-ecommerce-skin h1 { color:#fafafa !important; font-size:clamp(1.5rem,2.5vw,2rem) !important; font-weight:800 !important; letter-spacing:-.035em; }
+.dd-ecommerce-skin h2 { color:#fafafa !important; font-size:1.1rem !important; font-weight:800 !important; }
+.dd-ecommerce-skin h3,.dd-ecommerce-skin h4 { color:#f4f4f5 !important; font-weight:750 !important; }
+.dd-ecommerce-skin p,.dd-ecommerce-skin label,.dd-ecommerce-skin li { color:#b4b4be; }
+.dd-ecommerce-skin section,.dd-ecommerce-skin article { background:#15171e !important; border:1px solid #2c2f3b !important; border-radius:18px !important; box-shadow:none !important; }
+.dd-ecommerce-skin section { padding:20px !important; margin-bottom:18px !important; }
+.dd-ecommerce-skin article { padding:18px !important; }
+.dd-ecommerce-skin input,.dd-ecommerce-skin select,.dd-ecommerce-skin textarea { background:#0d0f15 !important; color:#f5f5f5 !important; border:1px solid #373a46 !important; border-radius:11px !important; min-height:42px; outline-offset:2px; }
+.dd-ecommerce-skin input::placeholder,.dd-ecommerce-skin textarea::placeholder { color:#858895 !important; }
+.dd-ecommerce-skin input:focus,.dd-ecommerce-skin select:focus,.dd-ecommerce-skin textarea:focus { border-color:#ef4444 !important; outline:2px solid #ef444422; }
+.dd-ecommerce-skin input[type=file] { padding:10px; max-width:100%; }
+.dd-ecommerce-skin button { border:1px solid #4b2830 !important; border-radius:10px !important; background:#351c24 !important; color:#fecaca !important; font-weight:700 !important; transition:background .15s ease; }
+.dd-ecommerce-skin button:hover:not(:disabled) { background:#6f2330 !important; color:#fff !important; }
+.dd-ecommerce-skin button:disabled { opacity:.5; cursor:not-allowed; }
+.dd-ecommerce-skin a { color:#fda4af !important; }
+.dd-ecommerce-skin table { width:100%; border-collapse:collapse; }
+.dd-ecommerce-skin th { color:#a1a1aa !important; font-size:11px; text-transform:uppercase; letter-spacing:.06em; background:#101218 !important; border-bottom:1px solid #363944 !important; }
+.dd-ecommerce-skin td { color:#e4e4e7 !important; border-bottom:1px solid #2a2d37; }
+.dd-ecommerce-skin th,.dd-ecommerce-skin td { padding:12px !important; }
+.dd-ecommerce-skin tr:hover td { background:#ffffff06; }
+.dd-ecommerce-skin img { max-width:100%; }
+@media(max-width:640px) { .dd-ecommerce-skin section { padding:14px !important; } .dd-ecommerce-skin article { padding:12px !important; } .dd-ecommerce-skin th,.dd-ecommerce-skin td { padding:9px !important; } }

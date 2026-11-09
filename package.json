@@ -25,6 +25,7 @@
     "bcryptjs": "^3.0.3",
     "firebase-admin": "^14.5.0",
     "html5-qrcode": "^2.3.8",
+    "leaflet": "^1.9.4",
     "next": "16.3.4",
     "nodemailer": "^9.1.1",
     "prisma": "^8.0.0-rc.12",

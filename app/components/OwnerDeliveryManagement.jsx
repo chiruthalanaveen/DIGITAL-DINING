@@ -8,6 +8,8 @@ import {
   useState,
 } from 'react'
 import { supabase } from '@/lib/supabase'
+// DD_DRIVER_WORKFLOW_20261108
+import DeliveryFailedReturnDesk from '@/app/components/DeliveryFailedReturnDesk'
 import PaymentGatewayConfigCard from '@/app/components/PaymentGatewayConfigCard'
 import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
 import OwnerSupportChat from '@/app/components/OwnerSupportChat'
@@ -1102,7 +1104,7 @@ export default function DeliveryManagement({
   useLiveDeliveryRefresh(
     () => refreshOrdersOnly(true),
     Boolean(restaurantId),
-    15000
+    1000
   )
 
 
@@ -4721,7 +4723,6 @@ export default function DeliveryManagement({
   }, [tab, loadAfterSales])
 
   const tabs = [
-    ['overview', 'Overview'],
     ['wallet', 'Delivery Wallet'],
     [
       'orders',
@@ -4755,6 +4756,7 @@ export default function DeliveryManagement({
       'packers',
       `Packers (${packers.length})`,
     ],
+    ['overview', 'Overview'],
     ['settings-home', 'Settings'],
     ['service_area', 'Delivery Area'],
     ['billing', 'Billing'],
@@ -5132,6 +5134,7 @@ export default function DeliveryManagement({
 
       {tab === 'orders' && (
         <div className="space-y-4">
+          <DeliveryFailedReturnDesk mode="owner" restaurantId={restaurantId} />
           <div className="grid gap-3 rounded-3xl border border-neutral-800 bg-neutral-900 p-4 md:grid-cols-2 xl:grid-cols-[1.4fr_0.7fr_0.8fr_auto_auto]">
             <input
               value={search}

@@ -35,6 +35,8 @@ import {
 
 
 import { supabase } from '@/lib/supabase'
+// DD_DRIVER_WORKFLOW_20261108
+import DeliveryFailedReturnDesk from '@/app/components/DeliveryFailedReturnDesk'
 
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { scanBarcodeWithCamera } from '@/lib/barcodeScanner'
@@ -48,6 +50,16 @@ import DeliveryServiceAreaEditor from '@/app/components/DeliveryServiceAreaEdito
 
 
 
+
+// Non-blocking post-save refresh: the Save button is released after the
+// confirmed database write; follow-up dashboard refresh continues separately.
+function refreshAfterSuccessfulSave(label, task) {
+  void Promise.resolve()
+    .then(task)
+    .catch((error) => {
+      console.warn(`[DELIVERY] ${label}: saved, but background refresh failed`, error)
+    })
+}
 
 const ORDER_STATUSES = [
 
@@ -3392,10 +3404,8 @@ export default function ManagerDeliveryManagement({
 
 
       setEditingMenuId('')
-
-
-
-      await loadData(true)
+      setMessage('Delivery menu saved.')
+      refreshAfterSuccessfulSave('Manager menu', () => loadData(true))
 
 
 
@@ -3603,8 +3613,10 @@ export default function ManagerDeliveryManagement({
       setCreateStoreItemDraft({ ...EMPTY_CREATE_STORE_ITEM })
       setShowCreateStoreItem(false)
 
-      await loadData(true)
-      await loadInventoryReport(true)
+      refreshAfterSuccessfulSave('Manager new product', async () => {
+        await loadData(true)
+        await loadInventoryReport(true)
+      })
     } catch (createError) {
       console.error('Manager add store item error:', createError)
       appNotice(createError?.message || 'Unable to add store item.')
@@ -3929,7 +3941,13 @@ export default function ManagerDeliveryManagement({
         id: item.id, item_type: type, barcode: type === 'packaged_product' ? barcode : '',
         track_stock: inventoryDraft.track_stock, stock_quantity: stock, low_stock_threshold: low,
       })
-      setEditingInventoryId(''); setMessage(result?.message || 'Inventory saved.'); await loadData(true); await loadInventoryReport(true); if (selectedInventoryHistoryId === item.id) await loadInventoryHistory(item.id)
+      setEditingInventoryId('')
+      setMessage(result?.message || 'Inventory saved.')
+      refreshAfterSuccessfulSave('Manager inventory', async () => {
+        await loadData(true)
+        await loadInventoryReport(true)
+        if (selectedInventoryHistoryId === item.id) await loadInventoryHistory(item.id)
+      })
     } catch (e) { appNotice(e?.message || 'Unable to save inventory.') }
     finally { setInventorySaving(false) }
   }
@@ -3997,10 +4015,8 @@ export default function ManagerDeliveryManagement({
 
 
       setOfferForm(EMPTY_OFFER)
-
-
-
-      await loadData(true)
+      setMessage('Delivery offer published.')
+      refreshAfterSuccessfulSave('Manager offer', () => loadData(true))
 
 
 
@@ -5941,6 +5957,7 @@ export default function ManagerDeliveryManagement({
 
 
         <div className="space-y-4">
+          <DeliveryFailedReturnDesk mode="manager" restaurantId={restaurantId} restaurantCode={restaurantCode} sessionToken={sessionToken} sessionMode={sessionMode} userId={userId} password={password} />
 
 
 
