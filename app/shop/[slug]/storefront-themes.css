@@ -1,0 +1,234 @@
+
+/*
+  Digital Dine-In E-Commerce Storefront Themes
+
+  All styles are scoped to .storefront-template
+  so they do not change the owner or admin portals.
+*/
+
+.storefront-template {
+  --store-accent: #087f5b;
+  --store-accent-dark: #065f46;
+  --store-tint: #e8f8f0;
+  --store-background: #f8fafc;
+  --store-ink: #18212f;
+
+  background: var(--store-background);
+  color: var(--store-ink);
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+}
+
+.storefront-template .store-header {
+  border-color: #e9edf1;
+}
+
+.storefront-template .store-hero {
+  background: linear-gradient(
+    115deg,
+    var(--store-accent-dark),
+    var(--store-accent)
+  );
+
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.storefront-template .store-cart-button,
+.storefront-template .store-floating-cart {
+  background: var(--store-accent-dark);
+}
+
+.storefront-template .store-product-card {
+  border: 1px solid #edf0f3;
+  border-radius: 10px;
+
+  box-shadow:
+    0 2px 10px rgb(15 23 42 / 4%);
+}
+
+.storefront-template .store-product-photo img {
+  transition: transform 0.25s ease;
+}
+
+@media (hover: hover) {
+  .storefront-template
+  .store-product-card:hover
+  .store-product-photo img {
+    transform: scale(1.035);
+  }
+}
+
+.storefront-template
+.store-product-card button:focus-visible {
+  outline: 3px solid var(--store-accent);
+  outline-offset: -3px;
+}
+
+/* FASHION */
+
+.store-template-fashion {
+  --store-accent: #e64c74;
+  --store-accent-dark: #b52e58;
+  --store-tint: #fff0f4;
+  --store-background: #ffffff;
+}
+
+.store-template-fashion .store-header {
+  box-shadow:
+    0 2px 12px rgb(17 24 39 / 4%);
+}
+
+.store-template-fashion .store-hero {
+  background: linear-gradient(
+    115deg,
+    #29233b,
+    #9f365e 65%,
+    #dc7291
+  );
+}
+
+.store-template-fashion .store-product-card {
+  border: 0;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.store-template-fashion .store-product-photo {
+  background: #f7f4f5;
+}
+
+.store-template-fashion
+.store-product-card
+.store-product-photo {
+  aspect-ratio: 3 / 4;
+}
+
+.store-template-fashion
+.store-product-card
+button > div:last-child {
+  padding: 10px 7px 12px;
+}
+
+.store-template-fashion .store-product-grid {
+  gap: 10px;
+}
+
+/* PICKLES */
+
+.store-template-pickles {
+  --store-accent: #c25b21;
+  --store-accent-dark: #8f3419;
+  --store-tint: #fff1dc;
+  --store-background: #fffaf3;
+}
+
+.store-template-pickles .store-hero {
+  background: linear-gradient(
+    115deg,
+    #783417,
+    #bb6423 75%,
+    #e8a747
+  );
+}
+
+.store-template-pickles .store-product-card {
+  border-color: #f1e1cf;
+
+  box-shadow:
+    0 3px 16px rgb(120 52 23 / 7%);
+}
+
+.store-template-pickles .store-product-photo {
+  background: #fff4e5;
+}
+
+/* GROCERY */
+
+.store-template-grocery {
+  --store-accent: #15966d;
+  --store-accent-dark: #076a4e;
+  --store-tint: #e5faf0;
+  --store-background: #f5faf7;
+}
+
+.store-template-grocery .store-product-card {
+  border-radius: 16px;
+}
+
+.store-template-grocery .store-product-photo {
+  aspect-ratio: 1 / 1;
+}
+
+/* ELECTRONICS */
+
+.store-template-electronics {
+  --store-accent: #2563eb;
+  --store-accent-dark: #1e40af;
+  --store-tint: #eff6ff;
+  --store-background: #f6f8fc;
+}
+
+.store-template-electronics .store-hero {
+  background: linear-gradient(
+    110deg,
+    #101c3e,
+    #2355aa
+  );
+}
+
+.store-template-electronics .store-product-photo {
+  background: #f1f4fa;
+}
+
+.storefront-template .store-product-card strong {
+  color: var(--store-ink);
+}
+
+/* OWNER-SELECTED ACCENTS */
+
+.storefront-template.store-accent-rose {
+  --store-accent: #e64c74;
+  --store-accent-dark: #b52e58;
+}
+
+.storefront-template.store-accent-green {
+  --store-accent: #15966d;
+  --store-accent-dark: #087f5b;
+}
+
+.storefront-template.store-accent-orange {
+  --store-accent: #dc7b32;
+  --store-accent-dark: #c25b21;
+}
+
+.storefront-template.store-accent-blue {
+  --store-accent: #3b82f6;
+  --store-accent-dark: #1e40af;
+}
+
+.storefront-template[class*="store-accent-"]
+.store-hero {
+  background: linear-gradient(
+    115deg,
+    var(--store-accent-dark),
+    var(--store-accent)
+  );
+}
+
+/* MOBILE */
+
+@media (max-width: 480px) {
+  .storefront-template .store-hero {
+    padding: 20px 18px;
+  }
+
+  .storefront-template
+  .store-product-card h3 {
+    min-height: auto;
+  }
+}

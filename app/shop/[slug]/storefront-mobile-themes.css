@@ -1,0 +1,76 @@
+
+/* Destination: app/shop/[slug]/storefront-mobile-themes.css */
+
+.mobile-storefront {
+  background: var(--mobile-background);
+  color: var(--mobile-ink);
+}
+
+.mobile-storefront .store-hero {
+  background: linear-gradient(
+    120deg,
+    var(--mobile-hero),
+    var(--mobile-accent)
+  );
+}
+
+.mobile-storefront .store-cart-button,
+.mobile-storefront .store-floating-cart {
+  background: var(--mobile-accent);
+}
+
+.mobile-storefront .store-product-card {
+  background: var(--mobile-card);
+}
+
+.mobile-storefront .store-product-card button:focus-visible {
+  outline-color: var(--mobile-accent);
+}
+
+.mobile-storefront .mobile-offer-banner {
+  box-shadow: 0 8px 26px rgb(0 0 0 / 9%);
+}
+
+/* Mobile-only variations */
+@media (max-width: 640px) {
+  .mobile-storefront .store-hero {
+    border-radius: 16px;
+  }
+
+  .mobile-storefront[class*="luxury"],
+  .mobile-storefront[class*="tech-dark"],
+  .mobile-storefront[class*="gaming"] {
+    --mobile-background: #111827;
+    --mobile-ink: #f8fafc;
+    --mobile-card: #f9fafb;
+  }
+
+  .mobile-storefront[class*="minimal"] .store-product-card {
+    border-radius: 3px;
+    box-shadow: none;
+  }
+
+  .mobile-storefront[class*="boutique"],
+  .mobile-storefront[class*="pastel"] {
+    --mobile-background: #fff3f8;
+  }
+
+  .mobile-storefront[class*="streetwear"] .store-product-card,
+  .mobile-storefront[class*="neon"] .store-product-card {
+    border-radius: 2px;
+  }
+
+  .mobile-storefront[class*="quick-shop"] .store-product-photo,
+  .mobile-storefront[class*="express"] .store-product-photo {
+    aspect-ratio: 1 / 1;
+  }
+
+  .mobile-storefront[class*="editorial"] .store-product-photo {
+    aspect-ratio: 3 / 4;
+  }
+
+  .mobile-storefront[class*="rainbow"] .store-product-card,
+  .mobile-storefront[class*="playland"] .store-product-card {
+    border-radius: 22px;
+  }
+}
