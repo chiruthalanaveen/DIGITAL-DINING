@@ -1,184 +1,579 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import ThemeToggle from '@/app/components/ThemeToggle'
+import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
+import OwnerMobileBillingOrders from '@/app/components/OwnerMobileBillingOrders'
 
-const RESTAURANT = [
-  ['settlements','Reports & analytics','Revenue, orders and downloads','chart'],
-  ['menu','Menu & categories','Dishes, photos, availability','grid'],
-  ['tables','Tables & QR','QR ordering and table setup','qr'],
-  ['staff','Managers','Manager roles and access','users',true],
-  ['staff-access','Kitchen, waiter & staff','Staff login QR and access','users'],
-  ['offers','Offers & promotions','Daily discounts and campaigns','spark'],
-  ['taxes','GST & packing','Tax rates and packing charges','settings'],
-  ['billing','Invoices & billing','Bills, signatures and branding','receipt'],
-  ['gateway','Payment gateways','Razorpay and counter payments','wallet'],
-  ['alarm-settings','Order alarms','Kitchen and waiter sound controls','bell',true],
-  ['swiggy-sync','Menu import / sync','Catalogue import tools','refresh',true],
-]
-const DELIVERY = [
-  ['Delivery orders','Orders and statuses','box'],['Products & inventory','Catalogue and stock','grid'],
-  ['Packer management','Packing workflow','users'],['Driver assignment','Delivery team and auto assignment','truck'],
-  ['Delivery tracking','Order location and progress','pin'],['Coverage & radius','Serviceable delivery area','pin'],
-  ['Fees & surge','Handling, minimum order and surge','settings'],['Wallet & recharge','Balance, debits and recharge','wallet'],
-  ['Returns & replacements','Pickup and customer issues','refresh'],['Delivery reports','Operations and performance','chart'],
-]
-const RESORT = [
-  ['Bookings & reservations','Upcoming and past bookings','box'],['Room management','Room setup and details','grid'],
-  ['Availability','Rooms and occupancy','calendar'],['Guests','Guest information','users'],
-  ['Check-in / check-out','Guest stay operations','calendar'],['Resort payments','Charges and collections','wallet'],
-  ['Occupancy & revenue','Reports and insights','chart'],
-]
+// DD_OWNER_MOBILE_PLACEMENTS_20261111
+// Navigation only. Existing owner APIs, permissions, subscriptions, wallet,
+// billing, signed QR and management components remain the source of truth.
+
 const SHAPES = {
-  home:<><path d="m3 10 9-7 9 7v11H3z"/><path d="M9 21v-8h6v8"/></>,
-  box:<><path d="m3 7 9-4 9 4v11l-9 4-9-4zM3 7l9 5 9-5M12 12v10"/></>,
-  grid:<><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></>,
-  chart:<><path d="M3 20h18M6 16v-6m6 6V5m6 11V9"/></>,
-  settings:<><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></>,
-  support:<><path d="M4 14v-3a8 8 0 0 1 16 0v3M4 14H2v6h5v-6zM20 14h2v6h-5v-6zM17 21c-1 1-3 1-5 1"/></>,
-  wallet:<><rect x="2" y="5" width="20" height="16" rx="3"/><path d="M2 10h20m-5 5h3"/></>,
-  receipt:<><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8"/></>,
-  users:<><circle cx="9" cy="8" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M17 8a3 3 0 0 1 0 6m1 2c2 1 3 3 3 5"/></>,
-  bell:<><path d="M18 8a6 6 0 0 0-12 0c0 6-3 7-3 9h18c0-2-3-3-3-9M10 21h4"/></>,
-  search:<><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></>,
-  close:<><path d="M5 5 19 19M19 5 5 19"/></>,
-  arrow:<><path d="m9 5 7 7-7 7"/></>,
-  qr:<><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M15 15h3v3h-3m5-4v7m-6 0h3"/></>,
-  spark:<><path d="m12 2 2.7 7.3L22 12l-7.3 2.7L12 22l-2.7-7.3L2 12l7.3-2.7z"/></>,
-  refresh:<><path d="M20 7v5h-5M4 17v-5h5M6 8a7 7 0 0 1 12-2l2 1M4 17l2 1a7 7 0 0 0 12-2"/></>,
-  truck:<><path d="M3 6h12v12H3zM15 10h4l3 4v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></>,
-  pin:<><path d="M19 10c0 5-7 12-7 12S5 15 5 10a7 7 0 1 1 14 0z"/><circle cx="12" cy="10" r="2"/></>,
-  calendar:<><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/></>,
-  profile:<><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>,
-  layers:<><path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/></>,
+  home: <><path d="m3 10 9-7 9 7v11H3z" /><path d="M9 21v-8h6v8" /></>,
+  box: <><path d="m3 7 9-4 9 4v11l-9 4-9-4zM3 7l9 5 9-5M12 12v10" /></>,
+  grid: <><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /></>,
+  chart: <><path d="M3 20h18M6 16v-6m6 6V5m6 11V9" /></>,
+  settings: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3" /></>,
+  support: <><path d="M4 14v-3a8 8 0 0 1 16 0v3M4 14H2v6h5v-6zM20 14h2v6h-5v-6zM17 21c-1 1-3 1-5 1" /></>,
+  wallet: <><rect x="2" y="5" width="20" height="16" rx="3" /><path d="M2 10h20m-5 5h3" /></>,
+  receipt: <><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM8 8h8M8 12h8" /></>,
+  users: <><circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2M17 8a3 3 0 0 1 0 6m1 2c2 1 3 3 3 5" /></>,
+  bell: <><path d="M18 8a6 6 0 0 0-12 0c0 6-3 7-3 9h18c0-2-3-3-3-9M10 21h4" /></>,
+  search: <><circle cx="10" cy="10" r="7" /><path d="m15 15 6 6" /></>,
+  arrow: <><path d="m9 5 7 7-7 7" /></>,
+  qr: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><path d="M15 15h3v3h-3m5-4v7m-6 0h3" /></>,
+  spark: <><path d="m12 2 2.7 7.3L22 12l-7.3 2.7L12 22l-2.7-7.3L2 12l7.3-2.7z" /></>,
+  refresh: <><path d="M20 7v5h-5M4 17v-5h5M6 8a7 7 0 0 1 12-2l2 1M4 17l2 1a7 7 0 0 0 12-2" /></>,
+  truck: <><path d="M3 6h12v12H3zM15 10h4l3 4v4h-7" /><circle cx="7" cy="18" r="2" /><circle cx="19" cy="18" r="2" /></>,
+  pin: <><path d="M19 10c0 5-7 12-7 12S5 15 5 10a7 7 0 1 1 14 0z" /><circle cx="12" cy="10" r="2" /></>,
+  calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4m10-4v4M3 10h18" /></>,
+  profile: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+  layers: <><path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5" /></>,
+  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></>,
+  back: <><path d="m15 18-6-6 6-6M9 12h12" /></>,
 }
-function Icon({ name, size=20 }) {return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{SHAPES[name]||SHAPES.grid}</svg>}
-const MONEY = new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0})
-function fmt(n){return MONEY.format(Number(n)||0)}
-const fmtDate=v=>{const d=new Date(v);return Number.isNaN(d.getTime())?'':d.toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}
+
+function Icon({ name, size = 20 }) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round">
+      {SHAPES[name] || SHAPES.grid}
+    </svg>
+  )
+}
+
+const MONEY = new Intl.NumberFormat('en-IN', {
+  style: 'currency', currency: 'INR', maximumFractionDigits: 0,
+})
+const formatMoney = value => MONEY.format(Number(value) || 0)
+const formatDate = value => {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('en-IN', {
+    dateStyle: 'medium', timeStyle: 'short',
+  })
+}
+
+const RESTAURANT_BUSINESS = [
+  { id: 'menu', label: 'Menu & categories', detail: 'Dishes, images, prices and availability', icon: 'grid', target: 'menu' },
+  { id: 'offers', label: 'Offers', detail: 'Daily promotions and discounts', icon: 'spark', target: 'offers' },
+]
+const RESTAURANT_SETTINGS = [
+  { id: 'tables', label: 'Tables & QR', detail: 'Tables and QR ordering configuration', icon: 'qr', target: 'tables' },
+  { id: 'qr', label: 'Table QR posters', detail: 'Open the existing signed QR management page', icon: 'qr', action: 'qr' },
+  { id: 'staff', label: 'Managers', detail: 'Manager accounts and permissions', icon: 'users', target: 'staff', advanced: true },
+  { id: 'staff-access', label: 'Staff login QR', detail: 'Kitchen, waiter and staff access', icon: 'users', target: 'staff-access' },
+  { id: 'taxes', label: 'GST & packing', detail: 'Taxes and packing charges', icon: 'receipt', target: 'taxes' },
+  { id: 'gateway', label: 'Payment gateways', detail: 'Razorpay and pay-at-counter configuration', icon: 'wallet', target: 'gateway' },
+  { id: 'billing', label: 'Bill header & branding', detail: 'Invoices, signatures and bill settings', icon: 'receipt', target: 'billing' },
+  { id: 'alarm-settings', label: 'Alarm settings', detail: 'Kitchen and waiter sound alerts', icon: 'bell', target: 'alarm-settings', advanced: true },
+  { id: 'swiggy-sync', label: 'Menu integrations', detail: 'Import and synchronize the menu', icon: 'refresh', target: 'swiggy-sync', advanced: true },
+]
+const DELIVERY_BUSINESS = [
+  { id: 'menu', label: 'Delivery products', detail: 'Delivery menu and catalogue', icon: 'grid', target: 'menu' },
+  { id: 'inventory', label: 'Products & inventory', detail: 'Stock and availability', icon: 'box', target: 'inventory' },
+  { id: 'cod', label: 'COD cash', detail: 'Cash-on-delivery reconciliation', icon: 'wallet', target: 'cod' },
+  { id: 'billing', label: 'Delivery billing', detail: 'Existing delivery invoices', icon: 'receipt', target: 'billing' },
+  { id: 'offers', label: 'Delivery offers', detail: 'Delivery campaigns and discounts', icon: 'spark', target: 'offers' },
+  { id: 'website', label: 'Ordering website', detail: 'Delivery storefront management', icon: 'grid', target: 'website' },
+]
+const DELIVERY_SETTINGS = [
+  { id: 'drivers', label: 'Drivers', detail: 'Assignments and driver operations', icon: 'truck', target: 'drivers' },
+  { id: 'packers', label: 'Packers', detail: 'Packing team and workflow', icon: 'users', target: 'packers' },
+  { id: 'service_area', label: 'Service area & fees', detail: 'Delivery radius and coverage', icon: 'pin', target: 'service_area' },
+  { id: 'settings', label: 'Delivery configuration', detail: 'Minimum order, handling and surge settings', icon: 'settings', target: 'settings' },
+  { id: 'support-chat', label: 'Delivery support chat', detail: 'Existing delivery support desk', icon: 'support', target: 'support-chat' },
+]
+
+function ToolButton({ label, detail, icon, onClick }) {
+  return (
+    <button type="button" className="ddp-entry" onClick={onClick}>
+      <span className="ddp-icon"><Icon name={icon} /></span>
+      <span className="min-w-0 flex-1">
+        <strong className="block text-[13px]">{label}</strong>
+        <span className="ddp-muted mt-0.5 block text-[11px]">{detail}</span>
+      </span>
+      <Icon name="arrow" size={16} />
+    </button>
+  )
+}
+
+function Section({ title, children }) {
+  return (
+    <section className="space-y-2">
+      <h3 className="ddp-muted px-1 text-[11px] font-extrabold uppercase tracking-[.13em]">{title}</h3>
+      <div className="ddp-surface overflow-hidden">{children}</div>
+    </section>
+  )
+}
+
+function NavButton({ id, title, icon, screen, onClick }) {
+  return (
+    <button type="button" className={'ddp-nav-item ' + (screen === id ? 'ddp-nav-current' : '')}
+      aria-current={screen === id ? 'page' : undefined} onClick={() => onClick(id)}>
+      <Icon name={icon} size={21} />
+      <span>{title}</span>
+    </button>
+  )
+}
 
 export default function OwnerPremiumMobileHub({
-  businessName='My business',businessCode='',mode='restaurant',hasRestaurant=true,hasDelivery=false,hasResort=false,
-  advanced=true,storeOpen=true,savingStore=false,onStoreToggle,onModeChange,onRestaurantTab,onProfile,onQR,onSupport,onWorkspaceOpen,onMobileScreenChange,
-  orders=[],ordersLoaded=false,ordersError='',todayRevenue=0,totalRevenue=0,activeCount=0,todayCount=0,
-  graphData=[],onRefresh,
-}){
-  const [screen,setScreen]=useState('home')
-  const [query,setQuery]=useState('')
-  const [searchOpen,setSearchOpen]=useState(false)
-  const [selectedOrder,setSelectedOrder]=useState(null)
-  const dialogRef=useRef(null)
-  const enabled=[...(hasRestaurant?[{key:'restaurant',label:'Restaurant',icon:'receipt'}]:[]),...(hasDelivery?[{key:'delivery',label:'Delivery',icon:'truck'}]:[]),...(hasResort?[{key:'resort',label:'Resort',icon:'layers'}]:[])]
-  const section=enabled.find(x=>x.key===mode)||enabled[0]
-  const safeOrders=Array.isArray(orders)?orders:[]
-  const recent=useMemo(()=>[...safeOrders].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,25),[orders])
-  const tools=useMemo(()=>[
-    ...(hasRestaurant?RESTAURANT.filter(t=>advanced||!t[4]).map(t=>({name:t[1],detail:t[2],icon:t[3],group:'Restaurant',go:()=>openRestaurant(t[0])})):[]),
-    ...(hasDelivery?DELIVERY.map((t,i)=>({name:t[0],detail:t[1],icon:t[2],group:'Delivery',go:()=>openBusinessTool('delivery',['orders','menu','packers','drivers','orders','service_area','settings','wallet','after_sales','overview'][i])})):[]),
-    ...(hasResort?RESORT.map(t=>({name:t[0],detail:t[1],icon:t[2],group:'Resort',go:()=>openBusinessTool('resort','overview')})):[]),
-    {name:'Owner profile',detail:'Personal information and contacts',icon:'profile',group:'Account',go:()=>run(onProfile)},
-    {name:'Staff access',detail:'Managers, waiters and staff',icon:'users',group:'Account',go:()=>hasRestaurant?openRestaurant('staff-access'):switchMode(mode)},
-    {name:'Live Support',detail:'Contact your Super Admin team',icon:'support',group:'Help & Support',go:()=>run(onSupport)},
-    {name:'AI Support',detail:'Ask the Digital Dine-In assistant',icon:'spark',group:'Help & Support',go:()=>run(onSupport)},
-    ...(hasRestaurant?[{name:'QR management',detail:'Share restaurant QR codes',icon:'qr',group:'Account',go:()=>run(onQR)}]:[]),
-  // Existing owner settings are in the parent portal. Avoid creating unsupported settings pages.
-  ],[hasRestaurant,hasDelivery,hasResort,advanced,onRestaurantTab,onModeChange,onProfile,onQR,onSupport,onWorkspaceOpen,mode])
-  const filtered=tools.filter(x=>(x.name+' '+x.detail+' '+x.group).toLowerCase().includes(query.trim().toLowerCase()))
-  const groups=['Restaurant','Delivery','Resort','Account','Help & Support']
-  const graph=Array.isArray(graphData)?graphData:[]
-  const maxGraph=Math.max(1,...graph.map(d=>Number(d.revenue)||0))
-  const line=graph.length>1?graph.map((d,i)=>`${(i/(graph.length-1))*100},${47-((Number(d.revenue)||0)/maxGraph)*39}`).join(' '):''
-  function run(fn){setSearchOpen(false);fn?.()}
-  const [pendingWorkspace,setPendingWorkspace]=useState(false)
-  useEffect(()=>{
-    if(!pendingWorkspace)return
-    const id=window.requestAnimationFrame(()=>{
-      document.getElementById('dd-ws-live-module')?.scrollIntoView({behavior:'smooth',block:'start'})
-      setPendingWorkspace(false)
-    })
-    return ()=>window.cancelAnimationFrame(id)
-  },[mode,pendingWorkspace])
-  function scrollToWorkspace(){
-    setSearchOpen(false);setSelectedOrder(null)
-    onWorkspaceOpen?.(mode,'overview')
-    setPendingWorkspace(true)
+  restaurantId = '', businessName = 'My business', businessCode = '',
+  mode = 'restaurant', hasRestaurant = true, hasDelivery = false, hasResort = false,
+  advanced = true, storeOpen = true, savingStore = false,
+  onStoreToggle, onModeChange, onRestaurantTab, onProfile, onQR, onSupport,
+  onWorkspaceOpen, onMobileScreenChange, onLogout,
+  orders = [], ordersLoaded = false, ordersError = '',
+  todayRevenue = 0, totalRevenue = 0, activeCount = 0, todayCount = 0,
+  graphData = [], onRefresh, onGenerateBill,
+}) {
+  const [screen, setScreen] = useState('home')
+  const [portalReady, setPortalReady] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const screenScrollRef = useRef(null)
+  const [settingsQuery, setSettingsQuery] = useState('')
+  const [selectedOrder, setSelectedOrder] = useState(null)
+  const lastFocus = useRef(null)
+
+  const enabled = [
+    ...(hasRestaurant ? [{ key: 'restaurant', label: 'Restaurant', icon: 'receipt' }] : []),
+    ...(hasDelivery ? [{ key: 'delivery', label: 'Delivery', icon: 'truck' }] : []),
+    ...(hasResort ? [{ key: 'resort', label: 'Resort', icon: 'layers' }] : []),
+  ]
+  const currentMode = enabled.some(item => item.key === mode) ? mode : (enabled[0]?.key || 'restaurant')
+  const currentModule = enabled.find(item => item.key === currentMode)
+  const safeOrders = Array.isArray(orders) ? orders : []
+  const graph = Array.isArray(graphData) ? graphData : []
+  const maxGraph = Math.max(1, ...graph.map(item => Number(item.revenue) || 0))
+  const graphLine = graph.length > 1 ? graph.map((item, index) => {
+    const x = (index / (graph.length - 1)) * 100
+    const y = 47 - ((Number(item.revenue) || 0) / maxGraph) * 39
+    return `${x},${y}`
+  }).join(' ') : ''
+
+  // The mobile app is an independent viewport, not a section of the desktop page.
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 1023px)')
+    const sync = () => setIsMobile(query.matches)
+    sync()
+    setPortalReady(true)
+    query.addEventListener?.('change', sync)
+    return () => query.removeEventListener?.('change', sync)
+  }, [])
+
+  useEffect(() => {
+    if (!isMobile) return undefined
+    const bodyOverflow = document.body.style.overflow
+    const htmlOverflow = document.documentElement.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = bodyOverflow
+      document.documentElement.style.overflow = htmlOverflow
+    }
+  }, [isMobile])
+
+  useEffect(() => {
+    if (!selectedOrder) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = event => {
+      if (event.key === 'Escape') setSelectedOrder(null)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeyDown)
+      lastFocus.current?.focus?.()
+    }
+  }, [selectedOrder])
+
+  function chooseScreen(next) {
+    setScreen(next)
+    setSelectedOrder(null)
+    onMobileScreenChange?.()
+    screenScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' })
   }
-  function openBusinessTool(nextMode, tab='overview'){
-    setSearchOpen(false);setSelectedOrder(null)
-    setScreen('business')
-    onWorkspaceOpen?.(nextMode,tab)
-    setPendingWorkspace(true)
-  }
-  function switchMode(next){
-    if(!enabled.some(x=>x.key===next))return
-    setScreen('home');setSearchOpen(false);setSelectedOrder(null)
+
+  function switchModule(next) {
+    if (!enabled.some(item => item.key === next)) return
+    onMobileScreenChange?.()
+    setScreen('home')
     onModeChange?.(next)
-    window.requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}))
   }
-  function openRestaurant(tab){
-    if(!hasRestaurant)return
-    setSearchOpen(false);setSelectedOrder(null)
-    setScreen(tab==='settlements'?'insights':'business')
-    onModeChange?.('restaurant')
-    onRestaurantTab?.(tab)
-    onWorkspaceOpen?.('restaurant',tab)
-    setPendingWorkspace(true)
+
+  function openWorkspace(nextMode, tab = 'overview', title = '') {
+    if (!enabled.some(item => item.key === nextMode)) return
+    setSelectedOrder(null)
+    onModeChange?.(nextMode)
+    if (nextMode === 'restaurant') onRestaurantTab?.(tab)
+    onWorkspaceOpen?.(nextMode, tab, title)
   }
-  function chooseScreen(next){setScreen(next);setSearchOpen(false);setSelectedOrder(null);onMobileScreenChange?.();window.scrollTo({top:0,behavior:'smooth'})}
-  useEffect(()=>{if(!searchOpen && !selectedOrder)return;const previous=document.body.style.overflow;document.body.style.overflow='hidden';if(searchOpen)dialogRef.current?.focus();return()=>{document.body.style.overflow=previous}},[searchOpen,selectedOrder])
-  useEffect(()=>{function esc(e){if(e.key==='Escape'){setSearchOpen(false);setSelectedOrder(null)}}document.addEventListener('keydown',esc);return()=>document.removeEventListener('keydown',esc)},[])
-  const NavButton=({id,icon,title})=><button type="button" onClick={()=>chooseScreen(id)} aria-current={screen===id?'page':undefined} className={'ddp-nav-item '+(screen===id?'ddp-nav-current':'')}><Icon name={icon} size={21}/><span>{title}</span></button>
-  return <div className="ddp-root lg:hidden" data-owner-mobile="premium">
-    <style jsx global>{`
-      .ddp-root{--ddp-bg:#f8fafc;--ddp-card:#fff;--ddp-text:#142035;--ddp-muted:#64748b;--ddp-border:#e9edf5;--ddp-accent:#ea580c;color:var(--ddp-text);font-family:inherit}
-      :root[data-theme='dark'] .ddp-root{--ddp-bg:#10131b;--ddp-card:#1b202d;--ddp-text:#f1f5f9;--ddp-muted:#a0aec0;--ddp-border:#343b4b;--ddp-accent:#fb923c}
-      .ddp-root .ddp-surface{background:var(--ddp-card);border:1px solid var(--ddp-border);border-radius:22px;box-shadow:0 12px 35px rgba(17,24,39,.035)}
-      .ddp-root .ddp-muted{color:var(--ddp-muted)}
-      .ddp-root .ddp-icon{display:flex;align-items:center;justify-content:center;width:41px;height:41px;border-radius:14px;background:var(--ddp-bg);flex-shrink:0}
-      .ddp-root .ddp-entry{display:flex;width:100%;align-items:center;gap:12px;padding:13px 14px;text-align:left;min-height:66px;border-bottom:1px solid var(--ddp-border)}
-      .ddp-root .ddp-entry:last-child{border-bottom:0}
-      .ddp-root .ddp-entry:active{background:var(--ddp-bg)}
-      .ddp-root .ddp-nav{position:fixed;bottom:0;left:0;right:0;z-index:90;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));min-height:calc(69px + env(safe-area-inset-bottom));padding:5px 7px env(safe-area-inset-bottom);background:var(--ddp-card);border-top:1px solid var(--ddp-border);box-shadow:0 -12px 32px rgba(15,23,42,.09)}
-      .ddp-root .ddp-nav-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;font-size:10px;font-weight:700;color:var(--ddp-muted);border-radius:14px}
-      .ddp-root .ddp-nav-current{color:var(--ddp-accent);background:color-mix(in srgb,var(--ddp-accent) 9%,transparent)}
-      .ddp-root button:focus-visible,.ddp-root input:focus-visible{outline:3px solid #fb923c;outline-offset:2px}
-      .ddp-root .ddp-fade{animation:ddp-rise .22s ease both}
-      @keyframes ddp-rise{from{opacity:.55;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
-      @media(prefers-reduced-motion:reduce){.ddp-root *{animation:none!important;scroll-behavior:auto!important;transition:none!important}}
-      @media(max-width:1023px){.dd-owner-dashboard .dd-dashboard-header{display:none!important}.dd-owner-dashboard .dd-dashboard-intro{display:none!important}.dd-owner-dashboard .dd-dashboard-sidebar{display:none!important}.dd-owner-dashboard .dd-owner-mobile-bottom-nav{display:none!important}.dd-owner-dashboard{padding-bottom:calc(84px + env(safe-area-inset-bottom))!important}}
-    `}</style>
-    <header className="ddp-surface sticky top-0 z-[45] mb-4 overflow-hidden !rounded-[24px]" style={{background:'var(--ddp-card)'}}>
-      <div className="flex items-center gap-3 p-4">
-        <span className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl text-lg font-black text-white shadow-lg" style={{background:'linear-gradient(145deg,#fb923c,#ea580c)'}}>{String(businessName||'D').slice(0,1).toUpperCase()}</span>
-        <div className="min-w-0 flex-1"><p className="ddp-muted text-[10px] font-bold uppercase tracking-[.15em]">Digital Dine-In · Owner</p><h1 className="truncate text-lg font-extrabold tracking-tight">{businessName}</h1><p className="ddp-muted text-[11px]">{section?.label||'Owner'} workspace {businessCode?`· ${businessCode}`:''}</p></div>
-        <button type="button" aria-label="Open owner profile" onClick={()=>run(onProfile)} className="ddp-icon"><Icon name="profile"/></button>
-      </div>
-      <div className="flex items-center justify-between gap-3 border-t px-4 py-2.5" style={{borderColor:'var(--ddp-border)'}}>
-        {mode === 'restaurant' ? (
-          <button type="button" onClick={onStoreToggle} disabled={savingStore || typeof onStoreToggle !== 'function'} aria-label={storeOpen?'Close restaurant':'Open restaurant'} className="flex min-h-10 items-center gap-2 text-xs font-bold disabled:opacity-50"><span className={'h-2.5 w-2.5 rounded-full '+(storeOpen?'bg-emerald-500':'bg-rose-500')}/>{savingStore?'Updating...':storeOpen?'Restaurant open':'Restaurant closed'}</button>
-        ) : <span className="ddp-muted text-xs">{section?.label} workspace</span>}
-        <div className="flex items-center gap-2"><span className="ddp-muted text-[10px]">Appearance</span><ThemeToggle/></div>
-      </div>
-    </header>
-    {enabled.length>1&&<div className="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="Business portals">{enabled.map(m=><button key={m.key} type="button" aria-current={mode===m.key?'page':undefined} onClick={()=>switchMode(m.key)} className={'flex min-h-11 shrink-0 items-center gap-2 rounded-2xl border px-4 text-xs font-bold '+(mode===m.key?'border-orange-400 bg-orange-500 text-white':'ddp-surface')}><Icon name={m.icon} size={17}/>{m.label}</button>)}</div>}
-    {screen==='home'&&<div className="ddp-fade space-y-4">
-      <div className="rounded-[24px] px-4 py-4 text-white shadow-lg" style={{background:'linear-gradient(125deg,#172b46,#334a73 62%,#6c4983)'}}><p className="text-[10px] font-bold uppercase tracking-widest text-white/70">{section?.label} dashboard</p><div className="mt-2 flex items-center justify-between gap-3"><div><h2 className="text-xl font-extrabold">Business overview</h2><p className="mt-1 text-xs text-white/75">Orders, analytics and settings in one place</p></div><button type="button" onClick={()=>chooseScreen('settings')} className="rounded-xl border border-white/30 px-3 py-2 text-xs font-bold">Settings</button></div></div>
-      {mode==='restaurant'?<><div className="grid grid-cols-2 gap-3">{[
-        ['Revenue today',ordersLoaded&&!ordersError?fmt(todayRevenue):'—','wallet'],
-        ['Orders today',ordersLoaded&&!ordersError?String(todayCount):'—','box'],
-        ['Active kitchen',ordersLoaded&&!ordersError?String(activeCount):'—','bell'],
-        ['Total revenue',ordersLoaded&&!ordersError?fmt(totalRevenue):'—','chart'],
-      ].map(([label,value,ico])=><div key={label} className="ddp-surface min-h-28 p-4"><span className="ddp-icon"><Icon name={ico}/></span><p className="mt-3 text-lg font-extrabold">{value}</p><p className="ddp-muted text-[11px]">{label}</p></div>)}</div>{ordersError&&<p role="alert" className="rounded-xl bg-rose-500/10 p-3 text-xs text-rose-600">Reports unavailable: {ordersError}</p>}</>:<div className="ddp-surface p-4"><h3 className="text-sm font-bold">{section?.label} operations</h3><p className="ddp-muted mt-1 text-xs leading-5">Your {section?.label.toLowerCase()} orders, payments and reports remain in the full workspace below.</p><button type="button" className="mt-3 rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white" onClick={()=>openBusinessTool(mode,'overview')}>Open {section?.label} operations</button></div>}
-      <div className="ddp-surface p-4"><div className="mb-3 flex justify-between"><h3 className="text-sm font-bold">Quick actions</h3><button className="text-xs font-bold text-orange-500" onClick={()=>chooseScreen('settings')}>All settings</button></div><div className="grid grid-cols-3 gap-2">{(mode==='restaurant'?[['Menu','grid',()=>openRestaurant('menu')],['Billing','receipt',()=>openRestaurant('billing')],['QR codes','qr',()=>run(onQR)],['Staff','users',()=>openRestaurant('staff-access')],['Offers','spark',()=>openRestaurant('offers')],['Orders','box',()=>chooseScreen('orders')]]:(mode==='delivery'?[['Orders','box',()=>openBusinessTool('delivery','orders')],['Products','grid',()=>openBusinessTool('delivery','menu')],['Drivers','truck',()=>openBusinessTool('delivery','drivers')],['Packing','users',()=>openBusinessTool('delivery','packers')],['Reports','chart',()=>openBusinessTool('delivery','overview')],['Settings','settings',()=>chooseScreen('settings')]]:[['Bookings','box',()=>openBusinessTool('resort','overview')],['Rooms','grid',()=>openBusinessTool('resort','overview')],['Settings','settings',()=>chooseScreen('settings')]])).map(([label,icon,go])=><button type="button" key={label} onClick={go} className="flex min-h-[84px] flex-col items-center justify-center gap-2 rounded-2xl p-2 text-[11px] font-semibold" style={{background:'var(--ddp-bg)'}}><Icon name={icon}/>{label}</button>)}</div></div>
-      {mode==='restaurant'&&<div className="ddp-surface p-4"><div className="flex items-center justify-between"><h3 className="text-sm font-bold">Sales trend</h3><button type="button" onClick={()=>openRestaurant('settlements')} className="text-xs font-bold text-orange-500">Detailed reports</button></div>{ordersLoaded&&!ordersError&&line?<svg className="mt-3 h-28 w-full" viewBox="0 0 100 52" preserveAspectRatio="none" role="img" aria-label="Revenue trend for your selected reporting period"><polyline points={line} fill="none" stroke="#e879f9" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/></svg>:<p className="ddp-muted py-8 text-center text-xs">Sales trend is available when orders finish syncing.</p>}</div>}
-      {mode==='restaurant'&&activeCount>0&&<button type="button" onClick={()=>chooseScreen('orders')} className="flex min-h-12 w-full items-center gap-3 rounded-2xl bg-amber-500/10 px-4 text-left text-xs font-bold text-amber-700"><Icon name="bell"/>{activeCount} order(s) need attention <Icon name="arrow" size={16}/></button>}
-    </div>}
-    {screen==='orders'&&<section className="ddp-fade space-y-3"><h2 className="text-xl font-extrabold">Orders</h2>{mode!=='restaurant'?<div className="ddp-surface p-5"><p className="ddp-muted text-sm">Open {section?.label} Management below to view and update your orders securely.</p><button className="mt-3 rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white" onClick={()=>openBusinessTool(mode,mode==='delivery'?'orders':'overview')}>Open management</button></div>:ordersError?<p role="alert" className="rounded-xl bg-rose-500/10 p-4 text-sm text-rose-600">{ordersError}</p>:!ordersLoaded?<p className="ddp-muted text-sm">Synchronizing your orders...</p>:recent.length?recent.map((o,i)=><button type="button" key={String(o.id||i)} onClick={()=>setSelectedOrder(o)} className="ddp-surface flex w-full items-center gap-3 p-4 text-left"><div className="ddp-icon"><Icon name="box"/></div><div className="min-w-0 flex-1"><div className="truncate text-sm font-bold">Order #{String(o.order_number||o.order_code||o.id||i+1).slice(0,18)}</div><p className="ddp-muted mt-1 text-[11px]">{fmtDate(o.created_at)}</p></div><div className="text-right"><p className="text-sm font-bold">{fmt(o.total_amount)}</p><p className="mt-1 text-[11px] capitalize text-orange-500">{String(o.status||'Unknown').replaceAll('_',' ')}</p></div><Icon name="arrow" size={17}/></button>):<div className="ddp-surface p-6 text-center text-sm">No orders to display yet.</div>}</section>}
-    {screen==='business'&&<section className="ddp-fade space-y-3"><h2 className="text-xl font-extrabold">My businesses</h2><p className="ddp-muted text-xs">Each enabled module keeps its existing management screens.</p>{enabled.map(m=><button key={m.key} type="button" onClick={()=>openBusinessTool(m.key,'overview')} className="ddp-surface flex w-full items-center gap-3 p-4 text-left"><span className="ddp-icon"><Icon name={m.icon}/></span><span className="flex-1"><span className="block text-sm font-bold">{m.label} portal</span><span className="ddp-muted text-[11px]">Orders, tools and management</span></span><Icon name="arrow"/></button>)}<p className="ddp-muted text-xs">To open a specific tool, select it from Settings.</p></section>}
-    {screen==='insights'&&<section className="ddp-fade space-y-3"><h2 className="text-xl font-extrabold">Analytics & reports</h2>{mode==='restaurant'?<><div className="ddp-surface p-5"><p className="ddp-muted text-xs">Revenue across loaded restaurant orders</p><p className="mt-1 text-3xl font-extrabold">{ordersLoaded&&!ordersError?fmt(totalRevenue):'—'}</p><p className="ddp-muted mt-2 text-xs">{safeOrders.length} orders loaded</p></div><button type="button" onClick={()=>openRestaurant('settlements')} className="ddp-surface flex w-full items-center justify-between p-4 text-sm font-bold">Full restaurant reports <Icon name="arrow"/></button></>:<button type="button" onClick={()=>openBusinessTool(mode,'overview')} className="ddp-surface flex w-full items-center justify-between p-4 text-sm font-bold">Open {section?.label} reports <Icon name="arrow"/></button>}</section>}
-    {screen==='settings'&&<section className="ddp-fade space-y-3"><h2 className="text-xl font-extrabold">Tools & settings</h2><button type="button" onClick={()=>{setQuery('');setSearchOpen(true)}} className="ddp-surface flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm ddp-muted"><Icon name="search"/>Search settings, fees, staff, support... <span className="ml-auto"><Icon name="arrow" size={17}/></span></button>{groups.map(group=>{const list=tools.filter(t=>t.group===group);return list.length?<div key={group}><h3 className="ddp-muted px-1 pb-2 pt-3 text-[11px] font-extrabold uppercase tracking-widest">{group}</h3><div className="ddp-surface overflow-hidden">{list.map(t=><button type="button" className="ddp-entry" key={t.group+t.name} onClick={t.go}><span className="ddp-icon"><Icon name={t.icon}/></span><span className="min-w-0 flex-1"><strong className="block text-[13px]">{t.name}</strong><span className="ddp-muted block text-[11px]">{t.detail}</span></span><Icon name="arrow" size={16}/></button>)}</div></div>:null})}</section>}
-    <nav className="ddp-nav" aria-label="Owner mobile navigation"><NavButton id="home" icon="home" title="Home"/><NavButton id="orders" icon="box" title="Orders"/><NavButton id="business" icon="grid" title="Business"/><NavButton id="insights" icon="chart" title="Insights"/><NavButton id="settings" icon="settings" title="Settings"/></nav>
-    {searchOpen&&<div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/65" onMouseDown={e=>{if(e.target===e.currentTarget)setSearchOpen(false)}}><section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Search owner settings" className="flex max-h-[92dvh] w-full max-w-xl flex-col rounded-t-[28px] p-4 outline-none" style={{background:'var(--ddp-card)',color:'var(--ddp-text)'}}><div className="flex items-center justify-between"><h2 className="text-lg font-extrabold">Find a setting</h2><button className="ddp-icon" onClick={()=>setSearchOpen(false)} aria-label="Close search"><Icon name="close"/></button></div><div className="my-3 flex items-center gap-2 rounded-xl p-3" style={{background:'var(--ddp-bg)'}}><Icon name="search"/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} className="min-w-0 flex-1 bg-transparent text-sm outline-none" placeholder="Search tools, settings, help..." aria-label="Search terms"/></div><div className="min-h-0 flex-1 overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom))]">{filtered.length?filtered.map(t=><button key={t.group+t.name} type="button" className="ddp-entry" onClick={t.go}><span className="ddp-icon"><Icon name={t.icon}/></span><span className="min-w-0 flex-1"><strong className="block text-xs">{t.name}</strong><span className="ddp-muted block text-[11px]">{t.group} · {t.detail}</span></span><Icon name="arrow" size={16}/></button>):<p className="ddp-muted py-8 text-center text-sm">No settings match that search.</p>}</div></section></div>}
-    {selectedOrder&&<div className="fixed inset-0 z-[145] flex items-end justify-center bg-black/60" onMouseDown={e=>{if(e.target===e.currentTarget)setSelectedOrder(null)}}><section className="w-full max-w-xl rounded-t-[28px] p-5" role="dialog" aria-modal="true" aria-label="Order details" style={{background:'var(--ddp-card)',color:'var(--ddp-text)'}}><div className="flex items-center justify-between"><h2 className="text-lg font-bold">Order details</h2><button className="ddp-icon" onClick={()=>setSelectedOrder(null)} aria-label="Close order"><Icon name="close"/></button></div><p className="ddp-muted mt-3 text-sm">Order ID: {String(selectedOrder.id||'—')}</p><p className="mt-2 text-sm">Status: <strong className="capitalize">{String(selectedOrder.status||'Unknown').replaceAll('_',' ')}</strong></p><p className="mt-2 text-sm">Amount: <strong>{fmt(selectedOrder.total_amount)}</strong></p><p className="ddp-muted mt-2 text-xs">{fmtDate(selectedOrder.created_at)}</p><button type="button" className="mt-5 min-h-12 w-full rounded-xl bg-orange-500 px-4 text-sm font-bold text-white" onClick={()=>{setSelectedOrder(null);openRestaurant('billing')}}>Open billing and existing order tools</button></section></div>}
-  </div>
+
+  function openTool(tool, nextMode) {
+    if (tool.action === 'qr') {
+      onQR?.()
+      return
+    }
+    openWorkspace(nextMode, tool.target || 'overview', tool.label)
+  }
+
+  function openWallet() {
+    onMobileScreenChange?.()
+    setScreen('wallet')
+  }
+
+
+  const settings = useMemo(() => {
+    const term = settingsQuery.trim().toLowerCase()
+    return {
+      restaurant: RESTAURANT_SETTINGS.filter(item => (
+        (advanced || !item.advanced) &&
+        `${item.label} ${item.detail}`.toLowerCase().includes(term)
+      )),
+      delivery: DELIVERY_SETTINGS.filter(item => `${item.label} ${item.detail}`.toLowerCase().includes(term)),
+    }
+  }, [advanced, settingsQuery])
+
+  function renderTools(tools, nextMode) {
+    return tools.map(tool => (
+      <ToolButton key={`${nextMode}-${tool.id}`} label={tool.label}
+        detail={tool.detail} icon={tool.icon} onClick={() => openTool(tool, nextMode)} />
+    ))
+  }
+
+  if (!portalReady || !isMobile) return null
+
+  return createPortal(
+    <div ref={screenScrollRef} className="ddp-root" data-owner-mobile="independent-app-20261111">
+      <style jsx global>{`
+        .ddp-root{--ddp-bg:#f8fafc;--ddp-card:#fff;--ddp-text:#142035;--ddp-muted:#64748b;--ddp-border:#e9edf5;--ddp-accent:#ea580c;position:fixed;inset:0;z-index:90;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:calc(12px + env(safe-area-inset-top)) 12px calc(100px + env(safe-area-inset-bottom));background:var(--ddp-bg);color:var(--ddp-text);font-family:inherit}
+        :root[data-theme='dark'] .ddp-root{--ddp-bg:#10131b;--ddp-card:#1b202d;--ddp-text:#f1f5f9;--ddp-muted:#a0aec0;--ddp-border:#343b4b;--ddp-accent:#fb923c}
+        .ddp-root .ddp-surface{background:var(--ddp-card);border:1px solid var(--ddp-border);border-radius:20px;box-shadow:0 10px 28px rgba(17,24,39,.04)}
+        .ddp-root .ddp-muted{color:var(--ddp-muted)}
+        .ddp-root .ddp-icon{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:13px;background:var(--ddp-bg);flex-shrink:0}
+        .ddp-root .ddp-entry{display:flex;width:100%;align-items:center;gap:12px;padding:13px 14px;text-align:left;min-height:66px;border-bottom:1px solid var(--ddp-border)}
+        .ddp-root .ddp-entry:last-child{border-bottom:0}
+        .ddp-root .ddp-entry:active{background:var(--ddp-bg)}
+        .ddp-root .ddp-wallet-page{position:fixed;inset:0;z-index:115;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:var(--ddp-bg);color:var(--ddp-text)}
+        .ddp-root .ddp-wallet-header{position:sticky;top:0;z-index:116;display:flex;align-items:center;gap:12px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:var(--ddp-card);border-bottom:1px solid var(--ddp-border)}
+        .ddp-root .ddp-nav{position:fixed;bottom:0;left:0;right:0;z-index:90;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));min-height:calc(69px + env(safe-area-inset-bottom));padding:5px 7px env(safe-area-inset-bottom);background:var(--ddp-card);border-top:1px solid var(--ddp-border);box-shadow:0 -12px 32px rgba(15,23,42,.09)}
+        .ddp-root .ddp-nav-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;font-size:10px;font-weight:700;color:var(--ddp-muted);border-radius:13px}
+        .ddp-root .ddp-nav-current{color:var(--ddp-accent);background:color-mix(in srgb,var(--ddp-accent) 9%,transparent)}
+        /* Hide the legacy Delivery Wallet caption only in the restaurant mobile wallet.
+           The actual Owner Wallet & Platform Fees component and payment flow stay intact. */
+        .ddp-root .ddp-wallet-restaurant > section > div:first-child > div:first-child > p:first-child{display:none}
+        .ddp-root button:focus-visible,.ddp-root input:focus-visible{outline:3px solid #fb923c;outline-offset:2px}
+        .ddp-root .ddp-fade{animation:ddp-rise .2s ease both}
+        @keyframes ddp-rise{from{opacity:.5;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        @media(prefers-reduced-motion:reduce){.ddp-root *{animation:none!important;scroll-behavior:auto!important;transition:none!important}}
+        @media(max-width:1023px){.dd-owner-dashboard .dd-dashboard-header{display:none!important}.dd-owner-dashboard .dd-dashboard-intro{display:none!important}.dd-owner-dashboard .dd-dashboard-sidebar{display:none!important}.dd-owner-dashboard .dd-owner-mobile-bottom-nav{display:none!important}.dd-owner-dashboard{padding-bottom:calc(85px + env(safe-area-inset-bottom))!important}}
+      `}</style>
+
+      <header className="ddp-surface sticky top-0 z-[45] mb-4 overflow-hidden !rounded-[23px]">
+        <div className="flex items-center gap-3 p-3.5">
+          {screen !== 'home' && screen !== 'wallet' ? (
+            <button type="button" aria-label="Back to home" onClick={() => chooseScreen('home')}
+              className="ddp-icon !h-11 !w-11">
+              <Icon name="back" size={23} />
+            </button>
+          ) : (
+            <span className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl text-lg font-black text-white"
+              style={{ background: 'linear-gradient(145deg,#fb923c,#ea580c)' }}>
+              {String(businessName || 'D').slice(0, 1).toUpperCase()}
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="ddp-muted text-[10px] font-bold uppercase tracking-widest">Digital Dine-In · Owner</p>
+            <h1 className="truncate text-base font-extrabold">{businessName}</h1>
+            <p className="ddp-muted text-[11px]">{currentModule?.label || 'Owner'} {businessCode ? `· ${businessCode}` : ''}</p>
+          </div>
+          <button type="button" aria-label="Owner profile" className="ddp-icon" onClick={() => onProfile?.()}>
+            <Icon name="profile" />
+          </button>
+          <button type="button" aria-label="Log out" className="ddp-icon" disabled={!onLogout} onClick={() => onLogout?.()}>
+            <Icon name="logout" />
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-2 border-t px-3.5 py-2.5" style={{ borderColor: 'var(--ddp-border)' }}>
+          {hasRestaurant ? (
+            <button type="button" role="switch" aria-checked={storeOpen}
+              aria-label={storeOpen ? 'Close restaurant' : 'Open restaurant'}
+              disabled={savingStore || typeof onStoreToggle !== 'function'}
+              onClick={() => onStoreToggle?.()}
+              className="flex min-h-10 items-center gap-2 text-xs font-bold disabled:opacity-50">
+              <span className={'h-2.5 w-2.5 rounded-full ' + (storeOpen ? 'bg-emerald-500' : 'bg-rose-500')} />
+              {savingStore ? 'Updating...' : storeOpen ? 'Restaurant open' : 'Restaurant closed'}
+            </button>
+          ) : <span className="ddp-muted text-xs">{currentModule?.label} workspace</span>}
+          <div className="flex items-center gap-2"><span className="ddp-muted text-[10px]">Appearance</span><ThemeToggle /></div>
+        </div>
+      </header>
+
+      {enabled.length > 1 && (
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="Business module selection">
+          {enabled.map(item => (
+            <button key={item.key} type="button" onClick={() => switchModule(item.key)}
+              aria-current={currentMode === item.key ? 'page' : undefined}
+              className={'flex min-h-11 shrink-0 items-center gap-2 rounded-2xl border px-4 text-xs font-bold ' +
+                (currentMode === item.key ? 'border-orange-400 bg-orange-500 text-white' : 'ddp-surface')}>
+              <Icon name={item.icon} size={17} />{item.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {screen === 'home' && (
+        <div className="ddp-fade space-y-3">
+          <div className="rounded-[20px] px-4 py-3 text-white"
+            style={{ background: 'linear-gradient(125deg,#172b46,#334a73 62%,#6c4983)' }}>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/75">{currentModule?.label} overview</p>
+            <h2 className="mt-1 text-lg font-extrabold">Welcome to your dashboard</h2>
+          </div>
+
+          {currentMode === 'restaurant' ? (
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                ['Today revenue', ordersLoaded && !ordersError ? formatMoney(todayRevenue) : '—'],
+                ['Today orders', ordersLoaded && !ordersError ? String(todayCount) : '—'],
+                ['Active orders', ordersLoaded && !ordersError ? String(activeCount) : '—'],
+                ['Total revenue', ordersLoaded && !ordersError ? formatMoney(totalRevenue) : '—'],
+              ].map(([label, value]) => (
+                <div key={label} className="ddp-surface px-3 py-3">
+                  <p className="ddp-muted text-[10px] font-bold">{label}</p>
+                  <p className="mt-1 truncate text-lg font-extrabold">{value}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <button type="button" className="ddp-surface flex w-full items-center gap-3 p-4 text-left"
+              onClick={() => openWorkspace(currentMode, 'overview', `${currentModule?.label} management`)}>
+              <span className="ddp-icon"><Icon name="grid" /></span>
+              <span className="min-w-0 flex-1 text-sm font-bold">Open {currentModule?.label} management</span>
+              <Icon name="arrow" size={18} />
+            </button>
+          )}
+
+          {ordersError && currentMode === 'restaurant' && (
+            <p role="alert" className="rounded-xl bg-rose-500/10 p-3 text-xs text-rose-600">Reports unavailable: {ordersError}</p>
+          )}
+
+          <Section title="Wallet & platform fees">
+            <ToolButton
+              label={currentMode === 'restaurant' ? 'Restaurant wallet' : currentMode === 'delivery' ? 'Delivery wallet' : 'Owner wallet'}
+              detail="Open balance, recharge and transaction history"
+              icon="wallet"
+              onClick={openWallet}
+            />
+          </Section>
+
+          <div className="ddp-surface p-3">
+            <h3 className="ddp-muted mb-2 text-[11px] font-extrabold uppercase tracking-widest">Quick actions</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                ['Orders', 'box', 'orders'],
+                ['Business', 'grid', 'business'],
+                ['Insights', 'chart', 'insights'],
+                ['Settings', 'settings', 'settings'],
+              ].map(([label, icon, target]) => (
+                <button key={target} type="button" onClick={() => chooseScreen(target)}
+                  className="flex min-h-14 items-center gap-2 rounded-xl px-3 text-xs font-bold"
+                  style={{ background: 'var(--ddp-bg)' }}>
+                  <Icon name={icon} size={18} />{label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* A real separate wallet screen; no expand-in-place and no page jump. */}
+      {screen === 'wallet' && (
+        <section className="ddp-wallet-page" role="region" aria-label="Owner wallet screen">
+          <header className="ddp-wallet-header">
+            <button type="button" aria-label="Back to dashboard" onClick={() => chooseScreen('home')}
+              className="ddp-icon !h-11 !w-11">
+              <Icon name="back" size={23} />
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className="ddp-muted text-[10px] font-bold uppercase tracking-widest">Home / Overview</p>
+              <h2 className="truncate text-base font-extrabold">
+                {currentMode === 'restaurant' ? 'Restaurant wallet' : currentMode === 'delivery' ? 'Delivery wallet' : 'Owner wallet'}
+              </h2>
+            </div>
+          </header>
+          <div className="mx-auto max-w-2xl px-3 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-3">
+            {hasRestaurant && hasDelivery && (
+              <p className="ddp-muted mb-3 text-xs">Restaurant and Delivery use the existing tenant wallet. No additional wallet balance is created.</p>
+            )}
+            {restaurantId ? (
+              <div className={currentMode === 'restaurant' ? 'ddp-wallet-restaurant' : ''}>
+                <OwnerDeliveryWallet restaurantId={restaurantId} />
+              </div>
+            ) : (
+              <div role="alert" className="ddp-surface p-4 text-sm">Owner wallet requires a restaurant account ID.</div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {screen === 'orders' && (
+        <div className="ddp-fade space-y-3">
+          <h2 className="text-xl font-extrabold">Orders</h2>
+          {currentMode === 'restaurant' && (
+            <>
+              <p className="ddp-muted text-xs">Restaurant → Orders & bills</p>
+              <OwnerMobileBillingOrders orders={safeOrders} ordersLoaded={ordersLoaded}
+                ordersError={ordersError} onGenerateBill={onGenerateBill}
+                onViewDetails={order => { lastFocus.current = document.activeElement; setSelectedOrder(order) }}
+                onRefresh={onRefresh} />
+            </>
+          )}
+          {currentMode === 'delivery' && (
+            <>
+              <p className="ddp-muted text-xs">Delivery → Orders & returns</p>
+              <Section title="Delivery orders">
+                <ToolButton label="Delivery orders & statuses" detail="Received, packed, out for delivery and completed orders"
+                  icon="box" onClick={() => openWorkspace('delivery', 'orders', 'Delivery orders')} />
+                <ToolButton label="Order tracking" detail="View the existing delivery order timeline"
+                  icon="truck" onClick={() => openWorkspace('delivery', 'orders', 'Order tracking')} />
+              </Section>
+              <Section title="Returns & refunds">
+                <ToolButton label="Returns & unsuccessful deliveries" detail="Existing return, replacement and failed delivery workflows"
+                  icon="refresh" onClick={() => openWorkspace('delivery', 'after_sales', 'Returns & refunds')} />
+              </Section>
+            </>
+          )}
+          {currentMode === 'resort' && (
+            <Section title="Resort bookings">
+              <ToolButton label="Bookings & reservations" detail="Open existing resort management"
+                icon="calendar" onClick={() => openWorkspace('resort', 'overview', 'Resort bookings')} />
+            </Section>
+          )}
+        </div>
+      )}
+
+      {screen === 'business' && (
+        <div className="ddp-fade space-y-3">
+          <h2 className="text-xl font-extrabold">Business</h2>
+          <p className="ddp-muted text-xs">{currentModule?.label} → Management</p>
+          {currentMode === 'restaurant' && <Section title="Restaurant">{renderTools(RESTAURANT_BUSINESS, 'restaurant')}</Section>}
+          {currentMode === 'delivery' && <Section title="Delivery">{renderTools(DELIVERY_BUSINESS, 'delivery')}</Section>}
+          {currentMode === 'resort' && (
+            <Section title="Resort">
+              <ToolButton label="Resort management" detail="Rooms, bookings, guests, check-in, payments and reports"
+                icon="layers" onClick={() => openWorkspace('resort', 'overview', 'Resort management')} />
+            </Section>
+          )}
+        </div>
+      )}
+
+      {screen === 'insights' && (
+        <div className="ddp-fade space-y-3">
+          <h2 className="text-xl font-extrabold">Insights</h2>
+          {currentMode === 'restaurant' && (
+            <>
+              <p className="ddp-muted text-xs">Restaurant → Sales reports</p>
+              <div className="ddp-surface p-4">
+                <p className="ddp-muted text-xs">Revenue from loaded restaurant orders</p>
+                <p className="mt-1 text-3xl font-extrabold">{ordersLoaded && !ordersError ? formatMoney(totalRevenue) : '—'}</p>
+                <p className="ddp-muted mt-2 text-xs">{safeOrders.length} orders loaded</p>
+                {ordersError && <p role="alert" className="mt-2 text-xs text-rose-500">{ordersError}</p>}
+                {ordersLoaded && !ordersError && graphLine ? (
+                  <svg className="mt-4 h-28 w-full" viewBox="0 0 100 52" preserveAspectRatio="none"
+                    role="img" aria-label="Restaurant sales trend">
+                    <polyline points={graphLine} fill="none" stroke="#f97316" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                  </svg>
+                ) : <p className="ddp-muted mt-3 text-xs">Sales graph appears after orders synchronize.</p>}
+              </div>
+              <Section title="Sales reports">
+                <ToolButton label="Full reports & analytics" detail="Open the existing restaurant reports and exports"
+                  icon="chart" onClick={() => openWorkspace('restaurant', 'settlements', 'Sales reports')} />
+              </Section>
+            </>
+          )}
+          {currentMode === 'delivery' && (
+            <Section title="Delivery reports">
+              <ToolButton label="Delivery performance" detail="Existing delivery reports and operational overview"
+                icon="chart" onClick={() => openWorkspace('delivery', 'overview', 'Delivery reports')} />
+            </Section>
+          )}
+          {currentMode === 'resort' && (
+            <Section title="Resort reports">
+              <ToolButton label="Occupancy & revenue" detail="Existing resort management reports"
+                icon="chart" onClick={() => openWorkspace('resort', 'overview', 'Resort reports')} />
+            </Section>
+          )}
+        </div>
+      )}
+
+      {screen === 'settings' && (
+        <div className="ddp-fade space-y-3">
+          <h2 className="text-xl font-extrabold">Settings</h2>
+          <label className="ddp-surface flex min-h-12 items-center gap-3 px-4">
+            <Icon name="search" />
+            <input type="search" value={settingsQuery} onChange={event => setSettingsQuery(event.target.value)}
+              placeholder="Search settings and tools" aria-label="Search owner settings"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+          </label>
+          {currentMode === 'restaurant' && (
+            settings.restaurant.length ? (
+              <Section title="Restaurant">{renderTools(settings.restaurant, 'restaurant')}</Section>
+            ) : <p className="ddp-muted text-xs">No restaurant settings match your search.</p>
+          )}
+          {currentMode === 'delivery' && (
+            settings.delivery.length ? (
+              <Section title="Delivery">{renderTools(settings.delivery, 'delivery')}</Section>
+            ) : <p className="ddp-muted text-xs">No delivery settings match your search.</p>
+          )}
+          {currentMode === 'resort' && (
+            <Section title="Resort">
+              <ToolButton label="Resort management" detail="Existing resort configuration and bookings"
+                icon="layers" onClick={() => openWorkspace('resort', 'overview')} />
+            </Section>
+          )}
+          {(!settingsQuery.trim() || 'support chat ai admin'.includes(settingsQuery.trim().toLowerCase())) && (
+            <Section title="General">
+              <ToolButton label="AI & Admin support chat" detail="Open the existing owner support chat"
+                icon="support" onClick={() => onSupport?.()} />
+            </Section>
+          )}
+        </div>
+      )}
+
+      {screen !== 'wallet' && <nav className="ddp-nav" aria-label="Owner mobile navigation">
+        <NavButton id="home" title="Home" icon="home" screen={screen} onClick={chooseScreen} />
+        <NavButton id="orders" title="Orders" icon="box" screen={screen} onClick={chooseScreen} />
+        <NavButton id="business" title="Business" icon="grid" screen={screen} onClick={chooseScreen} />
+        <NavButton id="insights" title="Insights" icon="chart" screen={screen} onClick={chooseScreen} />
+        <NavButton id="settings" title="Settings" icon="settings" screen={screen} onClick={chooseScreen} />
+      </nav>}
+
+      {selectedOrder && (
+        <div className="fixed inset-0 z-[145] flex items-end justify-center bg-black/60"
+          onMouseDown={event => { if (event.target === event.currentTarget) setSelectedOrder(null) }}>
+          <section className="w-full max-w-xl rounded-t-[28px] p-5" role="dialog" aria-modal="true"
+            aria-label="Order details" style={{ background: 'var(--ddp-card)', color: 'var(--ddp-text)' }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold">Order details</h2>
+              <button type="button" className="ddp-icon" aria-label="Back to orders"
+                onClick={() => setSelectedOrder(null)}><Icon name="back" size={21} /></button>
+            </div>
+            <p className="ddp-muted mt-3 text-sm">Order ID: {String(selectedOrder.id || '—')}</p>
+            <p className="mt-2 text-sm">Status: <strong className="capitalize">{String(selectedOrder.status || 'Unknown').replaceAll('_', ' ')}</strong></p>
+            <p className="mt-2 text-sm">Amount: <strong>{formatMoney(selectedOrder.total_amount)}</strong></p>
+            <p className="ddp-muted mt-2 text-xs">{formatDate(selectedOrder.created_at)}</p>
+            <button type="button" className="mt-5 min-h-12 w-full rounded-xl bg-orange-500 px-4 text-sm font-bold text-white"
+              onClick={() => openWorkspace('restaurant', 'billing', 'Billing tools')}>
+              Open existing billing tools
+            </button>
+          </section>
+        </div>
+      )}
+    </div>,
+    document.body
+  )
 }

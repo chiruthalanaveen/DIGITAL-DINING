@@ -9,6 +9,9 @@ import OwnerDeliveryManagement from '@/app/components/OwnerDeliveryManagement'
 import OwnerDeliveryWallet from '@/app/components/OwnerDeliveryWallet'
 import OwnerWorkspaceOverview from '@/app/components/OwnerWorkspaceOverview'
 import OwnerPremiumMobileHub from '@/app/components/OwnerPremiumMobileHub'
+import OwnerMobileSalesReports from '@/app/components/OwnerMobileSalesReports'
+import OwnerMobileTablesQR from '@/app/components/OwnerMobileTablesQR'
+import OwnerMobileWorkspaceLayer from '@/app/components/OwnerMobileWorkspaceLayer'
 import NativeDeliveryPush from '@/app/components/NativeDeliveryPush'
 import { appConfirm, appNotice, appPrompt } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
@@ -1325,9 +1328,10 @@ export default function RestaurantDashboard() {
   const [savingStoreStatus, setSavingStoreStatus] = useState(false)
   const [ownerSupportOpenSignal, setOwnerSupportOpenSignal] = useState(0)
   const [mobileWorkspaceOpen, setMobileWorkspaceOpen] = useState(false)
+  const [mobileWorkspaceTitle, setMobileWorkspaceTitle] = useState('Management')
   const [mobileDeliveryTarget, setMobileDeliveryTarget] = useState('overview')
   const [mobileDeliveryRequest, setMobileDeliveryRequest] = useState(0)
-  const openMobileWorkspace = (nextMode, nextTab = 'overview') => {
+  const openMobileWorkspace = (nextMode, nextTab = 'overview', nextTitle = '') => {
     if (nextMode === 'delivery' && !deliveryModuleEnabled) return
     if (nextMode === 'resort' && !resortModuleEnabled) return
     if (nextMode === 'restaurant' && !restaurantModuleEnabled) return
@@ -1336,6 +1340,7 @@ export default function RestaurantDashboard() {
       setMobileDeliveryTarget(nextTab || 'overview')
       setMobileDeliveryRequest(v => v + 1)
     }
+    setMobileWorkspaceTitle(String(nextTitle || `${nextMode} management`))
     setMobileWorkspaceOpen(true)
   }
 
@@ -4490,7 +4495,7 @@ if (staffError) {
       </header>
 
       {profileOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
@@ -4616,6 +4621,7 @@ if (staffError) {
       <main className="dd-dashboard-main max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-6">
 
         <OwnerPremiumMobileHub
+          restaurantId={restaurantId}
           businessName={restaurant.name}
           businessCode={restaurant.restaurant_code || ''}
           mode={dashboardMode}
@@ -4641,6 +4647,9 @@ if (staffError) {
           activeCount={activeOrders.length}
           todayCount={todaysOrders.length}
           graphData={salesGraphData}
+          onGenerateBill={handlePrintBill}
+          onRefresh={() => setOrdersRefreshTick(value => value + 1)}
+          onLogout={handleLogout}
         />
 
         <div className="dd-dashboard-intro">
@@ -4694,8 +4703,13 @@ if (staffError) {
           <div className="hidden lg:block"><OwnerDeliveryWallet restaurantId={restaurantId} /></div>
         )}
 
+        <OwnerMobileWorkspaceLayer
+          open={mobileWorkspaceOpen}
+          title={mobileWorkspaceTitle}
+          onBack={() => setMobileWorkspaceOpen(false)}
+        >
         <div id="dd-ws-live-module" className="scroll-mt-24" />
-        <div className={mobileWorkspaceOpen ? 'block' : 'hidden lg:block'}>
+        <div className={mobileWorkspaceOpen ? 'dd-ws-live-content block' : 'dd-ws-live-content hidden lg:block'}>
 
         {dashboardMode === 'resort' && resortModuleEnabled && (
           <ResortManagement
@@ -4717,7 +4731,7 @@ if (staffError) {
         {dashboardMode === 'restaurant' && restaurantModuleEnabled && (
           <div className="contents">
         {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="dd-ws-metrics-grid grid grid-cols-1 md:grid-cols-4 gap-4">
 
           <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl shadow-sm">
             <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
@@ -4834,7 +4848,20 @@ if (staffError) {
         </nav>
 
         {activeTab === 'tables' && (
-          <div className="space-y-6">
+          <>
+            {/* Mobile-only Tables & QR screen; original desktop block below is preserved. */}
+            <div className="lg:hidden">
+              <OwnerMobileTablesQR
+                restaurantName={restaurant.name}
+                tableNumbers={configuredTableNumbers}
+                occupiedTableNumbers={occupiedTableNumbers}
+                activeOrders={activeTableOrders}
+                ordersLoaded={ordersHaveLoaded}
+                ordersError={ordersLoadError}
+                onManageQR={() => router.push(`/dashboard/${restaurantId}/qr`)}
+              />
+            </div>
+            <div className="hidden lg:block space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5">
                 <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Total Tables</p>
@@ -4875,7 +4902,8 @@ if (staffError) {
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          </>
         )}
 
         {/* TAB 2: MENU CATALOG */}
@@ -7074,7 +7102,32 @@ if (staffError) {
         {/* TAB 7: ANALYTICS & REPORTS */}
         {activeTab === 'settlements' && (
           hasAdvancedAnalytics ? (
-          <div className="space-y-6">
+          <>
+            {/* Compact reports on mobile; the existing desktop report is unchanged. */}
+            <div className="lg:hidden">
+              <OwnerMobileSalesReports
+                timeframes={REPORT_TIMEFRAMES}
+                timeframe={reportTimeframe}
+                onTimeframeChange={handleReportTimeframeChange}
+                ordersLoaded={ordersHaveLoaded}
+                ordersError={ordersLoadError}
+                ordersLastSynced={ordersLastSynced}
+                loadedOrderCount={orders.length}
+                allTimeOrderCount={allTimeValidOrders.length}
+                allTimeRevenue={allTimeRevenue}
+                periodOrderCount={reportOrderCount}
+                periodRevenue={reportRevenue}
+                averageOrderValue={reportAverageOrderValue}
+                graphData={salesGraphData}
+                hourlyReport={hourlyReport}
+                peakHour={peakHour}
+                formatCurrency={formatCurrency}
+                onRefresh={() => setOrdersRefreshTick(value => value + 1)}
+                onExport={handleGenerateAnalyticsReport}
+                onPrint={() => window.print()}
+              />
+            </div>
+            <div className="hidden lg:block space-y-6">
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
               <div>
                 <span className="text-[10px] font-extrabold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full uppercase tracking-widest">
@@ -7265,7 +7318,8 @@ if (staffError) {
                 </div>
               </div>
             </div>
-          </div>
+            </div>
+          </>
           ) : (
             <div className="space-y-6">
               <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6">
@@ -7305,6 +7359,7 @@ if (staffError) {
           </div>
         )}
         </div>
+        </OwnerMobileWorkspaceLayer>
       </main>
 
       {/* Printable Bill */}

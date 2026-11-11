@@ -252,7 +252,7 @@ export default function CustomerMenuPage() {
   // ERP-controlled platform fee for dine-in / takeaway. The owner can only
   // choose customer-paid ON/OFF. A separate rollout flag starts OFF.
   const [restaurantFeeQuote, setRestaurantFeeQuote] = useState({
-    loaded: false, customerAmountPaise: 0, feePaise: 0
+    loaded: false, customerAmountPaise: 0, feePaise: 0, ownerChargeCustomer: false, rolloutEnabled: false
   })
   const [restaurantFeeQuoteError, setRestaurantFeeQuoteError] = useState('')
 
@@ -267,13 +267,15 @@ export default function CustomerMenuPage() {
         !Number.isSafeInteger(Number(data.customerAmountPaise))) {
       const message = data?.message || 'Unable to verify the restaurant platform fee.'
       setRestaurantFeeQuoteError(message)
-      setRestaurantFeeQuote({ loaded: false, customerAmountPaise: 0, feePaise: 0 })
+      setRestaurantFeeQuote({ loaded: false, customerAmountPaise: 0, feePaise: 0, ownerChargeCustomer: false, rolloutEnabled: false })
       throw new Error(message)
     }
     setRestaurantFeeQuote({
       loaded: true,
       customerAmountPaise: Number(data.customerAmountPaise),
       feePaise: Number(data.feePaise || 0),
+      ownerChargeCustomer: data.ownerChargeCustomer === true,
+      rolloutEnabled: data.rolloutEnabled === true,
     })
     setRestaurantFeeQuoteError('')
     return data
@@ -298,11 +300,13 @@ export default function CustomerMenuPage() {
           loaded: true,
           customerAmountPaise: Number(data.customerAmountPaise),
           feePaise: Number(data.feePaise || 0),
+          ownerChargeCustomer: data.ownerChargeCustomer === true,
+          rolloutEnabled: data.rolloutEnabled === true,
         })
         setRestaurantFeeQuoteError('')
       } catch (error) {
         if (!active) return
-        setRestaurantFeeQuote({ loaded: false, customerAmountPaise: 0, feePaise: 0 })
+        setRestaurantFeeQuote({ loaded: false, customerAmountPaise: 0, feePaise: 0, ownerChargeCustomer: false, rolloutEnabled: false })
         setRestaurantFeeQuoteError(error?.message || 'Unable to load platform fee.')
       }
     }
@@ -2413,7 +2417,7 @@ export default function CustomerMenuPage() {
                 )}
                 {Number(confirmedBillSummary.platformFee || 0) > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-neutral-500">Platform fee (ERP rate)</span>
+                    <span className="text-neutral-500">Restaurant platform fee</span>
                     <span>{money(confirmedBillSummary.platformFee)}</span>
                   </div>
                 )}
@@ -3140,10 +3144,23 @@ export default function CustomerMenuPage() {
                           )}
                           {restaurantCustomerFee > 0 && (
                             <div className="flex justify-between">
-                              <span className="text-neutral-400">Platform fee (ERP rate)</span>
+                              <span className="text-neutral-400">Restaurant platform fee</span>
                               <span className="font-bold">{money(restaurantCustomerFee)}</span>
                             </div>
                           )}
+                          {restaurantFeeQuote.loaded &&
+                            restaurantFeeQuote.ownerChargeCustomer &&
+                            !restaurantFeeQuote.rolloutEnabled && (
+                              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5">
+                                <div className="flex items-center justify-between gap-3 text-[11px]">
+                                  <span className="text-neutral-300">Restaurant platform fee (not charged)</span>
+                                  <span className="font-bold text-white">{money(0)}</span>
+                                </div>
+                                <p className="mt-1 text-[10px] leading-4 text-neutral-400">
+                                  Customer-fee activation is pending. No platform fee has been added to this bill.
+                                </p>
+                              </div>
+                            )}
                           {!restaurantFeeQuote.loaded && (
                             <div className="rounded-lg bg-amber-950/50 p-2 text-[10px] text-amber-200">
                               {restaurantFeeQuoteError || 'Checking platform-fee settings...'}

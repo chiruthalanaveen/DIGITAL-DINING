@@ -1,3652 +1,821 @@
 'use client'
 
-import { useState, useEffect, use, useCallback, useRef } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { appNotice } from '@/lib/appDialog'
+import { appConfirm, appNotice } from '@/lib/appDialog'
 import { useMobileViewportLock } from '@/lib/useMobileViewportLock'
 
+const SESSION_KEY = 'digital-dine-staff-session'
+const DEFAULT_SOUND = '/sounds/kitchen-default.mp3'
+const SOUND_PATTERN = /^kitchen-[a-z0-9-]+$/
 
-const SESSION_STORAGE_KEY = 'digital-dine-staff-session'
+/* ------------------------------------------------------------------ */
+/* Status model                                                        */
+/* ------------------------------------------------------------------ */
+
+// The kitchen marks an order as delivered. The backend must accept this value
+// for kitchen sessions only. Waiter sessions must not be able to set it.
+const DELIVERED = 'delivered'
+
+const STEPS = [
+  { key: 'pending', label: 'New' },
+  { key: 'preparing', label: 'Cooking' },
+  { key: 'ready', label: 'Ready' },
+  { key: 'completed', label: 'Delivered' },
+]
+
+const normalize = (status) => {
+  const v = String(status || '').trim().toLowerCase()
+  if (['', 'paid', 'confirmed', 'placed', 'order_placed', 'new'].includes(v)) return 'pending'
+  if (['delivered', 'served', 'completed', 'delivered_by_waiter'].includes(v)) return 'completed'
+  if (v === 'canceled') return 'cancelled'
+  return v
+}
+
+const isFinished = (o) => ['completed', 'cancelled'].includes(normalize(o?.status))
+
+const orderNo = (o) =>
+  o?.order_number ?? o?.daily_order_number ?? String(o?.id || '').slice(-4).toUpperCase()
+
+const minutesSince = (createdAt, now) => {
+  if (!createdAt) return 0
+  const t = new Date(createdAt).getTime()
+  if (Number.isNaN(t)) return 0
+  return Math.max(0, Math.floor((now - t) / 60000))
+}
+
+const clock = (createdAt) =>
+  createdAt
+    ? new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '--:--'
+
+const clamp01 = (v) => Math.min(1, Math.max(0, Number(v) || 0))
+
+/* ------------------------------------------------------------------ */
+/* Styles                                                              */
+/* ------------------------------------------------------------------ */
+
+const CSS = `
+.kds{min-height:100dvh;background:#0a0a0c;color:#f4f4f5;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
+.kds *{box-sizing:border-box}
+.kds-top{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:max(12px,env(safe-area-inset-top)) 16px 12px;background:rgba(10,10,12,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid #1f1f24}
+.kds-brand{font-size:20px;font-weight:900;letter-spacing:-.01em}
+.kds-sub{font-size:12px;color:#8b8b94;display:flex;align-items:center;gap:6px;margin-top:2px}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot.on{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.15)}
+.dot.off{background:#ef4444}
+.iconbtn{width:44px;height:44px;border-radius:14px;background:#17171b;border:1px solid #2a2a30;color:#f4f4f5;display:grid;place-items:center;flex-shrink:0}
+.kds-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px 0;max-width:1200px;margin:0 auto}
+.kds-tab{min-height:50px;border-radius:14px;background:#17171b;border:1px solid #2a2a30;color:#8b8b94;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px}
+.kds-tab[aria-selected=true]{background:#f4f4f5;color:#0a0a0c;border-color:#f4f4f5}
+.count{min-width:24px;height:22px;padding:0 7px;border-radius:999px;background:rgba(249,115,22,.18);color:#fb923c;font-size:12px;display:grid;place-items:center;font-weight:900}
+.kds-tab[aria-selected=true] .count{background:#0a0a0c;color:#f4f4f5}
+.kds-search{padding:12px 16px 0;max-width:1200px;margin:0 auto}
+.kds-input{width:100%;min-height:48px;background:#111114;border:1px solid #2a2a30;border-radius:14px;padding:0 14px;color:#f4f4f5;font-size:16px;outline:none}
+.kds-input:focus{border-color:#f97316}
+.kds-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px 0;max-width:1200px;margin:0 auto}
+.stat{background:#111114;border:1px solid #2a2a30;border-radius:14px;padding:12px}
+.stat small{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#8b8b94;font-weight:800}
+.stat b{display:block;font-size:22px;font-weight:900;margin-top:4px}
+.kds-list{padding:12px 16px 48px;display:grid;gap:12px;max-width:1200px;margin:0 auto}
+.order{background:#111114;border:1px solid #2a2a30;border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.order.late{border-color:rgba(239,68,68,.7);box-shadow:0 10px 30px rgba(127,29,29,.25)}
+.order.warn{border-color:rgba(249,115,22,.55)}
+.order.ready{border-color:rgba(34,197,94,.45)}
+.order.done{opacity:.7}
+.ohead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.table{font-size:26px;font-weight:900;line-height:1}
+.tag{font-size:12px;color:#8b8b94;font-weight:700;margin-top:6px}
+.timer{font-size:13px;font-weight:900;border:1px solid;border-radius:12px;padding:6px 10px;white-space:nowrap}
+.timer.g{color:#4ade80;border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.08)}
+.timer.y{color:#facc15;border-color:rgba(250,204,21,.35);background:rgba(250,204,21,.08)}
+.timer.o{color:#fb923c;border-color:rgba(249,115,22,.4);background:rgba(249,115,22,.1)}
+.timer.r{color:#f87171;border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.12)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.step{display:flex;flex-direction:column;gap:6px}
+.bar{height:6px;border-radius:99px;background:#24242a}
+.step.on .bar{background:#f97316}
+.step.cur .bar{background:#f97316;box-shadow:0 0 0 3px rgba(249,115,22,.2)}
+.step.ok .bar{background:#22c55e}
+.step small{font-size:10px;font-weight:800;color:#5b5b64;text-transform:uppercase;letter-spacing:.04em}
+.step.on small,.step.ok small{color:#c4c4cc}
+.items{display:grid;gap:8px}
+.item{display:flex;gap:10px;align-items:flex-start;background:#0c0c0f;border:1px solid #1f1f24;border-radius:14px;padding:10px 12px}
+.qty{min-width:36px;height:36px;border-radius:10px;background:rgba(249,115,22,.14);color:#fb923c;font-weight:900;display:grid;place-items:center;font-size:14px;flex-shrink:0}
+.iname{font-size:15px;font-weight:800;line-height:1.3;word-break:break-word}
+.note{margin-top:6px;font-size:12px;color:#fde047;background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.25);border-radius:10px;padding:6px 8px}
+.act{width:100%;min-height:58px;border-radius:16px;border:0;font-weight:900;font-size:16px;color:#fff;letter-spacing:.01em;transition:transform .08s,opacity .2s}
+.act:active{transform:scale(.98)}
+.act:disabled{opacity:.5}
+.act.orange{background:#f97316}
+.act.green{background:#16a34a}
+.act.blue{background:#2563eb}
+.undo{width:100%;min-height:44px;border-radius:14px;background:transparent;border:1px solid #2a2a30;color:#a1a1aa;font-weight:700;font-size:13px}
+.note-ok{text-align:center;font-size:13px;font-weight:800;color:#4ade80;padding:12px;border-radius:14px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.22)}
+.empty{text-align:center;padding:48px 16px;background:#111114;border:1px dashed #2a2a30;border-radius:20px}
+.empty b{display:block;font-size:17px;font-weight:900}
+.empty p{margin:6px 0 0;color:#8b8b94;font-size:14px}
+.banner{position:fixed;top:max(10px,env(safe-area-inset-top));left:12px;right:12px;z-index:60;max-width:640px;margin:0 auto;background:#dc2626;border-radius:18px;padding:14px;display:flex;align-items:center;gap:12px;box-shadow:0 16px 40px rgba(0,0,0,.5);animation:drop .25s ease}
+.banner button{background:rgba(255,255,255,.18);border:0;color:#fff;font-weight:800;border-radius:12px;min-height:40px;padding:0 12px;font-size:13px}
+@keyframes drop{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}
+.overlay{position:fixed;inset:0;z-index:70;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.6)}
+.sheet{width:100%;max-width:520px;background:#111114;border:1px solid #2a2a30;border-radius:26px 26px 0 0;padding:10px 20px max(20px,env(safe-area-inset-bottom));animation:up .25s ease}
+@media(min-width:640px){.overlay{align-items:center;padding:16px}.sheet{border-radius:26px}}
+@keyframes up{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+.grab{width:40px;height:5px;border-radius:99px;background:#33333a;margin:0 auto 14px}
+.field{display:grid;gap:6px;margin-bottom:12px}
+.field span{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#8b8b94}
+.info{background:#0c0c0f;border:1px solid #1f1f24;border-radius:14px;padding:12px 14px;font-size:14px;font-weight:700;font-family:ui-monospace,monospace}
+.primary{width:100%;min-height:52px;border-radius:16px;border:0;background:#dc2626;color:#fff;font-weight:900;font-size:15px}
+.ghost{width:100%;min-height:50px;border-radius:16px;border:1px solid #2a2a30;background:transparent;color:#f4f4f5;font-weight:800;font-size:15px}
+.login{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:20px;background:#0a0a0c}
+.login-card{width:100%;max-width:400px;background:#111114;border:1px solid #2a2a30;border-radius:26px;padding:28px 22px}
+.login-card input{width:100%;min-height:52px;background:#0a0a0c;border:1px solid #2a2a30;border-radius:14px;padding:0 14px;color:#f4f4f5;font-size:16px;outline:none;margin-bottom:12px;font-family:ui-monospace,monospace}
+.login-card input:focus{border-color:#dc2626}
+.login-card input.code{letter-spacing:.35em;font-size:20px;text-align:center;border-color:rgba(249,115,22,.35)}
+.login-card .primary{margin-top:6px}
+.center{min-height:100dvh;display:grid;place-items:center;padding:20px;background:#0a0a0c;color:#f4f4f5}
+.spin{width:40px;height:40px;border-radius:50%;border:4px solid #24242a;border-top-color:#dc2626;animation:sp 0.8s linear infinite;margin:0 auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(min-width:900px){
+  .kds-list{grid-template-columns:repeat(2,1fr)}
+}
+@media(min-width:1200px){
+  .kds-list{grid-template-columns:repeat(3,1fr)}
+}
+`
+
+/* ------------------------------------------------------------------ */
+/* Small components                                                    */
+/* ------------------------------------------------------------------ */
+
+function Bell() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8zM10.3 21a1.9 1.9 0 0 0 3.4 0" />
+    </svg>
+  )
+}
+
+function UserIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" />
+    </svg>
+  )
+}
+
+function Stepper({ status }) {
+  const current = STEPS.findIndex((s) => s.key === status)
+  return (
+    <div className="steps" aria-label="Order progress">
+      {STEPS.map((s, i) => {
+        const cls = i < current ? 'ok' : i === current ? 'on cur' : ''
+        return (
+          <div key={s.key} className={`step ${cls}`}>
+            <div className="bar" />
+            <small>{s.label}</small>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function OrderCard({ order, now, busy, onAdvance, onReopen, readOnly }) {
+  const status = normalize(order.status)
+  const age = minutesSince(order.created_at, now)
+  const done = status === 'completed' || status === 'cancelled'
+  const items = Array.isArray(order.items) ? order.items : []
+
+  let tone = ''
+  if (status === 'ready') tone = 'ready'
+  else if (!done && age >= 30) tone = 'late'
+  else if (!done && age >= 20) tone = 'warn'
+
+  const timerTone = age >= 30 ? 'r' : age >= 20 ? 'o' : age >= 10 ? 'y' : 'g'
+
+  const action =
+    status === 'pending'
+      ? { to: 'preparing', label: 'Start preparing', cls: 'orange' }
+      : status === 'preparing'
+        ? { to: 'ready', label: 'Mark ready', cls: 'green' }
+        : status === 'ready'
+          ? { to: DELIVERED, label: 'Mark delivered', cls: 'blue' }
+          : null
+
+  return (
+    <article className={`order ${tone} ${done ? 'done' : ''}`}>
+      <header className="ohead">
+        <div>
+          <div className="table">{order.table_number ? `Table ${order.table_number}` : 'Takeaway'}</div>
+          <div className="tag">Order #{orderNo(order)} · {clock(order.created_at)}{order.payment_mode ? ` · ${order.payment_mode}` : ''}</div>
+        </div>
+        {!done && <span className={`timer ${timerTone}`}>{age} min</span>}
+        {done && <span className="timer g">{status === 'cancelled' ? 'Cancelled' : 'Delivered'}</span>}
+      </header>
+
+      {!done && <Stepper status={status} />}
+
+      {!done && age >= 30 && status !== 'ready' && (
+        <div style={{ fontSize: 12, fontWeight: 800, color: '#f87171' }}>⚠ Waiting over 30 minutes</div>
+      )}
+
+      <div className="items">
+        {items.length === 0 && <div className="tag">No items recorded</div>}
+        {items.map((it, i) => {
+          const q = it?.qty ?? it?.quantity ?? 1
+          const name = it?.name || it?.item_name || 'Unnamed item'
+          const note = it?.notes || it?.note || it?.special_instructions || ''
+          return (
+            <div key={`${order.id}-${i}`} className="item">
+              <div className="qty">×{q}</div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="iname">{name}</div>
+                {note && <div className="note">📝 {note}</div>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {!readOnly && action && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <button type="button" className={`act ${action.cls}`} disabled={busy}
+            onClick={() => onAdvance(order, action.to)}>
+            {busy ? 'Updating…' : action.label}
+          </button>
+          {status === 'ready' && (
+            <button type="button" className="undo" disabled={busy} onClick={() => onReopen(order)}>
+              Back to cooking
+            </button>
+          )}
+        </div>
+      )}
+
+      {!readOnly && done && <div className="note-ok">✓ {status === 'cancelled' ? 'Cancelled' : 'Delivered to table'}</div>}
+    </article>
+  )
+}
+
+function ProfileSheet({ code, userId, onSignOut, onClose }) {
+  return (
+    <div className="overlay" onClick={onClose}>
+      <section className="sheet" role="dialog" aria-modal="true" aria-label="Kitchen profile" onClick={(e) => e.stopPropagation()}>
+        <div className="grab" />
+        <h2 style={{ margin: '0 0 16px', fontSize: 20, fontWeight: 900 }}>Kitchen profile</h2>
+        <div className="field"><span>Restaurant code</span><div className="info" style={{ letterSpacing: '.3em', textAlign: 'center', fontSize: 18 }}>{code || '—----'}</div></div>
+        <div className="field"><span>User ID</span><div className="info">{userId || '—'}</div></div>
+        <div className="field"><span>Role</span><div className="info" style={{ color: '#4ade80' }}>Kitchen</div></div>
+        <p style={{ fontSize: 12, color: '#8b8b94', margin: '4px 0 16px' }}>Your password is never displayed.</p>
+        <button type="button" className="primary" onClick={onSignOut}>Sign out of this terminal</button>
+        <div style={{ height: 10 }} />
+        <button type="button" className="ghost" onClick={onClose}>Close</button>
+      </section>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Main screen                                                         */
+/* ------------------------------------------------------------------ */
 
 export default function KitchenPortal({ params }) {
   useMobileViewportLock()
-  const unwrappedParams = use(params)
-
+  const unwrapped = use(params)
   const restaurantId = String(
-    unwrappedParams?.restaurantid ||
-      unwrappedParams?.restaurantId ||
-      unwrappedParams?.restaurant_id ||
-      unwrappedParams?.id ||
-      ''
+    unwrapped?.restaurantid || unwrapped?.restaurantId || unwrapped?.restaurant_id || unwrapped?.id || ''
   ).trim()
 
-  /*
-   * ---------------------------------------------------------
-   * AUTHENTICATION
-   * ---------------------------------------------------------
-   */
-
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [restaurantCode, setRestaurantCode] = useState('')
-  const [userId, setUserId] = useState('')
-  const [password, setPassword] = useState('')
-  const [showProfile, setShowProfile] = useState(false)
-
-  /*
-   * Secure /app session.
-   *
-   * Password is NOT stored in localStorage.
-   */
-
-  const [sessionToken, setSessionToken] = useState('')
-  const [sessionMode, setSessionMode] = useState(false)
   const [sessionChecking, setSessionChecking] = useState(true)
+  const [authed, setAuthed] = useState(false)
+  const [loginCode, setLoginCode] = useState('')
+  const [loginUser, setLoginUser] = useState('')
+  const [loginPass, setLoginPass] = useState('')
+  const [loginBusy, setLoginBusy] = useState(false)
 
-  const sessionTokenRef = useRef('')
-  const sessionModeRef = useRef(false)
+  const [session, setSession] = useState({ code: '', userId: '' })
+  const sessionRef = useRef('')
+  const syncRef = useRef(false)
 
-  /*
-   * Manual-login refs.
-   *
-   * These make sure realtime/polling callbacks always have
-   * the current credentials without storing them in the browser.
-   */
+  const [rows, setRows] = useState([])
+  const [connected, setConnected] = useState(false)
+  const [lastSync, setLastSync] = useState(null)
+  const [tab, setTab] = useState('queue')
+  const [query, setQuery] = useState('')
+  const [busyId, setBusyId] = useState(null)
+  const [now, setNow] = useState(Date.now())
+  const [alert, setAlert] = useState(null)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [alarm, setAlarm] = useState({ enabled: true, url: DEFAULT_SOUND, volume: 1 })
 
-  const restaurantCodeRef = useRef('')
-  const userIdRef = useRef('')
+  const knownRef = useRef(new Set())
+  const alarmRef = useRef(alarm)
+  const audioCtxRef = useRef(null)
+  const alertTimerRef = useRef(null)
 
-  /*
-   * ---------------------------------------------------------
-   * ORDERS
-   * ---------------------------------------------------------
-   */
+  useEffect(() => { alarmRef.current = alarm }, [alarm])
 
-  const [orders, setOrders] = useState([])
-  const [todayOrders, setTodayOrders] = useState([])
+  /* ---------------- Session helpers ---------------- */
 
-  const [loading, setLoading] = useState(false)
-  const [todayOrdersLoading, setTodayOrdersLoading] = useState(false)
+  const clearSaved = useCallback(() => {
+    try { localStorage.removeItem(SESSION_KEY) } catch {}
+  }, [])
 
-  const [updatingOrder, setUpdatingOrder] = useState(null)
+  const endSession = useCallback(() => {
+    clearSaved()
+    sessionRef.current = ''
+    setSession({ code: '', userId: '' })
+    setAuthed(false)
+    setRows([])
+    setConnected(false)
+    knownRef.current = new Set()
+    setProfileOpen(false)
+    setAlert(null)
+  }, [clearSaved])
 
-  const [lastOrdersRefresh, setLastOrdersRefresh] = useState(null)
-  const [lastTodayRefresh, setLastTodayRefresh] = useState(null)
-
-  /*
-   * ---------------------------------------------------------
-   * FILTERS / UI
-   * ---------------------------------------------------------
-   */
-
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-
-  const [currentTime, setCurrentTime] = useState(Date.now())
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [isConnected, setIsConnected] = useState(false)
-
-  const [newOrderAlert, setNewOrderAlert] = useState(null)
-
-  /*
-   * ---------------------------------------------------------
-   * REFS
-   * ---------------------------------------------------------
-   */
-
-  const audioRef = useRef(null)
-  const audioContextRef = useRef(null)
-
-  const alarmUnlockedRef = useRef(false)
-
-  const knownOrderIdsRef = useRef(new Set())
-
-  const syncInProgressRef = useRef(false)
-
-  const newOrderAlertTimerRef = useRef(null)
-
-  /*
-   * ---------------------------------------------------------
-   * ALARM SETTINGS
-   * ---------------------------------------------------------
-   */
-
-  const [alarmSoundUrl, setAlarmSoundUrl] = useState(
-    '/sounds/kitchen-default.mp3'
-  )
-
-  const [alarmEnabled, setAlarmEnabled] = useState(true)
-  const [alarmVolume, setAlarmVolume] = useState(1)
-
-  /*
-   * ---------------------------------------------------------
-   * KEEP AUTH REFS CURRENT
-   * ---------------------------------------------------------
-   */
-
-  useEffect(() => {
-    sessionTokenRef.current = sessionToken
-  }, [sessionToken])
-
-  useEffect(() => {
-    sessionModeRef.current = sessionMode
-  }, [sessionMode])
-
-  useEffect(() => {
-    restaurantCodeRef.current = restaurantCode
-  }, [restaurantCode])
-
-  useEffect(() => {
-    userIdRef.current = userId
-  }, [userId])
-
-  /*
-   * ---------------------------------------------------------
-   * HELPERS
-   * ---------------------------------------------------------
-   */
-
-  const getOrderAgeMinutes = (createdAt) => {
-    if (!createdAt) return 0
-
-    const created = new Date(createdAt).getTime()
-
-    if (Number.isNaN(created)) return 0
-
-    return Math.max(
-      0,
-      Math.floor(
-        (currentTime - created) / 60000
-      )
-    )
-  }
-
-  /*
-   * Normalize all customer-facing initial order states
-   * to Kitchen pending.
-   */
-
-  const getKitchenStatus = (status) => {
-    const value = String(status || '')
-      .trim()
-      .toLowerCase()
-
-    if (
-      value === 'paid' ||
-      value === 'confirmed' ||
-      value === 'placed' ||
-      value === 'order_placed' ||
-      value === 'new'
-    ) {
-      return 'pending'
-    }
-
-    if (
-      value === 'delivered' ||
-      value === 'served' ||
-      value === 'completed' ||
-      value === 'delivered_by_waiter'
-    ) {
-      return 'completed'
-    }
-
-    return value || 'pending'
-  }
-
-  const isFinishedStatus = (status) => {
-    const value = String(status || '')
-      .trim()
-      .toLowerCase()
-
-    return [
-      'completed',
-      'delivered',
-      'served',
-      'delivered_by_waiter',
-      'cancelled',
-      'canceled',
-    ].includes(value)
-  }
-
-  const formatTime = (createdAt) => {
-    if (!createdAt) return '--:--'
-
-    const date = new Date(createdAt)
-
-    if (Number.isNaN(date.getTime())) {
-      return '--:--'
-    }
-
-    return date.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
+  const applySettings = useCallback((r = {}) => {
+    const s = String(r.kitchen_alarm_sound || '')
+    setAlarm({
+      enabled: r.kitchen_alarm_enabled ?? true,
+      url: SOUND_PATTERN.test(s) ? `/sounds/${s}.mp3` : DEFAULT_SOUND,
+      volume: clamp01(r.kitchen_alarm_volume ?? 1),
     })
-  }
+  }, [])
 
-  const formatDateTime = (createdAt) => {
-    if (!createdAt) return '--'
+  /* ---------------- Alarm ---------------- */
 
-    const date = new Date(createdAt)
+  const unlockAudio = useCallback(() => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext
+      if (!Ctx) return
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx()
+      audioCtxRef.current.resume?.().catch(() => {})
+    } catch {}
+  }, [])
 
-    if (Number.isNaN(date.getTime())) {
-      return '--'
+  const beep = useCallback(() => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext
+      if (!Ctx) return
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx()
+      const ctx = audioCtxRef.current
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+      const t0 = ctx.currentTime
+      const peak = Math.max(0.08, alarmRef.current.volume * 0.6)
+      ;[900, 1200, 900, 1200].forEach((freq, i) => {
+        const start = t0 + i * 0.35
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0.0001, start)
+        gain.gain.exponentialRampToValueAtTime(peak, start + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3)
+        osc.connect(gain).connect(ctx.destination)
+        osc.start(start)
+        osc.stop(start + 0.32)
+      })
+    } catch {}
+  }, [])
+
+  const playAlarm = useCallback(() => {
+    const { enabled, url, volume } = alarmRef.current
+    if (!enabled) return
+    try {
+      const audio = new Audio(url)
+      audio.volume = volume
+      audio.play().catch(() => beep())
+    } catch {
+      beep()
     }
+  }, [beep])
 
-    return date.toLocaleString([], {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+  const showAlert = useCallback((order) => {
+    setAlert({ number: orderNo(order), table: order.table_number || 'Takeaway' })
+    playAlarm()
+    clearTimeout(alertTimerRef.current)
+    alertTimerRef.current = setTimeout(() => setAlert(null), 8000)
+  }, [playAlarm])
+
+  /* ---------------- Data sync ---------------- */
+
+  const applyRows = useCallback((data, announce) => {
+    const list = Array.isArray(data) ? data : []
+    let fresh = null
+    list.forEach((o) => {
+      const id = String(o?.id || '')
+      if (!id || knownRef.current.has(id)) return
+      knownRef.current.add(id)
+      if (announce && !isFinished(o) && !fresh) fresh = o
     })
-  }
+    setRows(list)
+    setConnected(true)
+    setLastSync(new Date())
+    if (fresh) showAlert(fresh)
+  }, [showAlert])
 
-  const getOrderNumber = (order) => {
-    return (
-      order?.order_number ??
-      order?.daily_order_number ??
-      order?.orderNo ??
-      String(order?.id || '').slice(-6)
-    )
-  }
-
-  const getOrderAmount = (order) => {
-    const raw =
-      order?.total_amount ??
-      order?.grand_total ??
-      order?.total ??
-      order?.amount ??
-      0
-
-    const value = Number(raw)
-
-    return Number.isFinite(value)
-      ? value
-      : 0
-  }
-
-  const formatCurrency = (value) => {
-    return `₹${Number(
-      value || 0
-    ).toFixed(2)}`
-  }
-
-  const getHistoryStatus = (status) => {
-    const value = String(status || '')
-      .trim()
-      .toLowerCase()
-
-    if (value === 'completed') {
-      return 'Delivered / Completed'
+  const refresh = useCallback(async ({ announce = true } = {}) => {
+    if (syncRef.current || !sessionRef.current) return
+    syncRef.current = true
+    try {
+      const { data, error } = await supabase.rpc('get_kitchen_portal_data_session', {
+        p_session_token: sessionRef.current,
+      })
+      if (error) throw error
+      if (!data?.success) { endSession(); return }
+      if (data.restaurantId && String(data.restaurantId) !== String(restaurantId)) { endSession(); return }
+      applySettings(data.restaurant || {})
+      applyRows(data.orders, announce)
+    } catch (err) {
+      console.error('[KITCHEN] Sync error:', err)
+      setConnected(false)
+    } finally {
+      syncRef.current = false
     }
+  }, [restaurantId, endSession, applySettings, applyRows])
 
-    if (value === 'delivered') {
-      return 'Delivered'
+  /* ---------------- Restore saved session ---------------- */
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const raw = localStorage.getItem(SESSION_KEY)
+        if (!raw) return
+        const saved = JSON.parse(raw)
+        // Another role's or restaurant's session stays untouched.
+        if (saved?.role !== 'kitchen' || String(saved?.restaurantId) !== String(restaurantId)) return
+        if (!saved?.sessionToken) { clearSaved(); return }
+
+        const { data, error } = await supabase.rpc('validate_staff_app_session', {
+          p_session_token: saved.sessionToken,
+          p_required_role: 'kitchen',
+        })
+        if (error || !data?.success || String(data.restaurantId) !== String(restaurantId)) {
+          clearSaved()
+          return
+        }
+        if (!alive) return
+
+        sessionRef.current = saved.sessionToken
+        setSession({
+          code: String(data.restaurantCode || saved.restaurantCode || ''),
+          userId: String(data.userId || saved.userId || ''),
+        })
+        setAuthed(true)
+        await refresh({ announce: false })
+      } catch (err) {
+        console.error('[KITCHEN] Restore error:', err)
+        clearSaved()
+      } finally {
+        if (alive) setSessionChecking(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [restaurantId, clearSaved, refresh])
+
+  /* ---------------- Polling, clock, cleanup ---------------- */
+
+  useEffect(() => {
+    if (!authed) return undefined
+    const tick = () => { if (!document.hidden) refresh({ announce: true }) }
+    const iv = setInterval(tick, 5000)
+    document.addEventListener('visibilitychange', tick)
+    window.addEventListener('online', tick)
+    return () => {
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', tick)
+      window.removeEventListener('online', tick)
     }
+  }, [authed, refresh])
 
-    if (value === 'served') {
-      return 'Served'
-    }
+  useEffect(() => {
+    if (!authed) return undefined
+    const iv = setInterval(() => setNow(Date.now()), 15000)
+    return () => clearInterval(iv)
+  }, [authed])
 
-    if (value === 'delivered_by_waiter') {
-      return 'Delivered by Waiter'
-    }
+  useEffect(() => () => {
+    clearTimeout(alertTimerRef.current)
+    try { audioCtxRef.current?.close() } catch {}
+  }, [])
 
-    if (
-      value === 'cancelled' ||
-      value === 'canceled'
-    ) {
-      return 'Cancelled'
-    }
+  /* ---------------- Login ---------------- */
 
-    if (value === 'ready') {
-      return 'Ready'
-    }
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    if (loginBusy) return
+    unlockAudio()
 
-    if (value === 'preparing') {
-      return 'Preparing'
-    }
-
-    if (value === 'paid') {
-      return 'Paid / New'
-    }
-
-    if (!value) {
-      return 'Pending'
-    }
-
-    return value.replace(/_/g, ' ')
-  }
-
-  const getHistoryStatusClass = (status) => {
-    const value = String(status || '')
-      .trim()
-      .toLowerCase()
-
-    if (
-      [
-        'completed',
-        'delivered',
-        'served',
-        'delivered_by_waiter',
-      ].includes(value)
-    ) {
-      return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20'
-    }
-
-    if (value === 'ready') {
-      return 'bg-cyan-500/15 text-cyan-300 border-cyan-500/20'
-    }
-
-    if (value === 'preparing') {
-      return 'bg-orange-500/15 text-orange-300 border-orange-500/20'
-    }
-
-    if (
-      value === 'cancelled' ||
-      value === 'canceled'
-    ) {
-      return 'bg-red-500/15 text-red-300 border-red-500/20'
-    }
-
-    return 'bg-yellow-500/15 text-yellow-300 border-yellow-500/20'
-  }
-
-  const getTimerClass = (minutes) => {
-    if (minutes >= 30) {
-      return 'text-red-400 bg-red-500/10 border-red-500/30'
-    }
-
-    if (minutes >= 20) {
-      return 'text-orange-400 bg-orange-500/10 border-orange-500/30'
-    }
-
-    if (minutes >= 10) {
-      return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30'
-    }
-
-    return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-  }
-
-  const getOrderBorder = (order) => {
-    const age =
-      getOrderAgeMinutes(
-        order.created_at
-      )
-
-    if (
-      getKitchenStatus(
-        order.status
-      ) === 'ready'
-    ) {
-      return 'border-emerald-500/30'
-    }
-
-    if (age >= 30) {
-      return 'border-red-500/70 shadow-lg shadow-red-950/30'
-    }
-
-    if (age >= 20) {
-      return 'border-orange-500/50'
-    }
-
-    if (
-      getKitchenStatus(
-        order.status
-      ) === 'preparing'
-    ) {
-      return 'border-orange-500/30'
-    }
-
-    return 'border-neutral-800'
-  }
-
-  const getTodayBounds = () => {
-    const now = new Date()
-
-    const start = new Date(now)
-
-    start.setHours(
-      0,
-      0,
-      0,
-      0
-    )
-
-    const end = new Date(start)
-
-    end.setDate(
-      end.getDate() + 1
-    )
-
-    return {
-      start: start.toISOString(),
-      end: end.toISOString(),
-    }
-  }
-
-  const clearNewOrderAlert = () => {
-    setNewOrderAlert(null)
-
-    if (
-      newOrderAlertTimerRef.current
-    ) {
-      window.clearTimeout(
-        newOrderAlertTimerRef.current
-      )
-
-      newOrderAlertTimerRef.current =
-        null
-    }
-  }
-
-  /*
-   * ---------------------------------------------------------
-   * CLEAR SAVED SESSION
-   * ---------------------------------------------------------
-   */
-
-  const clearSavedSession = useCallback(() => {
-    if (
-      typeof window ===
-      'undefined'
-    ) {
+    const code = loginCode.trim()
+    const uid = loginUser.trim().toLowerCase()
+    const pw = loginPass.trim()
+    if (code.length !== 5 || !uid || !pw) {
+      appNotice('Enter the 5-digit restaurant code, user ID and password.')
       return
     }
 
+    setLoginBusy(true)
     try {
-      localStorage.removeItem(
-        SESSION_STORAGE_KEY
-      )
-    } catch (error) {
-      console.error(
-        '[KITCHEN] Unable to clear session:',
-        error
-      )
+      const { data, error } = await supabase.rpc('create_staff_app_session', {
+        p_restaurant_id: String(restaurantId),
+        p_restaurant_code: code,
+        p_user_id: uid,
+        p_password: pw,
+        p_role: 'kitchen',
+      })
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.message || 'Invalid credentials.')
+      if (data.restaurantId && String(data.restaurantId) !== String(restaurantId)) {
+        throw new Error('These credentials belong to another restaurant.')
+      }
+
+      const token = String(data.sessionToken || data.session_token || data.token || '').trim()
+      if (!token) throw new Error('Secure session was not created.')
+
+      const finalCode = String(data.restaurantCode || code)
+      const finalUser = String(data.userId || uid).toLowerCase()
+
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        sessionToken: token,
+        role: 'kitchen',
+        restaurantId: String(restaurantId),
+        restaurantCode: finalCode,
+        userId: finalUser,
+      }))
+
+      sessionRef.current = token
+      setSession({ code: finalCode, userId: finalUser })
+      setLoginPass('')
+      setAuthed(true)
+      await refresh({ announce: false })
+    } catch (err) {
+      console.error('[KITCHEN] Login error:', err)
+      sessionRef.current = ''
+      setLoginPass('')
+      appNotice(err.message || 'Unable to sign in.')
+    } finally {
+      setLoginBusy(false)
     }
-  }, [])
-
-  /*
-   * ---------------------------------------------------------
-   * KITCHEN ALARM
-   * ---------------------------------------------------------
-   */
-
-  const ensureAudioContext = useCallback(() => {
-    if (
-      typeof window ===
-      'undefined'
-    ) {
-      return null
-    }
-
-    const AudioContextClass =
-      window.AudioContext ||
-      window.webkitAudioContext
-
-    if (!AudioContextClass) {
-      return null
-    }
-
-    if (
-      !audioContextRef.current
-    ) {
-      audioContextRef.current =
-        new AudioContextClass()
-    }
-
-    return audioContextRef.current
-  }, [])
-
-  const unlockAlarmAudio = useCallback(
-    async () => {
-      if (
-        typeof window ===
-        'undefined'
-      ) {
-        return
-      }
-
-      try {
-        const context =
-          ensureAudioContext()
-
-        if (
-          context &&
-          context.state ===
-            'suspended'
-        ) {
-          await context.resume()
-        }
-
-        const expectedSrc =
-          new URL(
-            alarmSoundUrl,
-            window.location.origin
-          ).href
-
-        if (
-          !audioRef.current ||
-          audioRef.current.src !==
-            expectedSrc
-        ) {
-          const audio =
-            new Audio(
-              alarmSoundUrl
-            )
-
-          audio.preload = 'auto'
-
-          audio.volume =
-            Math.min(
-              1,
-              Math.max(
-                0,
-                Number(
-                  alarmVolume
-                ) || 0
-              )
-            )
-
-          audioRef.current =
-            audio
-        }
-
-        const audio =
-          audioRef.current
-
-        audio.muted = true
-        audio.currentTime = 0
-
-        await audio.play()
-
-        audio.pause()
-        audio.currentTime = 0
-        audio.muted = false
-
-        alarmUnlockedRef.current =
-          true
-      } catch (error) {
-        console.warn(
-          '[KITCHEN] Alarm audio unlock warning:',
-          error
-        )
-
-        try {
-          const context =
-            ensureAudioContext()
-
-          if (
-            context &&
-            context.state ===
-              'suspended'
-          ) {
-            await context.resume()
-          }
-
-          alarmUnlockedRef.current =
-            Boolean(context)
-        } catch {
-          // Browser audio limitation.
-        }
-      }
-    },
-    [
-      alarmSoundUrl,
-      alarmVolume,
-      ensureAudioContext,
-    ]
-  )
-
-  const playWebAudioFallback =
-    useCallback(() => {
-      try {
-        const context =
-          ensureAudioContext()
-
-        if (!context) return
-
-        if (
-          context.state ===
-          'suspended'
-        ) {
-          context
-            .resume()
-            .catch(() => {})
-        }
-
-        const now =
-          context.currentTime
-
-        const master =
-          context.createGain()
-
-        master.gain.setValueAtTime(
-          0.0001,
-          now
-        )
-
-        master.gain.exponentialRampToValueAtTime(
-          Math.max(
-            0.03,
-            Math.min(
-              0.35,
-              Number(
-                alarmVolume
-              ) || 0.35
-            )
-          ),
-          now + 0.02
-        )
-
-        master.gain.exponentialRampToValueAtTime(
-          0.0001,
-          now + 2.1
-        )
-
-        master.connect(
-          context.destination
-        )
-
-        const tones = [
-          {
-            start: 0,
-            duration: 0.35,
-            frequency: 900,
-          },
-          {
-            start: 0.45,
-            duration: 0.35,
-            frequency: 1100,
-          },
-          {
-            start: 0.9,
-            duration: 0.35,
-            frequency: 900,
-          },
-          {
-            start: 1.35,
-            duration: 0.5,
-            frequency: 1200,
-          },
-        ]
-
-        tones.forEach(
-          ({
-            start,
-            duration,
-            frequency,
-          }) => {
-            const oscillator =
-              context.createOscillator()
-
-            const gain =
-              context.createGain()
-
-            oscillator.type =
-              'sine'
-
-            oscillator.frequency.setValueAtTime(
-              frequency,
-              now + start
-            )
-
-            gain.gain.setValueAtTime(
-              0.0001,
-              now + start
-            )
-
-            gain.gain.exponentialRampToValueAtTime(
-              0.85,
-              now +
-                start +
-                0.02
-            )
-
-            gain.gain.exponentialRampToValueAtTime(
-              0.0001,
-              now +
-                start +
-                duration
-            )
-
-            oscillator.connect(
-              gain
-            )
-
-            gain.connect(master)
-
-            oscillator.start(
-              now + start
-            )
-
-            oscillator.stop(
-              now +
-                start +
-                duration +
-                0.03
-            )
-          }
-        )
-      } catch (error) {
-        console.warn(
-          '[KITCHEN] Web Audio alarm warning:',
-          error
-        )
-      }
-    }, [
-      alarmVolume,
-      ensureAudioContext,
-    ])
-
-  const playNotificationSound =
-    useCallback(() => {
-      if (!alarmEnabled) {
-        return
-      }
-
-      let mp3Played = false
-
-      try {
-        if (
-          typeof window !==
-          'undefined'
-        ) {
-          const expectedSrc =
-            new URL(
-              alarmSoundUrl,
-              window.location.origin
-            ).href
-
-          if (
-            !audioRef.current ||
-            audioRef.current.src !==
-              expectedSrc
-          ) {
-            audioRef.current =
-              new Audio(
-                alarmSoundUrl
-              )
-
-            audioRef.current.preload =
-              'auto'
-          }
-
-          audioRef.current.volume =
-            Math.min(
-              1,
-              Math.max(
-                0,
-                Number(
-                  alarmVolume
-                ) || 0
-              )
-            )
-
-          audioRef.current.currentTime =
-            0
-
-          audioRef.current
-            .play()
-            .then(() => {
-              mp3Played = true
-            })
-            .catch(() => {
-              mp3Played = false
-
-              playWebAudioFallback()
-            })
-        }
-      } catch {
-        mp3Played = false
-      }
-
-      if (
-        !mp3Played &&
-        !audioRef.current
-      ) {
-        playWebAudioFallback()
-      }
-    }, [
-      alarmEnabled,
-      alarmSoundUrl,
-      alarmVolume,
-      playWebAudioFallback,
-    ])
-
-  const triggerNewOrderAlert =
-    useCallback(
-      (order) => {
-        if (!order?.id) return
-
-        const orderNumber =
-          getOrderNumber(order)
-
-        const table =
-          order?.table_number ||
-          'Takeaway'
-
-        setNewOrderAlert({
-          orderNumber,
-          table,
-        })
-
-        playNotificationSound()
-
-        if (
-          newOrderAlertTimerRef.current
-        ) {
-          window.clearTimeout(
-            newOrderAlertTimerRef.current
-          )
-        }
-
-        newOrderAlertTimerRef.current =
-          window.setTimeout(
-            () => {
-              setNewOrderAlert(
-                null
-              )
-
-              newOrderAlertTimerRef.current =
-                null
-            },
-            7000
-          )
-      },
-      [playNotificationSound]
-    )
-
-  /*
-   * ---------------------------------------------------------
-   * APPLY RESTAURANT SETTINGS
-   * ---------------------------------------------------------
-   */
-
-  const applyRestaurantSettings =
-    useCallback(
-      (restaurant) => {
-        const soundMap = {
-          'kitchen-default':
-            '/sounds/kitchen-default.mp3',
-
-          'kitchen-1':
-            '/sounds/kitchen-1.mp3',
-
-          'kitchen-2':
-            '/sounds/kitchen-2.mp3',
-
-          'kitchen-3':
-            '/sounds/kitchen-3.mp3',
-        }
-
-        const settings =
-          restaurant || {}
-
-        setAlarmSoundUrl(
-          soundMap[
-            settings.kitchen_alarm_sound
-          ] ||
-            soundMap[
-              'kitchen-default'
-            ]
-        )
-
-        setAlarmEnabled(
-          settings.kitchen_alarm_enabled ??
-            true
-        )
-
-        setAlarmVolume(
-          Math.min(
-            1,
-            Math.max(
-              0,
-              Number(
-                settings.kitchen_alarm_volume ??
-                  1
-              )
-            )
-          )
-        )
-      },
-      []
-    )
-
-  /*
-   * ---------------------------------------------------------
-   * FETCH KITCHEN SNAPSHOT
-   * ---------------------------------------------------------
-   */
-
-  const fetchKitchenSnapshot =
-    useCallback(async () => {
-      if (!restaurantId) {
-        return null
-      }
-
-      const token = String(
-        sessionTokenRef.current || ''
-      ).trim()
-
-      if (!token) {
-        return null
-      }
-
-      const { data, error } =
-        await supabase.rpc(
-          'get_kitchen_portal_data_session',
-          {
-            p_session_token: token,
-          }
-        )
-
-      if (error) {
-        console.error(
-          '[KITCHEN] Portal data fetch error:',
-          error
-        )
-
-        return null
-      }
-
-      if (!data?.success) {
-        console.error(
-          '[KITCHEN] Portal data rejected:',
-          data?.message
-        )
-
-        clearSavedSession()
-
-        sessionTokenRef.current = ''
-        sessionModeRef.current = false
-
-        setSessionToken('')
-        setSessionMode(false)
-        setIsAuthenticated(false)
-
-        return null
-      }
-
-      if (
-        data.restaurantId &&
-        String(data.restaurantId) !==
-          String(restaurantId)
-      ) {
-        console.error(
-          '[KITCHEN] Restaurant mismatch.'
-        )
-
-        clearSavedSession()
-        sessionTokenRef.current = ''
-        sessionModeRef.current = false
-        setSessionToken('')
-        setSessionMode(false)
-        setIsAuthenticated(false)
-
-        return null
-      }
-
-      applyRestaurantSettings(
-        data.restaurant || {}
-      )
-
-      return Array.isArray(data.orders)
-        ? data.orders
-        : []
-    }, [
-      restaurantId,
-      clearSavedSession,
-      applyRestaurantSettings,
-    ])
-
-  /*
-   * ---------------------------------------------------------
-   * ALARM SETTINGS
-   * ---------------------------------------------------------
-   */
-
-  const fetchAlarmSettings =
-    useCallback(async () => {
-      await fetchKitchenSnapshot()
-    }, [fetchKitchenSnapshot])
-
-  /*
-   * ---------------------------------------------------------
-   * APPLY ACTIVE ORDERS
-   * ---------------------------------------------------------
-   */
-
-  const applyActiveOrders =
-    useCallback(
-      (
-        data,
-        announceNew = false
-      ) => {
-        const rows =
-          Array.isArray(data)
-            ? data
-            : []
-
-        const activeRows =
-          rows.filter(
-            (order) =>
-              !isFinishedStatus(
-                order?.status
-              )
-          )
-
-        if (announceNew) {
-          activeRows.forEach(
-            (order) => {
-              const orderId =
-                String(
-                  order?.id || ''
-                )
-
-              if (!orderId) {
-                return
-              }
-
-              if (
-                !knownOrderIdsRef.current.has(
-                  orderId
-                )
-              ) {
-                knownOrderIdsRef.current.add(
-                  orderId
-                )
-
-                triggerNewOrderAlert(
-                  order
-                )
-              }
-            }
-          )
-        }
-
-        setOrders(activeRows)
-
-        setLastOrdersRefresh(
-          new Date()
-        )
-
-        return activeRows
-      },
-      [triggerNewOrderAlert]
-    )
-
-  /*
-   * ---------------------------------------------------------
-   * FETCH ACTIVE ORDERS
-   * ---------------------------------------------------------
-   */
-
-  const fetchActiveOrders =
-    useCallback(
-      async (
-        showLoader = true,
-        announceNew = false
-      ) => {
-        if (!restaurantId) {
-          console.error(
-            '[KITCHEN] Missing restaurantId',
-            {
-              params:
-                unwrappedParams,
-            }
-          )
-
-          setOrders([])
-          setLoading(false)
-
-          return []
-        }
-
-        if (showLoader) {
-          setLoading(true)
-        }
-
-        try {
-          const rows =
-            await fetchKitchenSnapshot()
-
-          if (!rows) {
-            return []
-          }
-
-          return applyActiveOrders(
-            rows,
-            announceNew
-          )
-        } finally {
-          setLoading(false)
-        }
-      },
-      [
-        restaurantId,
-        unwrappedParams,
-        fetchKitchenSnapshot,
-        applyActiveOrders,
-      ]
-    )
-
-  /*
-   * ---------------------------------------------------------
-   * FETCH TODAY ORDERS
-   * ---------------------------------------------------------
-   */
-
-  const fetchTodayOrders =
-    useCallback(
-      async (
-        showLoader = false
-      ) => {
-        if (!restaurantId) {
-          setTodayOrders([])
-          return []
-        }
-
-        if (showLoader) {
-          setTodayOrdersLoading(
-            true
-          )
-        }
-
-        try {
-          const rows =
-            await fetchKitchenSnapshot()
-
-          if (!rows) {
-            return []
-          }
-
-          const {
-            start,
-            end,
-          } = getTodayBounds()
-
-          const todayRows =
-            rows
-              .filter(
-                (order) => {
-                  const created =
-                    order?.created_at
-
-                  return (
-                    created &&
-                    created >=
-                      start &&
-                    created <
-                      end
-                  )
-                }
-              )
-              .sort(
-                (a, b) =>
-                  new Date(
-                    b.created_at
-                  ).getTime() -
-                  new Date(
-                    a.created_at
-                  ).getTime()
-              )
-
-          setTodayOrders(
-            todayRows
-          )
-
-          setLastTodayRefresh(
-            new Date()
-          )
-
-          return todayRows
-        } finally {
-          setTodayOrdersLoading(
-            false
-          )
-        }
-      },
-      [
-        restaurantId,
-        fetchKitchenSnapshot,
-      ]
-    )
-
-  /*
-   * ---------------------------------------------------------
-   * REFRESH ALL KITCHEN DATA
-   * ---------------------------------------------------------
-   */
-
-  const refreshKitchenData =
-    useCallback(
-      async ({
-        showLoader = false,
-        announceNew = true,
-      } = {}) => {
-        if (
-          syncInProgressRef.current
-        ) {
-          return
-        }
-
-        syncInProgressRef.current =
-          true
-
-        try {
-          /*
-           * One snapshot is enough for both sections.
-           *
-           * This avoids sending two identical RPC calls every
-           * five seconds.
-           */
-
-          if (showLoader) {
-            setLoading(true)
-            setTodayOrdersLoading(
-              true
-            )
-          }
-
-          const rows =
-            await fetchKitchenSnapshot()
-
-          if (!rows) {
-            setIsConnected(false)
-            return
-          }
-
-          // Connected means the staff-scoped RPC succeeded, not that a
-          // public Postgres Changes subscription exists.
-          setIsConnected(true)
-          applyActiveOrders(
-            rows,
-            announceNew
-          )
-
-          const {
-            start,
-            end,
-          } = getTodayBounds()
-
-          const todayRows =
-            rows
-              .filter(
-                (order) => {
-                  const created =
-                    order?.created_at
-
-                  return (
-                    created &&
-                    created >=
-                      start &&
-                    created <
-                      end
-                  )
-                }
-              )
-              .sort(
-                (a, b) =>
-                  new Date(
-                    b.created_at
-                  ).getTime() -
-                  new Date(
-                    a.created_at
-                  ).getTime()
-              )
-
-          setTodayOrders(
-            todayRows
-          )
-
-          setLastTodayRefresh(
-            new Date()
-          )
-        } finally {
-          if (showLoader) {
-            setLoading(false)
-
-            setTodayOrdersLoading(
-              false
-            )
-          }
-
-          syncInProgressRef.current =
-            false
-        }
-      },
-      [
-        fetchKitchenSnapshot,
-        applyActiveOrders,
-      ]
-    )
-
-  /*
-   * ---------------------------------------------------------
-   * RESTORE /APP SESSION
-   * ---------------------------------------------------------
-   */
-
-  useEffect(() => {
-    let active = true
-
-    const restoreKitchenSession =
-      async () => {
-        if (
-          typeof window ===
-          'undefined'
-        ) {
-          return
-        }
-
-        try {
-          const rawSession =
-            localStorage.getItem(
-              SESSION_STORAGE_KEY
-            )
-
-          /*
-           * No app session.
-           * Existing login remains available.
-           */
-
-          if (!rawSession) {
-            return
-          }
-
-          let savedSession
-
-          try {
-            savedSession =
-              JSON.parse(
-                rawSession
-              )
-          } catch {
-            clearSavedSession()
-            return
-          }
-
-          const token =
-            String(
-              savedSession?.sessionToken ||
-                ''
-            ).trim()
-
-          const role =
-            String(
-              savedSession?.role ||
-                ''
-            )
-              .trim()
-              .toLowerCase()
-
-          const savedRestaurantId =
-            String(
-              savedSession?.restaurantId ||
-                ''
-            ).trim()
-
-          /*
-           * Do not consume another role's session.
-           */
-
-          if (
-            role !==
-            'kitchen'
-          ) {
-            return
-          }
-
-          /*
-           * Do not consume another restaurant's session.
-           */
-
-          if (
-            savedRestaurantId !==
-            String(
-              restaurantId
-            )
-          ) {
-            return
-          }
-
-          if (!token) {
-            clearSavedSession()
-            return
-          }
-
-          /*
-           * Validate server-side.
-           */
-
-          const {
-            data,
-            error,
-          } = await supabase.rpc(
-            'validate_staff_app_session',
-            {
-              p_session_token:
-                token,
-
-              p_required_role:
-                'kitchen',
-            }
-          )
-
-          if (error) {
-            throw error
-          }
-
-          if (!data?.success) {
-            clearSavedSession()
-            return
-          }
-
-          if (
-            String(
-              data.restaurantId
-            ) !==
-            String(
-              restaurantId
-            )
-          ) {
-            clearSavedSession()
-            return
-          }
-
-          if (!active) return
-
-          const restoredCode =
-            String(
-              data.restaurantCode ||
-                savedSession.restaurantCode ||
-                ''
-            ).trim()
-
-          const restoredUserId =
-            String(
-              data.userId ||
-                savedSession.userId ||
-                ''
-            )
-              .trim()
-              .toLowerCase()
-
-          /*
-           * Update refs BEFORE loading Kitchen data.
-           */
-
-          sessionTokenRef.current =
-            token
-
-          sessionModeRef.current =
-            true
-
-          restaurantCodeRef.current =
-            restoredCode
-
-          userIdRef.current =
-            restoredUserId
-
-          setSessionToken(token)
-
-          setSessionMode(true)
-
-          setRestaurantCode(
-            restoredCode
-          )
-
-          setUserId(
-            restoredUserId
-          )
-
-          /*
-           * Password is deliberately empty.
-           */
-
-          setPassword('')
-
-          /*
-           * Load Kitchen snapshot before displaying KDS.
-           */
-
-          const response =
-            await supabase.rpc(
-              'get_kitchen_portal_data_session',
-              {
-                p_session_token:
-                  token,
-              }
-            )
-
-          if (
-            response.error
-          ) {
-            throw response.error
-          }
-
-          if (
-            !response.data?.success
-          ) {
-            throw new Error(
-              response.data
-                ?.message ||
-                'Unable to open kitchen session.'
-            )
-          }
-
-          if (
-            String(
-              response.data
-                .restaurantId
-            ) !==
-            String(
-              restaurantId
-            )
-          ) {
-            throw new Error(
-              'This Kitchen session belongs to another restaurant.'
-            )
-          }
-
-          applyRestaurantSettings(
-            response.data
-              .restaurant ||
-              {}
-          )
-
-          const rows =
-            Array.isArray(
-              response.data
-                .orders
-            )
-              ? response.data
-                  .orders
-              : []
-
-          /*
-           * Initial load must NOT trigger alarms for every
-           * existing order.
-           */
-
-          const activeRows =
-            rows.filter(
-              (order) =>
-                !isFinishedStatus(
-                  order?.status
-                )
-            )
-
-          setOrders(activeRows)
-
-          knownOrderIdsRef.current =
-            new Set(
-              activeRows
-                .map(
-                  (order) =>
-                    String(
-                      order?.id ||
-                        ''
-                    )
-                )
-                .filter(Boolean)
-            )
-
-          setLastOrdersRefresh(
-            new Date()
-          )
-
-          const {
-            start,
-            end,
-          } = getTodayBounds()
-
-          const todayRows =
-            rows
-              .filter(
-                (order) => {
-                  const created =
-                    order?.created_at
-
-                  return (
-                    created &&
-                    created >=
-                      start &&
-                    created <
-                      end
-                  )
-                }
-              )
-              .sort(
-                (a, b) =>
-                  new Date(
-                    b.created_at
-                  ).getTime() -
-                  new Date(
-                    a.created_at
-                  ).getTime()
-              )
-
-          setTodayOrders(
-            todayRows
-          )
-
-          setLastTodayRefresh(
-            new Date()
-          )
-
-          setIsAuthenticated(
-            true
-          )
-
-          console.log(
-            '[KITCHEN] Secure staff session restored.'
-          )
-        } catch (error) {
-          console.error(
-            '[KITCHEN] Session restore error:',
-            error
-          )
-
-          clearSavedSession()
-
-          sessionTokenRef.current =
-            ''
-
-          sessionModeRef.current =
-            false
-
-          restaurantCodeRef.current =
-            ''
-
-          userIdRef.current =
-            ''
-
-          setSessionToken('')
-          setSessionMode(false)
-
-          setRestaurantCode('')
-          setUserId('')
-          setPassword('')
-
-          setIsAuthenticated(
-            false
-          )
-        } finally {
-          if (active) {
-            setSessionChecking(
-              false
-            )
-          }
-        }
-      }
-
-    restoreKitchenSession()
-
-    return () => {
-      active = false
-    }
-  }, [
-    restaurantId,
-    clearSavedSession,
-    applyRestaurantSettings,
-  ])
-
-  /*
-   * ---------------------------------------------------------
-   * MANUAL LOGIN
-   * ---------------------------------------------------------
-   */
-
-  const handleLogin =
-    async (e) => {
-      e.preventDefault()
-
-      /*
-       * User click allows browser audio permission.
-       */
-
-      await unlockAlarmAudio()
-
-      if (
-        !restaurantId ||
-        !restaurantCode.trim() ||
-        !userId.trim() ||
-        !password.trim()
-      ) {
-        appNotice(
-          'Enter the 5-digit Restaurant Code, Kitchen User ID, and password.'
-        )
-
-        return
-      }
-
-      setLoading(true)
-
-      try {
-        const cleanCode =
-          String(restaurantCode).trim()
-
-        const cleanUserId =
-          String(userId)
-            .trim()
-            .toLowerCase()
-
-        const cleanPassword =
-          String(password).trim()
-
-        /*
-         * Authenticate and create the secure server-side staff session
-         * in one RPC. The password is used only for this login request.
-         */
-
-        const { data, error } =
-          await supabase.rpc(
-            'create_staff_app_session',
-            {
-              p_restaurant_id:
-                String(restaurantId),
-              p_restaurant_code:
-                cleanCode,
-              p_user_id:
-                cleanUserId,
-              p_password:
-                cleanPassword,
-              p_role:
-                'kitchen',
-            }
-          )
-
-        if (error) {
-          throw error
-        }
-
-        if (!data?.success) {
-          throw new Error(
-            data?.message ||
-              'Invalid restaurant credentials.'
-          )
-        }
-
-        if (
-          data.restaurantId &&
-          String(data.restaurantId) !==
-            String(restaurantId)
-        ) {
-          throw new Error(
-            'These credentials do not belong to this restaurant.'
-          )
-        }
-
-        const token = String(
-          data.sessionToken ||
-            data.session_token ||
-            data.token ||
-            ''
-        ).trim()
-
-        if (!token) {
-          throw new Error(
-            'Secure Kitchen session was not created.'
-          )
-        }
-
-        const finalCode = String(
-          data.restaurantCode ||
-            cleanCode
-        ).trim()
-
-        const finalUserId = String(
-          data.userId ||
-            cleanUserId
-        )
-          .trim()
-          .toLowerCase()
-
-        /*
-         * Switch to secure session mode before any Kitchen data call.
-         */
-
-        sessionTokenRef.current = token
-        sessionModeRef.current = true
-        restaurantCodeRef.current =
-          finalCode
-        userIdRef.current =
-          finalUserId
-
-        setSessionToken(token)
-        setSessionMode(true)
-        setRestaurantCode(finalCode)
-        setUserId(finalUserId)
-
-        /*
-         * Never keep the staff password after successful login.
-         */
-
-        setPassword('')
-
-        if (
-          typeof window !== 'undefined'
-        ) {
-          localStorage.setItem(
-            SESSION_STORAGE_KEY,
-            JSON.stringify({
-              sessionToken: token,
-              role: 'kitchen',
-              restaurantId:
-                String(restaurantId),
-              restaurantCode:
-                finalCode,
-              userId:
-                finalUserId,
-            })
-          )
-        }
-
-        /*
-         * All Kitchen data now loads through the session-only RPC.
-         */
-
-        const portalResponse =
-          await supabase.rpc(
-            'get_kitchen_portal_data_session',
-            {
-              p_session_token: token,
-            }
-          )
-
-        if (portalResponse.error) {
-          throw portalResponse.error
-        }
-
-        if (
-          !portalResponse.data?.success
-        ) {
-          throw new Error(
-            portalResponse.data?.message ||
-              'Unable to load kitchen.'
-          )
-        }
-
-        if (
-          portalResponse.data.restaurantId &&
-          String(
-            portalResponse.data.restaurantId
-          ) !== String(restaurantId)
-        ) {
-          throw new Error(
-            'This Kitchen session belongs to another restaurant.'
-          )
-        }
-
-        applyRestaurantSettings(
-          portalResponse.data.restaurant ||
-            {}
-        )
-
-        const rows = Array.isArray(
-          portalResponse.data.orders
-        )
-          ? portalResponse.data.orders
-          : []
-
-        const activeRows =
-          rows.filter(
-            (order) =>
-              !isFinishedStatus(
-                order?.status
-              )
-          )
-
-        setOrders(activeRows)
-
-        knownOrderIdsRef.current =
-          new Set(
-            activeRows
-              .map((order) =>
-                String(
-                  order?.id || ''
-                )
-              )
-              .filter(Boolean)
-          )
-
-        setLastOrdersRefresh(
-          new Date()
-        )
-
-        const { start, end } =
-          getTodayBounds()
-
-        const todayRows =
-          rows
-            .filter((order) => {
-              const created =
-                order?.created_at
-
-              return (
-                created &&
-                created >= start &&
-                created < end
-              )
-            })
-            .sort(
-              (a, b) =>
-                new Date(
-                  b.created_at
-                ).getTime() -
-                new Date(
-                  a.created_at
-                ).getTime()
-            )
-
-        setTodayOrders(todayRows)
-        setLastTodayRefresh(
-          new Date()
-        )
-        setIsAuthenticated(true)
-      } catch (err) {
-        console.error(
-          '[KITCHEN] Login error:',
-          err
-        )
-
-        clearSavedSession()
-        sessionTokenRef.current = ''
-        sessionModeRef.current = false
-        restaurantCodeRef.current = ''
-        userIdRef.current = ''
-
-        setSessionToken('')
-        setSessionMode(false)
-        setIsAuthenticated(false)
-        setPassword('')
-
-        appNotice(
-          err.message ||
-            'Unable to login.'
-        )
-      } finally {
-        setLoading(false)
-      }
-    }
-
-  /*
-   * ---------------------------------------------------------
-   * SECURE ORDER UPDATES (STAFF SESSION RPC)
-   * ---------------------------------------------------------
-   * Step 22E: public.orders Postgres Changes are not a safe tenant auth
-   * mechanism for staff sessions. The existing 5-second secure RPC refresh
-   * below detects new orders and triggers the original kitchen alarms.
-   */
-
-  /*
-   * ---------------------------------------------------------
-   * DATABASE POLLING FALLBACK
-   * ---------------------------------------------------------
-   */
-
-  useEffect(() => {
-    if (
-      !isAuthenticated ||
-      !restaurantId
-    ) {
-      return undefined
-    }
-
-    let active = true
-
-    const sync = async () => {
-      if (
-        !active ||
-        document.visibilityState ===
-          'hidden'
-      ) {
-        return
-      }
-
-      await refreshKitchenData(
-        {
-          showLoader: false,
-          announceNew: true,
-        }
-      )
-    }
-
-    const intervalId =
-      window.setInterval(
-        sync,
-        5000
-      )
-
-    const onVisible = () => {
-      if (
-        document.visibilityState ===
-        'visible'
-      ) {
-        sync()
-      }
-    }
-
-    const onOnline = () => {
-      sync()
-    }
-
-    document.addEventListener(
-      'visibilitychange',
-      onVisible
-    )
-
-    window.addEventListener(
-      'online',
-      onOnline
-    )
-
-    return () => {
-      active = false
-
-      window.clearInterval(
-        intervalId
-      )
-
-      document.removeEventListener(
-        'visibilitychange',
-        onVisible
-      )
-
-      window.removeEventListener(
-        'online',
-        onOnline
-      )
-    }
-  }, [
-    isAuthenticated,
-    restaurantId,
-    refreshKitchenData,
-  ])
-
-  /*
-   * ---------------------------------------------------------
-   * LIVE CLOCK
-   * ---------------------------------------------------------
-   */
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return undefined
-    }
-
-    const interval =
-      window.setInterval(
-        () => {
-          setCurrentTime(
-            Date.now()
-          )
-        },
-        1000
-      )
-
-    return () =>
-      window.clearInterval(
-        interval
-      )
-  }, [isAuthenticated])
-
-  /*
-   * ---------------------------------------------------------
-   * DAY CHANGE
-   * ---------------------------------------------------------
-   */
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return undefined
-    }
-
-    let lastDayKey =
-      new Date().toDateString()
-
-    const interval =
-      window.setInterval(
-        () => {
-          const dayKey =
-            new Date().toDateString()
-
-          if (
-            dayKey !==
-            lastDayKey
-          ) {
-            lastDayKey =
-              dayKey
-
-            knownOrderIdsRef.current =
-              new Set()
-
-            refreshKitchenData(
-              {
-                showLoader:
-                  false,
-
-                announceNew:
-                  false,
-              }
-            )
-          }
-        },
-        30000
-      )
-
-    return () =>
-      window.clearInterval(
-        interval
-      )
-  }, [
-    isAuthenticated,
-    refreshKitchenData,
-  ])
-
-  /*
-   * ---------------------------------------------------------
-   * STATUS UPDATE
-   * ---------------------------------------------------------
-   */
-
-  const setOrderStatus =
-    async (
-      orderId,
-      newStatus
-    ) => {
-      if (updatingOrder) {
-        return
-      }
-
-      setUpdatingOrder(orderId)
-
-      try {
-        const token = String(
-          sessionTokenRef.current || ''
-        ).trim()
-
-        if (!token) {
-          clearSavedSession()
-          setIsAuthenticated(false)
-
-          throw new Error(
-            'Kitchen session expired. Please login again.'
-          )
-        }
-
-        const { data, error } =
-          await supabase.rpc(
-            'kitchen_update_order_status_session',
-            {
-              p_session_token: token,
-              p_order_id:
-                String(orderId),
-              p_new_status:
-                String(newStatus),
-            }
-          )
-
-        if (error) {
-          throw error
-        }
-
-        if (!data?.success) {
-          clearSavedSession()
-
-          sessionTokenRef.current = ''
-          sessionModeRef.current = false
-
-          setSessionToken('')
-          setSessionMode(false)
-          setIsAuthenticated(false)
-
-          throw new Error(
-            data?.message ||
-              'Unable to update order.'
-          )
-        }
-
-        const updatedOrder =
-          data.order
-
-        setOrders(
-          (current) =>
-            current
-              .map((order) =>
-                String(order.id) ===
-                String(orderId)
-                  ? updatedOrder || {
-                      ...order,
-                      status:
-                        newStatus,
-                    }
-                  : order
-              )
-              .filter(
-                (order) =>
-                  !isFinishedStatus(
-                    order.status
-                  )
-              )
-        )
-
-        await fetchTodayOrders(false)
-      } catch (error) {
-        console.error(
-          'Status update error:',
-          error
-        )
-
-        appNotice(
-          `Unable to update order: ${
-            error.message ||
-            'Unknown error'
-          }`
-        )
-      } finally {
-        setUpdatingOrder(null)
-      }
-    }
-
-  /*
-   * ---------------------------------------------------------
-   * FILTERING
-   * ---------------------------------------------------------
-   */
-
-  const filteredOrders =
-    orders.filter(
-      (order) => {
-        const kitchenStatus =
-          getKitchenStatus(
-            order.status
-          )
-
-        const matchesStatus =
-          statusFilter ===
-            'all' ||
-          kitchenStatus ===
-            statusFilter
-
-        const searchText =
-          search
-            .trim()
-            .toLowerCase()
-
-        if (!searchText) {
-          return matchesStatus
-        }
-
-        const tableNumber =
-          String(
-            order.table_number ||
-              ''
-          ).toLowerCase()
-
-        const orderId =
-          String(
-            order.id || ''
-          ).toLowerCase()
-
-        const orderNumber =
-          String(
-            getOrderNumber(
-              order
-            ) || ''
-          ).toLowerCase()
-
-        const itemsText =
-          Array.isArray(
-            order.items
-          )
-            ? order.items
-                .map(
-                  (item) => {
-                    return [
-                      item?.name,
-                      item?.item_name,
-                      item?.notes,
-                      item?.note,
-                      item?.special_instructions,
-                    ]
-                      .filter(
-                        Boolean
-                      )
-                      .join(' ')
-                  }
-                )
-                .join(' ')
-                .toLowerCase()
-            : ''
-
-        const matchesSearch =
-          tableNumber.includes(
-            searchText
-          ) ||
-          orderId.includes(
-            searchText
-          ) ||
-          orderNumber.includes(
-            searchText
-          ) ||
-          itemsText.includes(
-            searchText
-          )
-
-        return (
-          matchesStatus &&
-          matchesSearch
-        )
-      }
-    )
-
-  /*
-   * ---------------------------------------------------------
-   * SORTING
-   * ---------------------------------------------------------
-   */
-
-  const sortedOrders = [
-    ...filteredOrders,
-  ].sort(
-    (a, b) => {
-      const aTime =
-        new Date(
-          a.created_at || 0
-        ).getTime()
-
-      const bTime =
-        new Date(
-          b.created_at || 0
-        ).getTime()
-
-      return aTime - bTime
-    }
-  )
-
-  /*
-   * ---------------------------------------------------------
-   * COUNTS
-   * ---------------------------------------------------------
-   */
-
-  const pendingCount =
-    orders.filter(
-      (order) =>
-        getKitchenStatus(
-          order.status
-        ) === 'pending'
-    ).length
-
-  const preparingCount =
-    orders.filter(
-      (order) =>
-        getKitchenStatus(
-          order.status
-        ) === 'preparing'
-    ).length
-
-  const readyCount =
-    orders.filter(
-      (order) =>
-        getKitchenStatus(
-          order.status
-        ) === 'ready'
-    ).length
-
-  const todayDeliveredCount =
-    todayOrders.filter(
-      (order) =>
-        isFinishedStatus(
-          order.status
-        )
-    ).length
-
-  const todayActiveCount =
-    todayOrders.filter(
-      (order) =>
-        !isFinishedStatus(
-          order.status
-        )
-    ).length
-
-  /*
-   * ---------------------------------------------------------
-   * FULLSCREEN
-   * ---------------------------------------------------------
-   */
-
-  const toggleFullscreen =
-    async () => {
-      try {
-        if (
-          !document.fullscreenElement
-        ) {
-          await document.documentElement.requestFullscreen()
-
-          setIsFullscreen(
-            true
-          )
-        } else {
-          await document.exitFullscreen()
-
-          setIsFullscreen(
-            false
-          )
-        }
-      } catch (error) {
-        console.error(
-          'Fullscreen error:',
-          error
-        )
-      }
-    }
-
-  useEffect(() => {
-    const handleFullscreenChange =
-      () => {
-        setIsFullscreen(
-          Boolean(
-            document.fullscreenElement
-          )
-        )
-      }
-
-    document.addEventListener(
-      'fullscreenchange',
-      handleFullscreenChange
-    )
-
-    return () => {
-      document.removeEventListener(
-        'fullscreenchange',
-        handleFullscreenChange
-      )
-    }
-  }, [])
-
-  /*
-   * ---------------------------------------------------------
-   * LOGOUT
-   * ---------------------------------------------------------
-   */
-
-  const handleLogout = () => {
-    clearNewOrderAlert()
-
-    /*
-     * Clear app session only when this portal is using it.
-     */
-
-    if (
-      sessionModeRef.current
-    ) {
-      clearSavedSession()
-    }
-
-    sessionTokenRef.current =
-      ''
-
-    sessionModeRef.current =
-      false
-
-    restaurantCodeRef.current =
-      ''
-
-    userIdRef.current = ''
-
-    setSessionToken('')
-    setSessionMode(false)
-
-    setIsAuthenticated(
-      false
-    )
-
-    setOrders([])
-    setTodayOrders([])
-
-    setRestaurantCode('')
-    setUserId('')
-    setPassword('')
-
-    setSearch('')
-    setStatusFilter('all')
-
-    setLastOrdersRefresh(
-      null
-    )
-
-    setLastTodayRefresh(
-      null
-    )
-
-    setShowProfile(false)
-
-    knownOrderIdsRef.current =
-      new Set()
-
-    alarmUnlockedRef.current =
-      false
   }
 
-  /*
-   * ---------------------------------------------------------
-   * CLEANUP
-   * ---------------------------------------------------------
-   */
+  /* ---------------- Status changes (kitchen only) ---------------- */
 
-  useEffect(() => {
-    return () => {
-      if (
-        newOrderAlertTimerRef.current
-      ) {
-        window.clearTimeout(
-          newOrderAlertTimerRef.current
-        )
-      }
-
-      if (
-        audioRef.current
-      ) {
-        try {
-          audioRef.current.pause()
-        } catch {
-          // Ignore cleanup errors.
-        }
-      }
-
-      if (
-        audioContextRef.current
-      ) {
-        try {
-          audioContextRef.current.close()
-        } catch {
-          // Ignore cleanup errors.
-        }
-      }
+  const updateStatus = async (order, nextStatus) => {
+    if (busyId) return
+    if (nextStatus === DELIVERED) {
+      const ok = await appConfirm('Mark this order as delivered to the table?')
+      if (!ok) return
     }
-  }, [])
 
-  /*
-   * ---------------------------------------------------------
-   * SESSION CHECKING SCREEN
-   * ---------------------------------------------------------
-   */
+    const id = String(order.id)
+    const previous = order
+    setBusyId(id)
+    setRows((cur) => cur.map((o) => (String(o.id) === id ? { ...o, status: nextStatus } : o)))
+
+    try {
+      const { data, error } = await supabase.rpc('kitchen_update_order_status_session', {
+        p_session_token: sessionRef.current,
+        p_order_id: id,
+        p_new_status: nextStatus,
+      })
+      if (error) throw error
+      if (!data?.success) {
+        if (/session/i.test(data?.message || '')) endSession()
+        throw new Error(data?.message || 'Unable to update order.')
+      }
+      if (data.order) {
+        setRows((cur) => cur.map((o) => (String(o.id) === id ? data.order : o)))
+      }
+    } catch (err) {
+      setRows((cur) => cur.map((o) => (String(o.id) === id ? previous : o)))
+      appNotice(`Could not update order: ${err.message || 'Unknown error'}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const reopen = (order) => updateStatus(order, 'preparing')
+
+  const signOut = () => {
+    endSession()
+  }
+
+  /* ---------------- Derived lists ---------------- */
+
+  const dayStart = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() })()
+
+  const counts = useMemo(() => {
+    const queue = rows.filter((o) => !isFinished(o) && normalize(o.status) !== 'ready')
+    const ready = rows.filter((o) => normalize(o.status) === 'ready')
+    const today = rows.filter((o) => o.created_at && new Date(o.created_at).getTime() >= dayStart)
+    return {
+      queue: queue.length,
+      ready: ready.length,
+      today: today.length,
+      todayActive: today.filter((o) => !isFinished(o)).length,
+      todayDelivered: today.filter((o) => normalize(o.status) === 'completed').length,
+    }
+  }, [rows, dayStart])
+
+  const q = query.trim().toLowerCase()
+  const matches = (o) => {
+    if (!q) return true
+    const hay = [
+      o.table_number,
+      o.id,
+      orderNo(o),
+      ...(Array.isArray(o.items) ? o.items : []).flatMap((it) => [it?.name, it?.item_name, it?.notes, it?.note]),
+    ].filter(Boolean).join(' ').toLowerCase()
+    return hay.includes(q)
+  }
+
+  const oldestFirst = (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)
+  const newestFirst = (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+
+  const queueList = rows
+    .filter((o) => !isFinished(o) && normalize(o.status) !== 'ready')
+    .filter(matches)
+    .sort(oldestFirst)
+
+  const readyList = rows
+    .filter((o) => normalize(o.status) === 'ready')
+    .filter(matches)
+    .sort(oldestFirst)
+
+  const todayList = rows
+    .filter((o) => o.created_at && new Date(o.created_at).getTime() >= dayStart)
+    .filter(matches)
+    .sort(newestFirst)
+
+  /* ---------------- Render: session check ---------------- */
 
   if (sessionChecking) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4">
-        <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl">
-          <div className="mx-auto h-10 w-10 rounded-full border-4 border-neutral-800 border-t-red-500 animate-spin" />
-
-          <h1 className="mt-5 text-lg font-black">
-            Opening Kitchen Terminal
-          </h1>
-
-          <p className="text-xs text-neutral-500 mt-2">
-            Checking your Digital Dining staff session...
-          </p>
+      <div className="center">
+        <style jsx global>{CSS}</style>
+        <div style={{ textAlign: 'center' }}>
+          <div className="spin" />
+          <p style={{ marginTop: 18, fontWeight: 800 }}>Opening kitchen terminal…</p>
         </div>
       </div>
     )
   }
 
-  /*
-   * ---------------------------------------------------------
-   * LOGIN SCREEN
-   * ---------------------------------------------------------
-   */
+  /* ---------------- Render: login ---------------- */
 
-  if (!isAuthenticated) {
+  if (!authed) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4">
-        <form
-          onSubmit={
-            handleLogin
-          }
-          className="bg-neutral-900 border border-neutral-800 p-8 rounded-3xl max-w-sm w-full space-y-4 shadow-2xl"
-        >
-          <div className="text-center mb-6">
-            <div className="text-4xl mb-3">
-              🍳
-            </div>
-
-            <h1 className="text-xl font-black">
-              Kitchen Terminal
-            </h1>
-
-            <p className="text-neutral-500 text-xs mt-1">
-              Sign in to manage kitchen orders
-            </p>
+      <div className="login">
+        <style jsx global>{CSS}</style>
+        <form className="login-card" onSubmit={handleLogin}>
+          <div style={{ textAlign: 'center', marginBottom: 22 }}>
+            <div style={{ fontSize: 40 }}>🍳</div>
+            <h1 style={{ margin: '8px 0 4px', fontSize: 22, fontWeight: 900 }}>Kitchen Terminal</h1>
+            <p style={{ margin: 0, color: '#8b8b94', fontSize: 13 }}>Sign in to manage kitchen orders</p>
           </div>
 
           <input
-            type="text"
-            placeholder="5-digit Restaurant Code"
-            value={
-              restaurantCode
-            }
-            onChange={(e) =>
-              setRestaurantCode(
-                e.target.value
-                  .replace(
-                    /\D/g,
-                    ''
-                  )
-                  .slice(
-                    0,
-                    5
-                  )
-              )
-            }
+            className="code"
             inputMode="numeric"
             maxLength={5}
+            placeholder="Restaurant code"
+            value={loginCode}
+            onChange={(e) => setLoginCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
             required
-            className="w-full bg-neutral-950 border border-orange-500/30 p-3 rounded-xl text-xs font-mono tracking-widest outline-none focus:border-red-500"
           />
-
           <input
-            type="text"
             placeholder="User ID"
-            value={userId}
-            onChange={(e) =>
-              setUserId(
-                e.target.value
-              )
-            }
-            required
             autoComplete="username"
-            className="w-full bg-neutral-950 border border-neutral-800 p-3 rounded-xl text-xs font-mono outline-none focus:border-red-500"
+            autoCapitalize="none"
+            value={loginUser}
+            onChange={(e) => setLoginUser(e.target.value)}
+            required
           />
-
           <input
             type="password"
             placeholder="Password"
-            value={
-              password
-            }
-            onChange={(e) =>
-              setPassword(
-                e.target.value
-              )
-            }
-            required
             autoComplete="current-password"
-            className="w-full bg-neutral-950 border border-neutral-800 p-3 rounded-xl text-xs font-mono outline-none focus:border-red-500"
+            value={loginPass}
+            onChange={(e) => setLoginPass(e.target.value)}
+            required
           />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 font-bold p-3 rounded-xl text-xs uppercase transition"
-          >
-            {loading
-              ? 'Opening Kitchen...'
-              : 'Open Queue 🍳'}
+          <button type="submit" className="primary" disabled={loginBusy}>
+            {loginBusy ? 'Opening kitchen…' : 'Open queue'}
           </button>
-
-          <p className="text-center text-[10px] text-neutral-600">
-            Alarm audio is unlocked when you open the kitchen.
+          <p style={{ textAlign: 'center', fontSize: 11, color: '#5b5b64', marginTop: 14 }}>
+            Tapping sign in also enables the kitchen alarm.
           </p>
         </form>
       </div>
     )
   }
 
-  /*
-   * ---------------------------------------------------------
-   * KDS SCREEN
-   * ---------------------------------------------------------
-   */
+  /* ---------------- Render: kitchen ---------------- */
+
+  const list = tab === 'queue' ? queueList : tab === 'ready' ? readyList : todayList
+  const emptyCopy = {
+    queue: ['Queue is clear', 'New orders will appear here and sound the alarm.'],
+    ready: ['Nothing waiting', 'Orders marked ready will wait here for delivery.'],
+    today: ['No orders today', 'Today’s orders will be listed here.'],
+  }[tab]
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-3 sm:p-6 space-y-5">
+    <div className="kds">
+      <style jsx global>{CSS}</style>
 
-      {/* PROFILE MODAL */}
-
-      {showProfile && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl">
-
-            <div className="flex items-center justify-between border-b border-neutral-800 p-5">
-
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-red-400">
-                  Staff Profile
-                </p>
-
-                <h2 className="mt-1 text-lg font-black text-white">
-                  Kitchen Profile
-                </h2>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setShowProfile(
-                    false
-                  )
-                }
-                className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-bold text-neutral-400 hover:text-white"
-              >
-                ✕
-              </button>
-
-            </div>
-
-            <div className="space-y-4 p-5">
-
-              <div>
-                <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                  Restaurant Code
-                </p>
-
-                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-center">
-                  <span className="font-mono text-2xl font-black tracking-[0.35em] text-red-300">
-                    {restaurantCode ||
-                      '-----'}
-                  </span>
-                </div>
-
-                <p className="mt-2 text-[10px] text-neutral-500">
-                  This is the 5-digit restaurant code used for this kitchen portal.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-
-                <div>
-                  <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                    User ID
-                  </p>
-
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-mono text-white break-all">
-                    {userId ||
-                      '—'}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                    Role
-                  </p>
-
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs font-bold text-emerald-300">
-                    Kitchen
-                  </div>
-                </div>
-
-              </div>
-
-              <div>
-                <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                  Access
-                </p>
-
-                <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-xs text-neutral-300">
-                  Kitchen staff access for this restaurant.
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 px-4 py-3 text-[10px] leading-5 text-neutral-500">
-                🔒 Your password is never displayed in the profile section.
-              </div>
-
-            </div>
+      {alert && (
+        <div className="banner" role="alert">
+          <div style={{ fontSize: 26 }}>🔔</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.08em', textTransform: 'uppercase', opacity: .8 }}>New order</div>
+            <div style={{ fontSize: 16, fontWeight: 900 }}>#{alert.number} · {alert.table}</div>
           </div>
+          <button type="button" onClick={() => { setAlert(null); setTab('queue') }}>Dismiss</button>
         </div>
       )}
 
-      {/* NEW ORDER ALARM */}
-
-      {newOrderAlert && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1.5rem)] max-w-xl">
-
-          <div className="bg-red-600 border border-red-400 shadow-2xl shadow-red-950/50 rounded-2xl p-4 flex items-center gap-3">
-
-            <div className="text-3xl animate-pulse">
-              🔔
-            </div>
-
-            <div className="flex-1 min-w-0">
-
-              <p className="text-[10px] uppercase tracking-wider text-red-100/80 font-black">
-                New Order Received
-              </p>
-
-              <p className="text-base sm:text-lg font-black text-white">
-                Order #{newOrderAlert.orderNumber} · Table {newOrderAlert.table}
-              </p>
-
-              <p className="text-[10px] text-red-100/80 mt-0.5">
-                Please start preparing the order.
-              </p>
-
-            </div>
-
-            <button
-              type="button"
-              onClick={
-                clearNewOrderAlert
-              }
-              className="shrink-0 bg-white/10 hover:bg-white/20 rounded-lg px-3 py-2 text-xs font-bold"
-            >
-              Dismiss
-            </button>
-
+      <header className="kds-top">
+        <div style={{ minWidth: 0 }}>
+          <div className="kds-brand">Kitchen</div>
+          <div className="kds-sub">
+            <span className={`dot ${connected ? 'on' : 'off'}`} />
+            {connected ? 'Live' : 'Reconnecting'}
+            {lastSync && <span>· synced {clock(lastSync)}</span>}
           </div>
         </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="iconbtn" aria-label="Test alarm"
+            onClick={() => { unlockAudio(); playAlarm() }}>
+            <Bell />
+          </button>
+          <button type="button" className="iconbtn" aria-label="Profile" onClick={() => setProfileOpen(true)}>
+            <UserIcon />
+          </button>
+        </div>
+      </header>
+
+      <nav className="kds-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === 'queue'} className="kds-tab" onClick={() => setTab('queue')}>
+          Queue <span className="count">{counts.queue}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'ready'} className="kds-tab" onClick={() => setTab('ready')}>
+          Ready <span className="count">{counts.ready}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'today'} className="kds-tab" onClick={() => setTab('today')}>
+          Today <span className="count">{counts.today}</span>
+        </button>
+      </nav>
+
+      {tab === 'today' && (
+        <section className="kds-summary">
+          <div className="stat"><small>Total</small><b>{counts.today}</b></div>
+          <div className="stat"><small>Active</small><b style={{ color: '#fb923c' }}>{counts.todayActive}</b></div>
+          <div className="stat"><small>Delivered</small><b style={{ color: '#4ade80' }}>{counts.todayDelivered}</b></div>
+        </section>
       )}
 
-      {/* HEADER */}
-
-      <div className="max-w-7xl mx-auto border-b border-neutral-800 pb-4">
-
-        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
-
-          <div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-
-              <span className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full uppercase font-bold">
-                KDS Terminal
-              </span>
-
-              <span
-                className={`text-[10px] px-3 py-1 rounded-full border font-bold uppercase ${
-                  isConnected
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                    : 'bg-red-500/10 text-red-400 border-red-500/20'
-                }`}
-              >
-                {isConnected
-                  ? '● Live'
-                  : '● Offline'}
-              </span>
-
-              <span
-                className={`text-[10px] px-3 py-1 rounded-full border font-bold uppercase ${
-                  alarmEnabled
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                    : 'bg-neutral-900 text-neutral-500 border-neutral-800'
-                }`}
-              >
-                {alarmEnabled
-                  ? '🔔 Alarm On'
-                  : '🔕 Alarm Off'}
-              </span>
-
-            </div>
-
-            <h1 className="text-2xl font-black mt-2">
-              Live Kitchen Orders
-            </h1>
-
-            <p className="text-[11px] text-neutral-500 mt-1">
-              Orders update automatically in real time and through a fallback refresh.
-            </p>
-
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-
-            <button
-              type="button"
-              onClick={() =>
-                setShowProfile(
-                  true
-                )
-              }
-              className="bg-neutral-900 border border-neutral-800 hover:border-orange-500/40 text-orange-300 px-4 py-2 rounded-xl text-xs font-bold"
-            >
-              👤 Profile
-            </button>
-
-            <button
-              onClick={() =>
-                refreshKitchenData(
-                  {
-                    showLoader:
-                      true,
-
-                    announceNew:
-                      true,
-                  }
-                )
-              }
-              disabled={
-                loading ||
-                todayOrdersLoading
-              }
-              className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 px-4 py-2 rounded-xl text-xs font-bold"
-            >
-              {loading ||
-              todayOrdersLoading
-                ? 'Refreshing...'
-                : '↻ Refresh'}
-            </button>
-
-            <button
-              onClick={() => {
-                unlockAlarmAudio()
-                playNotificationSound()
-              }}
-              className="bg-neutral-900 border border-neutral-800 hover:border-red-500/30 text-red-400 px-4 py-2 rounded-xl text-xs font-bold"
-            >
-              🔔 Test Alarm
-            </button>
-
-            <button
-              onClick={
-                toggleFullscreen
-              }
-              className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 px-4 py-2 rounded-xl text-xs font-bold"
-            >
-              {isFullscreen
-                ? '⛶ Exit Fullscreen'
-                : '⛶ Fullscreen'}
-            </button>
-
-            <button
-              onClick={
-                handleLogout
-              }
-              className="bg-neutral-900 border border-neutral-800 text-red-400 hover:border-red-500/30 px-4 py-2 rounded-xl text-xs font-bold"
-            >
-              Log Out ⎋
-            </button>
-
-          </div>
-        </div>
+      <div className="kds-search">
+        <input
+          className="kds-input"
+          type="search"
+          placeholder="Search table, order number or dish"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
       </div>
 
-      {/* STATISTICS */}
-
-      <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-3">
-
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4">
-          <p className="text-[10px] uppercase text-neutral-500 font-bold">
-            Total Active
-          </p>
-
-          <p className="text-2xl font-black mt-1">
-            {orders.length}
-          </p>
-        </div>
-
-        <div className="bg-neutral-900 border border-yellow-500/20 rounded-2xl p-4">
-          <p className="text-[10px] uppercase text-yellow-500 font-bold">
-            New
-          </p>
-
-          <p className="text-2xl font-black text-yellow-400 mt-1">
-            {pendingCount}
-          </p>
-        </div>
-
-        <div className="bg-neutral-900 border border-orange-500/20 rounded-2xl p-4">
-          <p className="text-[10px] uppercase text-orange-500 font-bold">
-            Preparing
-          </p>
-
-          <p className="text-2xl font-black text-orange-400 mt-1">
-            {preparingCount}
-          </p>
-        </div>
-
-        <div className="bg-neutral-900 border border-emerald-500/20 rounded-2xl p-4">
-          <p className="text-[10px] uppercase text-emerald-500 font-bold">
-            Ready
-          </p>
-
-          <p className="text-2xl font-black text-emerald-400 mt-1">
-            {readyCount}
-          </p>
-        </div>
-
-      </div>
-
-      {/* DAILY ORDER SUMMARY */}
-
-      <div className="max-w-7xl mx-auto bg-neutral-900 border border-red-500/20 rounded-3xl p-4 sm:p-5">
-
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-
-          <div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-lg">
-                📋
-              </span>
-
-              <h2 className="text-base sm:text-lg font-black">
-                Today&apos;s Orders
-              </h2>
-            </div>
-
-            <p className="text-[10px] sm:text-xs text-neutral-500 mt-1">
-              Every order received today stays visible here, including orders already delivered by the waiter.
-            </p>
-
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-
-            <div className="bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-center min-w-24">
-              <p className="text-[9px] uppercase text-neutral-500 font-bold">
-                Total Today
-              </p>
-
-              <p className="text-xl sm:text-2xl font-black mt-1">
-                {todayOrders.length}
-              </p>
-            </div>
-
-            <div className="bg-neutral-950 border border-orange-500/20 rounded-xl px-4 py-3 text-center min-w-24">
-              <p className="text-[9px] uppercase text-orange-500 font-bold">
-                Active Today
-              </p>
-
-              <p className="text-xl sm:text-2xl font-black text-orange-400 mt-1">
-                {todayActiveCount}
-              </p>
-            </div>
-
-            <div className="bg-neutral-950 border border-emerald-500/20 rounded-xl px-4 py-3 text-center min-w-24">
-              <p className="text-[9px] uppercase text-emerald-500 font-bold">
-                Delivered
-              </p>
-
-              <p className="text-xl sm:text-2xl font-black text-emerald-400 mt-1">
-                {todayDeliveredCount}
-              </p>
-            </div>
-
-          </div>
-        </div>
-
-        <div className="mt-4 border-t border-neutral-800 pt-4">
-
-          <div className="flex items-center justify-between gap-3 mb-3">
-
-            <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">
-              Order Records
-            </p>
-
-            <p className="text-[9px] text-neutral-600">
-              {todayOrdersLoading
-                ? 'Refreshing…'
-                : lastTodayRefresh
-                ? `Updated ${formatTime(
-                    lastTodayRefresh
-                  )}`
-                : 'Not refreshed yet'}
-            </p>
-
-          </div>
-
-          {todayOrders.length ===
-          0 ? (
-            <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-8 text-center">
-
-              <div className="text-4xl mb-3">
-                🧾
-              </div>
-
-              <p className="text-sm font-bold text-neutral-300">
-                No orders received today
-              </p>
-
-              <p className="text-[10px] text-neutral-600 mt-1">
-                New orders will be added automatically.
-              </p>
-
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-
-              {todayOrders.map(
-                (order) => {
-                  const items =
-                    Array.isArray(
-                      order.items
-                    )
-                      ? order.items
-                      : []
-
-                  return (
-                    <div
-                      key={`today-${order.id}`}
-                      className="bg-neutral-950/70 border border-neutral-800 rounded-2xl p-3 sm:p-4"
-                    >
-
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-
-                        <div className="min-w-0">
-
-                          <div className="flex items-center gap-2 flex-wrap">
-
-                            <span className="text-sm sm:text-base font-black text-white">
-                              Order #{getOrderNumber(
-                                order
-                              )}
-                            </span>
-
-                            <span className="text-[10px] font-bold px-2 py-1 rounded-lg border bg-neutral-900 text-neutral-400 border-neutral-800">
-                              Table {order.table_number ||
-                                'Takeaway'}
-                            </span>
-
-                            <span
-                              className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase ${getHistoryStatusClass(
-                                order.status
-                              )}`}
-                            >
-                              {getHistoryStatus(
-                                order.status
-                              )}
-                            </span>
-
-                          </div>
-
-                          <p className="text-[10px] text-neutral-500 mt-1">
-                            {formatDateTime(
-                              order.created_at
-                            )}
-
-                            {order.payment_mode
-                              ? ` · ${order.payment_mode}`
-                              : ''}
-                          </p>
-
-                        </div>
-
-                        <div className="text-left md:text-right shrink-0">
-
-                          <p className="text-[9px] uppercase text-neutral-600 font-bold">
-                            Order Total
-                          </p>
-
-                          <p className="text-sm sm:text-base font-black text-white mt-0.5">
-                            {formatCurrency(
-                              getOrderAmount(
-                                order
-                              )
-                            )}
-                          </p>
-
-                        </div>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-
-                        {items.length ===
-                        0 ? (
-                          <p className="text-[10px] text-neutral-600">
-                            No item details stored for this order.
-                          </p>
-                        ) : (
-                          items.map(
-                            (
-                              item,
-                              index
-                            ) => {
-                              const quantity =
-                                item?.qty ??
-                                item?.quantity ??
-                                1
-
-                              const itemName =
-                                item?.name ||
-                                item?.item_name ||
-                                'Unnamed item'
-
-                              const note =
-                                item?.notes ||
-                                item?.note ||
-                                item?.special_instructions ||
-                                ''
-
-                              return (
-                                <div
-                                  key={`today-${order.id}-item-${index}`}
-                                  className="bg-neutral-900/80 border border-neutral-800 rounded-xl p-3"
-                                >
-
-                                  <div className="flex items-start gap-2">
-
-                                    <span className="min-w-7 h-7 px-1 rounded-lg bg-orange-500/10 text-orange-400 flex items-center justify-center text-[10px] font-black">
-                                      ×{quantity}
-                                    </span>
-
-                                    <div className="min-w-0 flex-1">
-
-                                      <p className="text-[10px] sm:text-xs text-neutral-200 font-bold break-words">
-                                        {itemName}
-                                      </p>
-
-                                      {note && (
-                                        <p className="text-[9px] text-yellow-300 mt-1 break-words">
-                                          📝 {note}
-                                        </p>
-                                      )}
-
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            }
-                          )
-                        )}
-
-                      </div>
-                    </div>
-                  )
-                }
-              )}
-
-            </div>
-          )}
-
-        </div>
-      </div>
-
-      {/* SEARCH + FILTER */}
-
-      <div className="max-w-7xl mx-auto bg-neutral-900 border border-neutral-800 rounded-2xl p-3">
-
-        <div className="flex flex-col md:flex-row gap-3">
-
-          <input
-            type="search"
-            placeholder="Search table, order ID, order number, or item..."
-            value={search}
-            onChange={(e) =>
-              setSearch(
-                e.target.value
-              )
-            }
-            className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-xs outline-none focus:border-red-500"
-          />
-
-          <div className="flex gap-2 overflow-x-auto">
-
-            {[
-              ['all', 'All'],
-              ['pending', 'New'],
-              [
-                'preparing',
-                'Preparing',
-              ],
-              ['ready', 'Ready'],
-            ].map(
-              ([
-                value,
-                label,
-              ]) => (
-                <button
-                  key={value}
-                  onClick={() =>
-                    setStatusFilter(
-                      value
-                    )
-                  }
-                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap border transition ${
-                    statusFilter ===
-                    value
-                      ? 'bg-red-600 border-red-600 text-white'
-                      : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
-                  }`}
-                >
-                  {label}
-                </button>
-              )
-            )}
-
-          </div>
-        </div>
-      </div>
-
-      {/* ORDER QUEUE */}
-
-      <div className="max-w-7xl mx-auto">
-
-        {sortedOrders.length ===
-        0 ? (
-          <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-12 text-center">
-
-            <div className="text-5xl mb-4">
-              🍽️
-            </div>
-
-            <h2 className="text-lg font-black">
-              Kitchen Queue Is Empty
-            </h2>
-
-            <p className="text-xs text-neutral-500 mt-2">
-              New orders will appear here automatically.
-            </p>
-
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-
-            {sortedOrders.map(
-              (order) => {
-                const age =
-                  getOrderAgeMinutes(
-                    order.created_at
-                  )
-
-                const kitchenStatus =
-                  getKitchenStatus(
-                    order.status
-                  )
-
-                const isOverdue =
-                  age >= 30 &&
-                  kitchenStatus !==
-                    'ready'
-
-                const isWarning =
-                  age >= 20 &&
-                  kitchenStatus !==
-                    'ready'
-
-                const items =
-                  Array.isArray(
-                    order.items
-                  )
-                    ? order.items
-                    : []
-
-                return (
-                  <div
-                    key={
-                      order.id
-                    }
-                    className={`bg-neutral-900 border p-5 rounded-2xl flex flex-col justify-between space-y-4 transition ${getOrderBorder(
-                      order
-                    )}`}
-                  >
-
-                    {/* ORDER HEADER */}
-
-                    <div>
-
-                      <div className="flex justify-between items-start border-b border-neutral-800 pb-3">
-
-                        <div>
-
-                          <p className="text-[9px] uppercase tracking-wider text-neutral-500 font-bold">
-                            Table
-                          </p>
-
-                          <span className="text-xl font-black text-white">
-                            {order.table_number ||
-                              'Takeaway'}
-                          </span>
-
-                          <p className="text-[10px] text-neutral-500 mt-1 font-bold">
-                            Order #{getOrderNumber(
-                              order
-                            )}
-                          </p>
-
-                        </div>
-
-                        <div className="text-right">
-
-                          <span
-                            className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${
-                              kitchenStatus ===
-                              'ready'
-                                ? 'bg-emerald-500/20 text-emerald-400'
-                                : kitchenStatus ===
-                                  'preparing'
-                                ? 'bg-orange-500/20 text-orange-400'
-                                : 'bg-yellow-500/20 text-yellow-400'
-                            }`}
-                          >
-                            {kitchenStatus}
-                          </span>
-
-                          <p className="text-[9px] text-neutral-600 mt-2 font-mono">
-                            #{String(
-                              order.id
-                            ).slice(
-                              -6
-                            )}
-                          </p>
-
-                        </div>
-                      </div>
-
-                      {/* TIMER */}
-
-                      <div className="flex items-center justify-between mt-3">
-
-                        <div>
-
-                          <p className="text-[9px] uppercase text-neutral-600 font-bold">
-                            Ordered
-                          </p>
-
-                          <p className="text-[11px] text-neutral-400">
-                            {formatTime(
-                              order.created_at
-                            )}
-                          </p>
-
-                        </div>
-
-                        <div
-                          className={`border px-3 py-1.5 rounded-lg text-[11px] font-black ${getTimerClass(
-                            age
-                          )}`}
-                        >
-                          ⏱ {age} min
-                        </div>
-
-                      </div>
-
-                      {/* WARNING */}
-
-                      {isOverdue && (
-                        <div className="mt-3 bg-red-950/40 border border-red-500/30 rounded-xl p-3">
-
-                          <p className="text-[10px] text-red-400 font-black uppercase">
-                            ⚠️ Preparation Overdue
-                          </p>
-
-                          <p className="text-[10px] text-red-300/70 mt-1">
-                            This order has been waiting for more than 30 minutes.
-                          </p>
-
-                        </div>
-                      )}
-
-                      {isWarning &&
-                        !isOverdue && (
-                          <div className="mt-3 bg-orange-950/30 border border-orange-500/20 rounded-xl p-3">
-
-                            <p className="text-[10px] text-orange-400 font-bold uppercase">
-                              ⚠️ Long Waiting Order
-                            </p>
-
-                          </div>
-                        )}
-
-                      {/* ITEMS */}
-
-                      <div className="space-y-2 mt-4">
-
-                        {items.length ===
-                        0 ? (
-                          <p className="text-xs text-neutral-500">
-                            No items found
-                          </p>
-                        ) : (
-                          items.map(
-                            (
-                              item,
-                              i
-                            ) => {
-                              const quantity =
-                                item?.qty ??
-                                item?.quantity ??
-                                1
-
-                              const itemName =
-                                item?.name ||
-                                item?.item_name ||
-                                'Unnamed item'
-
-                              const note =
-                                item?.notes ||
-                                item?.note ||
-                                item?.special_instructions ||
-                                ''
-
-                              return (
-                                <div
-                                  key={`${order.id}-${i}`}
-                                  className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3"
-                                >
-
-                                  <div className="flex items-start gap-3">
-
-                                    <div className="min-w-8 h-8 px-2 rounded-lg bg-orange-500/10 text-orange-400 flex items-center justify-center text-xs font-black">
-                                      ×{quantity}
-                                    </div>
-
-                                    <div className="flex-1 min-w-0">
-
-                                      <p className="text-xs text-neutral-200 font-bold">
-                                        {itemName}
-                                      </p>
-
-                                      {note && (
-                                        <div className="mt-2 text-[10px] text-yellow-300 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-2 py-1.5">
-                                          📝 {note}
-                                        </div>
-                                      )}
-
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            }
-                          )
-                        )}
-
-                      </div>
-                    </div>
-
-                    {/* ACTIONS */}
-
-                    <div className="pt-2 border-t border-neutral-800">
-
-                      {kitchenStatus ===
-                        'pending' && (
-                        <button
-                          onClick={() =>
-                            setOrderStatus(
-                              order.id,
-                              'preparing'
-                            )
-                          }
-                          disabled={
-                            updatingOrder ===
-                            order.id
-                          }
-                          className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold p-3 rounded-xl text-xs transition"
-                        >
-                          {updatingOrder ===
-                          order.id
-                            ? 'Starting...'
-                            : 'Start Preparing 🍳'}
-                        </button>
-                      )}
-
-                      {kitchenStatus ===
-                        'preparing' && (
-                        <button
-                          onClick={() =>
-                            setOrderStatus(
-                              order.id,
-                              'ready'
-                            )
-                          }
-                          disabled={
-                            updatingOrder ===
-                            order.id
-                          }
-                          className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-neutral-950 font-black p-3 rounded-xl text-xs transition"
-                        >
-                          {updatingOrder ===
-                          order.id
-                            ? 'Updating...'
-                            : 'Mark Ready 🔔'}
-                        </button>
-                      )}
-
-                      {kitchenStatus ===
-                        'ready' && (
-                        <div className="space-y-2">
-
-                          <div className="w-full text-center text-[11px] font-bold text-emerald-400 py-3 bg-emerald-950/20 rounded-xl border border-emerald-500/20">
-                            ✓ Ready — Waiting for Waiter
-                          </div>
-
-                          <button
-                            onClick={() =>
-                              setOrderStatus(
-                                order.id,
-                                'preparing'
-                              )
-                            }
-                            disabled={
-                              updatingOrder ===
-                              order.id
-                            }
-                            className="w-full bg-neutral-950 border border-neutral-800 hover:border-orange-500/30 text-neutral-400 hover:text-orange-400 font-bold p-2 rounded-xl text-[10px] transition"
-                          >
-                            ↩ Reopen Order
-                          </button>
-
-                        </div>
-                      )}
-
-                    </div>
-                  </div>
-                )
-              }
-            )}
-
+      <main className="kds-list">
+        {list.length === 0 && (
+          <div className="empty">
+            <b>{q ? 'No matching orders' : emptyCopy[0]}</b>
+            <p>{q ? 'Try another search.' : emptyCopy[1]}</p>
           </div>
         )}
 
-      </div>
+        {list.map((order) => (
+          <OrderCard
+            key={order.id}
+            order={order}
+            now={now}
+            busy={busyId === String(order.id)}
+            onAdvance={updateStatus}
+            onReopen={reopen}
+            readOnly={false}
+          />
+        ))}
+      </main>
 
-      {/* FOOTER */}
-
-      <div className="max-w-7xl mx-auto text-center pt-2">
-
-        <p className="text-[9px] text-neutral-700 uppercase tracking-widest">
-          Digital Dining • Kitchen Display System
-
-          {lastOrdersRefresh
-            ? ` • Queue updated ${formatTime(
-                lastOrdersRefresh
-              )}`
-            : ''}
-        </p>
-
-      </div>
-
+      {profileOpen && (
+        <ProfileSheet
+          code={session.code}
+          userId={session.userId}
+          onSignOut={signOut}
+          onClose={() => setProfileOpen(false)}
+        />
+      )}
     </div>
   )
 }
