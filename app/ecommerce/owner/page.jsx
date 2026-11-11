@@ -11,8 +11,10 @@ import {
 
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+
 import OwnerProductManagement from './OwnerProductManagement'
 import OwnerWebsiteDesign from './OwnerWebsiteDesign'
+import OwnerRazorpayAccess from './OwnerRazorpayAccess'
 
 const money = value =>
   `₹${(Number(value || 0) / 100).toLocaleString('en-IN', {
@@ -32,6 +34,7 @@ const tabs = [
   ['design', 'Website Design'],
   ['orders', 'Orders'],
   ['wallet', 'Wallet'],
+  ['razorpay', 'Razorpay Settings'],
   ['settings', 'Website settings'],
 ]
 
@@ -40,6 +43,7 @@ function uniqueById(items) {
 
   return (Array.isArray(items) ? items : []).filter(item => {
     if (!item?.id || seen.has(item.id)) return false
+
     seen.add(item.id)
     return true
   })
@@ -49,6 +53,7 @@ export default function EcommerceOwnerDashboard() {
   const router = useRouter()
 
   const [signingOut, setSigningOut] = useState(false)
+  const [ownerAccessToken, setOwnerAccessToken] = useState('')
   const [data, setData] = useState(null)
   const [selectedId, setSelectedId] = useState('')
   const [tab, setTab] = useState('overview')
@@ -56,6 +61,10 @@ export default function EcommerceOwnerDashboard() {
   const [error, setError] = useState('')
 
   const requestId = useRef(0)
+
+  // ============================================
+  // LOAD OWNER DASHBOARD
+  // ============================================
 
   const load = useCallback(
     async (storeId = '') => {
@@ -75,10 +84,15 @@ export default function EcommerceOwnerDashboard() {
           !sessionData?.session?.access_token
         ) {
           if (currentRequest === requestId.current) {
+            setOwnerAccessToken('')
             router.replace('/ecommerce/owner/login')
           }
+
           return
         }
+
+        const accessToken =
+          sessionData.session.access_token
 
         const query = storeId
           ? `?storeId=${encodeURIComponent(storeId)}`
@@ -89,8 +103,7 @@ export default function EcommerceOwnerDashboard() {
           {
             cache: 'no-store',
             headers: {
-              Authorization:
-                `Bearer ${sessionData.session.access_token}`,
+              Authorization: `Bearer ${accessToken}`,
             },
           }
         )
@@ -105,10 +118,16 @@ export default function EcommerceOwnerDashboard() {
           )
         }
 
-        if (currentRequest !== requestId.current) return
+        if (currentRequest !== requestId.current) {
+          return
+        }
 
-        // Remove duplicate records only from the client-side
-        // response. No database rows are modified.
+        // Keep the authenticated owner's access token
+        // for owner-scoped Razorpay request APIs.
+        setOwnerAccessToken(accessToken)
+
+        // Remove duplicate client-side records only.
+        // No database records are modified.
         const stores = uniqueById(body.stores)
         const overview = body.overview || {}
 
@@ -118,8 +137,6 @@ export default function EcommerceOwnerDashboard() {
           stores[0] ||
           null
 
-        // Preserve the server-selected store's details when
-        // the matching store is present in the response.
         const selectedStore =
           selected?.id === body.selected?.id
             ? { ...selected, ...body.selected }
@@ -142,6 +159,7 @@ export default function EcommerceOwnerDashboard() {
         setSelectedId(selectedStore?.id || '')
       } catch (err) {
         if (currentRequest === requestId.current) {
+          setOwnerAccessToken('')
           setError(
             err?.message || 'Unable to load dashboard.'
           )
@@ -155,6 +173,10 @@ export default function EcommerceOwnerDashboard() {
     [router]
   )
 
+  // ============================================
+  // INITIAL LOAD
+  // ============================================
+
   useEffect(() => {
     load()
 
@@ -162,6 +184,10 @@ export default function EcommerceOwnerDashboard() {
       requestId.current += 1
     }
   }, [load])
+
+  // ============================================
+  // LOGOUT
+  // ============================================
 
   async function logout() {
     if (signingOut) return
@@ -173,11 +199,14 @@ export default function EcommerceOwnerDashboard() {
       const { error: signOutError } =
         await supabase.auth.signOut()
 
-      if (signOutError) throw signOutError
+      if (signOutError) {
+        throw signOutError
+      }
 
       requestId.current += 1
 
       setData(null)
+      setOwnerAccessToken('')
       setSelectedId('')
 
       router.replace('/ecommerce/owner/login')
@@ -186,9 +215,14 @@ export default function EcommerceOwnerDashboard() {
       setError(
         err?.message || 'Could not sign out.'
       )
+
       setSigningOut(false)
     }
   }
+
+  // ============================================
+  // DASHBOARD DATA
+  // ============================================
 
   const stores = data?.stores || []
   const store = data?.selected
@@ -211,12 +245,19 @@ export default function EcommerceOwnerDashboard() {
     [overview]
   )
 
-  function selectStore(nextStoreId) {
-    if (!nextStoreId || nextStoreId === selectedId) return
+  // ============================================
+  // SELECT WEBSITE
+  // ============================================
 
-    // Clear the previous website's data before loading the
-    // newly selected website.
+  function selectStore(nextStoreId) {
+    if (!nextStoreId || nextStoreId === selectedId) {
+      return
+    }
+
+    // Clear the previous website's information
+    // before loading the newly selected website.
     setData(null)
+    setOwnerAccessToken('')
     setSelectedId(nextStoreId)
 
     load(nextStoreId)
@@ -226,7 +267,9 @@ export default function EcommerceOwnerDashboard() {
     <main className="min-h-screen bg-neutral-950 px-4 py-6 text-white sm:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
 
-        {/* HEADER */}
+        {/* =====================================
+            HEADER
+        ===================================== */}
 
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -264,6 +307,10 @@ export default function EcommerceOwnerDashboard() {
           </div>
         </header>
 
+        {/* =====================================
+            ERROR
+        ===================================== */}
+
         {error && (
           <div
             role="alert"
@@ -289,7 +336,10 @@ export default function EcommerceOwnerDashboard() {
 
         {store && (
           <>
-            {/* WEBSITE SELECTION */}
+
+            {/* =====================================
+                WEBSITE SELECTION
+            ===================================== */}
 
             <div
               className={`${card} flex flex-wrap items-center justify-between gap-4`}
@@ -341,13 +391,15 @@ export default function EcommerceOwnerDashboard() {
               </div>
             </div>
 
-            {/* NAVIGATION */}
+            {/* =====================================
+                NAVIGATION
+            ===================================== */}
 
             <nav
               aria-label="E-Commerce owner sections"
               className="flex gap-2 overflow-x-auto pb-1"
             >
-              {tabs.map(([id, label]) => (
+              {tabs.map(([id, tabLabel]) => (
                 <button
                   key={`owner-tab-${id}`}
                   type="button"
@@ -363,12 +415,14 @@ export default function EcommerceOwnerDashboard() {
                     }`
                   }
                 >
-                  {label}
+                  {tabLabel}
                 </button>
               ))}
             </nav>
 
-            {/* OVERVIEW */}
+            {/* =====================================
+                OVERVIEW
+            ===================================== */}
 
             {tab === 'overview' && (
               <>
@@ -392,13 +446,13 @@ export default function EcommerceOwnerDashboard() {
                         ? money(wallet.spendable_paise)
                         : 'Not initialized',
                     ],
-                  ].map(([label, value]) => (
+                  ].map(([metricLabel, value]) => (
                     <div
-                      key={`metric-${label}`}
+                      key={`metric-${metricLabel}`}
                       className={card}
                     >
                       <p className="text-xs text-neutral-400">
-                        {label}
+                        {metricLabel}
                       </p>
 
                       <p className="mt-3 text-2xl font-black">
@@ -409,6 +463,9 @@ export default function EcommerceOwnerDashboard() {
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
+
+                  {/* RECENT ORDERS */}
+
                   <section className={card}>
                     <h3 className="mb-4 text-lg font-bold">
                       Recent orders
@@ -438,6 +495,8 @@ export default function EcommerceOwnerDashboard() {
                     )}
                   </section>
 
+                  {/* INVENTORY OVERVIEW */}
+
                   <section className={card}>
                     <h3 className="mb-4 text-lg font-bold">
                       Inventory overview
@@ -462,7 +521,9 @@ export default function EcommerceOwnerDashboard() {
               </>
             )}
 
-            {/* PRODUCT MANAGEMENT */}
+            {/* =====================================
+                PRODUCT MANAGEMENT
+            ===================================== */}
 
             {tab === 'products' && (
               <OwnerProductManagement
@@ -473,7 +534,9 @@ export default function EcommerceOwnerDashboard() {
               />
             )}
 
-            {/* WEBSITE DESIGN */}
+            {/* =====================================
+                WEBSITE DESIGN
+            ===================================== */}
 
             {tab === 'design' && (
               <OwnerWebsiteDesign
@@ -484,7 +547,9 @@ export default function EcommerceOwnerDashboard() {
               />
             )}
 
-            {/* ORDERS */}
+            {/* =====================================
+                ORDERS
+            ===================================== */}
 
             {tab === 'orders' && (
               <section className={card}>
@@ -508,12 +573,12 @@ export default function EcommerceOwnerDashboard() {
                           'Payment',
                           'Total',
                           'Created',
-                        ].map(label => (
+                        ].map(columnLabel => (
                           <th
-                            key={`order-column-${label}`}
+                            key={`order-column-${columnLabel}`}
                             className="border-b border-neutral-700 p-3"
                           >
-                            {label}
+                            {columnLabel}
                           </th>
                         ))}
                       </tr>
@@ -559,10 +624,15 @@ export default function EcommerceOwnerDashboard() {
               </section>
             )}
 
-            {/* WALLET */}
+            {/* =====================================
+                WALLET
+            ===================================== */}
 
             {tab === 'wallet' && (
               <div className="grid gap-4 lg:grid-cols-2">
+
+                {/* WALLET BALANCE */}
+
                 <section className={card}>
                   <h3 className="mb-4 text-lg font-bold">
                     Wallet balance
@@ -570,6 +640,7 @@ export default function EcommerceOwnerDashboard() {
 
                   {wallet ? (
                     <div className="space-y-3 text-sm">
+
                       <p>
                         Balance:{' '}
                         <strong>
@@ -627,6 +698,8 @@ export default function EcommerceOwnerDashboard() {
                   </p>
                 </section>
 
+                {/* WALLET TRANSACTIONS */}
+
                 <section className={card}>
                   <h3 className="mb-4 text-lg font-bold">
                     Recent wallet activity
@@ -656,7 +729,35 @@ export default function EcommerceOwnerDashboard() {
               </div>
             )}
 
-            {/* WEBSITE SETTINGS */}
+            {/* =====================================
+                RAZORPAY SETTINGS - NEW
+            ===================================== */}
+
+            {tab === 'razorpay' && (
+              store.approval_status === 'approved' &&
+              store.is_active ? (
+                <OwnerRazorpayAccess
+                  key={`razorpay-access-${selectedId}`}
+                  storeId={selectedId}
+                  accessToken={ownerAccessToken}
+                />
+              ) : (
+                <section className={card}>
+                  <h3 className="text-lg font-bold">
+                    Razorpay Settings
+                  </h3>
+
+                  <p className="mt-3 text-sm text-amber-300">
+                    This website must be approved and active
+                    before requesting Razorpay credential access.
+                  </p>
+                </section>
+              )
+            )}
+
+            {/* =====================================
+                WEBSITE SETTINGS
+            ===================================== */}
 
             {tab === 'settings' && (
               <section className={card}>
@@ -674,13 +775,13 @@ export default function EcommerceOwnerDashboard() {
                     ['Fulfillment', store.fulfillment_mode],
                     ['Approval', store.approval_status],
                     ['Active', String(store.is_active)],
-                  ].map(([label, value]) => (
+                  ].map(([settingLabel, value]) => (
                     <div
-                      key={`website-setting-${label}`}
+                      key={`website-setting-${settingLabel}`}
                       className="rounded-xl bg-neutral-950 p-3"
                     >
                       <p className="text-xs text-neutral-500">
-                        {label}
+                        {settingLabel}
                       </p>
 
                       <p className="mt-1 font-semibold">
@@ -696,6 +797,7 @@ export default function EcommerceOwnerDashboard() {
                 </p>
               </section>
             )}
+
           </>
         )}
       </div>

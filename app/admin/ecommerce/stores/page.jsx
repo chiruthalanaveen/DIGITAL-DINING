@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-const INITIAL = { name: '', slug: '', category: 'pickles' }
+const INITIAL = { name: '', slug: '', category: 'pickles', ownerEmail: '' }
 const CATEGORIES = [
   ['pickles', 'Pickles'], ['clothing', 'Clothing & Sarees'],
   ['toys', 'Toys & Collectibles'], ['groceries', 'Groceries'],
@@ -26,6 +26,7 @@ export default function AdminEcommerceStoresPage() {
   const [saving, setSaving] = useState(false)
   const [workingStore, setWorkingStore] = useState('')
   const [ownerIds, setOwnerIds] = useState({})
+  const [emailDrafts, setEmailDrafts] = useState({})
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [search, setSearch] = useState('')
@@ -53,7 +54,7 @@ export default function AdminEcommerceStoresPage() {
 
   const visible = useMemo(() => stores.filter(s => {
     const q = search.trim().toLowerCase()
-    const matches = !q || [s.name, s.slug, s.category].some(v => String(v || '').toLowerCase().includes(q))
+    const matches = !q || [s.name, s.slug, s.category, s.owner_email].some(v => String(v || '').toLowerCase().includes(q))
     const status = filter === 'all' || (filter === 'active' ? s.is_active : filter === 'pending' ? s.approval_status === 'pending' : !s.is_active)
     return matches && status
   }), [stores, search, filter])
@@ -67,7 +68,7 @@ export default function AdminEcommerceStoresPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       })
-      setNotice(`${data.store?.name || 'Website'} created as pending. Assign an owner, approve and activate it before customers can access it.`)
+      setNotice(data.message || `${data.store?.name || 'Website'} created as pending. Assign an owner, approve and activate it before customers can access it.`)
       setForm(INITIAL)
       await load()
     } catch (e) { setError(e.message) }
@@ -88,6 +89,26 @@ export default function AdminEcommerceStoresPage() {
         body: JSON.stringify({ storeId, action, userId: (ownerIds[storeId] || '').trim() }),
       })
       setNotice(`${action.replaceAll('_', ' ')} completed.${result.auditLogged === false ? ' Warning: audit logging failed.' : ''}`)
+      await load()
+    } catch (e) { setError(e.message) }
+    finally { setWorkingStore('') }
+  }
+
+  async function changeOwnerEmail(store) {
+    const newEmail = String(emailDrafts[store.id] || '').trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) { setError('Enter a valid new login email.'); return }
+    if (!store.owner_user_id) { setError('Assign an owner before editing their login email.'); return }
+    const count = Number(store.owner_store_count || 0)
+    const warning = count > 1 ? `\nIMPORTANT: This account owns ${count} stores. All those stores will use the new login email.` : ''
+    if (!window.confirm(`Change Supabase Auth login email for ${store.name}?\n\n${store.owner_email || 'Unknown'} → ${newEmail}${warning}\n\nThis changes the existing Auth user, not the store owner ID.`)) return
+    setWorkingStore(store.id); setError(''); setNotice('')
+    try {
+      const result = await request('/api/admin/ecommerce/stores/owner-email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: store.id, newEmail, confirmedSharedOwner: count > 1 }),
+      })
+      setNotice(result.message || 'Owner login email updated.')
+      setEmailDrafts(prev => ({ ...prev, [store.id]: '' }))
       await load()
     } catch (e) { setError(e.message) }
     finally { setWorkingStore('') }
@@ -144,6 +165,10 @@ export default function AdminEcommerceStoresPage() {
                   {CATEGORIES.map(([value, title]) => <option key={value} value={value}>{title}</option>)}
                 </select>
               </label>
+              <label className="block text-xs font-bold text-neutral-300">Owner login email (optional)
+                <input type="email" maxLength={254} className={input} placeholder="owner@example.com" value={form.ownerEmail} onChange={e => setForm(f => ({ ...f, ownerEmail: e.target.value }))} />
+                <span className="mt-2 block text-[10px] font-normal text-neutral-500">If entered, the server links an existing Auth account or invites a new owner. The store remains pending and inactive.</span>
+              </label>
               <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Planned storefront address</p>
                 <p className="mt-2 break-all text-xs font-bold text-emerald-300">{form.slug || 'your-store'}.digitaldine-in.online</p>
@@ -182,6 +207,15 @@ export default function AdminEcommerceStoresPage() {
                   <a href={`/shop/${encodeURIComponent(s.slug)}`} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-xs font-bold text-red-400 hover:text-red-300">Preview storefront ↗</a>
                 </div>
                 <div className="min-w-0 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                  <div className="mb-4 rounded-xl border border-neutral-800 bg-neutral-900 p-3">
+                    <p className="text-[11px] font-bold text-neutral-300">Owner login email</p>
+                    <p className="mt-1 break-all text-xs text-emerald-300">{s.owner_email || 'No owner assigned'}</p>
+                    {Number(s.owner_store_count || 0) > 1 && <p className="mt-1 text-[10px] text-amber-300">Shared Auth account across {s.owner_store_count} stores</p>}
+                    {s.owner_user_id && <>
+                      <input type="email" maxLength={254} className={input} placeholder="New login email" value={emailDrafts[s.id] || ''} onChange={e => setEmailDrafts(prev => ({ ...prev, [s.id]: e.target.value }))} />
+                      <button type="button" className={`${actionButton} mt-3`} disabled={!!workingStore || !emailDrafts[s.id]?.trim()} onClick={() => changeOwnerEmail(s)}>Change owner login email</button>
+                    </>}
+                  </div>
                   <label className="block text-[11px] font-bold text-neutral-400">Owner's Supabase Auth UUID
                     <input className={input} placeholder="Paste owner's Auth user ID" value={ownerIds[s.id] || ''} onChange={e => setOwnerIds(prev => ({ ...prev, [s.id]: e.target.value }))} />
                   </label>

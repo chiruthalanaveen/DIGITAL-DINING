@@ -166,10 +166,7 @@ export default function AdminRestaurantOrderingControls({
       setNotice({ type: 'error', message: 'Set verified restaurant coordinates before enabling dine-in GPS checks.' })
       return
     }
-    if (policy.signed_table_qr_required && !policy.geofence_enabled) {
-      setNotice({ type: 'error', message: 'Signed table QR requires the dine-in geofence to be enabled.' })
-      return
-    }
+    // DD_SIGNED_QR_INDEPENDENT_GPS_20261108: signed table QR works with GPS on or off.
     if (approveRequested && !window.confirm('Approve the owner-requested restaurant coordinates and save this policy?')) return
     setSaving(true)
     setNotice(null)
@@ -205,7 +202,7 @@ export default function AdminRestaurantOrderingControls({
     const label = String(tableLabel || '').trim()
     if (!validId || busy) return
     if (!label || label.length > 50) {
-      setNotice({ type: 'error', message: 'Table label must contain 1â€“50 characters.' })
+      setNotice({ type: 'error', message: 'Table label must contain 1–50 characters.' })
       return
     }
     setSaving(true)
@@ -248,7 +245,7 @@ export default function AdminRestaurantOrderingControls({
             <option value="">Choose restaurant / delivery business</option>
             {(Array.isArray(tenants) ? tenants : []).map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name || 'Tenant'} Â· {item.restaurant_code || item.id}
+                {item.name || 'Tenant'} · {item.restaurant_code || item.id}
               </option>
             ))}
           </select>
@@ -271,7 +268,7 @@ export default function AdminRestaurantOrderingControls({
               </p>
             </div>
             <button type="button" onClick={() => void load()} disabled={busy} className={buttonClass}>
-              {loading ? 'Loadingâ€¦' : 'Refresh policy'}
+              {loading ? 'Loading…' : 'Refresh policy'}
             </button>
           </div>
 
@@ -280,7 +277,7 @@ export default function AdminRestaurantOrderingControls({
               <Capability label="Dine-In / QR" allowed={dineInAllowed} hint="Restaurant plan, QR menu and dine-in feature must all be allowed." />
               <Capability label="Takeaway / Parcel" allowed={takeawayAllowed} hint="Restaurant plan, QR menu and takeaway feature must all be allowed." />
               <Capability label="Home Delivery" allowed={homeDeliveryAllowed} hint="Delivery plan and customer ordering must be allowed; policy toggle is separate." />
-              <Capability label="Signed Table QR" allowed={dineInAllowed && displayedPolicy?.signed_table_qr_required === true} hint="Requires geofence, enabled table and valid signed QR at checkout." />
+              <Capability label="Signed Table QR" allowed={dineInAllowed && displayedPolicy?.signed_table_qr_required === true} hint="Requires an enabled table and a valid signed QR at checkout. GPS is optional." />
             </div>
           )}
 
@@ -290,7 +287,7 @@ export default function AdminRestaurantOrderingControls({
             </div>
           )}
 
-          {loading && !displayedPolicy && <p className="rounded-xl border border-neutral-800 p-4 text-xs text-neutral-400">Loading saved ordering policyâ€¦</p>}
+          {loading && !displayedPolicy && <p className="rounded-xl border border-neutral-800 p-4 text-xs text-neutral-400">Loading saved ordering policy…</p>}
 
           {displayedPolicy && (
             <>
@@ -324,9 +321,39 @@ export default function AdminRestaurantOrderingControls({
                   </div>
                 )}
 
+                {/* DD_ADMIN_DINEIN_GPS_TOGGLE_20261111: reuses the existing saved geofence_enabled policy. */}
+                <section className="rounded-2xl border border-sky-500/30 bg-sky-500/5 p-4" aria-label="Customer Dine-In GPS control">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <h5 className="text-xs font-black text-white">Customer Dine-In Location Check</h5>
+                      <p className="mt-1 text-[10px] leading-5 text-neutral-400">
+                        Super Admin controls whether customers must verify GPS inside the restaurant.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-label="Require customer GPS for dine-in ordering"
+                      aria-checked={displayedPolicy.geofence_enabled === true}
+                      disabled={busy}
+                      onClick={() => changePolicy('geofence_enabled', displayedPolicy.geofence_enabled !== true)}
+                      className={`shrink-0 rounded-full border px-5 py-2.5 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-40 ${displayedPolicy.geofence_enabled === true ? 'border-emerald-500/40 bg-emerald-600 text-white hover:bg-emerald-500' : 'border-neutral-600 bg-neutral-800 text-neutral-200 hover:bg-neutral-700'}`}
+                    >
+                      {displayedPolicy.geofence_enabled === true ? 'ON · GPS Required' : 'OFF · No GPS'}
+                    </button>
+                  </div>
+                  <p className="mt-3 text-[10px] leading-5 text-neutral-300">
+                    {displayedPolicy.geofence_enabled === true
+                      ? 'ON: The customer sees Check my Dine-In location, and checkout verifies GPS.'
+                      : 'OFF: The location-check button is hidden, and dine-in checkout does not request GPS.'}
+                  </p>
+                  <p className="mt-1 text-[10px] leading-5 text-neutral-400">
+                    Signed table QR verification remains independent. Click Save restaurant ordering policy below to apply this change.
+                  </p>
+                </section>
+
                 <div className="space-y-3">
                   {[
-                    ['geofence_enabled', 'Verify live GPS for Dine-In', 'Customers must provide a fresh, sufficiently accurate location inside the restaurant.'],
                     ['signed_table_qr_required', 'Require signed table QR', 'Only registered and enabled tables with valid signed QR can order dine-in.'],
                     ['home_delivery_entry_enabled', 'Show Home Delivery in restaurant menu', 'Also requires a delivery-enabled plan and delivery customer ordering access.'],
                   ].map(([key, title, description]) => (
@@ -383,7 +410,7 @@ export default function AdminRestaurantOrderingControls({
                   measured distance + GPS uncertainty must fit inside the radius. Verify coordinates on-site.
                 </p>
                 <button type="button" onClick={() => void savePolicy()} disabled={busy} className="w-full rounded-xl bg-red-600 px-4 py-3 text-xs font-black text-white transition hover:bg-red-500 disabled:opacity-40">
-                  {saving ? 'Savingâ€¦' : 'Save restaurant ordering policy'}
+                  {saving ? 'Saving…' : 'Save restaurant ordering policy'}
                 </button>
               </section>
 

@@ -1,4 +1,3 @@
-
 'use client'
 
 import {
@@ -13,6 +12,7 @@ import { useParams } from 'next/navigation'
 import './storefront-themes.css'
 import './storefront-mobile-themes.css'
 import { getMobileTheme, getDefaultMobileTheme } from '@/lib/ecommerce/mobileThemes'
+import useStorefrontCart from '@/lib/ecommerce/useStorefrontCart'
 
 import {
   resolveStoreTemplate,
@@ -805,14 +805,24 @@ export default function EcommerceStorefrontPage() {
 
   const [categoryId, setCategoryId] =
     useState('all')
+  const [sortBy, setSortBy] = useState('newest')
+  const [stockOnly, setStockOnly] = useState(false)
+  const [discountOnly, setDiscountOnly] = useState(false)
+  const [minPrice, setMinPrice] = useState('')
+  const [maxPrice, setMaxPrice] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
 
   const [
     selectedVariants,
     setSelectedVariants,
   ] = useState({})
 
-  const [cart, setCart] =
-    useState([])
+  
+const {
+  cart,
+  setCart,
+} = useStorefrontCart(slug)
+
 
   const [cartOpen, setCartOpen] =
     useState(false)
@@ -1052,11 +1062,16 @@ export default function EcommerceStorefrontPage() {
     setBannerIndex(0)
     setProducts([])
     setCategories([])
-    setCart([])
     setCartOpen(false)
     setSelectedVariants({})
     setCategoryId('all')
     setSearch('')
+    setSortBy('newest')
+    setStockOnly(false)
+    setDiscountOnly(false)
+    setMinPrice('')
+    setMaxPrice('')
+    setShowFilters(false)
     setNotice('')
 
     setDetailId(
@@ -1234,6 +1249,7 @@ export default function EcommerceStorefrontPage() {
 
             name:
               entry.product.name,
+            image: entry.product.images?.[0]?.url || '',
 
             option:
               formatOption(
@@ -1266,41 +1282,55 @@ export default function EcommerceStorefrontPage() {
       0
     )
 
-  const filteredProducts =
-    useMemo(
-      () =>
-        products.filter(product => {
-          if (
-            categoryId !== 'all' &&
-            product.categoryId !==
-              categoryId
-          ) {
-            return false
-          }
+  const productStats = useCallback(product => {
+    const variants = product.variants || []
+    const available = variants.filter(v => Number(v.stock_quantity || 0) > 0)
+    const prices = (available.length ? available : variants)
+      .map(v => Number(v.price_paise))
+      .filter(Number.isFinite)
+    const discounts = variants.map(v => priceInfo(v).discount)
+    return {
+      inStock: available.length > 0,
+      price: prices.length ? Math.min(...prices) : Infinity,
+      discount: Math.max(0, ...discounts),
+    }
+  }, [])
 
-          const query =
-            search.trim().toLowerCase()
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    const minimum = minPrice.trim() === '' ? null : Number(minPrice) * 100
+    const maximum = maxPrice.trim() === '' ? null : Number(maxPrice) * 100
+    return products.filter(product => {
+      if (categoryId !== 'all' && product.categoryId !== categoryId) return false
+      const stats = productStats(product)
+      if (stockOnly && !stats.inStock) return false
+      if (discountOnly && stats.discount <= 0) return false
+      if (minimum !== null && Number.isFinite(minimum) && stats.price < minimum) return false
+      if (maximum !== null && Number.isFinite(maximum) && stats.price > maximum) return false
+      if (!query) return true
+      return [product.name, product.description, product.slug,
+        ...(product.variants || []).map(v => v.sku),
+      ].some(value => String(value || '').toLowerCase().includes(query))
+    }).sort((a, b) => {
+      const aa = productStats(a)
+      const bb = productStats(b)
+      if (sortBy === 'price-low') return aa.price - bb.price
+      if (sortBy === 'price-high') return bb.price - aa.price
+      if (sortBy === 'discount') return bb.discount - aa.discount
+      if (sortBy === 'name') return String(a.name).localeCompare(String(b.name))
+      return (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0)
+    })
+  }, [products, categoryId, search, stockOnly, discountOnly, minPrice, maxPrice, sortBy, productStats])
 
-          return (
-            !query ||
-            String(
-              product.name || ''
-            )
-              .toLowerCase()
-              .includes(query) ||
-            String(
-              product.description || ''
-            )
-              .toLowerCase()
-              .includes(query)
-          )
-        }),
-      [
-        products,
-        search,
-        categoryId,
-      ]
-    )
+  const clearFilters = () => {
+    setSearch('')
+    setCategoryId('all')
+    setSortBy('newest')
+    setStockOnly(false)
+    setDiscountOnly(false)
+    setMinPrice('')
+    setMaxPrice('')
+  }
 
   const detailProduct =
     products.find(
@@ -1381,6 +1411,14 @@ export default function EcommerceStorefrontPage() {
     setNotice(
       `${product.name} added to cart.`
     )
+  }
+
+  function removeItem(variantId) {
+    setCart(previous => previous.filter(item => item.variantId !== variantId))
+  }
+
+  function clearCart() {
+    if (window.confirm('Remove all products from your cart?')) setCart([])
   }
 
   function changeQuantity(
@@ -1659,6 +1697,37 @@ export default function EcommerceStorefrontPage() {
               </button>
             </div>
 
+            <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4" aria-label="Sort and filter products">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="min-w-0 flex-1 text-xs font-semibold text-slate-600">
+                  Sort products
+                  <select value={sortBy} onChange={event => setSortBy(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900">
+                    <option value="newest">Newest first</option>
+                    <option value="price-low">Price: low to high</option>
+                    <option value="price-high">Price: high to low</option>
+                    <option value="discount">Biggest discount</option>
+                    <option value="name">Name A–Z</option>
+                  </select>
+                </label>
+                <button type="button" onClick={() => setShowFilters(value => !value)} aria-expanded={showFilters} className="self-end rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold">
+                  {showFilters ? 'Hide filters' : 'Filters'}
+                </button>
+                <button type="button" onClick={clearFilters} className="self-end rounded-xl px-3 py-2 text-sm font-semibold text-rose-700">Clear</button>
+              </div>
+              {showFilters && (
+                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
+                  <label className="text-xs font-semibold text-slate-600">Min price (₹)
+                    <input type="number" min="0" step="0.01" inputMode="decimal" value={minPrice} onChange={e => setMinPrice(e.target.value)} placeholder="0" className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm" />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">Max price (₹)
+                    <input type="number" min="0" step="0.01" inputMode="decimal" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="Any" className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm" />
+                  </label>
+                  <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={stockOnly} onChange={e => setStockOnly(e.target.checked)} /> In stock only</label>
+                  <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={discountOnly} onChange={e => setDiscountOnly(e.target.checked)} /> Discounted products only</label>
+                </div>
+              )}
+            </section>
+
             <nav
               aria-label="Product categories"
               className="mt-4 flex gap-2 overflow-x-auto pb-4"
@@ -1858,7 +1927,8 @@ export default function EcommerceStorefrontPage() {
                     key={item.variantId}
                     className="flex items-center justify-between gap-3 border-b border-slate-100 py-5"
                   >
-                    <div className="min-w-0">
+                    {item.image ? <img src={item.image} alt="" loading="lazy" className="h-16 w-14 shrink-0 rounded-lg object-cover" /> : <div className="h-16 w-14 shrink-0 rounded-lg bg-slate-100" />}
+                    <div className="min-w-0 flex-1">
                       <strong className="block text-sm">
                         {item.name}
                       </strong>
@@ -1872,6 +1942,7 @@ export default function EcommerceStorefrontPage() {
                           item.pricePaise
                         )}
                       </span>
+                      <button type="button" onClick={() => removeItem(item.variantId)} className="mt-2 text-xs font-semibold text-rose-700 underline">Remove</button>
                     </div>
 
                     <div className="flex shrink-0 items-center overflow-hidden rounded-lg border border-rose-600">
@@ -1917,7 +1988,8 @@ export default function EcommerceStorefrontPage() {
             </div>
 
             <div className="border-t p-5">
-              <div className="flex items-center justify-between text-lg">
+               {validCart.length > 0 && <button type="button" onClick={clearCart} className="mb-4 text-sm font-semibold text-rose-700 underline">Clear cart</button>}
+               <div className="flex items-center justify-between text-lg">
                 <span>
                   Subtotal
                 </span>

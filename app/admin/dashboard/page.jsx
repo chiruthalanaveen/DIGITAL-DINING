@@ -22,6 +22,8 @@ import AdminRestaurantOrderingControls from '@/app/components/AdminRestaurantOrd
 import AdminEcommerceStoresPage from '@/app/admin/ecommerce/stores/page'
 import AdminEcommerceProductsPage from '@/app/admin/ecommerce/products/ProductManagementContent'
 import AdminEcommerceWalletsPage from '@/app/admin/ecommerce/wallets/page'
+import RazorpayAccessRequests from '@/app/admin/ecommerce/razorpay/RazorpayAccessRequests'
+
 
 const NAV = [
   ['overview', 'Overview'],
@@ -39,6 +41,7 @@ const NAV = [
   ['ecommerce-stores', 'E-Commerce Websites'],
   ['ecommerce-products', 'E-Commerce Products'],
   ['ecommerce-wallets', 'E-Commerce Wallets'],
+  ['ecommerce-razorpay', 'E-Commerce Razorpay'],
   ['live-support', 'Live Support'],
   ['support', 'Help Centre'],
   ['reviews', 'Reviews'],
@@ -50,7 +53,7 @@ const NAV = [
 // UI navigation groups and icons: presentation only. Existing module keys remain untouched.
 const NAV_GROUPS = [
   { title: 'Workspace', items: ['overview', 'registrations', 'wallet-controls', 'tenants'] },
-  { title: 'Commerce', items: ['operations', 'delivery-orders', 'restaurant-ordering', 'payments', 'inventory', 'ecommerce-stores', 'ecommerce-products', 'ecommerce-wallets'] },
+  { title: 'Commerce', items: ['operations', 'delivery-orders', 'restaurant-ordering', 'payments', 'inventory', 'ecommerce-stores', 'ecommerce-products', 'ecommerce-wallets', 'ecommerce-razorpay'] },
   { title: 'Growth & Onboarding', items: ['custom-plans', 'delivery-signup', 'people'] },
   { title: 'Customer Experience', items: ['live-support', 'support', 'reviews'] },
   { title: 'Administration', items: ['privacy-deletions', 'system', 'audit'] },
@@ -60,7 +63,7 @@ const NAV_ICONS = {
   overview: 'dashboard', 'custom-plans': 'sparkles', registrations: 'user-check', 'privacy-deletions': 'shield',
   'wallet-controls': 'wallet', 'delivery-signup': 'truck', tenants: 'building',
   operations: 'activity', 'delivery-orders': 'package', 'restaurant-ordering': 'settings', people: 'users',
-  inventory: 'layers', 'ecommerce-stores': 'globe', 'ecommerce-products': 'package', 'ecommerce-wallets': 'wallet', 'live-support': 'messages', support: 'life-ring',
+  inventory: 'layers', 'ecommerce-stores': 'globe', 'ecommerce-products': 'package', 'ecommerce-wallets': 'wallet', 'ecommerce-razorpay': 'credit', 'live-support': 'messages', support: 'life-ring',
   reviews: 'star', payments: 'credit', system: 'settings', audit: 'shield',
 }
 
@@ -80,6 +83,7 @@ const NAV_DESCRIPTIONS = {
   'ecommerce-stores': 'Create, approve and manage E-Commerce websites',
   'ecommerce-products': 'Manage E-Commerce categories, products, stock and images',
   'ecommerce-wallets': 'Manage E-Commerce wallet balances and fees',
+  'ecommerce-razorpay': 'Approve or reject E-Commerce Razorpay credential edit requests',
   'live-support': 'Active customer support conversations',
   support: 'Help Centre ticket management',
   reviews: 'Customer feedback and moderation',
@@ -3282,6 +3286,7 @@ export default function AdminControlCenter() {
           {section === 'ecommerce-stores' && <AdminEcommerceStoresPage />}
           {section === 'ecommerce-products' && <AdminEcommerceProductsPage />}
           {section === 'ecommerce-wallets' && <AdminEcommerceWalletsPage />}
+          {section === 'ecommerce-razorpay' && <RazorpayAccessRequests />}
 
           {section === 'registrations' && (
             <AdminRegistrationApprovals />
