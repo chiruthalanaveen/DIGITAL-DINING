@@ -241,6 +241,9 @@ export default function CustomerMenuPage() {
   const [placedOrderNumber, setPlacedOrderNumber] = useState(null)
   const [paymentDetails, setPaymentDetails] = useState(null)
   const [paymentLoading, setPaymentLoading] = useState(false)
+  // DD_QR_CHECKOUT_SPEED_20261111: prevents duplicate counter orders and parallel payment starts.
+  const counterOrderInFlightRef = useRef(false)
+  const razorpayStartInFlightRef = useRef(false)
   // A payment may be captured before the restaurant order is fully recorded.
   // Keep its verification details through page reloads so guests can retry
   // confirmation WITHOUT paying a second time.
@@ -1273,28 +1276,34 @@ export default function CustomerMenuPage() {
     return automaticHighlyReorderedIds.has(item?.id)
   }
 
+  // Update analytics concurrently (up to four requests per batch), not one round trip per item.
   const incrementOrderedItems = async items => {
     if (!items?.length) return
-
-    for (const item of items) {
-      const quantity = Number(item.quantity || item.qty || 1)
-      if (!item.id || quantity <= 0) continue
-
-      const { error } = await supabase.rpc('increment_menu_item_order', {
-        p_menu_item_id: item.id,
-        p_quantity: quantity
-      })
-
-      if (error) {
-        console.error('Order count update failed:', error)
-      }
+    const validItems = items.filter(item =>
+      item?.id && Number(item.quantity || item.qty || 1) > 0
+    )
+    for (let i = 0; i < validItems.length; i += 4) {
+      await Promise.all(validItems.slice(i, i + 4).map(async item => {
+        try {
+          const { error } = await supabase.rpc('increment_menu_item_order', {
+            p_menu_item_id: item.id,
+            p_quantity: Number(item.quantity || item.qty || 1)
+          })
+          if (error) console.error('Order count update failed:', error)
+        } catch (error) {
+          console.error('Order count update failed:', error)
+        }
+      }))
     }
   }
 
   const getDineInProof = async () => {
-    if (orderType !== 'dine-in' || !orderingOptions?.geofenceEnabled) return {}
+    if (orderType !== 'dine-in') return {}
+    // Signed table QR is independent of the Super Admin GPS ON/OFF setting.
+    const tableQrToken = searchParams.get('tableToken') || ''
+    if (!orderingOptions?.geofenceEnabled) return { tableQrToken }
     const position = await getFreshDineInProof()
-    return { ...position, tableQrToken: searchParams.get('tableToken') || '' }
+    return { ...position, tableQrToken }
   }
 
   const createPublicOrder = async ({
@@ -1312,14 +1321,8 @@ export default function CustomerMenuPage() {
       throw new Error('Restaurant ID is missing. Please reopen the QR menu.')
     }
 
-    const accessAllowed = await fetchQrAccess()
-
-    if (!accessAllowed) {
-      throw new Error(
-        'Online ordering is currently disabled for this restaurant.'
-      )
-    }
-
+    // Checked once by the counter handler; the secure server API rechecks
+    // wallet, entitlements, signed QR, GPS (if enabled), and all prices.
     const cleanName = String(customerFullName || '').trim()
     const cleanMobile = String(customerPhone || '').trim()
 
@@ -1410,6 +1413,7 @@ export default function CustomerMenuPage() {
   }
 
   const handlePayAtCounter = async () => {
+    if (paymentLoading || counterOrderInFlightRef.current) return
     if (pendingQrVerification) {
       appNotice('Confirm your previous Razorpay payment before placing another order.')
       return
@@ -1432,17 +1436,18 @@ export default function CustomerMenuPage() {
       return
     }
 
-    // Check before submitting a counter order OR opening paid checkout.
-    // createPublicOrder checks again; the database trigger is authoritative.
-    if (!(await fetchQrAccess())) {
-      appNotice('New orders are temporarily unavailable. Please contact the restaurant staff.')
-      return
-    }
-
+    counterOrderInFlightRef.current = true
     setPaymentLoading(true)
 
     try {
-      const freshQuote = await refreshRestaurantFeeQuote()
+      // Independent checks run together; server validates again at commit.
+      const [accessAllowed, freshQuote] = await Promise.all([
+        fetchQrAccess(),
+        refreshRestaurantFeeQuote()
+      ])
+      if (!accessAllowed) {
+        throw new Error('New orders are temporarily unavailable. Please contact the restaurant staff.')
+      }
       const refreshedTotal = Math.round((subtotalAmount + gstAmount + packingFee +
         Number(freshQuote.customerAmountPaise || 0) / 100) * 100) / 100
       if (Math.abs(refreshedTotal - totalAmount) >= 0.011) {
@@ -1470,8 +1475,6 @@ export default function CustomerMenuPage() {
         customerPhone: finalMobile
       })
 
-      await incrementOrderedItems(cartItemsArray)
-
       setConfirmedBillSummary({
         subtotal: finalSubtotal,
         sgstRate,
@@ -1495,12 +1498,15 @@ export default function CustomerMenuPage() {
       setCart({})
       setShowCart(false)
       setOrderPlaced(true)
-      await fetchCustomerOrders(finalMobile)
+      // The order already exists: show success before optional analytics.
+      // Customer history loads when the guest opens Track My Order.
+      await incrementOrderedItems(itemsSnapshot)
     } catch (error) {
       console.error('Counter payment error:', error)
       setLocationIssue(error?.message || 'Unable to verify Dine-In checkout.')
       appNotice('Failed to place order: ' + error.message)
     } finally {
+      counterOrderInFlightRef.current = false
       setPaymentLoading(false)
     }
   }
@@ -1554,9 +1560,6 @@ export default function CustomerMenuPage() {
       const summary = attempt.summary || {}
       if (summary.customerName) setCustomerName(summary.customerName)
       if (summary.customerMobile) setCustomerMobile(summary.customerMobile)
-      if (!result.alreadyFinalized && Array.isArray(attempt.itemsSnapshot)) {
-        await incrementOrderedItems(attempt.itemsSnapshot)
-      }
       setConfirmedBillSummary({
         subtotal: Number(summary.subtotal || 0),
         sgstRate: Number(summary.sgstRate ?? 2.5),
@@ -1582,12 +1585,10 @@ export default function CustomerMenuPage() {
       try {
         window.sessionStorage.removeItem(`digitaldine_pending_qr_payment_${restaurantId}`)
       } catch {}
-      // Refresh order status without hiding a successfully verified order if
-      // an optional customer-history read fails.
-      try {
-        await fetchCustomerOrders(summary.customerMobile || customerMobile.trim())
-      } catch (historyError) {
-        console.error('[QR MENU] Order history refresh failed:', historyError)
+      // The paid order is already verified and visible. Analytics are optional.
+      // History refresh happens when the customer opens Track My Order.
+      if (!result.alreadyFinalized && Array.isArray(attempt.itemsSnapshot)) {
+        await incrementOrderedItems(attempt.itemsSnapshot)
       }
     } catch (error) {
       console.error('[QR MENU] Razorpay verification error:', error)
@@ -1600,7 +1601,7 @@ export default function CustomerMenuPage() {
   }
 
   const handleRazorpayCheckout = async () => {
-    if (paymentLoading || pendingQrVerification) {
+    if (paymentLoading || razorpayStartInFlightRef.current || pendingQrVerification) {
       appNotice('A payment is awaiting confirmation. Retry verification instead of paying again.')
       return
     }
@@ -1617,13 +1618,9 @@ export default function CustomerMenuPage() {
       appNotice('Please add at least one item to your cart.')
       return
     }
-    // The server will check the wallet and recalculate every line item and
-    // total from the database. The client price is only a mismatch check.
-    if (!(await fetchQrAccess())) {
-      appNotice('New orders are temporarily unavailable. Please contact the restaurant staff.')
-      return
-    }
-
+    // The secure create API checks wallet, feature controls and item prices.
+    // A fresh wallet/access check is retained immediately before Razorpay opens.
+    razorpayStartInFlightRef.current = true
     setPaymentLoading(true)
     const finalItems = createItemsSnapshot()
     const finalMobile = customerMobile.trim()
@@ -1641,13 +1638,16 @@ export default function CustomerMenuPage() {
     }
 
     try {
-      const freshQuote = await refreshRestaurantFeeQuote()
+      // Fee validation and SDK loading are independent, so start both together.
+      const [freshQuote, sdkLoaded] = await Promise.all([
+        refreshRestaurantFeeQuote(),
+        loadRazorpayScript()
+      ])
       const refreshedTotal = Math.round((subtotalAmount + gstAmount + packingFee +
         Number(freshQuote.customerAmountPaise || 0) / 100) * 100) / 100
       if (Math.abs(refreshedTotal - totalAmount) >= 0.011) {
         throw new Error('The platform fee changed. Review the updated bill and retry payment.')
       }
-      const sdkLoaded = await loadRazorpayScript()
       if (!sdkLoaded || typeof window.Razorpay !== 'function') {
         throw new Error('Razorpay checkout is unavailable. Check your internet connection.')
       }
@@ -1700,6 +1700,7 @@ export default function CustomerMenuPage() {
           }
           if (!attempt.razorpay_payment_id || !attempt.razorpay_signature) {
             appNotice('Payment confirmation data is missing. If you were charged, do not pay again. Contact restaurant support.')
+            razorpayStartInFlightRef.current = false
             setPaymentLoading(false)
             return
           }
@@ -1712,7 +1713,11 @@ export default function CustomerMenuPage() {
           } catch (storageError) {
             console.error('[QR MENU] Failed to save pending payment retry:', storageError)
           }
-          await verifyQrPaymentAttempt(attempt)
+          try {
+            await verifyQrPaymentAttempt(attempt)
+          } finally {
+            razorpayStartInFlightRef.current = false
+          }
         },
         prefill: {
           name: customerName,
@@ -1723,6 +1728,7 @@ export default function CustomerMenuPage() {
         modal: {
           ondismiss: () => {
             if (!paymentHandlerStarted) setPaymentLoading(false)
+            razorpayStartInFlightRef.current = false
           }
         }
       }
@@ -1730,6 +1736,7 @@ export default function CustomerMenuPage() {
       const rzp = new window.Razorpay(options)
       rzp.on('payment.failed', response => {
         appNotice(`Payment Failed: ${response?.error?.description || 'Please try again.'}`)
+        razorpayStartInFlightRef.current = false
         setPaymentLoading(false)
       })
       // New wallets must remain eligible until starting checkout. Once Razorpay
@@ -1738,12 +1745,14 @@ export default function CustomerMenuPage() {
       if (!(await fetchQrAccess())) {
         throw new Error('Restaurant ordering has been paused. Your payment was not started.')
       }
+      // Keep the synchronous guard until the payment modal closes or finishes.
       rzp.open()
       setPaymentLoading(false)
     } catch (error) {
       console.error('[QR MENU] Secure checkout error:', error)
       setLocationIssue(error?.message || 'Unable to verify Dine-In checkout.')
       appNotice('Checkout Error: ' + (error?.message || 'Please try again.'))
+      razorpayStartInFlightRef.current = false
       setPaymentLoading(false)
     }
   }
